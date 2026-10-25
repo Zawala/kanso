@@ -29,7 +29,7 @@ use kanso_sync::security_key::{
 };
 use zeroize::Zeroizing;
 
-use crate::passkey_ceremony::{Platform, rp_id_fits_server};
+use crate::passkey_ceremony::Platform;
 
 /// Whether the signed-out page shows [Continue with a security key] (or
 /// its Create twin): Linux only, and only when the server advertises
@@ -43,7 +43,7 @@ pub fn offers_security_keys(
 ) -> bool {
     platform == Platform::Linux
         && passkeys.is_some_and(|passkeys| {
-            passkeys.security_key && rp_id_fits_server(&passkeys.rp_id, server)
+            passkeys.security_key && kanso_sync::passkey_rp_allowed(&passkeys.rp_id, server)
         })
 }
 
@@ -244,7 +244,7 @@ mod tests {
     use super::*;
     use crate::passkey_accounts::{self, PasskeyContext, RpRule, SyncPasskeyAccounts};
 
-    const SERVER: &str = "https://memory.kanso.test";
+    const SERVER: &str = kanso_sync::MEMORY_PASSKEY_SERVER;
     const RP_ID: &str = "memory.kanso.test";
 
     fn device(hmac_secret: bool) -> SecurityKeyDevice {

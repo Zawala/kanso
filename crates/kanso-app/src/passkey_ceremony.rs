@@ -19,9 +19,10 @@ use kanso_sync::passkey::{
 };
 use kanso_sync::{PasskeyAssertion, PasskeyMethods, PasskeyRegistration};
 
-/// The relying party the official app's Associated Domains entitlement names
-/// (`webcredentials:sync.kansoapp.app`). It is fixed when the app is signed.
-pub const OFFICIAL_RP_ID: &str = "sync.kansoapp.app";
+/// The relying-party rules are `kanso-sync`'s, so the app and the client
+/// library hold one rule: the entitled relying party, what WebAuthn
+/// accepts as an RP ID, and the server's host or a parent of it.
+pub use kanso_sync::{OFFICIAL_RP_ID, rp_id_fits_server, valid_rp_id};
 
 /// The platform the app runs on, as the method rules see it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,38 +69,9 @@ pub fn offers_platform_passkeys(
 pub fn platform_rp_allowed(platform: Platform, rp_id: &str, server: &str) -> bool {
     match platform {
         Platform::MacOs => rp_id == OFFICIAL_RP_ID && kanso_sync::is_owner_server(server),
-        Platform::Windows => rp_id_fits_server(rp_id, server),
+        Platform::Windows => kanso_sync::passkey_rp_allowed(rp_id, server),
         Platform::Linux => false,
     }
-}
-
-/// A relying-party ID WebAuthn accepts: a lowercase DNS name with a dot, or
-/// `localhost` for development. No scheme, port, path or IP literal.
-pub fn valid_rp_id(rp_id: &str) -> bool {
-    if rp_id == "localhost" {
-        return true;
-    }
-    !rp_id.is_empty()
-        && rp_id.len() <= 253
-        && rp_id.contains('.')
-        && !rp_id.starts_with('.')
-        && !rp_id.ends_with('.')
-        && rp_id
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
-        && !rp_id.split('.').any(str::is_empty)
-        && !rp_id
-            .split('.')
-            .all(|label| label.bytes().all(|b| b.is_ascii_digit()))
-}
-
-/// Whether `rp_id` is the server's host or a parent of it, which the app
-/// checks before a ceremony that isn't bound by an entitlement (Windows and
-/// Linux security keys).
-pub fn rp_id_fits_server(rp_id: &str, server: &str) -> bool {
-    let host = crate::account_words::host_of(server);
-    let host = host.split(['/', ':']).next().unwrap_or_default();
-    valid_rp_id(rp_id) && (host == rp_id || host.ends_with(&format!(".{rp_id}")))
 }
 
 /// Why a native ceremony ended, in `kanso-sync`'s words. Native messages

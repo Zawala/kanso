@@ -18,7 +18,7 @@ use kanso_sync::{
     PasskeySignInStart, PasskeySignUpStart, RotationError, SecretStore, SignedUp, Step,
 };
 
-use crate::passkey_ceremony::{platform_rp_allowed, rp_id_fits_server};
+use crate::passkey_ceremony::platform_rp_allowed;
 
 pub use kanso_sync::api::LoginDevice;
 
@@ -31,10 +31,6 @@ pub enum RpRule {
     /// Windows platform passkeys and Linux security keys: the server's host
     /// or a parent of it.
     ServerHost,
-    /// Tests against `MemoryServer`, whose relying party isn't the
-    /// server's host.
-    #[cfg(test)]
-    Any,
 }
 
 impl RpRule {
@@ -52,9 +48,7 @@ impl RpRule {
             RpRule::Entitlement => {
                 platform_rp_allowed(crate::passkey_ceremony::Platform::MacOs, rp_id, server)
             }
-            RpRule::ServerHost => rp_id_fits_server(rp_id, server),
-            #[cfg(test)]
-            RpRule::Any => true,
+            RpRule::ServerHost => kanso_sync::passkey_rp_allowed(rp_id, server),
         }
     }
 }
@@ -210,7 +204,9 @@ pub fn sign_in(
     let start = cx
         .accounts
         .start_sign_in(cx.backend, cx.server, username, &login_device)?;
-    if !cx.rule.allows(&start.challenge.rp_id, &start.server) {
+    if !cx.rule.allows(&start.challenge.rp_id, &start.server)
+        || !kanso_sync::passkey_origin_allowed(&start.challenge.origin, &start.challenge.rp_id)
+    {
         return Err(PasskeyFlowError::WrongRelyingParty);
     }
     let assertion = ceremony
@@ -238,7 +234,9 @@ pub fn sign_up(
     let start = cx
         .accounts
         .start_sign_up(cx.backend, cx.server, username, cx.device)?;
-    if !cx.rule.allows(&start.challenge.rp_id, &start.server) {
+    if !cx.rule.allows(&start.challenge.rp_id, &start.server)
+        || !kanso_sync::passkey_origin_allowed(&start.challenge.origin, &start.challenge.rp_id)
+    {
         return Err(PasskeyFlowError::WrongRelyingParty);
     }
     let registration = ceremony
@@ -292,9 +290,8 @@ mod tests {
     use super::*;
     use crate::passkey_ceremony::OFFICIAL_RP_ID;
 
-    const SERVER: &str = "https://memory.kanso.test";
-    /// `MemoryServer`'s relying party.
-    const MEMORY_PASSKEY_RP_ID: &str = "memory.kanso.test";
+    const SERVER: &str = kanso_sync::MEMORY_PASSKEY_SERVER;
+    use kanso_sync::MEMORY_PASSKEY_RP_ID;
 
     /// A software passkey that records what it was asked, as a platform
     /// sheet would see it, and can be made to fail.

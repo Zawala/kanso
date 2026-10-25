@@ -2872,7 +2872,7 @@ impl Mac {
         let (window, username) = (self.window, username.to_owned());
         cx.update(|cx| {
             account_flow::passkey_sign_up(
-                SERVER.into(),
+                kanso_sync::MEMORY_PASSKEY_SERVER.into(),
                 account_flow::PasskeyMethod::Platform,
                 username,
                 window,
@@ -2885,7 +2885,7 @@ impl Mac {
         let window = self.window;
         cx.update(|cx| {
             account_flow::passkey_sign_in(
-                SERVER.into(),
+                kanso_sync::MEMORY_PASSKEY_SERVER.into(),
                 account_flow::PasskeyMethod::Platform,
                 None,
                 window,

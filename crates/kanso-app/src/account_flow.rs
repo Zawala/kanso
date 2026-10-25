@@ -1644,7 +1644,7 @@ impl Runner {
             Runner::Platform(_) => RpRule::platform(),
             Runner::SecurityKey(_) => RpRule::ServerHost,
             #[cfg(test)]
-            Runner::Test(_) => RpRule::Any,
+            Runner::Test(_) => RpRule::ServerHost,
         }
     }
 
