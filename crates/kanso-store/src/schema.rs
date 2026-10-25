@@ -177,7 +177,7 @@ SELECT id FROM locked;
     // local to this device, never synced; each device rebuilds them from
     // the server. Saved versions say who made them.
     crate::collab::MIGRATION,
-    // Suggested edits (docs/ACP.md, the review queue): a version replaced
+    // Suggested edits (issue #46, the review queue): a version replaced
     // by an edit an agent suggested and the person applied says which
     // agent suggested it.
     r#"

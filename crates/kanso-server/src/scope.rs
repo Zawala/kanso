@@ -44,7 +44,7 @@ pub const ASK_TOOLS: [&str; 2] = ["search-notes", "read-note"];
 
 /// The tools that stage an edit for review instead of writing, given only to
 /// a scope the person allowed to suggest edits. The first write release is
-/// note text and title only (docs/ACP.md, the review queue, decision 8):
+/// note text and title only (issue #46, the review queue, decision 8):
 /// `update-tag` and `update-book` stay denied, and so does everything that
 /// touches attachments, notebooks' locks, or deletes.
 pub const SUGGEST_TOOLS: [&str; 3] = ["patch-note", "update-note", "create-note"];

@@ -5,7 +5,7 @@
 //! request's [`Visibility`], so a note the agent may not see is answered as a
 //! missing one and no suggestion can target it.
 //!
-//! The first write release is note text and title only (docs/ACP.md, the
+//! The first write release is note text and title only (issue #46, the
 //! review queue, decision 8): any other field, and `update-tag` and
 //! `update-book` altogether, are refused.
 

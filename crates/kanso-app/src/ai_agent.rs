@@ -85,6 +85,7 @@ pub fn notes_access_at(
             url: url.clone(),
             token: minted.token,
             relay: relay.clone(),
+            suggest: choice.suggest_edits,
             lease: Box::new(Lease {
                 tokens: tokens.clone(),
                 id: minted.id,
@@ -297,6 +298,7 @@ mod tests {
             None,
         );
         let grant = access().unwrap();
+        assert!(grant.suggest, "the agent is told it may suggest");
         let Some(kanso_server::Caller::Agent { scope, .. }) = tokens.verify(&grant.token) else {
             panic!("the token is an agent's");
         };
