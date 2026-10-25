@@ -19,6 +19,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq as _;
 
+use crate::review::ReviewQueue;
 use crate::scope::{AgentScope, Caller};
 
 /// How long a token lasts after it is minted (or renewed).
@@ -84,6 +85,10 @@ struct Inner {
 pub struct TokenStore {
     inner: Arc<Mutex<Inner>>,
     clock: Clock,
+    /// The edits agents suggested. Kept beside the tokens so one handle
+    /// reaches both, but not tied to them: a token ending doesn't drop a
+    /// suggestion.
+    reviews: ReviewQueue,
 }
 
 impl Default for TokenStore {
@@ -112,12 +117,18 @@ impl TokenStore {
     /// A store reading the time from `clock`, for tests.
     pub fn with_clock(clock: Arc<dyn Fn() -> Instant + Send + Sync>) -> TokenStore {
         TokenStore {
+            reviews: ReviewQueue::with_clock(clock.clone()),
             inner: Arc::new(Mutex::new(Inner {
                 entries: Vec::new(),
                 next_id: 1,
             })),
             clock,
         }
+    }
+
+    /// The review queue for the edits agents suggest.
+    pub fn reviews(&self) -> &ReviewQueue {
+        &self.reviews
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {

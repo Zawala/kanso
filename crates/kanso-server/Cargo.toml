@@ -8,6 +8,8 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+# The review queue tells the app when a suggestion arrives or goes.
+async-channel.workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
 base64.workspace = true
 # Today, in the computer's time zone, for daily notes.

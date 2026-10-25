@@ -7,7 +7,9 @@
 //!
 //! Agents on this computer reach `/mcp` with a short-lived bearer token
 //! instead ([`TokenStore`]): read only, and only the notes in the token's
-//! scope ([`AgentScope`]). When the local API is off, [`spawn_agents`] serves
+//! scope ([`AgentScope`]). A scope the person allowed may also suggest edits,
+//! which wait in a [`ReviewQueue`] and are written only by the person's Apply.
+//! When the local API is off, [`spawn_agents`] serves
 //! just that, on a loopback port of its own.
 //!
 //! The server stays thin: validation, conflicts and search live in
@@ -18,7 +20,9 @@ mod api;
 mod auth;
 mod error;
 mod mcp;
+mod proposal;
 mod rest;
+mod review;
 mod scope;
 mod tokens;
 
@@ -37,7 +41,9 @@ use axum::routing::post;
 use kanso_store::Store;
 
 pub use auth::basic_header;
-pub use scope::{ASK_TOOLS, AgentScope, Caller, READ_TOOLS};
+pub use proposal::{Applied, ApplyError, ChangeId, NewChange, ProposedChange};
+pub use review::{EXPIRY as REVIEW_EXPIRY, ReviewEvent, ReviewQueue};
+pub use scope::{ASK_TOOLS, AgentScope, Caller, READ_TOOLS, SUGGEST_TOOLS};
 pub use tokens::{Minted, TokenId, TokenStore};
 
 /// Largest request body accepted. A 10 MB image is about 13.4 MB in base64.

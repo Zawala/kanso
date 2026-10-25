@@ -44,6 +44,7 @@ mod config;
 mod device_approval;
 mod dialogs;
 mod dictation;
+mod diff_view;
 mod due;
 mod editor;
 mod editor_footer;
@@ -117,6 +118,9 @@ mod query_view_ui;
 mod related;
 mod reminders;
 mod replace;
+mod review_queue;
+#[cfg(test)]
+mod review_tests;
 mod security_key_flow;
 mod selection;
 mod services;

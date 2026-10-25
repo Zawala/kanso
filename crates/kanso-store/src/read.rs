@@ -106,6 +106,9 @@ pub struct Revision {
     pub fields: Map<String, Value>,
     /// Who made this version of a shared note (names, comma-separated).
     pub author: Option<String>,
+    /// The agent whose suggested edit, applied by the person, replaced this
+    /// version (origin `agent`).
+    pub agent: Option<String>,
 }
 
 const DOC_COLUMNS: &str = "d.id, d.type, d.rev, d.seq, d.deleted, d.json, \
@@ -646,7 +649,7 @@ impl Store {
     pub fn revisions(&self, id: &str) -> Result<Vec<Revision>> {
         self.read(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT rev, saved_at, origin, json, author FROM revisions WHERE doc_id = ? ORDER BY saved_at DESC, id DESC",
+                "SELECT rev, saved_at, origin, json, author, agent FROM revisions WHERE doc_id = ? ORDER BY saved_at DESC, id DESC",
             )?;
             let rows = stmt.query_map([id], |row| {
                 let json: String = row.get(3)?;
@@ -659,6 +662,7 @@ impl Store {
                         _ => Map::new(),
                     },
                     author: row.get(4)?,
+                    agent: row.get(5)?,
                 })
             })?;
             Ok(rows.collect::<rusqlite::Result<_>>()?)

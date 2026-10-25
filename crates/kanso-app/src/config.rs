@@ -605,6 +605,10 @@ pub struct AgentChoice {
     /// The notebooks it may read there, by ID, with the ones inside them;
     /// empty is every unlocked notebook. Names aren't kept: they change.
     pub notebooks: Vec<String>,
+    /// Whether the agent may suggest edits to the notes it may read. Off
+    /// unless turned on. A suggestion changes nothing: it waits in the review
+    /// queue until the person applies it. Needs `mcp`.
+    pub suggest_edits: bool,
     /// The ACP registry entry a custom agent was picked from, by its ID.
     pub registry: Option<String>,
 }
@@ -618,6 +622,7 @@ impl Default for AgentChoice {
             env: Default::default(),
             mcp: true,
             notebooks: Vec::new(),
+            suggest_edits: false,
             registry: None,
         }
     }
@@ -993,15 +998,17 @@ mod tests {
             any::<bool>(),
             prop::collection::vec("book:[a-zA-Z0-9]{8}", 0..3),
             prop::option::of("[a-z-]{1,12}"),
+            any::<bool>(),
         )
             .prop_map(
-                |(kind, command, args, env, mcp, notebooks, registry)| AgentChoice {
+                |(kind, command, args, env, mcp, notebooks, registry, suggest_edits)| AgentChoice {
                     kind,
                     command,
                     args,
                     env,
                     mcp,
                     notebooks,
+                    suggest_edits,
                     registry,
                 },
             )
@@ -1415,6 +1422,10 @@ mod tests {
         // unlocked notebook.
         assert!(old.ai.agent.mcp);
         assert!(old.ai.agent.notebooks.is_empty());
+        // Suggested edits are off until turned on; no version bump is needed
+        // for a file that never had the field.
+        assert!(!old.ai.agent.suggest_edits);
+        assert_eq!(old.version, CONFIG_VERSION);
         old.ai.backend = AiBackend::Agent;
         old.ai.agent.kind = kanso_ai::AgentKind::Codex;
         let written = serde_json::to_value(&old).unwrap();

@@ -122,6 +122,10 @@ pub struct AskPanel {
     notice: Option<String>,
     cancel: Option<Arc<AtomicBool>>,
     task: Option<Task<()>>,
+    /// The edits the agent suggested, kept apart from the conversation:
+    /// clearing it doesn't drop them.
+    reviews: Option<kanso_server::ReviewQueue>,
+    _review_watch: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -147,6 +151,17 @@ impl AskPanel {
                 _ => {}
             },
         )];
+        let reviews = crate::review_queue::queue(cx);
+        let review_watch = reviews.as_ref().map(|queue| {
+            let events = queue.subscribe();
+            cx.spawn(async move |this, cx| {
+                while events.recv().await.is_ok() {
+                    if this.update(cx, |_, cx| cx.notify()).is_err() {
+                        break;
+                    }
+                }
+            })
+        });
         AskPanel {
             store,
             library,
@@ -169,6 +184,8 @@ impl AskPanel {
             notice: None,
             cancel: None,
             task: None,
+            reviews,
+            _review_watch: review_watch,
             _subscriptions: subscriptions,
         }
     }
@@ -557,6 +574,12 @@ impl AskPanel {
         true
     }
 
+    /// How many suggested edits the panel says are waiting.
+    #[cfg(test)]
+    pub(crate) fn suggested_for_test(&self) -> usize {
+        self.reviews.as_ref().map_or(0, |queue| queue.len())
+    }
+
     /// The finished exchanges as (question, answer), for tests.
     #[cfg(test)]
     pub(crate) fn turns_for_test(&self) -> Vec<(String, String)> {
@@ -838,6 +861,7 @@ impl Render for AskPanel {
         let finished = self.finished.clone();
         let used = self.render_used(cx);
         let view = cx.entity();
+        let suggested = self.reviews.as_ref().map_or(0, |queue| queue.len());
         v_flex()
             .id("ask")
             .size_full()
@@ -845,6 +869,32 @@ impl Render for AskPanel {
             .pt(px(10.))
             .pb(px(10.))
             .gap(px(8.))
+            .when(suggested > 0, |el| {
+                el.child(
+                    h_flex()
+                        .gap(px(8.))
+                        .items_center()
+                        .child(
+                            div()
+                                .debug_selector(|| "ask-suggested".into())
+                                .text_size(px(12.5))
+                                .text_color(colors.text)
+                                .child(format!(
+                                    "{} —",
+                                    crate::review_queue::pending_line(suggested)
+                                )),
+                        )
+                        .child(
+                            Button::new("ask-review")
+                                .outline()
+                                .small()
+                                .label("Review")
+                                .on_click(|_, window, cx| {
+                                    crate::review_queue::open_review(window, cx);
+                                }),
+                        ),
+                )
+            })
             .when(
                 !self.asked
                     && (ai.backend == AiBackend::Agent || ai.provider.is_remote(&ai.base_url)),
