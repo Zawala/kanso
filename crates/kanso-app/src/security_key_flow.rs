@@ -17,7 +17,7 @@
 //! key before its PRF output may wrap the data key; otherwise the credential
 //! registers without a wrap and the app says it signs in only.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use kanso_fido::{FidoError, SecurityKeyDevice};
 use kanso_sync::PasskeyMethods;
@@ -100,14 +100,28 @@ impl Fido for LibFido {
     }
 }
 
+/// What a key said about its PIN when a ceremony failed, for the page to
+/// say what to do (docs/ACCOUNTS.md › Where the ceremony runs › Linux).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PinProblem {
+    /// The key needs its PIN and none was given.
+    Required,
+    /// The PIN was wrong; the tries the key has left, when it said.
+    Invalid { retries: Option<u8> },
+    /// Too many wrong PINs in a row: reconnect the key to try again.
+    AuthBlocked,
+    /// The PIN is locked: only resetting the key clears it.
+    Blocked,
+}
+
 /// One security key, with the PIN when it needs one (zeroizing, and never
-/// logged). After a failure, [`Self::pin_required`] says whether the key
-/// asked for a PIN.
+/// logged). After a failure, [`Self::pin_problem`] says what the key said
+/// about its PIN, if anything.
 pub struct FidoKey<'a> {
     fido: &'a dyn Fido,
     device: SecurityKeyDevice,
     pin: Option<Zeroizing<String>>,
-    pin_required: AtomicBool,
+    pin_problem: Mutex<Option<PinProblem>>,
 }
 
 impl<'a> FidoKey<'a> {
@@ -120,12 +134,15 @@ impl<'a> FidoKey<'a> {
             fido,
             device,
             pin: pin.filter(|pin| !pin.is_empty()),
-            pin_required: AtomicBool::new(false),
+            pin_problem: Mutex::new(None),
         }
     }
 
-    pub fn pin_required(&self) -> bool {
-        self.pin_required.load(Ordering::Acquire)
+    pub fn pin_problem(&self) -> Option<PinProblem> {
+        *self
+            .pin_problem
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// This key as the account flows' ceremony.
@@ -133,14 +150,28 @@ impl<'a> FidoKey<'a> {
         SecurityKeyPasskeys::new(self, self.device.hmac_secret)
     }
 
-    /// `kanso-fido`'s error in `kanso-sync`'s words; a PIN request is
-    /// remembered so the flow can ask for it.
+    /// `kanso-fido`'s error in `kanso-sync`'s words; what the key said about
+    /// its PIN is remembered so the flow can say what to do.
     fn error(&self, error: FidoError) -> PasskeyCeremonyError {
+        let problem = match error {
+            FidoError::PinRequired => Some(PinProblem::Required),
+            FidoError::PinInvalid { retries } => Some(PinProblem::Invalid { retries }),
+            FidoError::PinAuthBlocked => Some(PinProblem::AuthBlocked),
+            FidoError::PinBlocked => Some(PinProblem::Blocked),
+            _ => None,
+        };
+        if let Some(problem) = problem {
+            *self
+                .pin_problem
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(problem);
+            return PasskeyCeremonyError::Failed;
+        }
         match error {
-            FidoError::PinRequired => {
-                self.pin_required.store(true, Ordering::Release);
-                PasskeyCeremonyError::Failed
-            }
+            FidoError::PinRequired
+            | FidoError::PinInvalid { .. }
+            | FidoError::PinAuthBlocked
+            | FidoError::PinBlocked => PasskeyCeremonyError::Failed,
             FidoError::NoDevice | FidoError::Invalid => PasskeyCeremonyError::Unavailable,
             FidoError::Refused(_) | FidoError::Incomplete => PasskeyCeremonyError::Failed,
         }
@@ -225,12 +256,12 @@ pub struct OwnedSecurityKey {
 }
 
 impl OwnedSecurityKey {
-    /// Runs `work` with this key as a ceremony, and says afterwards whether
-    /// the key asked for its PIN.
-    pub fn with<T>(self, work: impl FnOnce(&dyn PasskeyCeremony) -> T) -> (T, bool) {
+    /// Runs `work` with this key as a ceremony, and says afterwards what the
+    /// key said about its PIN, if anything.
+    pub fn with<T>(self, work: impl FnOnce(&dyn PasskeyCeremony) -> T) -> (T, Option<PinProblem>) {
         let key = FidoKey::new(&LibFido, self.device, self.pin);
         let out = work(&key.passkeys());
-        (out, key.pin_required())
+        (out, key.pin_problem())
     }
 }
 
@@ -506,14 +537,14 @@ mod tests {
             without.passkeys().assert(&challenge).err(),
             Some(PasskeyCeremonyError::Failed)
         );
-        assert!(without.pin_required());
+        assert_eq!(without.pin_problem(), Some(PinProblem::Required));
         // An empty PIN field is no PIN.
         let empty = FidoKey::new(&fake, device(true), Some(Zeroizing::new(String::new())));
         assert!(empty.passkeys().assert(&challenge).is_err());
-        assert!(empty.pin_required());
+        assert_eq!(empty.pin_problem(), Some(PinProblem::Required));
         let with = FidoKey::new(&fake, device(true), Some(Zeroizing::new("4821".into())));
         let assertion = with.passkeys().assert(&challenge).unwrap();
-        assert!(!with.pin_required());
+        assert_eq!(with.pin_problem(), None);
         assert!(assertion.prf.is_some());
         let asserts = fake.asserts.lock().unwrap();
         assert_eq!(
@@ -563,6 +594,56 @@ mod tests {
             key.passkeys().register(&challenge).err(),
             Some(PasskeyCeremonyError::Failed)
         );
-        assert!(!key.pin_required());
+        assert_eq!(key.pin_problem(), None);
+    }
+
+    #[test]
+    fn each_pin_answer_is_remembered_as_what_it_means() {
+        struct Says(FidoError);
+        impl Fido for Says {
+            fn register(
+                &self,
+                _: &SecurityKeyDevice,
+                _: &kanso_fido::RegistrationRequest,
+            ) -> Result<kanso_fido::Registration, FidoError> {
+                Err(self.0.clone())
+            }
+            fn assert(
+                &self,
+                _: &SecurityKeyDevice,
+                _: &kanso_fido::AssertionRequest,
+            ) -> Result<kanso_fido::Assertion, FidoError> {
+                Err(self.0.clone())
+            }
+        }
+        let challenge = PasskeyAssertionChallenge {
+            rp_id: RP_ID.into(),
+            origin: SERVER.into(),
+            challenge: vec![6; 32],
+            allow_credentials: vec![],
+            request_prf: false,
+        };
+        for (said, problem) in [
+            (FidoError::PinRequired, PinProblem::Required),
+            (
+                FidoError::PinInvalid { retries: Some(3) },
+                PinProblem::Invalid { retries: Some(3) },
+            ),
+            (
+                FidoError::PinInvalid { retries: None },
+                PinProblem::Invalid { retries: None },
+            ),
+            (FidoError::PinAuthBlocked, PinProblem::AuthBlocked),
+            (FidoError::PinBlocked, PinProblem::Blocked),
+        ] {
+            let says = Says(said.clone());
+            let key = FidoKey::new(&says, device(true), Some(Zeroizing::new("1234".into())));
+            assert_eq!(
+                key.passkeys().assert(&challenge).err(),
+                Some(PasskeyCeremonyError::Failed),
+                "{said:?}"
+            );
+            assert_eq!(key.pin_problem(), Some(problem), "{said:?}");
+        }
     }
 }
