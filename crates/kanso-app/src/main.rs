@@ -155,6 +155,9 @@ mod transcribe;
 #[cfg(test)]
 mod ui_tests;
 mod updates;
+// macOS finishes Apple's sign-in in its own sheet: only the forwarding of a
+// `kanso://` argument and the tests reach the router there.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 mod url_callback;
 mod vim;
 mod voice;

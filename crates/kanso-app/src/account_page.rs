@@ -33,6 +33,8 @@ use crate::account_words::{
 use crate::clock::Clock;
 use crate::dialogs::{self, Field, FormSpec, FormView, Progress, Submit};
 use crate::library::Library;
+use crate::passkey_ceremony::{self, Platform};
+use crate::security_key_flow;
 use crate::services::{
     self, AccountDetails, AccountMethodsState, AccountState, PendingKey, Services, SyncState,
     TaskKind,
@@ -81,6 +83,66 @@ fn runnable_methods(auth: Option<&kanso_sync::ServerAuth>) -> (bool, Vec<kanso_s
     }
 }
 
+/// The passkey or security-key form the signed-out page shows in place of
+/// the username form: a passkey sign-up's username step, or a security
+/// key's username-first sign-in or sign-up. A platform sign-in has no form:
+/// its button opens the system sheet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PasskeyForm {
+    pub creating: bool,
+    pub security_key: bool,
+}
+
+/// Whether the security-key button shows, and whether a key is attached.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SecurityKeyOffer {
+    #[default]
+    None,
+    /// Advertised, but no key is attached: "Connect a FIDO2 security key to
+    /// use one."
+    Connect,
+    Ready,
+}
+
+/// The passkey methods the signed-out page offers, before the providers
+/// (docs/ACCOUNTS.md › Account page › Signed out).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PasskeyOffer {
+    /// [Continue with a passkey] / [Create with a passkey].
+    pub platform: bool,
+    /// [Continue with a security key] / [Create with a security key].
+    pub security_key: SecurityKeyOffer,
+}
+
+/// What `platform` offers for the server's health: a platform passkey when
+/// its ceremony can run (and, on macOS, the relying party is the
+/// entitled one), a security key on Linux for the server's own relying
+/// party.
+pub fn passkey_offer(
+    platform: Platform,
+    auth: Option<&kanso_sync::ServerAuth>,
+    server: &str,
+    ceremony_available: bool,
+    keys_attached: bool,
+) -> PasskeyOffer {
+    let passkeys = auth.and_then(|auth| auth.passkeys.as_ref());
+    let security_key = if !security_key_flow::offers_security_keys(platform, passkeys, server) {
+        SecurityKeyOffer::None
+    } else if keys_attached {
+        SecurityKeyOffer::Ready
+    } else {
+        SecurityKeyOffer::Connect
+    };
+    PasskeyOffer {
+        platform: passkey_ceremony::offers_platform_passkeys(
+            platform,
+            passkeys,
+            ceremony_available,
+        ),
+        security_key,
+    }
+}
+
 fn completed_form(current: SignedOutForm, has_provider_ticket: bool) -> SignedOutForm {
     if has_provider_ticket {
         SignedOutForm::CreateAccount
@@ -120,6 +182,10 @@ pub struct AccountPage {
     password: Entity<InputState>,
     confirm: Entity<InputState>,
     recovery_key: Entity<InputState>,
+    /// A security key's PIN, when it has one.
+    pin: Entity<InputState>,
+    /// The passkey form shown in place of the username form.
+    passkey_form: Option<PasskeyForm>,
     error: Option<SharedString>,
     /// A task started from these forms runs: they stay disabled until it
     /// says it is done, through any question it asks on the way.
@@ -132,6 +198,10 @@ pub struct AccountPage {
     prefilled: Option<String>,
     _subscriptions: Vec<Subscription>,
     _listening: Option<Task<()>>,
+    /// Linux: security keys coming and going while Sign in or Create
+    /// account is open.
+    _key_watch: Option<kanso_fido::watch::Watch>,
+    _key_events: Option<Task<()>>,
 }
 
 impl AccountPage {
@@ -147,7 +217,8 @@ impl AccountPage {
         let password = input(true, "", cx);
         let confirm = input(true, "", cx);
         let recovery_key = input(false, "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX", cx);
-        let subscriptions = [&username, &password, &confirm, &recovery_key]
+        let pin = input(true, "", cx);
+        let subscriptions = [&username, &password, &confirm, &recovery_key, &pin]
             .into_iter()
             .map(|input| {
                 cx.subscribe_in(
@@ -168,6 +239,8 @@ impl AccountPage {
             password,
             confirm,
             recovery_key,
+            pin,
+            passkey_form: None,
             error: None,
             waiting: false,
             notes: 0,
@@ -175,6 +248,8 @@ impl AccountPage {
             prefilled: None,
             _subscriptions: subscriptions,
             _listening: None,
+            _key_watch: None,
+            _key_events: None,
         }
     }
 
@@ -210,6 +285,13 @@ impl AccountPage {
             return;
         }
         self.form = form;
+        self.passkey_form = None;
+        if matches!(form, SignedOutForm::CreateAccount | SignedOutForm::SignIn) {
+            self.watch_security_keys(cx);
+        } else {
+            self._key_watch = None;
+            self._key_events = None;
+        }
         if form != SignedOutForm::CreateAccount {
             cx.global_mut::<Services>().provider_signup = None;
         }
@@ -235,8 +317,145 @@ impl AccountPage {
         cx.notify();
     }
 
+    /// Shows `form`: a passkey sign-up suggests a username, which the user
+    /// may change; a security key's sign-in keeps the name typed so far.
+    pub fn open_passkey_form(
+        &mut self,
+        form: PasskeyForm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.waiting || cx.global::<Services>().has_locked_session() {
+            return;
+        }
+        self.passkey_form = Some(form);
+        self.error = None;
+        self.clear_secrets(window, cx);
+        if form.creating {
+            let suggestion = crate::passkey_accounts::suggest_username(fastrand::u64(..));
+            self.username
+                .update(cx, |input, cx| input.set_value(suggestion, window, cx));
+        }
+        self.username
+            .update(cx, |input, cx| input.focus(window, cx));
+        cx.notify();
+    }
+
+    /// Back from a passkey form to the list of ways in.
+    fn close_passkey_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.passkey_form = None;
+        self.error = None;
+        self.clear_secrets(window, cx);
+        cx.notify();
+    }
+
+    /// Enumerates the security keys now, and again whenever the kernel says
+    /// one came or went, while the form is open (Linux; nothing elsewhere).
+    fn watch_security_keys(&mut self, cx: &mut Context<Self>) {
+        if Platform::current() != Platform::Linux {
+            return;
+        }
+        let (tx, rx) = async_channel::unbounded::<()>();
+        tx.try_send(()).ok();
+        // The watch's thread holds the only other sender: without a watch,
+        // the first enumeration is the last.
+        self._key_watch = {
+            let tx = tx.clone();
+            kanso_fido::watch::watch(move || {
+                tx.try_send(()).ok();
+            })
+        };
+        drop(tx);
+        self._key_events = Some(cx.spawn(async move |this, cx| {
+            while rx.recv().await.is_ok() {
+                let keys = cx
+                    .background_executor()
+                    .spawn(async { security_key_flow::enumerate() })
+                    .await;
+                let shown = this.update(cx, |_, cx| {
+                    cx.global_mut::<Services>().security_keys = keys;
+                    cx.notify();
+                });
+                if shown.is_err() {
+                    break;
+                }
+            }
+        }));
+    }
+
+    /// Whether this platform's passkey sheet can run now.
+    fn platform_passkeys(cx: &App) -> bool {
+        let services = cx.global::<Services>();
+        !services.platform_passkeys_failed
+            && services
+                .platform_passkeys
+                .unwrap_or_else(passkey_ceremony::platform_available)
+    }
+
+    /// [Continue with a passkey]: the system sheet, with its own picker.
+    fn platform_sign_in(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let services = cx.global::<Services>();
+        if self.waiting || services.task.is_some() || services.has_locked_session() {
+            return;
+        }
+        let server = account_flow::form_server(cx);
+        let progress = account_flow::passkey_sign_in(
+            server,
+            account_flow::PasskeyMethod::Platform,
+            None,
+            window.window_handle(),
+            cx,
+        );
+        self.listen(progress, window, cx);
+    }
+
+    /// The passkey form's button: a security key's username-first sign-in,
+    /// or a passkey's or security key's sign-up with the chosen name.
+    fn submit_passkey(&mut self, form: PasskeyForm, window: &mut Window, cx: &mut Context<Self>) {
+        let username = Self::value(&self.username, cx);
+        let server = account_flow::form_server(cx);
+        let handle = window.window_handle();
+        let method = if form.security_key {
+            let Some(device) =
+                security_key_flow::pick(&cx.global::<Services>().security_keys).cloned()
+            else {
+                self.error = Some(words::CONNECT_SECURITY_KEY.into());
+                cx.notify();
+                return;
+            };
+            let pin = zeroize::Zeroizing::new(Self::value(&self.pin, cx));
+            account_flow::PasskeyMethod::SecurityKey {
+                device,
+                pin: Some(pin),
+            }
+        } else {
+            account_flow::PasskeyMethod::Platform
+        };
+        let started = if form.creating {
+            kanso_sync::check_new_username(&username)
+                .map_err(|err| words::username_words(err).to_owned())
+                .map(|name| account_flow::passkey_sign_up(server, method, name, handle, cx))
+        } else {
+            kanso_sync::normalize_username(&username)
+                .map_err(|err| words::username_words(err).to_owned())
+                .map(|name| account_flow::passkey_sign_in(server, method, Some(name), handle, cx))
+        };
+        match started {
+            Err(words) => {
+                self.error = Some(words.into());
+                cx.notify();
+            }
+            Ok(progress) => {
+                // The PIN doesn't stay on screen while the key runs.
+                self.pin
+                    .update(cx, |input, cx| input.set_value("", window, cx));
+                self.listen(progress, window, cx);
+            }
+        }
+    }
+
     fn clear_secrets(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        for input in [&self.password, &self.confirm, &self.recovery_key] {
+        for input in [&self.password, &self.confirm, &self.recovery_key, &self.pin] {
             input.update(cx, |input, cx| input.set_value("", window, cx));
         }
     }
@@ -252,6 +471,11 @@ impl AccountPage {
             return;
         }
         let form = form_for(&services.account, self.form);
+        if let Some(passkey_form) = self.passkey_form
+            && matches!(form, SignedOutForm::SignIn | SignedOutForm::CreateAccount)
+        {
+            return self.submit_passkey(passkey_form, window, cx);
+        }
         let username = Self::value(&self.username, cx);
         let password = Self::value(&self.password, cx);
         let confirm = Self::value(&self.confirm, cx);
@@ -347,6 +571,12 @@ impl AccountPage {
                         if cx.global::<Services>().signed_in() {
                             this.form = SignedOutForm::None;
                             cx.global_mut::<Services>().provider_signup = None;
+                        }
+                        let services = cx.global::<Services>();
+                        if services.signed_in() || services.has_locked_session() {
+                            this.passkey_form = None;
+                            this._key_watch = None;
+                            this._key_events = None;
                         }
                     }
                     Err(words) => this.error = Some(words.into()),
@@ -630,6 +860,13 @@ impl AccountPage {
             .filter(|(asked, _)| *asked == account_flow::form_server(cx))
             .map(|(_, auth)| auth);
         let (password_available, advertised) = runnable_methods(current_auth);
+        let offer = passkey_offer(
+            Platform::current(),
+            current_auth,
+            &server,
+            Self::platform_passkeys(cx),
+            !services.security_keys.is_empty(),
+        );
         let form = form_for(account, self.form);
         let busy = self.waiting || task.is_some();
         let status = sync_status_line(
@@ -769,6 +1006,12 @@ impl AccountPage {
         let signup = signup
             .filter(|(asked, _)| *asked == server)
             .map(|(_, signup)| signup);
+        if let Some(passkey_form) = self.passkey_form
+            && matches!(form, SignedOutForm::SignIn | SignedOutForm::CreateAccount)
+        {
+            page.extend(self.passkey_form_page(passkey_form, signup, busy, task, cx));
+            return page;
+        }
         let (title, rows, submit) = match form {
             SignedOutForm::CreateAccount => (
                 "Create account",
@@ -867,6 +1110,82 @@ impl AccountPage {
         if matches!(form, SignedOutForm::SignIn | SignedOutForm::CreateAccount)
             && !(form == SignedOutForm::CreateAccount && provider_signup.is_some())
         {
+            let creating = form == SignedOutForm::CreateAccount;
+            let closed_to_new = creating && !matches!(signup.as_ref(), Some(SignupState::Open));
+            if offer.platform {
+                let (label, selector) = if creating {
+                    (words::CREATE_WITH_PASSKEY, "account-passkey-create")
+                } else {
+                    (words::CONTINUE_WITH_PASSKEY, "account-passkey")
+                };
+                page.push(
+                    Button::new(selector)
+                        .outline()
+                        .icon(Lucide::FingerprintPattern)
+                        .label(label)
+                        .disabled(busy || closed_to_new)
+                        .debug_selector(move || selector.into())
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if creating {
+                                let form = PasskeyForm {
+                                    creating: true,
+                                    security_key: false,
+                                };
+                                this.open_passkey_form(form, window, cx);
+                            } else {
+                                this.platform_sign_in(window, cx);
+                            }
+                        }))
+                        .into_any_element(),
+                );
+            }
+            match offer.security_key {
+                SecurityKeyOffer::Ready => {
+                    let (label, selector) = if creating {
+                        (
+                            words::CREATE_WITH_SECURITY_KEY,
+                            "account-security-key-create",
+                        )
+                    } else {
+                        (words::CONTINUE_WITH_SECURITY_KEY, "account-security-key")
+                    };
+                    page.push(
+                        Button::new(selector)
+                            .outline()
+                            .icon(Lucide::Usb)
+                            .label(label)
+                            .disabled(busy || closed_to_new)
+                            .debug_selector(move || selector.into())
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                let form = PasskeyForm {
+                                    creating,
+                                    security_key: true,
+                                };
+                                this.open_passkey_form(form, window, cx);
+                            }))
+                            .into_any_element(),
+                    );
+                }
+                SecurityKeyOffer::Connect => page.push(
+                    h_flex()
+                        .gap(px(8.))
+                        .debug_selector(|| "account-security-key-connect".into())
+                        .child(
+                            Icon::new(Lucide::Usb)
+                                .size(px(16.))
+                                .text_color(colors.text_secondary),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .line_height(px(18.))
+                                .text_color(colors.text_secondary)
+                                .child(words::CONNECT_SECURITY_KEY),
+                        )
+                        .into_any_element(),
+                ),
+                SecurityKeyOffer::None => {}
+            }
             for provider in &advertised {
                 let (sign_in_label, create_label, selector, icon) = match provider {
                     kanso_sync::Provider::Apple => (
@@ -917,7 +1236,10 @@ impl AccountPage {
                         .into_any_element(),
                 );
             }
-            if !advertised.is_empty() {
+            if !advertised.is_empty()
+                || offer.platform
+                || offer.security_key != SecurityKeyOffer::None
+            {
                 page.push(
                     div()
                         .mt(px(10.))
@@ -1055,6 +1377,132 @@ impl AccountPage {
                             .child(line),
                     )
                 })
+                .when_some(self.error.clone(), |el, error| {
+                    el.child(
+                        div()
+                            .debug_selector(|| "account-error".into())
+                            .text_size(px(13.))
+                            .line_height(px(18.))
+                            .text_color(colors.danger)
+                            .child(error),
+                    )
+                })
+                .child(footer)
+                .into_any_element(),
+        );
+        page
+    }
+
+    /// A passkey sign-up's username step, or a security key's form: the
+    /// username, the PIN for a security key, the server, and the button.
+    fn passkey_form_page(
+        &mut self,
+        form: PasskeyForm,
+        signup: Option<SignupState>,
+        busy: bool,
+        task: Option<services::RunningTask>,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let colors = Colors::get(cx);
+        let title = match (form.creating, form.security_key) {
+            (true, false) => words::CREATE_WITH_PASSKEY,
+            (true, true) => words::CREATE_WITH_SECURITY_KEY,
+            (false, true) => words::CONTINUE_WITH_SECURITY_KEY,
+            (false, false) => words::CONTINUE_WITH_PASSKEY,
+        };
+        let no_key = form.security_key && cx.global::<Services>().security_keys.is_empty();
+        let mut rows = vec![
+            self.field_row(
+                Lucide::User,
+                "Username",
+                form.creating
+                    .then_some("3–32 lowercase letters, digits, - or _"),
+                &self.username,
+                "account-username",
+                busy,
+            ),
+        ];
+        if form.security_key {
+            rows.push(self.field_row(
+                Lucide::KeyRound,
+                "PIN",
+                Some(words::SECURITY_KEY_PIN_HINT),
+                &self.pin,
+                "account-security-key-pin",
+                busy,
+            ));
+        }
+        rows.push(self.server_row(busy, cx));
+        let note = match (form.creating, form.security_key) {
+            (true, _) => words::PASSKEY_USERNAME_NOTE,
+            (false, _) => words::SECURITY_KEY_SIGN_IN_NOTE,
+        };
+        let quiet = |text: SharedString| {
+            div()
+                .text_size(px(13.))
+                .line_height(px(18.))
+                .text_color(colors.text_secondary)
+                .child(text)
+        };
+        let mut page = vec![
+            quiet(note.into()).mt(px(14.)).mb(px(8.)).into_any_element(),
+            section(title, rows, colors),
+        ];
+        let closed = matches!(signup, Some(SignupState::Full));
+        let lines: Vec<SharedString> = [
+            form.creating
+                .then(|| words::passkey_sign_up_line(self.notes, signup).into()),
+            (form.creating && form.security_key).then_some(words::SECURITY_KEY_SIGN_UP_NOTE.into()),
+            no_key.then_some(words::CONNECT_SECURITY_KEY.into()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let kind = if form.creating {
+            TaskKind::SignUp
+        } else {
+            TaskKind::SignIn
+        };
+        let running_here = task.is_some_and(|task| task.kind == kind);
+        let spinning = busy && (running_here || self.waiting);
+        let label = match task {
+            Some(task) if running_here => SharedString::from(step_label(task.step)),
+            _ if form.creating => SharedString::from("Create account"),
+            _ => SharedString::from("Sign in"),
+        };
+        let ready = !busy
+            && !no_key
+            && !Self::value(&self.username, cx).trim().is_empty()
+            && !(form.creating && closed);
+        let footer = h_flex()
+            .mt(px(14.))
+            .gap_2()
+            .items_center()
+            .child(h_flex().flex_1().min_w_0())
+            .child(
+                Button::new("account-passkey-back")
+                    .label("Cancel")
+                    .disabled(busy)
+                    .debug_selector(|| "account-passkey-back".into())
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.close_passkey_form(window, cx)),
+                    ),
+            )
+            .child(
+                Button::new("account-passkey-submit")
+                    .primary()
+                    .label(label)
+                    .when(spinning, |button| button.icon(Lucide::RefreshCcw))
+                    .loading(spinning)
+                    .disabled(!ready && !spinning)
+                    .debug_selector(|| "account-passkey-submit".into())
+                    .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
+            );
+        page.push(
+            v_flex()
+                .mt(px(14.))
+                .gap(px(8.))
+                .children(lines.into_iter().map(quiet))
                 .when_some(self.error.clone(), |el, error| {
                     el.child(
                         div()
@@ -1908,10 +2356,11 @@ fn write_and_tell(path: &Path, text: &str, window: &mut Window, cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::{
-        FINGERPRINT_SENTENCE, SignedOutForm, device_detail, fingerprint_lines, form_for,
-        runnable_methods, sign_in_method_count, sign_in_method_lines, storage_detail,
-        write_key_file,
+        FINGERPRINT_SENTENCE, PasskeyOffer, SecurityKeyOffer, SignedOutForm, device_detail,
+        fingerprint_lines, form_for, passkey_offer, runnable_methods, sign_in_method_count,
+        sign_in_method_lines, storage_detail, write_key_file,
     };
+    use crate::passkey_ceremony::Platform;
     use crate::services::{AccountDetails, AccountMethodsState, AccountState, strategies};
     use kanso_sync::{DeviceInfo, Quota, Usage};
     use proptest::prelude::*;
@@ -2083,6 +2532,63 @@ mod tests {
         let methods = runnable_methods(Some(&auth)).1;
         // Apple too, on every platform, in the server's order.
         assert_eq!(methods, auth.providers, "preserve server method ordering");
+    }
+
+    #[test]
+    fn passkey_methods_follow_the_platform_the_health_and_the_attached_keys() {
+        let official = "https://sync.kansoapp.app";
+        let auth = |rp_id: &str, security_key: bool| kanso_sync::ServerAuth {
+            password: true,
+            passkeys: Some(kanso_sync::PasskeyMethods {
+                rp_id: rp_id.into(),
+                security_key,
+            }),
+            ..Default::default()
+        };
+        let health = auth("sync.kansoapp.app", true);
+        // macOS and Windows: the sheet, when it can run; never a security key.
+        for platform in [Platform::MacOs, Platform::Windows] {
+            let offer = passkey_offer(platform, Some(&health), official, true, true);
+            assert!(offer.platform);
+            assert_eq!(offer.security_key, SecurityKeyOffer::None);
+            assert!(!passkey_offer(platform, Some(&health), official, false, true).platform);
+        }
+        // A self-hosted domain isn't in the Mac app's entitlement.
+        let own = auth("sync.example.com", true);
+        let own_server = "https://sync.example.com";
+        assert!(!passkey_offer(Platform::MacOs, Some(&own), own_server, true, false).platform);
+        assert!(passkey_offer(Platform::Windows, Some(&own), own_server, true, false).platform);
+        // Linux: a security key, or the line asking for one.
+        let linux = passkey_offer(Platform::Linux, Some(&own), own_server, true, true);
+        assert!(!linux.platform);
+        assert_eq!(linux.security_key, SecurityKeyOffer::Ready);
+        assert_eq!(
+            passkey_offer(Platform::Linux, Some(&own), own_server, true, false).security_key,
+            SecurityKeyOffer::Connect
+        );
+        assert_eq!(
+            passkey_offer(
+                Platform::Linux,
+                Some(&auth("sync.example.com", false)),
+                own_server,
+                true,
+                true
+            )
+            .security_key,
+            SecurityKeyOffer::None
+        );
+        // Nothing advertised, or an old server: no passkey methods.
+        let none = kanso_sync::ServerAuth::default();
+        for platform in [Platform::MacOs, Platform::Windows, Platform::Linux] {
+            assert_eq!(
+                passkey_offer(platform, Some(&none), official, true, true),
+                PasskeyOffer::default()
+            );
+            assert_eq!(
+                passkey_offer(platform, None, official, true, true),
+                PasskeyOffer::default()
+            );
+        }
     }
 
     #[test]

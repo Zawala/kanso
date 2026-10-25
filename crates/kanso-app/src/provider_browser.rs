@@ -631,7 +631,10 @@ mod tests {
     fn apple_waits_end_with_the_flow() {
         let now = Instant::now();
         let soon = apple_deadline(1_000 + 90_000, 1_000);
-        assert!(soon >= now + Duration::from_secs(89) && soon <= Instant::now() + Duration::from_secs(90));
+        assert!(
+            soon >= now + Duration::from_secs(89)
+                && soon <= Instant::now() + Duration::from_secs(90)
+        );
         assert!(apple_deadline(0, 1_000) <= Instant::now());
         assert!(apple_deadline(i64::MAX, 0) <= Instant::now() + crate::url_callback::MAX_WAIT);
     }

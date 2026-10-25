@@ -31,6 +31,10 @@ pub enum RpRule {
     /// Windows platform passkeys and Linux security keys: the server's host
     /// or a parent of it.
     ServerHost,
+    /// Tests against `MemoryServer`, whose relying party isn't the
+    /// server's host.
+    #[cfg(test)]
+    Any,
 }
 
 impl RpRule {
@@ -47,6 +51,8 @@ impl RpRule {
         match self {
             RpRule::Entitlement => rp_id == OFFICIAL_RP_ID,
             RpRule::ServerHost => rp_id_fits_server(rp_id, server),
+            #[cfg(test)]
+            RpRule::Any => true,
         }
     }
 }
@@ -73,8 +79,6 @@ pub enum PasskeyFlowError {
     Ceremony(PasskeyCeremonyError),
     /// The server's relying party isn't one this app may use for it.
     WrongRelyingParty,
-    /// A security key asked for its PIN, which this attempt didn't carry.
-    PinRequired,
 }
 
 impl From<AccountError> for PasskeyFlowError {

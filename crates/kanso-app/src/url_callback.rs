@@ -310,8 +310,8 @@ pub fn forward(data_dir: &Path, url: &str) -> Result<(), ForwardError> {
         std::fs::read_to_string(endpoint_path(data_dir)).map_err(|_| ForwardError::NotRunning)?;
     let endpoint = Endpoint::parse(&text).ok_or(ForwardError::NotRunning)?;
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, endpoint.port));
-    let stream = TcpStream::connect_timeout(&address, IO_TIMEOUT)
-        .map_err(|_| ForwardError::NotRunning)?;
+    let stream =
+        TcpStream::connect_timeout(&address, IO_TIMEOUT).map_err(|_| ForwardError::NotRunning)?;
     let io = |error: std::io::Error| ForwardError::Io(error.to_string());
     stream.set_read_timeout(Some(IO_TIMEOUT)).map_err(io)?;
     stream.set_write_timeout(Some(IO_TIMEOUT)).map_err(io)?;
@@ -358,7 +358,14 @@ mod tests {
     fn callback_arguments_are_told_from_commands() {
         assert!(is_callback_argument(&callback(&b64_32(1))));
         assert!(is_callback_argument("KANSO://auth/apple"));
-        for not in ["serve", "kanso", "kanso:", "kanso://", "https://kanso", "-psn_0_1"] {
+        for not in [
+            "serve",
+            "kanso",
+            "kanso:",
+            "kanso://",
+            "https://kanso",
+            "-psn_0_1",
+        ] {
             assert!(!is_callback_argument(not), "{not}");
         }
     }
@@ -401,7 +408,10 @@ mod tests {
             Delivery::NotACallback
         );
         assert_eq!(
-            router.deliver(&format!("https://evil.example/auth/apple?flow={flow}&s={}", b64_32(9))),
+            router.deliver(&format!(
+                "https://evil.example/auth/apple?flow={flow}&s={}",
+                b64_32(9)
+            )),
             Delivery::NotACallback
         );
         assert_eq!(router.deliver(&callback(&flow)), Delivery::Delivered);
@@ -434,7 +444,10 @@ mod tests {
         let flow = b64_32(4);
         let _waiting = router.wait_for(&flow, Instant::now() + Duration::from_secs(86_400));
         assert_eq!(
-            router.deliver_at(&callback(&flow), Instant::now() + MAX_WAIT + Duration::from_secs(1)),
+            router.deliver_at(
+                &callback(&flow),
+                Instant::now() + MAX_WAIT + Duration::from_secs(1)
+            ),
             Delivery::NotWaiting
         );
     }
