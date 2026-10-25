@@ -131,6 +131,9 @@ skip_profile() {
     echo "bundle-macos: $1; building without Associated Domains, so native passkeys are unavailable in this build." >&2
     plutil -remove 'com\.apple\.developer\.associated-domains' "$entitlements"
 }
+# profile_unexpired and profile_has_certificate.
+. "$(dirname "$0")/macos-profile.sh"
+
 if [ -z "$profile" ]; then
     skip_profile "no KANSO_PROVISION_PROFILE"
 elif [ ! -f "$profile" ]; then
@@ -142,7 +145,11 @@ elif ! security cms -D -i "$profile" >"$work/profile.plist" 2>/dev/null; then
 else
     team=$(plutil -extract TeamIdentifier.0 raw "$work/profile.plist" 2>/dev/null || true)
     profile_app=$(plutil -extract 'Entitlements.com\.apple\.application-identifier' raw "$work/profile.plist" 2>/dev/null || true)
-    if [ -z "$team" ] || [ "$profile_app" != "$team.$bundle_id" ]; then
+    if ! profile_unexpired "$work/profile.plist"; then
+        skip_profile "the provisioning profile has expired (or has no ExpirationDate)"
+    elif ! profile_has_certificate "$work/profile.plist" "$KANSO_SIGN_IDENTITY"; then
+        skip_profile "the provisioning profile doesn't list the certificate of $KANSO_SIGN_IDENTITY"
+    elif [ -z "$team" ] || [ "$profile_app" != "$team.$bundle_id" ]; then
         skip_profile "the provisioning profile is for ${profile_app:-another app}, not $bundle_id"
     elif ! plutil -extract 'Entitlements.com\.apple\.developer\.associated-domains' raw "$work/profile.plist" >/dev/null 2>&1; then
         skip_profile "the provisioning profile doesn't allow Associated Domains"

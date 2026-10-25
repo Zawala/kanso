@@ -171,6 +171,7 @@ jobs:
               --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait --timeout 30m
           }
 
+          sh scripts/test-macos-profile.sh
           scripts/bundle-macos.sh
           if [ "$signing" = 1 ]; then
             ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Kanso-notarize.zip"
@@ -193,6 +194,12 @@ jobs:
               { echo "::error::Kanso.app is missing the Associated Domains entitlement"; exit 1; }
           fi
           /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist" >/dev/null
+          # Launch the signed app once: AMFI kills a binary whose restricted
+          # entitlements its profile or certificate doesn't cover, and
+          # nothing above would notice.
+          exe="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          "$exe" --help >/dev/null ||
+            { echo "::error::The signed Kanso.app didn't launch (exit $?)"; exit 1; }
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             # A tag publishes itself, so it must be the notarized build
             # Gatekeeper accepts, never an ad hoc one.
