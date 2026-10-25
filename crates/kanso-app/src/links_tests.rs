@@ -500,14 +500,4 @@ proptest::proptest! {
             proptest::prop_assert!(d.parse::<u32>().unwrap() <= total);
         }
     }
-
-    /// The offer reads naturally for any counts.
-    #[test]
-    fn prop_relink_words_agree_in_number(links in 1usize..20, notes in 1usize..20) {
-        let message = crate::workspace::relink_message("Old", links, notes);
-        let label = crate::workspace::relink_label(links);
-        proptest::prop_assert_eq!(message.contains(" link in ") || message.contains(" links in "), true);
-        proptest::prop_assert_eq!(links == 1, label.ends_with(" link"));
-        proptest::prop_assert_eq!(notes == 1, message.contains(" 1 note "));
-    }
 }

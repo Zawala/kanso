@@ -1379,20 +1379,8 @@ impl NoteEditor {
         let Some(new) = self.note.as_ref().map(|n| n.title.clone()) else {
             return;
         };
-        if old.trim().is_empty()
-            || new.trim().is_empty()
-            || kanso_core::links::normalize_title(&old) == kanso_core::links::normalize_title(&new)
-        {
-            return;
-        }
-        // The old title only named this note if no older note has it.
-        if let Ok(Some((other, _))) = self.store.resolve_title(&old)
-            && other != id
-        {
-            return;
-        }
-        if let Ok((links, notes)) = self.store.wiki_link_count(&old, &id)
-            && links > 0
+        if let Some((links, notes)) =
+            kanso_engine::links::relink_offer(&self.store, &id, &old, &new)
         {
             cx.emit(EditorEvent::Renamed {
                 id,

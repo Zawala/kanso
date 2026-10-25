@@ -18,7 +18,7 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Icon, Selectable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
-use kanso_core::links::{FILE_LINK_PREFIX, LINK_SCHEME, NOTE_LINK_PREFIX};
+use kanso_core::links::FILE_LINK_PREFIX;
 use kanso_render::typography;
 use kanso_store::Store;
 
@@ -927,14 +927,7 @@ fn room_below(end: End, size: f32, rem: Pixels) -> Pixels {
 }
 
 /// The note ID an in-app link points at.
-pub fn linked_note(url: &str) -> Option<String> {
-    let suffix = url.strip_prefix(NOTE_LINK_PREFIX).or_else(|| {
-        url.strip_prefix(LINK_SCHEME)
-            .and_then(|rest| rest.strip_prefix("note:"))
-    })?;
-    let suffix = suffix.split(['?', '#', '/']).next()?;
-    (!suffix.is_empty()).then(|| format!("note:{suffix}"))
-}
+pub use kanso_engine::links::linked_note;
 
 /// Whether a clicked link may be handed to macOS to open. Only web and mail
 /// links are: a note can come from sync or the API, and other schemes can

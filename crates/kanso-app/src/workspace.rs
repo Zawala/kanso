@@ -2171,25 +2171,7 @@ impl Render for PaneEdge {
     }
 }
 
-/// What the offer to update links after a rename says. Pure.
-pub(crate) fn relink_message(old: &str, links: usize, notes: usize) -> String {
-    let links_word = if links == 1 { "link" } else { "links" };
-    let notes_part = if notes == 1 {
-        "1 note".to_owned()
-    } else {
-        format!("{notes} notes")
-    };
-    format!("{links} {links_word} in {notes_part} still use the old title “{old}”.")
-}
-
-/// The offer's button: "Update 1 link", "Update 3 links". Pure.
-pub(crate) fn relink_label(links: usize) -> String {
-    if links == 1 {
-        "Update 1 link".to_owned()
-    } else {
-        format!("Update {links} links")
-    }
-}
+pub(crate) use kanso_engine::links::{relink_label, relink_message};
 
 /// The JSON name of a tag color.
 pub fn tag_color_name(color: TagColor) -> String {
