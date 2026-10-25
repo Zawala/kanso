@@ -47,7 +47,6 @@ export interface Env {
 	/** Google's OAuth client (type Desktop app). Both values are needed to advertise it. */
 	GOOGLE_CLIENT_ID?: string;
 	GOOGLE_CLIENT_SECRET?: string;
-	/** GitHub's OAuth App. The device flow needs only the client ID; the secret is for the web fallback. */
+	/** GitHub's OAuth App. GitHub uses the device flow only (an owner decision), which needs no client secret. */
 	GITHUB_CLIENT_ID?: string;
-	GITHUB_CLIENT_SECRET?: string;
 }

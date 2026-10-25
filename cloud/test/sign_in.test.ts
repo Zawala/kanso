@@ -503,7 +503,6 @@ describe("health sign-in advertisement", () => {
 		expect(healthAuth(testEnv({ ...appleWithoutPrivateKey, APPLE_PRIVATE_KEY: ecPrivatePem }), ALL_ROUTES).providers).toEqual(["apple"]);
 		expect(healthAuth(testEnv({ GOOGLE_CLIENT_ID: "google-client" }), ALL_ROUTES).providers).toEqual([]);
 		expect(healthAuth(testEnv({ GOOGLE_CLIENT_ID: "google-client", GOOGLE_CLIENT_SECRET: "secret" }), ALL_ROUTES).providers).toEqual(["google"]);
-		expect(healthAuth(testEnv({ GITHUB_CLIENT_SECRET: "optional-only" }), ALL_ROUTES).providers).toEqual([]);
 		expect(healthAuth(testEnv({ GITHUB_CLIENT_ID: "github-client" }), ALL_ROUTES).providers).toEqual(["github"]);
 	});
 });

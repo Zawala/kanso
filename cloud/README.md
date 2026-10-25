@@ -8,7 +8,7 @@ and the counters behind quotas and rate limits; R2 holds sealed file bytes under
 
 | Route | Session | |
 |---|---|---|
-| `GET /v2/health` | | Liveness, protocol version, whether sign-ups are open |
+| `GET /v2/health` | | Liveness, protocol version, whether sign-ups are open, the sign-in methods (`auth`) and the event socket (`events`) |
 | `POST /v2/auth/prelogin` | | KDF parameters, salt and account ID for a username |
 | `POST /v2/auth/signup` | | Create an account and this device's session |
 | `POST /v2/auth/login` | | Sign in a device |
@@ -26,9 +26,25 @@ and the counters behind quotas and rate limits; R2 holds sealed file bytes under
 | `PUT` / `GET /v2/account/identity`, `GET /v2/users/<username>` | yes | Identity keys for sharing, and another account's public keys |
 | `/v2/collab/…` | yes | Shared notes: sharing, invitations, epochs, the log, snapshots, the live WebSocket, links, requests and notifications |
 | `GET /j/<link_id>` | | The page an invite link opens: "open Kanso and paste this link" |
+| `POST /v2/auth/passkey/start`, `/finish` | | Sign in with a passkey or security key |
+| `POST /v2/auth/passkey/signup/start`, `/finish` | | Create a passwordless account with a passkey |
+| `POST /v2/auth/{apple,google,github}/start` | | Start a provider sign-in or sign-up |
+| `POST /v2/auth/apple/poll`, `/google/finish`, `/github/poll` | | Complete it: a session, a new-account ticket, or pending |
+| `POST /v2/auth/apple/callback` | | Apple's `form_post` (form-encoded); answers an HTML page that returns to `kanso://auth/apple` |
+| `POST /v2/auth/social/signup` | | Create an account from a provider ticket |
+| `GET /v2/account/sign-in` | yes | The account's ways in: password, linked providers, passkeys |
+| `POST /v2/account/sign-in/proof/start` | yes | A passkey challenge for a fresh proof |
+| `POST /v2/account/sign-in/password` | yes | Set the first password of a passwordless account (takes a proof) |
+| `POST /v2/account/sign-in/passkeys/start`, `/finish`, `/<credential_id>/remove` | yes | Add or remove a passkey (takes a proof) |
+| `POST /v2/account/sign-in/identities/<provider>/start`, `/unlink` | yes | Link a provider, prove one, or unlink it |
+| `/v2/account/sign-in/approvals…` | yes | Device approval: a new device gets the data key from a signed-in one |
+| `GET /v2/account/events` | yes | The account's event WebSocket (approval hints; needs the device proof) |
+| `GET`, `HEAD /.well-known/apple-app-site-association` | | The Associated Domains file macOS reads before it allows passkeys for this host |
 
 A session is `Authorization: Bearer kanso_…`. `/v1` and every other path answer 404. Any request
-with an `Origin` header gets 403, except on the two public routes, and a body with the wrong
+with an `Origin` header gets 403, except on the public routes (published notes, the viewer and
+invite pages, the AASA file) and on the Apple callback, which accepts only Apple's own origin
+(`https://appleid.apple.com`, a browser form post carries it); a body with the wrong
 `Content-Type` gets 415. Published notes are described in
 [docs/ACCOUNTS.md › Published notes](../docs/ACCOUNTS.md#published-notes); the
 `PUBLIC_LIMITER` binding (60 requests a minute per IP group) sits in front of both public routes. There is no
@@ -51,12 +67,61 @@ longer read.
 
 ### Sign-in methods
 
-Passkeys use `PASSKEY_RP_ID` and `PASSKEY_ORIGINS`. Apple uses `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`,
-`APPLE_KEY_ID`, `APPLE_REDIRECT_URI` and the `APPLE_PRIVATE_KEY` secret. Google uses
-`GOOGLE_CLIENT_ID` and the `GOOGLE_CLIENT_SECRET` secret. GitHub's device flow uses
-`GITHUB_CLIENT_ID`; `GITHUB_CLIENT_SECRET` is only needed for the optional web fallback. Install
-secrets with `wrangler secret put NAME`. No email, name, profile data or provider token is stored;
-the provider's stable subject is stored, and the GitHub device code is sealed under `AUTH_PEPPER`.
+Passkeys, Linux security keys, Sign in with Apple, Google and GitHub, device approval and the
+account event socket are described in
+[docs/ACCOUNTS.md › Sign-in methods](../docs/ACCOUNTS.md#sign-in-methods). Each method is optional
+per deployment: `GET /v2/health` advertises only what is configured, and the app shows only those.
+
+| Name | Kind | What it is |
+|---|---|---|
+| `PASSKEY_RP_ID` | var | The exact public host passkeys are scoped to (`sync.kansoapp.app`). Unset, or an IP, means no passkeys. |
+| `PASSKEY_ORIGINS` | var, JSON | `["https://sync.kansoapp.app"]`; each must be the RP ID or under it. |
+| `APP_ASSOC_APPS` | var, JSON | `["4973Y692JU.app.kanso.Kanso"]`: the apps allowed to use this host's passkeys, served in the AASA file. |
+| `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_REDIRECT_URI` | vars | The Services ID, team, key ID and the exact callback URL. |
+| `APPLE_PRIVATE_KEY` | secret | The Sign in with Apple `.p8` key, PKCS#8 PEM. |
+| `GOOGLE_CLIENT_ID` | var | The Desktop-app OAuth client ID. |
+| `GOOGLE_CLIENT_SECRET` | secret | Its client secret. |
+| `GITHUB_CLIENT_ID` | var | The OAuth App's client ID. GitHub uses the device flow only, which needs no secret. |
+
+Secrets go through `npx wrangler secret put NAME`, reading stdin, and never into a file, a commit
+or a chat. Vars go in `wrangler.jsonc` (they are listed there, commented out, until the owner
+switches them on).
+
+`GET /v2/health` adds two objects. `auth` is `{"password": true, "passkeys": null | {"rp_id",
+"origins", "security_key": true}, "providers": [...]}`, where a provider appears only when every
+value its flow needs is present. `events` is `{"account": "/v2/account/events"}`. A server without
+`auth` (an older Worker) means username and password only; without `events`, the app relies on its
+GET fallbacks.
+
+**The AASA file.** `https://sync.kansoapp.app/.well-known/apple-app-site-association` is served by
+the Worker itself (not from `public/`): `{"webcredentials":{"apps":[…]}}` from `APP_ASSOC_APPS`,
+`application/json`, `Cache-Control: public, max-age=300`, never a redirect, and 404 when the var is
+unset or malformed. macOS fetches it through Apple's CDN, which caches it, so a change can take
+hours to reach Macs. Sign in with Apple needs no file on the server.
+
+**Sign in with Apple on every platform.** The callback page redirects to
+`kanso://auth/apple?flow=<flow_id>&s=<secret>` and shows a "Return to Kanso." link. On macOS,
+ASWebAuthenticationSession catches it. On Windows and Linux the system browser hands it to the
+`kanso://` scheme handler the app registers. The Worker doesn't depend on the platform: the poll
+must send `s`, whose SHA-256 the callback stored (migration 0008), and only the process that
+received the redirect has it.
+
+**Migrations.** `0006_sign_in` (passkeys, linked identities, sign-in flows, device approvals and
+`has_password`), `0007_provider_completion` (idempotent provider completions), `0008_apple_app_secret`
+(the Apple flow's `app_secret_hash` and `app_claimed_at`) and `0009_socket_closes` (the admin
+script's requests to close event sockets). All are additive; apply them with
+`npm run migrate:remote` before deploying the Worker that uses them.
+
+**What is stored.** No email, name, profile data or provider token is stored, only each provider's
+stable subject. The GitHub device code is sealed under `AUTH_PEPPER`. A passkey's PRF output never
+leaves the app: the Worker stores only the data key wrapped under a key derived from it.
+
+**Event sockets close when a session ends.** These close sockets at once: sign-out, device
+revocation, a password change or first password (every other device), a recovery, eviction by the
+ten-device limit (at every sign-in and sign-up route), account deletion, and the 180-day expiry
+(when the expired session's next request is refused, and in the cron's sweep). The admin script's
+`disable` and `delete` can't reach a Durable Object, so they leave a row in `socket_closes` and the
+cron closes those sockets within 15 minutes.
 
 ## Shared notes
 
@@ -96,7 +161,7 @@ unset pepper
 # on Rerout; without it, published notes keep their long links.
 npx wrangler secret put REROUT_API_KEY
 
-npm run migrate:remote     # 0002 to 0005 are additive; sign-ups start closed
+npm run migrate:remote     # 0002 to 0009 are additive; sign-ups start closed
 npm run deploy
 ```
 
@@ -201,7 +266,9 @@ scripts/e2e-local.sh
 ```
 
 `test/fixtures/` holds cases the Worker and the Rust client's in-memory server must both pass:
-`usernames.json`, `auth.json` and `conformance.json` (protocol v2), and `conformance-v1.json`,
+`usernames.json`, `auth.json`, `conformance.json` and `sign_in.json` (protocol v2; `sign_in.json`
+adds Worker vars, a deterministic Ed25519 authenticator and a fake GitHub, described in its
+`about`), and `conformance-v1.json`,
 which this Worker no longer serves: only the Rust rollback test's stand-in for the old Worker
 still runs it. `scripts/e2e-local.sh` starts the Worker under `wrangler dev` on a throwaway state
 directory (on a free port the OS picks, or `KANSO_E2E_PORT`; a port in use is refused) and runs `cargo test -p
