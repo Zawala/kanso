@@ -21,7 +21,7 @@ kanso-mobile.workspace = true
 kanso-sync = { path = "../../crates/kanso-sync", default-features = false }
 # Pinned: the generated code in lib/core/bridge must be the generator's, at
 # this version (CI checks it).
-flutter_rust_bridge = "=2.13.0"
+flutter_rust_bridge = { version = "=2.13.0", default-features = false, features = ["anyhow", "dart-opaque", "rust-async", "thread-pool"] }
 
 # `KansoNative.init` is a native method, so it is written here with the JNI.
 [target.'cfg(target_os = "android")'.dependencies]
@@ -33,3 +33,7 @@ kanso-tls.workspace = true
 kanso-mobile = { workspace = true, features = ["test-support"] }
 proptest.workspace = true
 tempfile.workspace = true
+
+# flutter_rust_bridge's attributes test a `frb_expand` cfg of their own.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(frb_expand)"] }

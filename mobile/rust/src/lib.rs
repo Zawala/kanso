@@ -27,4 +27,9 @@ pub mod background;
 #[cfg(target_os = "android")]
 mod android;
 
-// flutter_rust_bridge's generated module is added with its codegen.
+// The bridge generator's output (`frb_generated.rs`). Generated code isn't
+// formatted or linted by us; `mobile/flutter_rust_bridge.yaml` sets
+// `add_mod_to_lib: false` so the generator leaves this declaration alone.
+#[rustfmt::skip]
+#[allow(clippy::all, unused, unreachable_pub, unsafe_op_in_unsafe_fn, non_snake_case)]
+mod frb_generated;

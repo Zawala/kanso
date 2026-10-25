@@ -1,7 +1,11 @@
 include: package:very_good_analysis/analysis_options.6.0.0.yaml
 
 analyzer:
-  exclude: [lib/**.freezed.dart, lib/**.g.dart]
+  exclude:
+    - lib/**.freezed.dart
+    - lib/**.g.dart
+    # flutter_rust_bridge's output (flutter_rust_bridge.yaml).
+    - lib/core/bridge/**
 
   errors:
     invalid_annotation_target: false
