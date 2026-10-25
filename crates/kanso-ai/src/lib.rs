@@ -11,6 +11,7 @@
 
 pub mod agent;
 pub mod client;
+pub mod features;
 pub mod prompt;
 
 pub use agent::{AgentCheck, AgentKind, AgentSettings};
@@ -18,6 +19,7 @@ pub use client::{
     AiError, CUT_OFF, ChatProvider, ClientSettings, Event, SharedProvider, Turn, answer,
     cached_client, client, client_with, client_with_timeouts, probe,
 };
+pub use features::InlineAction;
 pub use prompt::{DEFAULT_BUDGET, Excerpt, Prompt, build as build_prompt};
 
 /// The tool types a question can use. Re-exported so the app does not depend

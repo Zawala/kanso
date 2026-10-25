@@ -11,9 +11,13 @@ mod account_flow;
 mod account_flow_tests;
 mod account_page;
 mod account_words;
+mod agent_permission;
+#[cfg(test)]
+mod agent_permission_tests;
 mod agent_registry;
 mod agent_scope;
 mod ai_agent;
+mod ai_feature;
 mod ask;
 mod ask_panel;
 #[cfg(test)]
@@ -453,6 +457,7 @@ fn run_app(data_dir: PathBuf, after_update: bool) -> Result<()> {
         workspace::set_menus(cx);
         cx.on_action(|_: &Quit, cx| quit(cx));
         watch_for_quit(cx);
+        agent_permission::install(cx);
         settings::register_app_actions(cx, open_main_window);
         updates::register_app_actions(cx);
         services::apply_server_settings(cx);

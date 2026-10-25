@@ -22,8 +22,8 @@ pub mod process;
 pub mod registry;
 
 pub use connection::{
-    AgentInfo, AgentProcess, AuthMethod, McpServer, PermissionPolicy, PermissionRequest, Session,
-    SessionMode, Turn, reject_all,
+    AgentInfo, AgentProcess, AuthMethod, McpServer, PermissionPolicy, PermissionReply,
+    PermissionRequest, Session, SessionMode, Turn, reject_all,
 };
 pub use detect::{AgentKind, Detection};
 pub use process::AgentSpec;
@@ -49,6 +49,9 @@ pub struct Limits {
     /// From `session/cancel` to the agent's stop reason, after which the
     /// agent is killed.
     pub cancel_grace: Duration,
+    /// How long a permission request waits for a person before it is
+    /// rejected.
+    pub permission: Duration,
     /// A full event queue for this long means the agent is killed.
     pub stuck: Duration,
     /// The longest one protocol line may be.
@@ -66,6 +69,7 @@ impl Default for Limits {
             first_text: Duration::from_secs(60),
             answer: Duration::from_secs(10 * 60),
             cancel_grace: Duration::from_secs(3),
+            permission: Duration::from_secs(60),
             stuck: Duration::from_secs(10),
             max_line: 8 * 1024 * 1024,
             stderr: 64 * 1024,

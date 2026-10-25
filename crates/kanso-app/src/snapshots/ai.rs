@@ -232,3 +232,22 @@ pub(super) fn settings_ai_agent_scope(
     })
     .unwrap();
 }
+
+/// The inline assistant's card above the text: a rewrite, ready to accept.
+pub(super) fn editor_inline_suggestion(
+    cx: &mut HeadlessAppContext,
+    _: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    _: &Store,
+) {
+    cx.update(|cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| {
+            editor.show_for_snapshot(
+                kanso_ai::InlineAction::Improve,
+                "Kanso acts as an MCP host. Clients connect to it, discover the tools it offers, and ask before they act.\n\nSee the protocol overview for the wire format.",
+                cx,
+            )
+        });
+    });
+}
