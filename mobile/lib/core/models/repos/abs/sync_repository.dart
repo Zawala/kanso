@@ -10,6 +10,9 @@ import '../../data/application_error.dart';
 /// The account and sync. The session and the data key stay in the phone's
 /// secret store, read by the Rust core.
 abstract interface class SyncRepository {
+  /// The server a new account is made on unless another is typed.
+  Future<Either<ApplicationError, String>> defaultServer();
+
   Future<Either<ApplicationError, SyncStatus>> status();
 
   /// Asks the server at [url] whether it is a Kanso server.

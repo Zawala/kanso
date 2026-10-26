@@ -16,3 +16,8 @@ pub fn panic_probe(message: String) -> Result<(), KansoError> {
 pub fn tls_ready() -> bool {
     kanso_mobile::diagnostics::tls_ready()
 }
+
+/// Writes a value to the phone's secret store, reads it back and removes it.
+pub fn secrets_probe() -> Result<(), KansoError> {
+    kanso_mobile::diagnostics::secrets_probe()
+}

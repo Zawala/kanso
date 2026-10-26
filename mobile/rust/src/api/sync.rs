@@ -12,6 +12,10 @@ impl KansoSync {
         KansoSync(handle)
     }
 
+    pub fn default_server() -> String {
+        SyncHandle::default_server()
+    }
+
     pub fn status(&self) -> Result<SyncStatus, KansoError> {
         self.0.status()
     }

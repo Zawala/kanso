@@ -13,6 +13,9 @@ import 'types.dart';
 abstract class KansoSync implements RustOpaqueInterface {
   Future<ServerInfo> checkServer({required String url});
 
+  static Future<String> defaultServer() =>
+      KansoCore.instance.api.crateApiSyncKansoSyncDefaultServer();
+
   Future<SyncStatus> signInPassword({
     required String server,
     required String username,

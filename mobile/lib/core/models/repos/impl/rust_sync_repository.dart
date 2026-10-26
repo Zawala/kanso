@@ -7,6 +7,7 @@ import 'package:injectable/injectable.dart';
 
 import '../../../bridge/api/sync.dart';
 import '../../../bridge/api/types.dart';
+import '../../../utils/cancelable_stream.dart';
 import '../../../utils/kanso_error_mapping.dart';
 import '../../data/application_error.dart';
 import '../abs/sync_repository.dart';
@@ -17,6 +18,10 @@ class RustSyncRepository implements SyncRepository {
   RustSyncRepository(this._sync);
 
   final KansoSync _sync;
+
+  @override
+  Future<Either<ApplicationError, String>> defaultServer() =>
+      attempt(KansoSync.defaultServer);
 
   @override
   Future<Either<ApplicationError, SyncStatus>> status() =>
@@ -52,5 +57,5 @@ class RustSyncRepository implements SyncRepository {
       attempt(_sync.syncNow);
 
   @override
-  Stream<SyncStatus> statusStream() => _sync.statusStream();
+  Stream<SyncStatus> statusStream() => cancelableStream(_sync.statusStream());
 }

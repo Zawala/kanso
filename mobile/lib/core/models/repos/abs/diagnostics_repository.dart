@@ -17,4 +17,9 @@ abstract interface class DiagnosticsRepository {
   /// Makes the core panic inside its boundary; the result is an
   /// [InternalError] and the core keeps working. For tests on a device.
   Future<Either<ApplicationError, Unit>> panicProbe(String message);
+
+  /// Writes a value to the phone's secret store (Keychain or Keystore),
+  /// reads it back and removes it: the round trip the signed-in account's
+  /// session takes, with nothing of the account's.
+  Future<Either<ApplicationError, Unit>> secretsProbe();
 }

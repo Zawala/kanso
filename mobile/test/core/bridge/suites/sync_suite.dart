@@ -1,0 +1,67 @@
+// Kanso — sync_suite.dart
+// Created 2026-10-26.
+// Licensed under AGPL-3.0-or-later (see LICENSE).
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:kanso/core/bridge/api/sync.dart';
+import 'package:kanso/core/bridge/api/types.dart';
+
+import 'open_library.dart';
+
+/// A server that is not there: nothing listens on port 1, so a request fails
+/// at once, with no network and no name lookup.
+const String unreachableServer = 'http://127.0.0.1:1';
+
+/// Sync and sign-in, through the bridge: every call of `KansoSync`, against
+/// no server.
+void syncSuite(OpenLibrary open) {
+  group('KansoSync', () {
+    test('a new library is signed out', () async {
+      final sync = (await open()).syncing();
+      final status = await sync.status();
+      expect(status.phase, SyncPhase.signedOut);
+      expect(status.username, isNull);
+      expect(status.problem, isNull);
+    });
+
+    test('the default server is an https address', () async {
+      expect(await KansoSync.defaultServer(), startsWith('https://'));
+    });
+
+    test('the status stream starts with the status now', () async {
+      final sync = (await open()).syncing();
+      final first = await sync.statusStream().first.timeout(
+        const Duration(seconds: 10),
+      );
+      expect(first.phase, SyncPhase.signedOut);
+    });
+
+    test('a server that is not there is a network error', () async {
+      final sync = (await open()).syncing();
+      await expectLater(
+        sync.checkServer(url: unreachableServer),
+        throwsA(isA<KansoError_Network>()),
+      );
+      await expectLater(
+        sync.signInPassword(
+          server: unreachableServer,
+          username: 'ada',
+          password: 'correct horse battery',
+          deviceName: 'Test phone',
+        ),
+        throwsA(isA<KansoError_Network>()),
+      );
+      expect((await sync.status()).phase, SyncPhase.signedOut);
+    });
+
+    test('syncing while signed out says so, and signing out is fine', () async {
+      final sync = (await open()).syncing();
+      await expectLater(
+        sync.syncNow(),
+        throwsA(isA<KansoError_SignedOut>()),
+      );
+      await sync.signOut();
+      expect((await sync.status()).phase, SyncPhase.signedOut);
+    });
+  });
+}

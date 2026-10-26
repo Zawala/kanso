@@ -264,3 +264,13 @@ fn a_secret_store_that_refuses_is_an_auth_error_not_a_signed_out_phone() {
         SyncPhase::Idle
     );
 }
+
+// no-prop-test: one constant, the one the desktop app signs in to.
+#[test]
+fn the_default_server_is_the_owners() {
+    assert_eq!(
+        kanso_mobile::SyncHandle::default_server(),
+        kanso_sync::DEFAULT_SERVER
+    );
+    assert!(kanso_mobile::SyncHandle::default_server().starts_with("https://"));
+}

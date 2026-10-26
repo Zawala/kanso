@@ -7,6 +7,7 @@ import 'package:injectable/injectable.dart';
 
 import '../../../bridge/api/library.dart';
 import '../../../bridge/api/types.dart';
+import '../../../utils/cancelable_stream.dart';
 import '../../../utils/kanso_error_mapping.dart';
 import '../../data/application_error.dart';
 import '../abs/library_repository.dart';
@@ -68,5 +69,5 @@ class RustLibraryRepository implements LibraryRepository {
   }) => attempt(() => _library.queryView(source: source, selfId: selfId));
 
   @override
-  Stream<List<String>> changes() => _library.changes();
+  Stream<List<String>> changes() => cancelableStream(_library.changes());
 }

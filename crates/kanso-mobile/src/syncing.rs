@@ -45,6 +45,11 @@ pub(crate) enum Ran {
 }
 
 impl SyncHandle {
+    /// The server a new account is made on unless another is typed.
+    pub fn default_server() -> String {
+        kanso_sync::DEFAULT_SERVER.to_owned()
+    }
+
     /// Where sync stands: signed out, idle, syncing, synced or failed.
     pub fn status(&self) -> Result<SyncStatus, KansoError> {
         guard(|| self.current_status())

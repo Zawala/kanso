@@ -25,4 +25,10 @@ class RustDiagnosticsRepository implements DiagnosticsRepository {
         await core.panicProbe(message: message);
         return unit;
       });
+
+  @override
+  Future<Either<ApplicationError, Unit>> secretsProbe() => attempt(() async {
+    await core.secretsProbe();
+    return unit;
+  });
 }

@@ -7,6 +7,7 @@ import 'package:injectable/injectable.dart';
 
 import '../../../bridge/api/locks.dart';
 import '../../../bridge/api/types.dart';
+import '../../../utils/cancelable_stream.dart';
 import '../../../utils/kanso_error_mapping.dart';
 import '../../data/application_error.dart';
 import '../abs/session_repository.dart';
@@ -43,5 +44,5 @@ class RustSessionRepository implements SessionRepository {
   ) => attempt(() => _locks.lockNote(id: id, password: password));
 
   @override
-  Stream<LockEvent> lockEvents() => _locks.lockEvents();
+  Stream<LockEvent> lockEvents() => cancelableStream(_locks.lockEvents());
 }

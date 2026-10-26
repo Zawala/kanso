@@ -16,3 +16,7 @@ Future<void> panicProbe({required String message}) =>
 
 /// Whether the library can check a server's certificate now.
 Future<bool> tlsReady() => KansoCore.instance.api.crateApiDiagnosticsTlsReady();
+
+/// Writes a value to the phone's secret store, reads it back and removes it.
+Future<void> secretsProbe() =>
+    KansoCore.instance.api.crateApiDiagnosticsSecretsProbe();
