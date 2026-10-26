@@ -12,6 +12,9 @@ later steps.
 - The Rust toolchain (rustup; the versions are pinned in `rust/rust-toolchain.toml`)
   and, for Android, the NDK Flutter uses: the library is built by
   `hook/build.dart` during `flutter run`, `build` and `test`.
+- iOS builds use Swift packages for plugins (no CocoaPods; `pubspec.yaml` turns
+  it on for this project) and run on Apple silicon simulators only
+  (`ios/Flutter/*.xcconfig` excludes x86_64).
 - Bundle id `app.kanso.Kanso` on iOS, application id `app.kanso.kanso` on
   Android.
 
