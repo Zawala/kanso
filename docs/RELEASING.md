@@ -6,6 +6,9 @@ publishes the GitHub Release on its own. Publishing is the moment every
 installed Kanso can see the update; if any check fails, nothing is
 published.
 
+The tag also starts the iPhone, iPad and Android builds, which go to
+TestFlight and Play internal testing: see [RELEASING-MOBILE.md](RELEASING-MOBILE.md).
+
 ## How updates work
 
 Every release carries, beside the downloads:
