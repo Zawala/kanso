@@ -9,6 +9,9 @@ publish = false
 
 [dependencies]
 async-channel.workspace = true
+# Unpadded base64url for a passkey's credential ID, as the passkey seam
+# writes it (MIT or Apache-2.0; already in the tree through kanso-sync).
+base64.workspace = true
 kanso-core.workspace = true
 # The highlighter (`highlight`, with the grammars for fenced code) is the
 # phones' editor colors.

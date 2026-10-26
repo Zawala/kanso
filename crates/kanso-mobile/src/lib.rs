@@ -55,6 +55,7 @@ mod account;
 mod account_model;
 mod account_settings;
 mod approvals;
+mod approver_model;
 pub mod background;
 mod backup;
 pub mod boundary;
