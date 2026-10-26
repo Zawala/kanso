@@ -4555,6 +4555,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "fastrand",
+ "image",
  "kanso-core",
  "kanso-store",
  "kanso-sync",
