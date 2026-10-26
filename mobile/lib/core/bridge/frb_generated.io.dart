@@ -94,6 +94,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int dco_decode_CastedPrimitive_i_64(dynamic raw);
 
   @protected
+  int dco_decode_CastedPrimitive_u_64(dynamic raw);
+
+  @protected
   KansoLibrary
   dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
     dynamic raw,
@@ -138,6 +141,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   bool dco_decode_box_autoadd_bool(dynamic raw);
 
   @protected
+  DueTone dco_decode_box_autoadd_due_tone(dynamic raw);
+
+  @protected
   double dco_decode_box_autoadd_f_32(dynamic raw);
 
   @protected
@@ -162,6 +168,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   SyncProblemKind dco_decode_box_autoadd_sync_problem_kind(dynamic raw);
 
   @protected
+  TaskListQuery dco_decode_box_autoadd_task_list_query(dynamic raw);
+
+  @protected
   int dco_decode_box_autoadd_u_16(dynamic raw);
 
   @protected
@@ -178,6 +187,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DiagramKind dco_decode_diagram_kind(dynamic raw);
+
+  @protected
+  DueTone dco_decode_due_tone(dynamic raw);
 
   @protected
   double dco_decode_f_32(dynamic raw);
@@ -255,6 +267,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<TagRow> dco_decode_list_tag_row(dynamic raw);
 
   @protected
+  List<TaskItem> dco_decode_list_task_item(dynamic raw);
+
+  @protected
+  List<TaskSection> dco_decode_list_task_section(dynamic raw);
+
+  @protected
   LockEvent dco_decode_lock_event(dynamic raw);
 
   @protected
@@ -292,6 +310,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
+
+  @protected
+  DueTone? dco_decode_opt_box_autoadd_due_tone(dynamic raw);
 
   @protected
   double? dco_decode_opt_box_autoadd_f_32(dynamic raw);
@@ -366,13 +387,34 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   TagRow dco_decode_tag_row(dynamic raw);
 
   @protected
+  TaskBoard dco_decode_task_board(dynamic raw);
+
+  @protected
+  TaskGroupKind dco_decode_task_group_kind(dynamic raw);
+
+  @protected
+  TaskItem dco_decode_task_item(dynamic raw);
+
+  @protected
+  TaskListQuery dco_decode_task_list_query(dynamic raw);
+
+  @protected
+  TaskSection dco_decode_task_section(dynamic raw);
+
+  @protected
   ThemeTokens dco_decode_theme_tokens(dynamic raw);
+
+  @protected
+  Ticked dco_decode_ticked(dynamic raw);
 
   @protected
   int dco_decode_u_16(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw);
 
   @protected
   int dco_decode_u_8(dynamic raw);
@@ -438,6 +480,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int sse_decode_CastedPrimitive_i_64(SseDeserializer deserializer);
 
   @protected
+  int sse_decode_CastedPrimitive_u_64(SseDeserializer deserializer);
+
+  @protected
   KansoLibrary
   sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
     SseDeserializer deserializer,
@@ -486,6 +531,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
 
   @protected
+  DueTone sse_decode_box_autoadd_due_tone(SseDeserializer deserializer);
+
+  @protected
   double sse_decode_box_autoadd_f_32(SseDeserializer deserializer);
 
   @protected
@@ -514,6 +562,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  TaskListQuery sse_decode_box_autoadd_task_list_query(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_box_autoadd_u_16(SseDeserializer deserializer);
 
   @protected
@@ -530,6 +583,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DiagramKind sse_decode_diagram_kind(SseDeserializer deserializer);
+
+  @protected
+  DueTone sse_decode_due_tone(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_32(SseDeserializer deserializer);
@@ -613,6 +669,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<TagRow> sse_decode_list_tag_row(SseDeserializer deserializer);
 
   @protected
+  List<TaskItem> sse_decode_list_task_item(SseDeserializer deserializer);
+
+  @protected
+  List<TaskSection> sse_decode_list_task_section(SseDeserializer deserializer);
+
+  @protected
   LockEvent sse_decode_lock_event(SseDeserializer deserializer);
 
   @protected
@@ -650,6 +712,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
+
+  @protected
+  DueTone? sse_decode_opt_box_autoadd_due_tone(SseDeserializer deserializer);
 
   @protected
   double? sse_decode_opt_box_autoadd_f_32(SseDeserializer deserializer);
@@ -728,13 +793,34 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   TagRow sse_decode_tag_row(SseDeserializer deserializer);
 
   @protected
+  TaskBoard sse_decode_task_board(SseDeserializer deserializer);
+
+  @protected
+  TaskGroupKind sse_decode_task_group_kind(SseDeserializer deserializer);
+
+  @protected
+  TaskItem sse_decode_task_item(SseDeserializer deserializer);
+
+  @protected
+  TaskListQuery sse_decode_task_list_query(SseDeserializer deserializer);
+
+  @protected
+  TaskSection sse_decode_task_section(SseDeserializer deserializer);
+
+  @protected
   ThemeTokens sse_decode_theme_tokens(SseDeserializer deserializer);
+
+  @protected
+  Ticked sse_decode_ticked(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_16(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
@@ -811,6 +897,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_CastedPrimitive_i_64(int self, SseSerializer serializer);
 
   @protected
+  void sse_encode_CastedPrimitive_u_64(int self, SseSerializer serializer);
+
+  @protected
   void
   sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
     KansoLibrary self,
@@ -866,6 +955,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_due_tone(DueTone self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_f_32(double self, SseSerializer serializer);
 
   @protected
@@ -908,6 +1000,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_task_list_query(
+    TaskListQuery self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_u_16(int self, SseSerializer serializer);
 
   @protected
@@ -924,6 +1022,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_diagram_kind(DiagramKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_due_tone(DueTone self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_32(double self, SseSerializer serializer);
@@ -1022,6 +1123,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_list_tag_row(List<TagRow> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_task_item(List<TaskItem> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_task_section(
+    List<TaskSection> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_lock_event(LockEvent self, SseSerializer serializer);
 
   @protected
@@ -1059,6 +1169,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_due_tone(
+    DueTone? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_f_32(double? self, SseSerializer serializer);
@@ -1145,13 +1261,34 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_tag_row(TagRow self, SseSerializer serializer);
 
   @protected
+  void sse_encode_task_board(TaskBoard self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_task_group_kind(TaskGroupKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_task_item(TaskItem self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_task_list_query(TaskListQuery self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_task_section(TaskSection self, SseSerializer serializer);
+
+  @protected
   void sse_encode_theme_tokens(ThemeTokens self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ticked(Ticked self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_16(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);

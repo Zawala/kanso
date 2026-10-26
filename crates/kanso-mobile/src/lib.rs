@@ -55,6 +55,7 @@ mod renderer;
 pub mod secrets;
 mod stream;
 mod syncing;
+mod tasks;
 mod theme_tokens;
 mod undo;
 

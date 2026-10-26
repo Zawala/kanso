@@ -9,11 +9,12 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview, ListPlace,
-    ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow,
-    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved,
-    SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
+    BuiltinTheme, ColorRow, DateField, DiagramKind, DueTone, Hit, KansoError, LibraryOverview,
+    ListPlace, ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange,
+    NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind,
+    Range16, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase,
+    SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, TaskBoard,
+    TaskGroupKind, TaskItem, TaskListQuery, TaskSection, ThemeTokens, Ticked,
 };
 
 #[frb(mirror(KansoError))]
@@ -113,6 +114,64 @@ pub struct _LibraryOverview {
     pub pinned: u32,
     pub recent: u32,
     pub trash: u32,
+}
+
+#[frb(mirror(TaskListQuery))]
+pub struct _TaskListQuery {
+    pub notebook_id: Option<String>,
+    pub show_done: bool,
+    pub kept: Vec<String>,
+}
+
+#[frb(mirror(TaskGroupKind))]
+pub enum _TaskGroupKind {
+    Overdue,
+    Today,
+    Upcoming,
+    NoDate,
+    Done,
+}
+
+#[frb(mirror(DueTone))]
+pub enum _DueTone {
+    Plain,
+    Today,
+    Overdue,
+    Done,
+}
+
+#[frb(mirror(TaskItem))]
+pub struct _TaskItem {
+    pub key: String,
+    pub note_id: String,
+    pub note_title: String,
+    pub notebook_id: String,
+    pub notebook_name: String,
+    pub line: u32,
+    pub text: String,
+    pub source_text: String,
+    pub checked: bool,
+    pub due_label: Option<String>,
+    pub due_tone: Option<DueTone>,
+}
+
+#[frb(mirror(TaskSection))]
+pub struct _TaskSection {
+    pub group: TaskGroupKind,
+    pub label: String,
+    pub items: Vec<TaskItem>,
+}
+
+#[frb(mirror(TaskBoard))]
+pub struct _TaskBoard {
+    pub groups: Vec<TaskSection>,
+}
+
+#[frb(mirror(Ticked))]
+pub enum _Ticked {
+    Changed { rev: String, undo: u64 },
+    Unchanged,
+    Missing,
 }
 
 #[frb(mirror(NoteChange))]

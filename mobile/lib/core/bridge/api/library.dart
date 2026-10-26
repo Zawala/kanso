@@ -33,6 +33,9 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   static Future<KansoLibrary> open({required String path}) =>
       KansoCore.instance.api.crateApiLibraryKansoLibraryOpen(path: path);
 
+  /// How many open tasks are overdue (the Tasks place's badge).
+  Future<int> overdueTasks();
+
   Future<LibraryOverview> overview();
 
   Future<List<Property>> properties({required String id});
@@ -53,9 +56,26 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required int limit,
   });
 
+  /// Ticks (or clears) a task in its note, in one write; the ticket takes
+  /// it back with `undo`.
+  Future<Ticked> setTask({
+    required String noteId,
+    required int line,
+    required String text,
+    required bool checked,
+  });
+
   KansoSync syncing();
 
   Future<List<TagRow>> tags();
 
+  /// The Tasks place: open tasks across the notes, in groups; locked
+  /// notes are left out.
+  Future<TaskBoard> tasks({required TaskListQuery query});
+
   Future<void> trash({required String id});
+
+  /// Takes back the change kept under `ticket`; says how many notes it
+  /// wrote.
+  Future<int> undo({required int ticket});
 }
