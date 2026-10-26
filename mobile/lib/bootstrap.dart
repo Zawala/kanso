@@ -32,7 +32,7 @@ Future<void> bootstrap(AppEnvironment environment) async {
   runApp(
     AppProviders(
       appearance: appearance,
-      child: App(router: getIt<KansoRouter>().config),
+      child: App(router: getIt<KansoRouter>()),
     ),
   );
 }

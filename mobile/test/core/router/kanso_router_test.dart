@@ -10,10 +10,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kanso/app.dart';
 import 'package:kanso/core/bridge/api/types.dart';
+import 'package:kanso/core/configs/kanso_layout.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
+import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 import 'package:kanso/note/views/pages/note_page.dart';
@@ -30,14 +32,19 @@ Future<GoRouter> _pump(
   WidgetTester tester, {
   bool gallery = false,
   String? at,
+  Size size = const Size(393, 852),
 }) async {
   final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
   tester.view
-    ..physicalSize = const Size(393, 852)
+    ..physicalSize = size
     ..devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  final router = KansoRouter(DesignGalleryAccess(available: gallery)).config;
+  final kansoRouter = KansoRouter(
+    DesignGalleryAccess(available: gallery),
+    LayoutClassNotifier.starting(KansoLayout.classFor(size)),
+  );
+  final router = kansoRouter.config;
   addTearDown(router.dispose);
   if (at != null) {
     router.go(at);
@@ -45,7 +52,7 @@ Future<GoRouter> _pump(
   await tester.pumpWidget(
     BlocProvider<AppearanceBloc>.value(
       value: bloc,
-      child: App(router: router),
+      child: App(router: kansoRouter),
     ),
   );
   await tester.pumpAndSettle();

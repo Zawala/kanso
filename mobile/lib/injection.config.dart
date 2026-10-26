@@ -34,6 +34,7 @@ import 'core/models/repos/impl/rust_renderer_repository.dart' as _i820;
 import 'core/models/repos/impl/rust_session_repository.dart' as _i899;
 import 'core/models/repos/impl/rust_sync_repository.dart' as _i564;
 import 'core/router/kanso_router.dart' as _i388;
+import 'core/router/layout_class_notifier.dart' as _i609;
 import 'core/state/appearance/appearance_bloc.dart' as _i551;
 import 'core_check/state/core_check/core_check_bloc.dart' as _i226;
 
@@ -50,6 +51,7 @@ extension GetItInjectableX on _i174.GetIt {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
     final coreModule = _$CoreModule();
     final appModule = _$AppModule();
+    gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
     gh.lazySingleton<_i984.DiagnosticsRepository>(
       () => _i1062.RustDiagnosticsRepository(),
     );
@@ -75,7 +77,10 @@ extension GetItInjectableX on _i174.GetIt {
       () => _i207.FilePreferencesRepository(gh<_i72.LibraryFolder>()),
     );
     gh.singleton<_i388.KansoRouter>(
-      () => _i388.KansoRouter(gh<_i289.DesignGalleryAccess>()),
+      () => _i388.KansoRouter(
+        gh<_i289.DesignGalleryAccess>(),
+        gh<_i609.LayoutClassNotifier>(),
+      ),
     );
     await gh.singletonAsync<_i455.KansoLibrary>(
       () => coreModule.library(gh<_i72.LibraryFolder>()),

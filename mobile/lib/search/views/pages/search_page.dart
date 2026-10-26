@@ -15,6 +15,7 @@ class SearchPage extends StatelessWidget {
     this.query = '',
     this.scope = SearchScopeKind.all,
     this.notebookId,
+    this.inPane = false,
     super.key,
   });
 
@@ -22,11 +23,15 @@ class SearchPage extends StatelessWidget {
   final SearchScopeKind scope;
   final String? notebookId;
 
+  /// Whether it is the list pane of a wide window rather than a page of its
+  /// own, with nowhere to go back to.
+  final bool inPane;
+
   @override
   Widget build(BuildContext context) {
     return ShellPage(
       title: context.l10n.searchTitle,
-      leading: const ShellBackButton(),
+      leading: inPane ? null : const ShellBackButton(),
       backgroundColor: context.colors.list,
     );
   }

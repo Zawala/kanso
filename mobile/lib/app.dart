@@ -4,12 +4,13 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 
 import 'core/configs/kanso_theme.dart';
+import 'core/router/kanso_router.dart';
 import 'core/state/appearance/appearance_bloc.dart';
 import 'core/utils/context_extensions.dart';
 import 'core/utils/kanso_scroll_behavior.dart';
+import 'core/views/widgets/layout_class_reporter.dart';
 import 'gen/l10n/app_localizations.dart';
 
 /// The Kanso app: the themes chosen (drawn from the theme files' tokens),
@@ -17,8 +18,8 @@ import 'gen/l10n/app_localizations.dart';
 class App extends StatelessWidget {
   const App({required this.router, super.key});
 
-  /// The routes of the app (`KansoRouter.config`).
-  final GoRouter router;
+  /// The routes of the app, and how many panes there is room for.
+  final KansoRouter router;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +42,11 @@ class App extends StatelessWidget {
           scrollBehavior: const KansoScrollBehavior(),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          routerConfig: router,
+          routerConfig: router.config,
+          builder: (context, child) => LayoutClassReporter(
+            notifier: router.layoutClass,
+            child: child!,
+          ),
         );
       },
     );

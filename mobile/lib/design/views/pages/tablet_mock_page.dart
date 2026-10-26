@@ -8,6 +8,7 @@ import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_scrim.dart';
 import '../../../core/views/widgets/kanso_sheet.dart';
+import '../../../shell/views/widgets/tablet_layout.dart';
 import '../../models/data/design_layout.dart';
 import '../../models/data/design_screen.dart';
 import '../../models/data/mock_data.dart';
@@ -23,7 +24,6 @@ import '../widgets/note_preview_pane.dart';
 import '../widgets/search_pane.dart';
 import '../widgets/settings_pane.dart';
 import '../widgets/signed_out_card.dart';
-import '../widgets/tablet_layout.dart';
 import '../widgets/theme_picker_pane.dart';
 
 /// A tablet screen in landscape: the library, the list and the note side by

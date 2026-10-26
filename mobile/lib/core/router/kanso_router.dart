@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:injectable/injectable.dart';
 
 import '../../design/views/pages/design_gallery_page.dart';
+import '../../design/views/widgets/no_note_selected_pane.dart';
 import '../../note/views/pages/note_page.dart';
 import '../../note_list/views/pages/note_list_page.dart';
 import '../../search/views/pages/search_page.dart';
@@ -18,9 +19,12 @@ import '../../themes/views/pages/theme_picker_page.dart';
 import '../bridge/api/types.dart';
 import '../models/data/browse_location.dart';
 import '../models/data/design_gallery_access.dart';
+import '../models/data/layout_class.dart';
 import '../models/data/search_scope_kind.dart';
 import 'deep_links.dart';
 import 'kanso_routes.dart';
+import 'kanso_sheet_page.dart';
+import 'layout_class_notifier.dart';
 
 /// The app's routes.
 ///
@@ -28,17 +32,22 @@ import 'kanso_routes.dart';
 ///   opened from one is that address plus `/note/:noteId`.
 /// * Settings is a shell of its own on top of the root navigator, so it
 ///   opens over what the person was doing and closes back to it, with
-///   Theme, Fonts and Licences sliding inside it.
+///   Theme, Fonts and Licences sliding inside it. It is a sheet on a tablet
+///   and a page on a phone.
 /// * `kanso://open/…` links and the short forms (`/note/:id`,
 ///   `/notebook/:id`) land on the addresses above; an address that is
 ///   nothing goes to All Notes.
 @singleton
 class KansoRouter {
-  KansoRouter(this._gallery) {
+  KansoRouter(this._gallery, this.layoutClass) {
     config = _build();
   }
 
   final DesignGalleryAccess _gallery;
+
+  /// How many panes there is room for; the pages are built again when it
+  /// changes.
+  final LayoutClassNotifier layoutClass;
 
   final GlobalKey<NavigatorState> _rootKey = GlobalKey<NavigatorState>(
     debugLabel: 'root',
@@ -57,6 +66,7 @@ class KansoRouter {
     return GoRouter(
       navigatorKey: _rootKey,
       initialLocation: KansoRoutes.notes,
+      refreshListenable: layoutClass,
       // The app's own links carry a scheme and a host, which the router
       // ignores; they are turned into addresses of the app here.
       redirect: (context, state) =>
@@ -78,6 +88,7 @@ class KansoRouter {
         ShellRoute(
           navigatorKey: _browseKey,
           builder: (context, state, child) => BrowseShell(
+            layout: layoutClass,
             location: BrowseLocation.parse(state.uri),
             designGallery: _gallery.available,
             child: child,
@@ -98,9 +109,9 @@ class KansoRouter {
             ),
             GoRoute(
               path: KansoRoutes.search,
-              pageBuilder: (context, state) => CupertinoPage<void>(
-                key: state.pageKey,
-                child: SearchPage(
+              pageBuilder: (context, state) => _listPage(
+                state,
+                single: SearchPage(
                   query: state.uri.queryParameters['q'] ?? '',
                   scope: SearchScopeKind.values.firstWhere(
                     (kind) => kind.name == state.uri.queryParameters['scope'],
@@ -115,8 +126,9 @@ class KansoRouter {
         ),
         ShellRoute(
           navigatorKey: _settingsKey,
-          pageBuilder: (context, state, child) =>
-              CupertinoPage<void>(key: state.pageKey, child: child),
+          pageBuilder: (context, state, child) => layoutClass.tabletDevice
+              ? KansoSheetPage<void>(key: state.pageKey, child: child)
+              : CupertinoPage<void>(key: state.pageKey, child: child),
           routes: <RouteBase>[
             GoRoute(
               path: KansoRoutes.settings,
@@ -170,10 +182,8 @@ class KansoRouter {
   GoRoute _placeRoute(String path, ListPlace Function(GoRouterState) place) {
     return GoRoute(
       path: path,
-      pageBuilder: (context, state) => CupertinoPage<void>(
-        key: state.pageKey,
-        child: NoteListPage(place: place(state)),
-      ),
+      pageBuilder: (context, state) =>
+          _listPage(state, single: NoteListPage(place: place(state))),
       routes: <RouteBase>[_noteRoute()],
     );
   }
@@ -181,10 +191,30 @@ class KansoRouter {
   GoRoute _noteRoute() {
     return GoRoute(
       path: '${KansoRoutes.note}/:noteId',
-      pageBuilder: (context, state) => CupertinoPage<void>(
-        key: state.pageKey,
-        child: NotePage(noteId: state.pathParameters['noteId']!),
-      ),
+      pageBuilder: (context, state) {
+        final noteId = state.pathParameters['noteId']!;
+        return layoutClass.value == LayoutClass.single
+            ? CupertinoPage<void>(
+                key: state.pageKey,
+                child: NotePage(noteId: noteId),
+              )
+            : NoTransitionPage<void>(
+                key: state.pageKey,
+                child: NotePage(noteId: noteId, inPane: true),
+              );
+      },
     );
+  }
+
+  /// The page of a place or a search itself. In one pane it is the list,
+  /// [single]; in more the list is beside the note (see `BrowseShell`), and
+  /// this page, in the note pane, says that no note is open.
+  Page<void> _listPage(GoRouterState state, {required Widget single}) {
+    return layoutClass.value == LayoutClass.single
+        ? CupertinoPage<void>(key: state.pageKey, child: single)
+        : NoTransitionPage<void>(
+            key: state.pageKey,
+            child: const NoNoteSelectedPane(),
+          );
   }
 }

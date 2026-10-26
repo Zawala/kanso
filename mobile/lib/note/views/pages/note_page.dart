@@ -9,12 +9,19 @@ import '../../../shell/views/widgets/shell_page.dart';
 
 /// One note, opened from a place or a search.
 class NotePage extends StatelessWidget {
-  const NotePage({required this.noteId, super.key});
+  const NotePage({required this.noteId, this.inPane = false, super.key});
 
   final String noteId;
 
+  /// Whether it is the note pane of a wide window rather than a page of its
+  /// own, with nowhere to go back to.
+  final bool inPane;
+
   @override
   Widget build(BuildContext context) {
-    return const ShellPage(title: '', leading: ShellBackButton());
+    return ShellPage(
+      title: '',
+      leading: inPane ? null : const ShellBackButton(),
+    );
   }
 }

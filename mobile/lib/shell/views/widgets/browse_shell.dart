@@ -2,18 +2,41 @@
 // Created 2026-10-26.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 
+import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/models/data/browse_location.dart';
+import '../../../core/models/data/layout_class.dart';
+import 'library_drawer_host.dart';
+import 'library_navigation.dart';
+import 'list_note_layout.dart';
+import 'list_slot.dart';
+import 'tablet_layout.dart';
 
-/// The frame around every place, search and note.
+/// The frame around every place, search and note, in as many panes as the
+/// window has room for.
+///
+/// * One pane ([LayoutClass.single]): [child], the navigator showing the
+///   pages of the address, fills the window, and the library is a drawer
+///   over it.
+/// * Two ([LayoutClass.double]): the list of [location] beside [child],
+///   which is the note; the library is a drawer.
+/// * Three ([LayoutClass.triple]): the library, the list and the note.
+///
+/// [child] keeps its state when the window changes from one to another, so
+/// the open note is still open.
 class BrowseShell extends StatelessWidget {
   const BrowseShell({
+    required this.layout,
     required this.location,
     required this.child,
     this.designGallery = false,
     super.key,
   });
+
+  /// How many panes there is room for now.
+  final ValueListenable<LayoutClass> layout;
 
   /// Where the person is; null for an address that is neither a place nor
   /// a search.
@@ -26,5 +49,41 @@ class BrowseShell extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => child;
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<LayoutClass>(
+      valueListenable: layout,
+      child: child,
+      builder: (context, layoutClass, child) {
+        final width = MediaQuery.sizeOf(context).width;
+        final listOnly = location?.noteId == null;
+        return switch (layoutClass) {
+          LayoutClass.single => LibraryDrawerHost(
+            location: location,
+            designGallery: designGallery,
+            width: width * KansoSizes.drawerFraction,
+            edgeDragEnabled: listOnly,
+            child: child!,
+          ),
+          LayoutClass.double => LibraryDrawerHost(
+            location: location,
+            designGallery: designGallery,
+            width: KansoSizes.libraryPane,
+            edgeDragEnabled: true,
+            child: ListNoteLayout(
+              list: ListSlot(location: location),
+              note: child!,
+            ),
+          ),
+          LayoutClass.triple => TabletLayout(
+            library: LibraryNavigation(
+              location: location,
+              designGallery: designGallery,
+            ),
+            list: ListSlot(location: location),
+            note: child!,
+          ),
+        };
+      },
+    );
+  }
 }

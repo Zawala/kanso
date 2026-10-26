@@ -10,8 +10,10 @@ import 'package:kanso/core/configs/kanso_typography.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
+import 'package:kanso/core/models/data/layout_class.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
+import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 
@@ -24,12 +26,14 @@ Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
     ..physicalSize = const Size(393, 2400)
     ..devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  final router = KansoRouter(const DesignGalleryAccess(available: true))
-    ..config.go(KansoRoutes.design);
+  final router = KansoRouter(
+    const DesignGalleryAccess(available: true),
+    LayoutClassNotifier.starting(LayoutClass.single),
+  )..config.go(KansoRoutes.design);
   await tester.pumpWidget(
     BlocProvider<AppearanceBloc>.value(
       value: bloc,
-      child: App(router: router.config),
+      child: App(router: router),
     ),
   );
   return bloc;
