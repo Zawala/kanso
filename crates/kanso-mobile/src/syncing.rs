@@ -436,7 +436,7 @@ pub(crate) fn account_error(err: &AccountError, context: ErrorContext) -> KansoE
 }
 
 /// What a failed account task is to the shell.
-fn failure(failure: Failure) -> KansoError {
+pub(crate) fn failure(failure: Failure) -> KansoError {
     if failure.signed_out.is_some() {
         KansoError::SignedOut
     } else if failure.keychain_warning {
