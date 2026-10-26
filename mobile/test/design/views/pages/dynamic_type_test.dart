@@ -11,6 +11,7 @@ import 'package:kanso/design/models/data/design_layout.dart';
 import 'package:kanso/design/models/data/design_screen.dart';
 import 'package:kanso/design/utils/page_for_screen.dart';
 import 'package:kanso/gen/l10n/app_localizations.dart';
+import '../../../helpers/seeded_appearance_bloc.dart';
 
 void main() {
   group('every phone screen at a large device text size', () {
@@ -27,7 +28,7 @@ void main() {
             tester.view.reset();
             tester.platformDispatcher.clearTextScaleFactorTestValue();
           });
-          final bloc = AppearanceBloc();
+          final bloc = SeededAppearanceBloc(const AppearanceState());
           addTearDown(bloc.close);
           await tester.pumpWidget(
             BlocProvider<AppearanceBloc>.value(

@@ -6,15 +6,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_theme.dart';
-import 'package:kanso/core/models/data/appearance_mode.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/design/models/data/gallery_appearance.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 import 'package:kanso/design/views/widgets/loading_list_pane.dart';
 import 'package:kanso/gen/l10n/app_localizations.dart';
 
+import '../../../helpers/seeded_appearance_bloc.dart';
+
 Future<AppearanceBloc> _pump(WidgetTester tester) async {
-  final bloc = AppearanceBloc();
+  final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
   tester.view
     ..physicalSize = const Size(393, 2400)
@@ -33,6 +35,15 @@ Future<AppearanceBloc> _pump(WidgetTester tester) async {
   );
   await tester.pumpAndSettle();
   return bloc;
+}
+
+/// Lets the appearance BLoC finish a choice: it reads the themes and saves
+/// before the next one, in microtasks that a single pump runs.
+Future<void> _settle(WidgetTester tester) async {
+  for (var i = 0; i < 5; i++) {
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -59,13 +70,17 @@ void main() {
       tester,
     ) async {
       final bloc = await _pump(tester);
-      expect(bloc.state.mode, AppearanceMode.system);
+      expect(GalleryAppearance.of(bloc.state), GalleryAppearance.system);
       await tester.tap(find.text('Dark'));
-      await tester.pumpAndSettle();
-      expect(bloc.state.mode, AppearanceMode.dark);
+      await _settle(tester);
+      expect(GalleryAppearance.of(bloc.state), GalleryAppearance.dark);
+      expect(bloc.state.selection.ui, 'kanso-dark');
       await tester.tap(find.text('Light'));
-      await tester.pumpAndSettle();
-      expect(bloc.state.mode, AppearanceMode.light);
+      await _settle(tester);
+      expect(GalleryAppearance.of(bloc.state), GalleryAppearance.light);
+      await tester.tap(find.text('System'));
+      await _settle(tester);
+      expect(GalleryAppearance.of(bloc.state), GalleryAppearance.system);
     });
 
     testWidgets('opens a screen and comes back', (tester) async {

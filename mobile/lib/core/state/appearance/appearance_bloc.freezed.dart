@@ -55,12 +55,13 @@ extension AppearanceEventPatterns on AppearanceEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppearanceStartedEvent value)?  started,TResult Function( AppearanceChangedEvent value)?  changed,TResult Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppearanceStartedEvent value)?  started,TResult Function( AppearanceThemePickedEvent value)?  themePicked,TResult Function( AppearanceFollowSystemChangedEvent value)?  followSystemChanged,TResult Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
-return started(_that);case AppearanceChangedEvent() when changed != null:
-return changed(_that);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
+return started(_that);case AppearanceThemePickedEvent() when themePicked != null:
+return themePicked(_that);case AppearanceFollowSystemChangedEvent() when followSystemChanged != null:
+return followSystemChanged(_that);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
 return editorFontChanged(_that);case AppearancePreviewFontChangedEvent() when previewFontChanged != null:
 return previewFontChanged(_that);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
@@ -82,12 +83,13 @@ return textSizeChanged(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppearanceStartedEvent value)  started,required TResult Function( AppearanceChangedEvent value)  changed,required TResult Function( AppearanceEditorFontChangedEvent value)  editorFontChanged,required TResult Function( AppearancePreviewFontChangedEvent value)  previewFontChanged,required TResult Function( AppearanceCodeFontChangedEvent value)  codeFontChanged,required TResult Function( AppearanceTextSizeChangedEvent value)  textSizeChanged,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppearanceStartedEvent value)  started,required TResult Function( AppearanceThemePickedEvent value)  themePicked,required TResult Function( AppearanceFollowSystemChangedEvent value)  followSystemChanged,required TResult Function( AppearanceEditorFontChangedEvent value)  editorFontChanged,required TResult Function( AppearancePreviewFontChangedEvent value)  previewFontChanged,required TResult Function( AppearanceCodeFontChangedEvent value)  codeFontChanged,required TResult Function( AppearanceTextSizeChangedEvent value)  textSizeChanged,}){
 final _that = this;
 switch (_that) {
 case AppearanceStartedEvent():
-return started(_that);case AppearanceChangedEvent():
-return changed(_that);case AppearanceEditorFontChangedEvent():
+return started(_that);case AppearanceThemePickedEvent():
+return themePicked(_that);case AppearanceFollowSystemChangedEvent():
+return followSystemChanged(_that);case AppearanceEditorFontChangedEvent():
 return editorFontChanged(_that);case AppearancePreviewFontChangedEvent():
 return previewFontChanged(_that);case AppearanceCodeFontChangedEvent():
 return codeFontChanged(_that);case AppearanceTextSizeChangedEvent():
@@ -105,12 +107,13 @@ return textSizeChanged(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppearanceStartedEvent value)?  started,TResult? Function( AppearanceChangedEvent value)?  changed,TResult? Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult? Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult? Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult? Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppearanceStartedEvent value)?  started,TResult? Function( AppearanceThemePickedEvent value)?  themePicked,TResult? Function( AppearanceFollowSystemChangedEvent value)?  followSystemChanged,TResult? Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult? Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult? Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult? Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,}){
 final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
-return started(_that);case AppearanceChangedEvent() when changed != null:
-return changed(_that);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
+return started(_that);case AppearanceThemePickedEvent() when themePicked != null:
+return themePicked(_that);case AppearanceFollowSystemChangedEvent() when followSystemChanged != null:
+return followSystemChanged(_that);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
 return editorFontChanged(_that);case AppearancePreviewFontChangedEvent() when previewFontChanged != null:
 return previewFontChanged(_that);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
@@ -131,11 +134,12 @@ return textSizeChanged(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  started,TResult Function( AppearanceMode mode)?  changed,TResult Function( KansoFontFamily font)?  editorFontChanged,TResult Function( KansoFontFamily font)?  previewFontChanged,TResult Function( KansoFontFamily font)?  codeFontChanged,TResult Function( KansoTextSize size)?  textSizeChanged,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  started,TResult Function( String id,  bool dark)?  themePicked,TResult Function( bool follow)?  followSystemChanged,TResult Function( KansoFontFamily font)?  editorFontChanged,TResult Function( KansoFontFamily font)?  previewFontChanged,TResult Function( KansoFontFamily font)?  codeFontChanged,TResult Function( KansoTextSize size)?  textSizeChanged,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
-return started();case AppearanceChangedEvent() when changed != null:
-return changed(_that.mode);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
+return started();case AppearanceThemePickedEvent() when themePicked != null:
+return themePicked(_that.id,_that.dark);case AppearanceFollowSystemChangedEvent() when followSystemChanged != null:
+return followSystemChanged(_that.follow);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
 return editorFontChanged(_that.font);case AppearancePreviewFontChangedEvent() when previewFontChanged != null:
 return previewFontChanged(_that.font);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that.font);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
@@ -157,11 +161,12 @@ return textSizeChanged(_that.size);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  started,required TResult Function( AppearanceMode mode)  changed,required TResult Function( KansoFontFamily font)  editorFontChanged,required TResult Function( KansoFontFamily font)  previewFontChanged,required TResult Function( KansoFontFamily font)  codeFontChanged,required TResult Function( KansoTextSize size)  textSizeChanged,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  started,required TResult Function( String id,  bool dark)  themePicked,required TResult Function( bool follow)  followSystemChanged,required TResult Function( KansoFontFamily font)  editorFontChanged,required TResult Function( KansoFontFamily font)  previewFontChanged,required TResult Function( KansoFontFamily font)  codeFontChanged,required TResult Function( KansoTextSize size)  textSizeChanged,}) {final _that = this;
 switch (_that) {
 case AppearanceStartedEvent():
-return started();case AppearanceChangedEvent():
-return changed(_that.mode);case AppearanceEditorFontChangedEvent():
+return started();case AppearanceThemePickedEvent():
+return themePicked(_that.id,_that.dark);case AppearanceFollowSystemChangedEvent():
+return followSystemChanged(_that.follow);case AppearanceEditorFontChangedEvent():
 return editorFontChanged(_that.font);case AppearancePreviewFontChangedEvent():
 return previewFontChanged(_that.font);case AppearanceCodeFontChangedEvent():
 return codeFontChanged(_that.font);case AppearanceTextSizeChangedEvent():
@@ -179,11 +184,12 @@ return textSizeChanged(_that.size);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  started,TResult? Function( AppearanceMode mode)?  changed,TResult? Function( KansoFontFamily font)?  editorFontChanged,TResult? Function( KansoFontFamily font)?  previewFontChanged,TResult? Function( KansoFontFamily font)?  codeFontChanged,TResult? Function( KansoTextSize size)?  textSizeChanged,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  started,TResult? Function( String id,  bool dark)?  themePicked,TResult? Function( bool follow)?  followSystemChanged,TResult? Function( KansoFontFamily font)?  editorFontChanged,TResult? Function( KansoFontFamily font)?  previewFontChanged,TResult? Function( KansoFontFamily font)?  codeFontChanged,TResult? Function( KansoTextSize size)?  textSizeChanged,}) {final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
-return started();case AppearanceChangedEvent() when changed != null:
-return changed(_that.mode);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
+return started();case AppearanceThemePickedEvent() when themePicked != null:
+return themePicked(_that.id,_that.dark);case AppearanceFollowSystemChangedEvent() when followSystemChanged != null:
+return followSystemChanged(_that.follow);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
 return editorFontChanged(_that.font);case AppearancePreviewFontChangedEvent() when previewFontChanged != null:
 return previewFontChanged(_that.font);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that.font);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
@@ -230,43 +236,44 @@ String toString() {
 /// @nodoc
 
 
-class AppearanceChangedEvent implements AppearanceEvent {
-  const AppearanceChangedEvent(this.mode);
+class AppearanceThemePickedEvent implements AppearanceEvent {
+  const AppearanceThemePickedEvent(this.id, {required this.dark});
   
 
- final  AppearanceMode mode;
+ final  String id;
+ final  bool dark;
 
 /// Create a copy of AppearanceEvent
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
 @pragma('vm:prefer-inline')
-$AppearanceChangedEventCopyWith<AppearanceChangedEvent> get copyWith => _$AppearanceChangedEventCopyWithImpl<AppearanceChangedEvent>(this, _$identity);
+$AppearanceThemePickedEventCopyWith<AppearanceThemePickedEvent> get copyWith => _$AppearanceThemePickedEventCopyWithImpl<AppearanceThemePickedEvent>(this, _$identity);
 
 
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceChangedEvent&&(identical(other.mode, mode) || other.mode == mode));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceThemePickedEvent&&(identical(other.id, id) || other.id == id)&&(identical(other.dark, dark) || other.dark == dark));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,mode);
+int get hashCode => Object.hash(runtimeType,id,dark);
 
 @override
 String toString() {
-  return 'AppearanceEvent.changed(mode: $mode)';
+  return 'AppearanceEvent.themePicked(id: $id, dark: $dark)';
 }
 
 
 }
 
 /// @nodoc
-abstract mixin class $AppearanceChangedEventCopyWith<$Res> implements $AppearanceEventCopyWith<$Res> {
-  factory $AppearanceChangedEventCopyWith(AppearanceChangedEvent value, $Res Function(AppearanceChangedEvent) _then) = _$AppearanceChangedEventCopyWithImpl;
+abstract mixin class $AppearanceThemePickedEventCopyWith<$Res> implements $AppearanceEventCopyWith<$Res> {
+  factory $AppearanceThemePickedEventCopyWith(AppearanceThemePickedEvent value, $Res Function(AppearanceThemePickedEvent) _then) = _$AppearanceThemePickedEventCopyWithImpl;
 @useResult
 $Res call({
- AppearanceMode mode
+ String id, bool dark
 });
 
 
@@ -274,19 +281,86 @@ $Res call({
 
 }
 /// @nodoc
-class _$AppearanceChangedEventCopyWithImpl<$Res>
-    implements $AppearanceChangedEventCopyWith<$Res> {
-  _$AppearanceChangedEventCopyWithImpl(this._self, this._then);
+class _$AppearanceThemePickedEventCopyWithImpl<$Res>
+    implements $AppearanceThemePickedEventCopyWith<$Res> {
+  _$AppearanceThemePickedEventCopyWithImpl(this._self, this._then);
 
-  final AppearanceChangedEvent _self;
-  final $Res Function(AppearanceChangedEvent) _then;
+  final AppearanceThemePickedEvent _self;
+  final $Res Function(AppearanceThemePickedEvent) _then;
 
 /// Create a copy of AppearanceEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? mode = null,}) {
-  return _then(AppearanceChangedEvent(
-null == mode ? _self.mode : mode // ignore: cast_nullable_to_non_nullable
-as AppearanceMode,
+@pragma('vm:prefer-inline') $Res call({Object? id = null,Object? dark = null,}) {
+  return _then(AppearanceThemePickedEvent(
+null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,dark: null == dark ? _self.dark : dark // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AppearanceFollowSystemChangedEvent implements AppearanceEvent {
+  const AppearanceFollowSystemChangedEvent({required this.follow});
+  
+
+ final  bool follow;
+
+/// Create a copy of AppearanceEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AppearanceFollowSystemChangedEventCopyWith<AppearanceFollowSystemChangedEvent> get copyWith => _$AppearanceFollowSystemChangedEventCopyWithImpl<AppearanceFollowSystemChangedEvent>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceFollowSystemChangedEvent&&(identical(other.follow, follow) || other.follow == follow));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,follow);
+
+@override
+String toString() {
+  return 'AppearanceEvent.followSystemChanged(follow: $follow)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AppearanceFollowSystemChangedEventCopyWith<$Res> implements $AppearanceEventCopyWith<$Res> {
+  factory $AppearanceFollowSystemChangedEventCopyWith(AppearanceFollowSystemChangedEvent value, $Res Function(AppearanceFollowSystemChangedEvent) _then) = _$AppearanceFollowSystemChangedEventCopyWithImpl;
+@useResult
+$Res call({
+ bool follow
+});
+
+
+
+
+}
+/// @nodoc
+class _$AppearanceFollowSystemChangedEventCopyWithImpl<$Res>
+    implements $AppearanceFollowSystemChangedEventCopyWith<$Res> {
+  _$AppearanceFollowSystemChangedEventCopyWithImpl(this._self, this._then);
+
+  final AppearanceFollowSystemChangedEvent _self;
+  final $Res Function(AppearanceFollowSystemChangedEvent) _then;
+
+/// Create a copy of AppearanceEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? follow = null,}) {
+  return _then(AppearanceFollowSystemChangedEvent(
+follow: null == follow ? _self.follow : follow // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -560,7 +634,12 @@ as KansoTextSize,
 /// @nodoc
 mixin _$AppearanceState {
 
- AppearanceMode get mode; KansoFonts get fonts; KansoTextSize get textSize;
+/// The themes chosen.
+ ThemeSelection get selection;/// The palette of the app's light theme: the light slot while the system
+/// is followed, the fixed theme otherwise.
+ KansoPalette get light;/// The palette of the app's dark theme: the dark slot while the system
+/// is followed, the fixed theme otherwise (so the same as [light]).
+ KansoPalette get dark; KansoFonts get fonts; KansoTextSize get textSize; AppearanceStatus get status;
 /// Create a copy of AppearanceState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -571,16 +650,16 @@ $AppearanceStateCopyWith<AppearanceState> get copyWith => _$AppearanceStateCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceState&&(identical(other.mode, mode) || other.mode == mode)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.textSize, textSize) || other.textSize == textSize));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceState&&(identical(other.selection, selection) || other.selection == selection)&&(identical(other.light, light) || other.light == light)&&(identical(other.dark, dark) || other.dark == dark)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.textSize, textSize) || other.textSize == textSize)&&(identical(other.status, status) || other.status == status));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,mode,fonts,textSize);
+int get hashCode => Object.hash(runtimeType,selection,light,dark,fonts,textSize,status);
 
 @override
 String toString() {
-  return 'AppearanceState(mode: $mode, fonts: $fonts, textSize: $textSize)';
+  return 'AppearanceState(selection: $selection, light: $light, dark: $dark, fonts: $fonts, textSize: $textSize, status: $status)';
 }
 
 
@@ -591,11 +670,11 @@ abstract mixin class $AppearanceStateCopyWith<$Res>  {
   factory $AppearanceStateCopyWith(AppearanceState value, $Res Function(AppearanceState) _then) = _$AppearanceStateCopyWithImpl;
 @useResult
 $Res call({
- AppearanceMode mode, KansoFonts fonts, KansoTextSize textSize
+ ThemeSelection selection, KansoPalette light, KansoPalette dark, KansoFonts fonts, KansoTextSize textSize, AppearanceStatus status
 });
 
 
-$KansoFontsCopyWith<$Res> get fonts;
+$ThemeSelectionCopyWith<$Res> get selection;$KansoPaletteCopyWith<$Res> get light;$KansoPaletteCopyWith<$Res> get dark;$KansoFontsCopyWith<$Res> get fonts;
 
 }
 /// @nodoc
@@ -608,15 +687,45 @@ class _$AppearanceStateCopyWithImpl<$Res>
 
 /// Create a copy of AppearanceState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? mode = null,Object? fonts = null,Object? textSize = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? selection = null,Object? light = null,Object? dark = null,Object? fonts = null,Object? textSize = null,Object? status = null,}) {
   return _then(_self.copyWith(
-mode: null == mode ? _self.mode : mode // ignore: cast_nullable_to_non_nullable
-as AppearanceMode,fonts: null == fonts ? _self.fonts : fonts // ignore: cast_nullable_to_non_nullable
+selection: null == selection ? _self.selection : selection // ignore: cast_nullable_to_non_nullable
+as ThemeSelection,light: null == light ? _self.light : light // ignore: cast_nullable_to_non_nullable
+as KansoPalette,dark: null == dark ? _self.dark : dark // ignore: cast_nullable_to_non_nullable
+as KansoPalette,fonts: null == fonts ? _self.fonts : fonts // ignore: cast_nullable_to_non_nullable
 as KansoFonts,textSize: null == textSize ? _self.textSize : textSize // ignore: cast_nullable_to_non_nullable
-as KansoTextSize,
+as KansoTextSize,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as AppearanceStatus,
   ));
 }
 /// Create a copy of AppearanceState
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$ThemeSelectionCopyWith<$Res> get selection {
+  
+  return $ThemeSelectionCopyWith<$Res>(_self.selection, (value) {
+    return _then(_self.copyWith(selection: value));
+  });
+}/// Create a copy of AppearanceState
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$KansoPaletteCopyWith<$Res> get light {
+  
+  return $KansoPaletteCopyWith<$Res>(_self.light, (value) {
+    return _then(_self.copyWith(light: value));
+  });
+}/// Create a copy of AppearanceState
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$KansoPaletteCopyWith<$Res> get dark {
+  
+  return $KansoPaletteCopyWith<$Res>(_self.dark, (value) {
+    return _then(_self.copyWith(dark: value));
+  });
+}/// Create a copy of AppearanceState
 /// with the given fields replaced by the non-null parameter values.
 @override
 @pragma('vm:prefer-inline')
@@ -707,10 +816,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( AppearanceMode mode,  KansoFonts fonts,  KansoTextSize textSize)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( ThemeSelection selection,  KansoPalette light,  KansoPalette dark,  KansoFonts fonts,  KansoTextSize textSize,  AppearanceStatus status)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _AppearanceState() when $default != null:
-return $default(_that.mode,_that.fonts,_that.textSize);case _:
+return $default(_that.selection,_that.light,_that.dark,_that.fonts,_that.textSize,_that.status);case _:
   return orElse();
 
 }
@@ -728,10 +837,10 @@ return $default(_that.mode,_that.fonts,_that.textSize);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( AppearanceMode mode,  KansoFonts fonts,  KansoTextSize textSize)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( ThemeSelection selection,  KansoPalette light,  KansoPalette dark,  KansoFonts fonts,  KansoTextSize textSize,  AppearanceStatus status)  $default,) {final _that = this;
 switch (_that) {
 case _AppearanceState():
-return $default(_that.mode,_that.fonts,_that.textSize);case _:
+return $default(_that.selection,_that.light,_that.dark,_that.fonts,_that.textSize,_that.status);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -748,10 +857,10 @@ return $default(_that.mode,_that.fonts,_that.textSize);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( AppearanceMode mode,  KansoFonts fonts,  KansoTextSize textSize)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( ThemeSelection selection,  KansoPalette light,  KansoPalette dark,  KansoFonts fonts,  KansoTextSize textSize,  AppearanceStatus status)?  $default,) {final _that = this;
 switch (_that) {
 case _AppearanceState() when $default != null:
-return $default(_that.mode,_that.fonts,_that.textSize);case _:
+return $default(_that.selection,_that.light,_that.dark,_that.fonts,_that.textSize,_that.status);case _:
   return null;
 
 }
@@ -762,13 +871,21 @@ return $default(_that.mode,_that.fonts,_that.textSize);case _:
 /// @nodoc
 
 
-class _AppearanceState implements AppearanceState {
-  const _AppearanceState({this.mode = AppearanceMode.system, this.fonts = const KansoFonts(), this.textSize = KansoTextSize.standard});
+class _AppearanceState extends AppearanceState {
+  const _AppearanceState({this.selection = const ThemeSelection(), this.light = KansoPalette.kansoLight, this.dark = KansoPalette.kansoDark, this.fonts = const KansoFonts(), this.textSize = KansoTextSize.standard, this.status = AppearanceStatus.loading}): super._();
   
 
-@override@JsonKey() final  AppearanceMode mode;
+/// The themes chosen.
+@override@JsonKey() final  ThemeSelection selection;
+/// The palette of the app's light theme: the light slot while the system
+/// is followed, the fixed theme otherwise.
+@override@JsonKey() final  KansoPalette light;
+/// The palette of the app's dark theme: the dark slot while the system
+/// is followed, the fixed theme otherwise (so the same as [light]).
+@override@JsonKey() final  KansoPalette dark;
 @override@JsonKey() final  KansoFonts fonts;
 @override@JsonKey() final  KansoTextSize textSize;
+@override@JsonKey() final  AppearanceStatus status;
 
 /// Create a copy of AppearanceState
 /// with the given fields replaced by the non-null parameter values.
@@ -780,16 +897,16 @@ _$AppearanceStateCopyWith<_AppearanceState> get copyWith => __$AppearanceStateCo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppearanceState&&(identical(other.mode, mode) || other.mode == mode)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.textSize, textSize) || other.textSize == textSize));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppearanceState&&(identical(other.selection, selection) || other.selection == selection)&&(identical(other.light, light) || other.light == light)&&(identical(other.dark, dark) || other.dark == dark)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.textSize, textSize) || other.textSize == textSize)&&(identical(other.status, status) || other.status == status));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,mode,fonts,textSize);
+int get hashCode => Object.hash(runtimeType,selection,light,dark,fonts,textSize,status);
 
 @override
 String toString() {
-  return 'AppearanceState(mode: $mode, fonts: $fonts, textSize: $textSize)';
+  return 'AppearanceState(selection: $selection, light: $light, dark: $dark, fonts: $fonts, textSize: $textSize, status: $status)';
 }
 
 
@@ -800,11 +917,11 @@ abstract mixin class _$AppearanceStateCopyWith<$Res> implements $AppearanceState
   factory _$AppearanceStateCopyWith(_AppearanceState value, $Res Function(_AppearanceState) _then) = __$AppearanceStateCopyWithImpl;
 @override @useResult
 $Res call({
- AppearanceMode mode, KansoFonts fonts, KansoTextSize textSize
+ ThemeSelection selection, KansoPalette light, KansoPalette dark, KansoFonts fonts, KansoTextSize textSize, AppearanceStatus status
 });
 
 
-@override $KansoFontsCopyWith<$Res> get fonts;
+@override $ThemeSelectionCopyWith<$Res> get selection;@override $KansoPaletteCopyWith<$Res> get light;@override $KansoPaletteCopyWith<$Res> get dark;@override $KansoFontsCopyWith<$Res> get fonts;
 
 }
 /// @nodoc
@@ -817,16 +934,46 @@ class __$AppearanceStateCopyWithImpl<$Res>
 
 /// Create a copy of AppearanceState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? mode = null,Object? fonts = null,Object? textSize = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? selection = null,Object? light = null,Object? dark = null,Object? fonts = null,Object? textSize = null,Object? status = null,}) {
   return _then(_AppearanceState(
-mode: null == mode ? _self.mode : mode // ignore: cast_nullable_to_non_nullable
-as AppearanceMode,fonts: null == fonts ? _self.fonts : fonts // ignore: cast_nullable_to_non_nullable
+selection: null == selection ? _self.selection : selection // ignore: cast_nullable_to_non_nullable
+as ThemeSelection,light: null == light ? _self.light : light // ignore: cast_nullable_to_non_nullable
+as KansoPalette,dark: null == dark ? _self.dark : dark // ignore: cast_nullable_to_non_nullable
+as KansoPalette,fonts: null == fonts ? _self.fonts : fonts // ignore: cast_nullable_to_non_nullable
 as KansoFonts,textSize: null == textSize ? _self.textSize : textSize // ignore: cast_nullable_to_non_nullable
-as KansoTextSize,
+as KansoTextSize,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as AppearanceStatus,
   ));
 }
 
 /// Create a copy of AppearanceState
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$ThemeSelectionCopyWith<$Res> get selection {
+  
+  return $ThemeSelectionCopyWith<$Res>(_self.selection, (value) {
+    return _then(_self.copyWith(selection: value));
+  });
+}/// Create a copy of AppearanceState
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$KansoPaletteCopyWith<$Res> get light {
+  
+  return $KansoPaletteCopyWith<$Res>(_self.light, (value) {
+    return _then(_self.copyWith(light: value));
+  });
+}/// Create a copy of AppearanceState
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$KansoPaletteCopyWith<$Res> get dark {
+  
+  return $KansoPaletteCopyWith<$Res>(_self.dark, (value) {
+    return _then(_self.copyWith(dark: value));
+  });
+}/// Create a copy of AppearanceState
 /// with the given fields replaced by the non-null parameter values.
 @override
 @pragma('vm:prefer-inline')

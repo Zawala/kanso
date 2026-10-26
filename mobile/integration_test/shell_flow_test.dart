@@ -24,7 +24,7 @@ void main() {
   testWidgets('a note made on the core check page is reported back', (
     tester,
   ) async {
-    await bootstrap(AppEnvironment.development);
+    await bootstrap(AppEnvironment.integration);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Rust core'));

@@ -14,12 +14,13 @@ import 'package:kanso/design/views/widgets/font_choice_row.dart';
 import 'package:kanso/design/views/widgets/fonts_pane.dart';
 
 import '../../../helpers/pump.dart';
+import '../../../helpers/seeded_appearance_bloc.dart';
 
 Future<AppearanceBloc> _pump(
   WidgetTester tester, {
   AppearanceBloc? bloc,
 }) async {
-  final appearance = bloc ?? AppearanceBloc();
+  final appearance = bloc ?? SeededAppearanceBloc(const AppearanceState());
   addTearDown(appearance.close);
   tester.view
     ..physicalSize = const Size(393, 3000)

@@ -18,11 +18,14 @@ import 'core/bridge/api/locks.dart' as _i983;
 import 'core/bridge/api/renderer.dart' as _i832;
 import 'core/bridge/api/sync.dart' as _i591;
 import 'core/configs/core_module.dart' as _i418;
+import 'core/models/data/library_folder.dart' as _i72;
 import 'core/models/repos/abs/diagnostics_repository.dart' as _i984;
 import 'core/models/repos/abs/library_repository.dart' as _i38;
+import 'core/models/repos/abs/preferences_repository.dart' as _i384;
 import 'core/models/repos/abs/renderer_repository.dart' as _i732;
 import 'core/models/repos/abs/session_repository.dart' as _i333;
 import 'core/models/repos/abs/sync_repository.dart' as _i601;
+import 'core/models/repos/impl/file_preferences_repository.dart' as _i207;
 import 'core/models/repos/impl/rust_diagnostics_repository.dart' as _i1062;
 import 'core/models/repos/impl/rust_library_repository.dart' as _i152;
 import 'core/models/repos/impl/rust_renderer_repository.dart' as _i820;
@@ -30,6 +33,10 @@ import 'core/models/repos/impl/rust_session_repository.dart' as _i899;
 import 'core/models/repos/impl/rust_sync_repository.dart' as _i564;
 import 'core/state/appearance/appearance_bloc.dart' as _i551;
 import 'core_check/state/core_check/core_check_bloc.dart' as _i226;
+
+const String _development = 'development';
+const String _production = 'production';
+const String _integration = 'integration';
 
 extension GetItInjectableX on _i174.GetIt {
   // initializes the registration of main-scope dependencies inside of GetIt
@@ -39,22 +46,25 @@ extension GetItInjectableX on _i174.GetIt {
   }) async {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
     final coreModule = _$CoreModule();
-    gh.factory<_i551.AppearanceBloc>(() => _i551.AppearanceBloc());
-    await gh.singletonAsync<_i455.KansoLibrary>(
-      () => coreModule.library(),
-      preResolve: true,
-    );
     gh.lazySingleton<_i984.DiagnosticsRepository>(
       () => _i1062.RustDiagnosticsRepository(),
     );
-    gh.lazySingleton<_i38.LibraryRepository>(
-      () => _i152.RustLibraryRepository(gh<_i455.KansoLibrary>()),
+    await gh.singletonAsync<_i72.LibraryFolder>(
+      () => coreModule.libraryFolder(),
+      registerFor: {_development, _production},
+      preResolve: true,
     );
-    gh.factory<_i226.CoreCheckBloc>(
-      () => _i226.CoreCheckBloc(
-        gh<_i38.LibraryRepository>(),
-        gh<_i984.DiagnosticsRepository>(),
-      ),
+    await gh.singletonAsync<_i72.LibraryFolder>(
+      () => coreModule.temporaryLibraryFolder(),
+      registerFor: {_integration},
+      preResolve: true,
+    );
+    gh.lazySingleton<_i384.PreferencesRepository>(
+      () => _i207.FilePreferencesRepository(gh<_i72.LibraryFolder>()),
+    );
+    await gh.singletonAsync<_i455.KansoLibrary>(
+      () => coreModule.library(gh<_i72.LibraryFolder>()),
+      preResolve: true,
     );
     gh.lazySingleton<_i983.KansoLocks>(
       () => coreModule.locks(gh<_i455.KansoLibrary>()),
@@ -67,6 +77,21 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i732.RendererRepository>(
       () => _i820.RustRendererRepository(gh<_i832.KansoRenderer>()),
+    );
+    gh.factory<_i551.AppearanceBloc>(
+      () => _i551.AppearanceBloc(
+        gh<_i384.PreferencesRepository>(),
+        gh<_i732.RendererRepository>(),
+      ),
+    );
+    gh.lazySingleton<_i38.LibraryRepository>(
+      () => _i152.RustLibraryRepository(gh<_i455.KansoLibrary>()),
+    );
+    gh.factory<_i226.CoreCheckBloc>(
+      () => _i226.CoreCheckBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i984.DiagnosticsRepository>(),
+      ),
     );
     gh.lazySingleton<_i601.SyncRepository>(
       () => _i564.RustSyncRepository(gh<_i591.KansoSync>()),

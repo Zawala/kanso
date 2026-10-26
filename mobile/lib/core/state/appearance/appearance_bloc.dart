@@ -3,51 +3,183 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'package:bloc/bloc.dart';
+import 'package:bloc_concurrency/bloc_concurrency.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:injectable/injectable.dart';
 
-import '../../models/data/appearance_mode.dart';
+import '../../configs/kanso_palette.dart';
+import '../../models/data/appearance_status.dart';
 import '../../models/data/kanso_font_family.dart';
 import '../../models/data/kanso_fonts.dart';
 import '../../models/data/kanso_text_size.dart';
+import '../../models/data/preferences.dart';
+import '../../models/data/theme_selection.dart';
+import '../../models/repos/abs/preferences_repository.dart';
+import '../../models/repos/abs/renderer_repository.dart';
+import '../../utils/palette_from_tokens.dart';
 
 part 'appearance_bloc.freezed.dart';
 part 'appearance_event.dart';
 part 'appearance_state.dart';
 
-/// Holds how the app looks: light, dark or the device's setting, the fonts
-/// of notes and the size of their text.
+/// Holds how the app looks: the themes it is drawn in, the fonts of notes
+/// and the size of their text.
 ///
-/// The choice is kept in memory only; saving it comes with the settings
-/// storage.
+/// Every choice is shown at once and then saved in the preferences, so it is
+/// still there at the next start. A choice that cannot be saved stays for
+/// this run. Events are handled one after another, in the order they came.
 @injectable
 class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
-  AppearanceBloc() : super(const AppearanceState()) {
-    on<AppearanceStartedEvent>((event, emit) {
-      emit(const AppearanceState());
-    });
-    on<AppearanceChangedEvent>((event, emit) {
-      emit(state.copyWith(mode: event.mode));
-    });
-    on<AppearanceEditorFontChangedEvent>((event, emit) {
-      emit(
-        state.copyWith(fonts: state.fonts.copyWith(editorFont: event.font)),
-      );
-    });
-    on<AppearancePreviewFontChangedEvent>((event, emit) {
-      emit(
-        state.copyWith(fonts: state.fonts.copyWith(previewFont: event.font)),
-      );
-    });
-    on<AppearanceCodeFontChangedEvent>((event, emit) {
-      // Code is always monospaced: any other family is ignored.
-      if (!event.font.monospaced) {
-        return;
+  AppearanceBloc(this._preferences, this._renderer)
+    : super(const AppearanceState()) {
+    // One handler for every event, so they all run one after another in the
+    // order they came (a transformer orders only the events of one handler).
+    on<AppearanceEvent>(
+      (event, emit) => switch (event) {
+        AppearanceStartedEvent() => _onStarted(emit),
+        AppearanceThemePickedEvent(:final id, :final dark) => _onThemePicked(
+          id,
+          dark,
+          emit,
+        ),
+        AppearanceFollowSystemChangedEvent(:final follow) =>
+          _onFollowSystemChanged(follow, emit),
+        AppearanceEditorFontChangedEvent(:final font) => _changeFonts(
+          emit,
+          state.fonts.copyWith(editorFont: font),
+        ),
+        AppearancePreviewFontChangedEvent(:final font) => _changeFonts(
+          emit,
+          state.fonts.copyWith(previewFont: font),
+        ),
+        // Code is always monospaced: any other family is ignored.
+        AppearanceCodeFontChangedEvent(:final font) =>
+          font.monospaced
+              ? _changeFonts(emit, state.fonts.copyWith(codeFont: font))
+              : Future<void>.value(),
+        AppearanceTextSizeChangedEvent(:final size) => _onTextSizeChanged(
+          size,
+          emit,
+        ),
+      },
+      transformer: sequential(),
+    );
+  }
+
+  final PreferencesRepository _preferences;
+  final RendererRepository _renderer;
+  final Map<String, KansoPalette> _palettes = <String, KansoPalette>{
+    KansoPalette.kansoLight.id: KansoPalette.kansoLight,
+    KansoPalette.kansoDark.id: KansoPalette.kansoDark,
+  };
+
+  Future<void> _onStarted(Emitter<AppearanceState> emit) async {
+    final loaded = await _preferences.load();
+    final preferences = loaded.getOrElse(Preferences.new);
+    final shown = await _paletteSlots(preferences.themeSelection);
+    emit(
+      AppearanceState(
+        selection: preferences.themeSelection,
+        light: shown.light,
+        dark: shown.dark,
+        fonts: preferences.fonts,
+        textSize: preferences.textSize,
+        status: loaded.isRight() && shown.complete
+            ? AppearanceStatus.ready
+            : AppearanceStatus.failed,
+      ),
+    );
+  }
+
+  Future<void> _onThemePicked(
+    String id,
+    bool dark,
+    Emitter<AppearanceState> emit,
+  ) async {
+    final selection = state.selection.picked(id, dark: dark);
+    await _select(selection, emit);
+  }
+
+  Future<void> _onFollowSystemChanged(
+    bool follow,
+    Emitter<AppearanceState> emit,
+  ) async {
+    final selection = state.selection.copyWith(followSystem: follow);
+    await _select(selection, emit);
+  }
+
+  Future<void> _onTextSizeChanged(
+    KansoTextSize size,
+    Emitter<AppearanceState> emit,
+  ) async {
+    emit(state.copyWith(textSize: size));
+    await _preferences.update((current) => current.copyWith(textSize: size));
+  }
+
+  Future<void> _changeFonts(
+    Emitter<AppearanceState> emit,
+    KansoFonts fonts,
+  ) async {
+    emit(state.copyWith(fonts: fonts));
+    await _preferences.update((current) => current.copyWith(fonts: fonts));
+  }
+
+  /// Shows [selection] and saves it, unless a theme in it cannot be read: a
+  /// theme that is not there changes nothing.
+  Future<void> _select(
+    ThemeSelection selection,
+    Emitter<AppearanceState> emit,
+  ) async {
+    final shown = await _paletteSlots(selection);
+    if (!shown.complete) {
+      return;
+    }
+    emit(
+      state.copyWith(
+        selection: selection,
+        light: shown.light,
+        dark: shown.dark,
+      ),
+    );
+    await _preferences.update(
+      (current) => current.copyWith(themeSelection: selection),
+    );
+  }
+
+  /// The palettes of the app's light and dark themes for [selection], and
+  /// whether every theme it names was read (a theme that was not is shown as
+  /// Kanso's own for that slot).
+  Future<({KansoPalette light, KansoPalette dark, bool complete})>
+  _paletteSlots(ThemeSelection selection) async {
+    var complete = true;
+    Future<KansoPalette> palette(String id, KansoPalette fallback) async {
+      final found = await _palette(id);
+      if (found == null) {
+        complete = false;
       }
-      emit(state.copyWith(fonts: state.fonts.copyWith(codeFont: event.font)));
-    });
-    on<AppearanceTextSizeChangedEvent>((event, emit) {
-      emit(state.copyWith(textSize: event.size));
+      return found ?? fallback;
+    }
+
+    if (selection.followSystem) {
+      final light = await palette(selection.light, KansoPalette.kansoLight);
+      final dark = await palette(selection.dark, KansoPalette.kansoDark);
+      return (light: light, dark: dark, complete: complete);
+    }
+    final fixed = await palette(selection.ui, KansoPalette.kansoDark);
+    return (light: fixed, dark: fixed, complete: complete);
+  }
+
+  Future<KansoPalette?> _palette(String id) async {
+    final known = _palettes[id];
+    if (known != null) {
+      return known;
+    }
+    final tokens = await _renderer.builtinThemeTokens(id);
+    return tokens.fold((_) => null, (found) {
+      final made = paletteFromTokens(id, found);
+      _palettes[id] = made;
+      return made;
     });
   }
 }

@@ -9,6 +9,7 @@ import 'package:glados/glados.dart'
     show
         Any,
         AnyUtils,
+        BoolAny,
         CombinableAny,
         ExploreConfig,
         Generator,
@@ -20,6 +21,8 @@ import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
+import 'package:kanso/core/models/data/preferences.dart';
+import 'package:kanso/core/models/data/theme_selection.dart';
 
 /// Property tests use this configuration so a failure in CI reproduces
 /// locally: the random source has a fixed seed.
@@ -103,5 +106,58 @@ extension KansoErrorAny on Any {
       7 => KansoError.auth(message: text),
       _ => KansoError.internal(message: text),
     },
+  );
+}
+
+/// Theme names: a few, so picks collide with the slots now and then.
+const List<String> _themeIds = <String>[
+  'kanso-light',
+  'kanso-dark',
+  'nord',
+  'github-light',
+  'dracula',
+];
+
+extension KansoThemeSelectionAny on Any {
+  /// Any built-in theme's name, out of five.
+  Generator<String> get themeId => choose(_themeIds);
+
+  /// Any selection of themes.
+  Generator<ThemeSelection> get themeSelection => combine4(
+    this.bool,
+    themeId,
+    themeId,
+    themeId,
+    (bool follow, String ui, String light, String dark) => ThemeSelection(
+      followSystem: follow,
+      ui: ui,
+      light: light,
+      dark: dark,
+    ),
+  );
+
+  /// Any preferences.
+  Generator<Preferences> get preferences => combine6(
+    themeSelection,
+    fonts,
+    textSize,
+    choose(SortKey.values),
+    this.bool,
+    this.bool,
+    (
+      ThemeSelection themes,
+      KansoFonts fonts,
+      KansoTextSize size,
+      SortKey sort,
+      bool descending,
+      bool seen,
+    ) => Preferences(
+      themeSelection: themes,
+      fonts: fonts,
+      textSize: size,
+      sort: sort,
+      descending: descending,
+      backupNoticeSeen: seen,
+    ),
   );
 }

@@ -6,12 +6,16 @@ part of 'appearance_bloc.dart';
 
 @freezed
 sealed class AppearanceEvent with _$AppearanceEvent {
-  /// The app started: show the default appearance.
+  /// The app started: read the saved appearance.
   const factory AppearanceEvent.started() = AppearanceStartedEvent;
 
-  /// The person picked [mode].
-  const factory AppearanceEvent.changed(AppearanceMode mode) =
-      AppearanceChangedEvent;
+  /// The person picked the theme [id]; [dark] is whether it is a dark one.
+  const factory AppearanceEvent.themePicked(String id, {required bool dark}) =
+      AppearanceThemePickedEvent;
+
+  /// The person turned following the system's light and dark mode on or off.
+  const factory AppearanceEvent.followSystemChanged({required bool follow}) =
+      AppearanceFollowSystemChangedEvent;
 
   /// The person picked [font] for writing in the editor.
   const factory AppearanceEvent.editorFontChanged(KansoFontFamily font) =

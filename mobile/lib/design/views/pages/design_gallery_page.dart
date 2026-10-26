@@ -7,7 +7,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
-import '../../../core/models/data/appearance_mode.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_grouped_section.dart';
@@ -18,6 +17,7 @@ import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../core_check/views/pages/core_check_page.dart';
 import '../../models/data/design_layout.dart';
 import '../../models/data/design_screen.dart';
+import '../../models/data/gallery_appearance.dart';
 import '../../utils/page_for_screen.dart';
 import '../../utils/screen_label.dart';
 
@@ -57,25 +57,26 @@ class DesignGalleryPage extends StatelessWidget {
                 const SizedBox(height: KansoSpacing.md),
                 BlocBuilder<AppearanceBloc, AppearanceState>(
                   builder: (context, state) {
-                    return KansoSegmented<AppearanceMode>(
+                    return KansoSegmented<GalleryAppearance>(
                       expanded: true,
-                      selected: state.mode,
-                      onChanged: (mode) => context.read<AppearanceBloc>().add(
-                        AppearanceEvent.changed(mode),
-                      ),
-                      segments: <KansoSegment<AppearanceMode>>[
-                        KansoSegment<AppearanceMode>(
-                          value: AppearanceMode.system,
+                      selected: GalleryAppearance.of(state),
+                      onChanged: (mode) {
+                        final bloc = context.read<AppearanceBloc>();
+                        mode.events.forEach(bloc.add);
+                      },
+                      segments: <KansoSegment<GalleryAppearance>>[
+                        KansoSegment<GalleryAppearance>(
+                          value: GalleryAppearance.system,
                           label: l10n.appearanceSystem,
                           icon: KansoIcons.monitor,
                         ),
-                        KansoSegment<AppearanceMode>(
-                          value: AppearanceMode.light,
+                        KansoSegment<GalleryAppearance>(
+                          value: GalleryAppearance.light,
                           label: l10n.appearanceLight,
                           icon: KansoIcons.sun,
                         ),
-                        KansoSegment<AppearanceMode>(
-                          value: AppearanceMode.dark,
+                        KansoSegment<GalleryAppearance>(
+                          value: GalleryAppearance.dark,
                           label: l10n.appearanceDark,
                           icon: KansoIcons.moon,
                         ),

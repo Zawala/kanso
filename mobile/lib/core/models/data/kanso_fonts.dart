@@ -7,6 +7,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'kanso_font_family.dart';
 
 part 'kanso_fonts.freezed.dart';
+part 'kanso_fonts.g.dart';
 
 /// The three fonts of a note: the one it is written in, the one it is read
 /// in and the one of its code. The interface keeps Kanso's own font.
@@ -14,16 +15,25 @@ part 'kanso_fonts.freezed.dart';
 abstract class KansoFonts with _$KansoFonts {
   const factory KansoFonts({
     /// Writing in the editor.
-    @Default(KansoFontFamily.instrumentSans) KansoFontFamily editorFont,
+    @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)
+    @Default(KansoFontFamily.instrumentSans)
+    KansoFontFamily editorFont,
 
     /// Reading a note.
-    @Default(KansoFontFamily.instrumentSans) KansoFontFamily previewFont,
+    @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)
+    @Default(KansoFontFamily.instrumentSans)
+    KansoFontFamily previewFont,
 
     /// Code spans, code blocks and the theme previews.
-    @Default(KansoFontFamily.jetBrainsMono) KansoFontFamily codeFont,
+    @JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono)
+    @Default(KansoFontFamily.jetBrainsMono)
+    KansoFontFamily codeFont,
   }) = _KansoFonts;
 
   const KansoFonts._();
+
+  factory KansoFonts.fromJson(Map<String, dynamic> json) =>
+      _$KansoFontsFromJson(json);
 
   /// A short line naming the choice, for a settings row: the editor font
   /// and the code font, with the preview font between them when it is a

@@ -12,8 +12,10 @@ import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 
+import 'helpers/seeded_appearance_bloc.dart';
+
 Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
-  final bloc = AppearanceBloc();
+  final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
   tester.view
     ..physicalSize = const Size(393, 2400)
