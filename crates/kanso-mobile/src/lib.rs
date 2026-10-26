@@ -42,6 +42,7 @@
 
 pub mod background;
 mod backup;
+pub mod biometrics;
 pub mod boundary;
 mod builtin_themes;
 pub mod diagnostics;

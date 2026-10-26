@@ -306,6 +306,20 @@ pub enum LockReason {
     Manual,
     /// The auto-lock time passed.
     Idle,
+    /// The app went to the background.
+    Background,
+}
+
+/// Where the lock session stands, for the screens that offer the lock.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LockStatus {
+    /// Some note or notebook is locked (here or on another device), so a lock
+    /// password exists and a note can be locked with it.
+    pub has_lock_password: bool,
+    /// The lock password has opened the locked notes.
+    pub unlocked: bool,
+    /// Biometrics can open the locked notes on this phone.
+    pub biometrics_on: bool,
 }
 
 /// The lock session changed.

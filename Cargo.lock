@@ -4657,8 +4657,13 @@ name = "kanso-mobile"
 version = "0.8.4"
 dependencies = [
  "async-channel",
+ "base64 0.22.1",
+ "chacha20poly1305",
  "core-foundation 0.10.1",
  "core-foundation-sys",
+ "curve25519-dalek",
+ "getrandom 0.4.3",
+ "hkdf 0.13.0",
  "jni",
  "kanso-core",
  "kanso-engine",
@@ -4670,6 +4675,7 @@ dependencies = [
  "proptest",
  "security-framework 3.7.0",
  "serde_json",
+ "sha2 0.11.1",
  "tempfile",
  "thiserror 2.0.21",
  "zeroize",
@@ -4686,6 +4692,7 @@ dependencies = [
  "kanso-tls",
  "proptest",
  "tempfile",
+ "zeroize",
 ]
 
 [[package]]

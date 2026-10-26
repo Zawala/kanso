@@ -25,6 +25,14 @@ serde_json.workspace = true
 thiserror.workspace = true
 # The secret stores hand values back zeroed on drop.
 zeroize.workspace = true
+# Biometric unlock (`biometrics`): the X25519 pair, the key derivation and the
+# sealing of the kept lock keys, the same primitives `kanso-sync` uses.
+base64.workspace = true
+chacha20poly1305.workspace = true
+curve25519-dalek.workspace = true
+getrandom.workspace = true
+hkdf.workspace = true
+sha2.workspace = true
 
 # The Keychain: generic passwords, readable after the first unlock and never
 # leaving the device. Already in the iOS tree, through the certificate

@@ -10,6 +10,11 @@
 //! payloads, which only ever carry IDs and states, are checked at the end for
 //! any marker at all. A model of which notes are closed (locked, and the
 //! session not open) decides what "closed" means; it never asks the library.
+//!
+//! Locking by hand, by the auto-lock or by the app going to the background,
+//! and opening and closing with biometrics, are among the calls: after any
+//! lock no key survives, and every locked note reads closed through every
+//! read path.
 
 mod common;
 
@@ -18,6 +23,7 @@ use std::time::{Duration, Instant};
 
 use common::*;
 use kanso_engine::lock::AUTO_LOCK;
+use kanso_mobile::biometrics;
 use kanso_mobile::{
     KansoError, ListPlace, ListQuery, LockEvent, NoteChange, NoteRow, PaletteDto, Renderer,
     SearchScope, SortKey,
@@ -71,6 +77,38 @@ fn palette() -> PaletteDto {
     Renderer::theme_tokens(theme.into()).unwrap().palette
 }
 
+/// The secret the platform keeps, and one that isn't it.
+const SECRET_B: [u8; 32] = [9; 32];
+const OTHER_B: [u8; 32] = [8; 32];
+
+/// What no key leaves open: every note locked reads closed by every path.
+fn sweep(
+    library: &kanso_mobile::Library,
+    ids: &[String],
+    locked: &[bool],
+) -> Result<(), TestCaseError> {
+    for (i, id) in ids.iter().enumerate() {
+        if !locked[i] {
+            continue;
+        }
+        let view = library.note(id).unwrap();
+        prop_assert_eq!(&view.body, &None);
+        prop_assert!(view.lock.is_closed());
+        prop_assert_eq!(library.save(id, &view.rev, "x".into()), Err(KansoError::Locked));
+        prop_assert!(!library.locks().is_note_unlocked(id).unwrap());
+        let text = format!(
+            "{:?}",
+            (
+                library.list(ListQuery::default()).unwrap().rows,
+                library.search(&marker(i), SearchScope::All, 0).unwrap(),
+                library.renderer().preview_html(id, palette()),
+            )
+        );
+        prop_assert!(!text.contains(&marker(i)), "{text}");
+    }
+    Ok(())
+}
+
 /// One call of the sequence.
 #[derive(Clone, Debug)]
 enum Op {
@@ -91,6 +129,13 @@ enum Op {
     UnlockWrong,
     IsNoteUnlocked(usize),
     Idle,
+    /// The app goes to the background.
+    Background,
+    /// Biometrics are turned on.
+    BioEnroll,
+    /// Biometrics are asked to open the notes, with the right secret or not.
+    BioUnlock(bool),
+    BioOff,
     /// A place and narrowing of the list: which place, status narrowing,
     /// pinned only, which sort.
     List(usize, bool, bool, usize),
@@ -121,6 +166,10 @@ fn ops() -> impl Strategy<Value = Vec<Op>> {
             1 => Just(Op::UnlockWrong),
             1 => index.clone().prop_map(Op::IsNoteUnlocked),
             1 => Just(Op::Idle),
+            2 => Just(Op::Background),
+            2 => Just(Op::BioEnroll),
+            2 => any::<bool>().prop_map(Op::BioUnlock),
+            1 => Just(Op::BioOff),
             4 => (0..6usize, any::<bool>(), any::<bool>(), 0..3usize)
                 .prop_map(|(p, s, o, k)| Op::List(p, s, o, k)),
             3 => (index.clone(), 0..3usize).prop_map(|(i, k)| Op::Change(i, k)),
@@ -169,6 +218,7 @@ proptest! {
             }
         }
         let mut trashed = [false; NOTES];
+        let mut biometrics_on = false;
 
         for op in ops {
             // What is closed as this call starts, and what it returns, as text.
@@ -391,6 +441,7 @@ proptest! {
                 Op::LockSession => {
                     locks.lock().unwrap();
                     open = false;
+                    sweep(library, &ids, &locked)?;
                 }
                 Op::UnlockRight => match locks.unlock(LOCK_PASSWORD.into()) {
                     Ok(true) => { prop_assert!(any_lock); open = true; }
@@ -408,6 +459,47 @@ proptest! {
                     let later = Instant::now() + AUTO_LOCK + Duration::from_secs(1);
                     prop_assert_eq!(locks.lock_if_idle(later), open);
                     open = false;
+                    sweep(library, &ids, &locked)?;
+                }
+                Op::Background => {
+                    locks.lock_for_background().unwrap();
+                    open = false;
+                    prop_assert!(!locks.is_unlocked().unwrap());
+                    sweep(library, &ids, &locked)?;
+                }
+                Op::BioEnroll => match locks.begin_biometric_enrollment() {
+                    Ok(ticket) => {
+                        prop_assert!(open);
+                        prop_assert_eq!(
+                            biometrics::deliver(ticket, 0, Some(&SECRET_B)),
+                            1
+                        );
+                        biometrics_on = true;
+                    }
+                    Err(err) => {
+                        prop_assert_eq!(err, KansoError::Locked);
+                        prop_assert!(!open);
+                    }
+                },
+                Op::BioUnlock(right) => {
+                    let ticket = locks.begin_biometric_unlock().unwrap();
+                    prop_assert_eq!(ticket.is_some(), biometrics_on);
+                    if let Some(ticket) = ticket {
+                        let b = if *right { SECRET_B } else { OTHER_B };
+                        let answer = biometrics::deliver(ticket, 0, Some(&b));
+                        if *right {
+                            prop_assert_eq!(answer, 1);
+                            open = true;
+                        } else {
+                            prop_assert_eq!(answer, -1);
+                            biometrics_on = false;
+                            prop_assert_eq!(locks.begin_biometric_unlock().unwrap(), None);
+                        }
+                    }
+                }
+                Op::BioOff => {
+                    locks.turn_off_biometrics().unwrap();
+                    biometrics_on = false;
                 }
             }
             prop_assert_eq!(locks.is_unlocked().unwrap(), open, "the session after {:?}", op);
