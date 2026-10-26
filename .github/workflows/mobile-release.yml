@@ -213,6 +213,16 @@ jobs:
           [ "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Info.plist")" = "$VERSION" ]
           [ "$(plutil -extract CFBundleVersion raw -o - "$app/Info.plist")" = "$NUMBER" ]
           echo "The archive is $VERSION ($NUMBER)."
+      # The archive's debug symbols, so the native frames of a crash report
+      # (docs/CRASH-REPORTS.md: binary, offset, UUID) can be symbolicated.
+      - name: Keep the debug symbols
+        if: needs.version.outputs.upload == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: kanso-ios-dsyms-${{ needs.version.outputs.name }}-${{ needs.version.outputs.number }}
+          path: mobile/build/ios/archive/Runner.xcarchive/dSYMs
+          if-no-files-found: warn
+          retention-days: 90
 
       # Xcode creates or fetches the Apple Distribution certificate and the
       # App Store profile through the API key (cloud signing), as the owner's
@@ -314,6 +324,26 @@ jobs:
           key: hooks-${{ runner.os }}-android-aab-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mobile/rust/rust-toolchain.toml') }}
           restore-keys: hooks-${{ runner.os }}-android-aab-
       - run: flutter pub get --enforce-lockfile
+      # Gradle installs the NDK Flutter asks for on first use, and that
+      # download sometimes arrives broken ("Archive is not a ZIP archive").
+      # Installing it here first, with retries, keeps a release from failing
+      # on it.
+      - name: Install the NDK
+        run: |
+          ndk="$(grep -hoE 'val ndkVersion: String = "[0-9.]+"' "$FLUTTER_ROOT/packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt" | grep -oE '[0-9][0-9.]+')"
+          [ -n "$ndk" ] || { echo "::error::Couldn't read Flutter's NDK version."; exit 1; }
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | sort | tail -n 1)"
+          for attempt in 1 2 3; do
+            if printf 'y\n%.0s' {1..20} | "$sdkmanager" --install "ndk;$ndk" >/dev/null && [ -f "$ANDROID_HOME/ndk/$ndk/source.properties" ]; then
+              echo "NDK $ndk installed."
+              exit 0
+            fi
+            echo "::warning::Installing NDK $ndk failed (attempt $attempt); retrying."
+            rm -rf "$ANDROID_HOME/ndk/$ndk"
+            sleep 10
+          done
+          echo "::error::NDK $ndk could not be installed."
+          exit 1
 
       - name: Which secrets are set
         id: have
