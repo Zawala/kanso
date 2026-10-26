@@ -9,10 +9,11 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    ColorRow, DiagramKind, Hit, KansoError, LockEvent, LockReason, LockState, NewNote, NoteQuery,
-    NoteRow, NoteView, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved, ServerInfo,
-    SortKey, SpanRow, SvgRow, SyncPhase, SyncProblemKind, SyncReportRow, SyncStatus,
-    SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
+    BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview, ListPlace,
+    ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow,
+    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved,
+    SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind,
+    SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
 };
 
 #[frb(mirror(KansoError))]
@@ -67,16 +68,73 @@ pub struct _NoteView {
     pub updated_ms: i64,
 }
 
-#[frb(mirror(NoteQuery))]
-pub struct _NoteQuery {
-    pub notebook_id: Option<String>,
-    pub tag_id: Option<String>,
-    pub status: Option<String>,
-    pub trash: bool,
-    pub limit: u32,
-    pub skip: u32,
+#[frb(mirror(ListPlace))]
+pub enum _ListPlace {
+    All,
+    Pinned,
+    Recent,
+    Notebook { id: String },
+    Tag { id: String },
+    Trash,
+}
+
+#[frb(mirror(ListQuery))]
+pub struct _ListQuery {
+    pub place: ListPlace,
+    pub status_only: Option<String>,
+    pub pinned_only: bool,
     pub sort: SortKey,
     pub descending: bool,
+}
+
+#[frb(mirror(DateField))]
+pub enum _DateField {
+    Updated,
+    Created,
+}
+
+#[frb(mirror(ListShape))]
+pub struct _ListShape {
+    pub sort: SortKey,
+    pub by_date: bool,
+    pub date: DateField,
+    pub group_pinned: bool,
+}
+
+#[frb(mirror(NoteList))]
+pub struct _NoteList {
+    pub rows: Vec<NoteRow>,
+    pub shape: ListShape,
+}
+
+#[frb(mirror(LibraryOverview))]
+pub struct _LibraryOverview {
+    pub all: u32,
+    pub pinned: u32,
+    pub recent: u32,
+    pub trash: u32,
+}
+
+#[frb(mirror(NoteChange))]
+pub enum _NoteChange {
+    TogglePin,
+    Move { notebook_id: String },
+    Trash,
+}
+
+#[frb(mirror(SearchScope))]
+pub enum _SearchScope {
+    All,
+    Titles,
+    Tags,
+    Notebook { id: String },
+}
+
+#[frb(mirror(NotebookRole))]
+pub enum _NotebookRole {
+    Inbox,
+    Journal,
+    Templates,
 }
 
 #[frb(mirror(SortKey))]
@@ -108,6 +166,8 @@ pub struct _NotebookRow {
     pub locked: bool,
     pub icon: Option<String>,
     pub color: Option<String>,
+    pub role: Option<NotebookRole>,
+    pub depth: u32,
 }
 
 #[frb(mirror(TagRow))]
@@ -272,6 +332,25 @@ pub struct _ThemeTokens {
     pub selection_alpha: u8,
     pub syntax: Vec<SyntaxStyleRow>,
     pub palette: PaletteDto,
+}
+
+#[frb(mirror(BuiltinTheme))]
+pub struct _BuiltinTheme {
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub license: String,
+    pub source: Option<String>,
+    pub dark: bool,
+    pub tokens: ThemeTokens,
+}
+
+#[frb(mirror(StyledRun))]
+pub struct _StyledRun {
+    pub range: Range16,
+    pub color: Option<u32>,
+    pub italic: Option<bool>,
+    pub weight: Option<u16>,
 }
 
 #[frb(mirror(DiagramKind))]

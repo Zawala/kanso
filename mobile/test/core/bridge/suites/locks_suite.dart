@@ -48,12 +48,19 @@ void locksSuite(OpenLibrary open) {
         expect(closed.body, isNull);
         // The title shows; the text never does.
         expect(closed.title, 'Plan');
-        final row = (await library.notes(query: everyNote)).single;
+        final row = (await library.list(query: everyNote)).rows.single;
         expect(row.locked, isTrue);
         expect(row.title, 'Plan');
         expect(row.snippet, isEmpty);
         expect(await library.properties(id: id), isEmpty);
-        expect(await library.search(text: 'secret', limit: 10), isEmpty);
+        expect(
+          await library.search(
+            text: 'secret',
+            scope: const SearchScope.all(),
+            limit: 10,
+          ),
+          isEmpty,
+        );
         await expectLater(
           library.save(id: id, baseRev: closed.rev, body: 'overwritten'),
           throwsA(isA<KansoError_Locked>()),

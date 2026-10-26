@@ -22,4 +22,9 @@ abstract interface class DiagnosticsRepository {
   /// reads it back and removes it: the round trip the signed-in account's
   /// session takes, with nothing of the account's.
   Future<Either<ApplicationError, Unit>> secretsProbe();
+
+  /// Whether the library folder [folder] is kept out of the device's
+  /// backups: true on iOS once a library is open in it, null on Android (its
+  /// manifest does that) and for a folder that isn't there.
+  Future<Either<ApplicationError, bool?>> backupExcluded(String folder);
 }

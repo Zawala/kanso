@@ -146,6 +146,10 @@ Every dependency is MIT, BSD or Apache licensed.
 | `dartz` | `Either` for repository results | MIT |
 | `path_provider` | The folder the library lives in | BSD-3-Clause |
 
+The Rust library adds `core-foundation` and `core-foundation-sys` (Apple
+targets only, MIT or Apache-2.0, already in the iOS tree through
+`security-framework`) to mark the library's folder as excluded from backups.
+
 Development only:
 
 | Package | Used for | Licence |

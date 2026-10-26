@@ -43,16 +43,18 @@ void main() {
 
     // Leave the library as it was found.
     final library = getIt<LibraryRepository>();
-    final notes = await library.notes(
-      const NoteQuery(
-        trash: false,
-        limit: 0,
-        skip: 0,
+    final notes = await library.list(
+      const ListQuery(
+        place: ListPlace.all(),
+        pinnedOnly: false,
         sort: SortKey.updated,
         descending: true,
       ),
     );
-    final made = notes.getOrElse(() => <NoteRow>[]).first;
+    final made = notes
+        .map((list) => list.rows)
+        .getOrElse(() => <NoteRow>[])
+        .first;
     expect(made.title, startsWith('Core check '));
     final trashed = await library.trash(made.id);
     expect(trashed, const Right<ApplicationError, Unit>(unit));

@@ -36,10 +36,9 @@ class CoreCheckBloc extends Bloc<CoreCheckEvent, CoreCheckState> {
   static const int latestCount = 3;
 
   /// Every note outside the trash, the newest edit first.
-  static const NoteQuery _everyNote = NoteQuery(
-    trash: false,
-    limit: 0,
-    skip: 0,
+  static const ListQuery _everyNote = ListQuery(
+    place: ListPlace.all(),
+    pinnedOnly: false,
     sort: SortKey.updated,
     descending: true,
   );
@@ -55,7 +54,7 @@ class CoreCheckBloc extends Bloc<CoreCheckEvent, CoreCheckState> {
     emit(const CoreCheckState());
     final version = await _diagnostics.version();
     final tls = await _diagnostics.tlsReady();
-    final notes = await _library.notes(_everyNote);
+    final notes = (await _library.list(_everyNote)).map((list) => list.rows);
     final error = _firstError(<Either<ApplicationError, Object?>>[
       version,
       tls,
@@ -102,17 +101,20 @@ class CoreCheckBloc extends Bloc<CoreCheckEvent, CoreCheckState> {
     CoreCheckChangeReceivedEvent event,
     Emitter<CoreCheckState> emit,
   ) async {
-    final notes = await _library.notes(_everyNote);
-    notes.fold((error) => emit(state.copyWith(error: error)), (rows) {
-      emit(
-        state.copyWith(
-          noteCount: rows.length,
-          latest: rows.take(latestCount).toList(),
-          lastChange: event.ids,
-          error: null,
-        ),
-      );
-    });
+    final listed = await _library.list(_everyNote);
+    listed.map((list) => list.rows).fold(
+      (error) => emit(state.copyWith(error: error)),
+      (rows) {
+        emit(
+          state.copyWith(
+            noteCount: rows.length,
+            latest: rows.take(latestCount).toList(),
+            lastChange: event.ids,
+            error: null,
+          ),
+        );
+      },
+    );
   }
 
   ApplicationError? _firstError(

@@ -41,6 +41,62 @@ void rendererSuite(OpenLibrary open) {
       );
     });
 
+    test("the built-in themes are the desktop's, fitted", () async {
+      final themes = await KansoRenderer.builtinThemes();
+      expect(themes.length, greaterThan(20));
+      expect(themes.take(2).map((theme) => theme.id), <String>[
+        'kanso-light',
+        'kanso-dark',
+      ]);
+      expect(themes.map((theme) => theme.id).toSet(), hasLength(themes.length));
+      final nord = themes.firstWhere((theme) => theme.id == 'nord');
+      expect(nord.dark, isTrue);
+      expect(nord.name, isNotEmpty);
+      expect(nord.license, isNotEmpty);
+      final tokens = await KansoRenderer.builtinThemeTokens(id: 'nord');
+      expect(tokens.name, nord.tokens.name);
+      expect(tokens.caret, nord.tokens.caret);
+      expect(tokens.ui.length, nord.tokens.ui.length);
+      expect(tokens.ui.first.rgb, nord.tokens.ui.first.rgb);
+      expect(tokens.palette.background, nord.tokens.palette.background);
+      await expectLater(
+        KansoRenderer.builtinThemeTokens(id: 'nope'),
+        throwsA(isA<KansoError_NotFound>()),
+      );
+    });
+
+    test("source is styled in a theme's colours", () async {
+      const text = '# Title\n\nSome `code` here.\n';
+      final runs = await KansoRenderer.styledRuns(
+        text: text,
+        start: 0,
+        end: text.length,
+        themeId: 'nord',
+      );
+      expect(runs, isNotEmpty);
+      for (final run in runs) {
+        expect(run.range.start, lessThan(run.range.end));
+        expect(run.range.end, lessThanOrEqualTo(text.length));
+        expect(
+          run.color != null || run.italic != null || run.weight != null,
+          isTrue,
+        );
+      }
+      final heading = (await KansoRenderer.builtinThemeTokens(
+        id: 'nord',
+      )).syntax.firstWhere((style) => style.token == 'heading');
+      expect(runs.any((run) => run.color == heading.color), isTrue);
+      await expectLater(
+        KansoRenderer.styledRuns(
+          text: text,
+          start: 0,
+          end: text.length,
+          themeId: 'nope',
+        ),
+        throwsA(isA<KansoError_NotFound>()),
+      );
+    });
+
     test(
       'highlighting gives runs inside the range, with their tokens',
       () async {

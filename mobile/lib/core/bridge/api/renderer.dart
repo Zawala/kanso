@@ -11,6 +11,14 @@ import 'types.dart';
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoRenderer>>
 abstract class KansoRenderer implements RustOpaqueInterface {
+  static Future<ThemeTokens> builtinThemeTokens({required String id}) =>
+      KansoCore.instance.api.crateApiRendererKansoRendererBuiltinThemeTokens(
+        id: id,
+      );
+
+  static Future<List<BuiltinTheme>> builtinThemes() =>
+      KansoCore.instance.api.crateApiRendererKansoRendererBuiltinThemes();
+
   static Future<SvgRow> diagramSvg({
     required DiagramKind kind,
     required String source,
@@ -47,6 +55,18 @@ abstract class KansoRenderer implements RustOpaqueInterface {
       .instance
       .api
       .crateApiRendererKansoRendererSetFonts(fonts: fonts);
+
+  static Future<List<StyledRun>> styledRuns({
+    required String text,
+    required int start,
+    required int end,
+    required String themeId,
+  }) => KansoCore.instance.api.crateApiRendererKansoRendererStyledRuns(
+    text: text,
+    start: start,
+    end: end,
+    themeId: themeId,
+  );
 
   static Future<ThemeTokens> themeTokens({required String themeJson}) =>
       KansoCore.instance.api.crateApiRendererKansoRendererThemeTokens(

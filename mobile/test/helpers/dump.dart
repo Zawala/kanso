@@ -37,7 +37,15 @@ String dump(Object? value) {
     Saved() => 'Saved(${value.id}, ${value.rev})',
     NotebookRow() =>
       'NotebookRow(${value.id}, ${value.name}, ${value.parentId}, '
-          '${value.count}, ${value.locked}, ${value.icon}, ${value.color})',
+          '${value.count}, ${value.locked}, ${value.icon}, ${value.color}, '
+          '${value.role}, ${value.depth})',
+    NoteList() => 'NoteList(${dump(value.rows)}, ${dump(value.shape)})',
+    ListShape() =>
+      'ListShape(${value.sort}, ${value.byDate}, ${value.date}, '
+          '${value.groupPinned})',
+    LibraryOverview() =>
+      'LibraryOverview(${value.all}, ${value.pinned}, ${value.recent}, '
+          '${value.trash})',
     TagRow() =>
       'TagRow(${value.id}, ${value.name}, ${value.color}, ${value.count})',
     _ => '$value',

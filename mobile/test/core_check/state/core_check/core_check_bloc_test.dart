@@ -26,9 +26,16 @@ class _MockDiagnostics extends Mock implements DiagnosticsRepository {}
 
 class _FakeNewNote extends Fake implements NewNote {}
 
-class _FakeNoteQuery extends Fake implements NoteQuery {}
+class _FakeListQuery extends Fake implements ListQuery {}
 
 const _error = ApplicationError.storage(message: 'disk');
+
+const _shape = ListShape(
+  sort: SortKey.updated,
+  byDate: true,
+  date: DateField.updated,
+  groupPinned: true,
+);
 
 void main() {
   late _MockLibrary library;
@@ -37,7 +44,7 @@ void main() {
 
   setUpAll(() {
     registerFallbackValue(_FakeNewNote());
-    registerFallbackValue(_FakeNoteQuery());
+    registerFallbackValue(_FakeListQuery());
   });
 
   setUp(() {
@@ -55,9 +62,11 @@ void main() {
   });
 
   void notesAre(List<NoteRow> rows) {
-    when(
-      () => library.notes(any()),
-    ).thenAnswer((_) async => Right<ApplicationError, List<NoteRow>>(rows));
+    when(() => library.list(any())).thenAnswer(
+      (_) async => Right<ApplicationError, NoteList>(
+        NoteList(rows: rows, shape: _shape),
+      ),
+    );
   }
 
   CoreCheckBloc build() => CoreCheckBloc(library, diagnostics);
@@ -88,9 +97,9 @@ void main() {
       'started fails when the library cannot be read',
       setUp: () =>
           when(
-            () => library.notes(any()),
+            () => library.list(any()),
           ).thenAnswer(
-            (_) async => const Left<ApplicationError, List<NoteRow>>(_error),
+            (_) async => const Left<ApplicationError, NoteList>(_error),
           ),
       build: build,
       act: (bloc) => bloc.add(const CoreCheckEvent.started()),
@@ -104,11 +113,13 @@ void main() {
       'started again after a failure tries again',
       setUp: () {
         var calls = 0;
-        when(() => library.notes(any())).thenAnswer((_) async {
+        when(() => library.list(any())).thenAnswer((_) async {
           calls++;
           return calls == 1
-              ? const Left<ApplicationError, List<NoteRow>>(_error)
-              : const Right<ApplicationError, List<NoteRow>>(<NoteRow>[]);
+              ? const Left<ApplicationError, NoteList>(_error)
+              : const Right<ApplicationError, NoteList>(
+                  NoteList(rows: <NoteRow>[], shape: _shape),
+                );
         });
       },
       build: build,

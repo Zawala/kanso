@@ -8,6 +8,49 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'types.freezed.dart';
 
+class BuiltinTheme {
+  final String id;
+  final String name;
+  final String author;
+  final String license;
+  final String? source;
+  final bool dark;
+  final ThemeTokens tokens;
+
+  const BuiltinTheme({
+    required this.id,
+    required this.name,
+    required this.author,
+    required this.license,
+    this.source,
+    required this.dark,
+    required this.tokens,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      name.hashCode ^
+      author.hashCode ^
+      license.hashCode ^
+      source.hashCode ^
+      dark.hashCode ^
+      tokens.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BuiltinTheme &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          author == other.author &&
+          license == other.license &&
+          source == other.source &&
+          dark == other.dark &&
+          tokens == other.tokens;
+}
+
 class ColorRow {
   final String name;
   final int rgb;
@@ -27,6 +70,11 @@ class ColorRow {
           runtimeType == other.runtimeType &&
           name == other.name &&
           rgb == other.rgb;
+}
+
+enum DateField {
+  updated,
+  created,
 }
 
 enum DiagramKind {
@@ -86,6 +134,113 @@ sealed class KansoError with _$KansoError implements FrbException {
   }) = KansoError_Internal;
 }
 
+class LibraryOverview {
+  final int all;
+  final int pinned;
+  final int recent;
+  final int trash;
+
+  const LibraryOverview({
+    required this.all,
+    required this.pinned,
+    required this.recent,
+    required this.trash,
+  });
+
+  @override
+  int get hashCode =>
+      all.hashCode ^ pinned.hashCode ^ recent.hashCode ^ trash.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LibraryOverview &&
+          runtimeType == other.runtimeType &&
+          all == other.all &&
+          pinned == other.pinned &&
+          recent == other.recent &&
+          trash == other.trash;
+}
+
+@freezed
+sealed class ListPlace with _$ListPlace {
+  const ListPlace._();
+
+  const factory ListPlace.all() = ListPlace_All;
+  const factory ListPlace.pinned() = ListPlace_Pinned;
+  const factory ListPlace.recent() = ListPlace_Recent;
+  const factory ListPlace.notebook({
+    required String id,
+  }) = ListPlace_Notebook;
+  const factory ListPlace.tag({
+    required String id,
+  }) = ListPlace_Tag;
+  const factory ListPlace.trash() = ListPlace_Trash;
+}
+
+class ListQuery {
+  final ListPlace place;
+  final String? statusOnly;
+  final bool pinnedOnly;
+  final SortKey sort;
+  final bool descending;
+
+  const ListQuery({
+    required this.place,
+    this.statusOnly,
+    required this.pinnedOnly,
+    required this.sort,
+    required this.descending,
+  });
+
+  @override
+  int get hashCode =>
+      place.hashCode ^
+      statusOnly.hashCode ^
+      pinnedOnly.hashCode ^
+      sort.hashCode ^
+      descending.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ListQuery &&
+          runtimeType == other.runtimeType &&
+          place == other.place &&
+          statusOnly == other.statusOnly &&
+          pinnedOnly == other.pinnedOnly &&
+          sort == other.sort &&
+          descending == other.descending;
+}
+
+class ListShape {
+  final SortKey sort;
+  final bool byDate;
+  final DateField date;
+  final bool groupPinned;
+
+  const ListShape({
+    required this.sort,
+    required this.byDate,
+    required this.date,
+    required this.groupPinned,
+  });
+
+  @override
+  int get hashCode =>
+      sort.hashCode ^ byDate.hashCode ^ date.hashCode ^ groupPinned.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ListShape &&
+          runtimeType == other.runtimeType &&
+          sort == other.sort &&
+          byDate == other.byDate &&
+          date == other.date &&
+          groupPinned == other.groupPinned;
+}
+
 @freezed
 sealed class LockEvent with _$LockEvent {
   const LockEvent._();
@@ -136,51 +291,36 @@ class NewNote {
           body == other.body;
 }
 
-class NoteQuery {
-  final String? notebookId;
-  final String? tagId;
-  final String? status;
-  final bool trash;
-  final int limit;
-  final int skip;
-  final SortKey sort;
-  final bool descending;
+@freezed
+sealed class NoteChange with _$NoteChange {
+  const NoteChange._();
 
-  const NoteQuery({
-    this.notebookId,
-    this.tagId,
-    this.status,
-    required this.trash,
-    required this.limit,
-    required this.skip,
-    required this.sort,
-    required this.descending,
+  const factory NoteChange.togglePin() = NoteChange_TogglePin;
+  const factory NoteChange.move({
+    required String notebookId,
+  }) = NoteChange_Move;
+  const factory NoteChange.trash() = NoteChange_Trash;
+}
+
+class NoteList {
+  final List<NoteRow> rows;
+  final ListShape shape;
+
+  const NoteList({
+    required this.rows,
+    required this.shape,
   });
 
   @override
-  int get hashCode =>
-      notebookId.hashCode ^
-      tagId.hashCode ^
-      status.hashCode ^
-      trash.hashCode ^
-      limit.hashCode ^
-      skip.hashCode ^
-      sort.hashCode ^
-      descending.hashCode;
+  int get hashCode => rows.hashCode ^ shape.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is NoteQuery &&
+      other is NoteList &&
           runtimeType == other.runtimeType &&
-          notebookId == other.notebookId &&
-          tagId == other.tagId &&
-          status == other.status &&
-          trash == other.trash &&
-          limit == other.limit &&
-          skip == other.skip &&
-          sort == other.sort &&
-          descending == other.descending;
+          rows == other.rows &&
+          shape == other.shape;
 }
 
 class NoteRow {
@@ -309,6 +449,12 @@ class NoteView {
           updatedMs == other.updatedMs;
 }
 
+enum NotebookRole {
+  inbox,
+  journal,
+  templates,
+}
+
 class NotebookRow {
   final String id;
   final String name;
@@ -317,6 +463,8 @@ class NotebookRow {
   final bool locked;
   final String? icon;
   final String? color;
+  final NotebookRole? role;
+  final int depth;
 
   const NotebookRow({
     required this.id,
@@ -326,6 +474,8 @@ class NotebookRow {
     required this.locked,
     this.icon,
     this.color,
+    this.role,
+    required this.depth,
   });
 
   @override
@@ -336,7 +486,9 @@ class NotebookRow {
       count.hashCode ^
       locked.hashCode ^
       icon.hashCode ^
-      color.hashCode;
+      color.hashCode ^
+      role.hashCode ^
+      depth.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -349,7 +501,9 @@ class NotebookRow {
           count == other.count &&
           locked == other.locked &&
           icon == other.icon &&
-          color == other.color;
+          color == other.color &&
+          role == other.role &&
+          depth == other.depth;
 }
 
 class PaletteDto {
@@ -502,6 +656,18 @@ class Saved {
           rev == other.rev;
 }
 
+@freezed
+sealed class SearchScope with _$SearchScope {
+  const SearchScope._();
+
+  const factory SearchScope.all() = SearchScope_All;
+  const factory SearchScope.titles() = SearchScope_Titles;
+  const factory SearchScope.tags() = SearchScope_Tags;
+  const factory SearchScope.notebook({
+    required String id,
+  }) = SearchScope_Notebook;
+}
+
 class ServerInfo {
   final bool signupsOpen;
 
@@ -545,6 +711,34 @@ class SpanRow {
           runtimeType == other.runtimeType &&
           range == other.range &&
           tokens == other.tokens;
+}
+
+class StyledRun {
+  final Range16 range;
+  final int? color;
+  final bool? italic;
+  final int? weight;
+
+  const StyledRun({
+    required this.range,
+    this.color,
+    this.italic,
+    this.weight,
+  });
+
+  @override
+  int get hashCode =>
+      range.hashCode ^ color.hashCode ^ italic.hashCode ^ weight.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StyledRun &&
+          runtimeType == other.runtimeType &&
+          range == other.range &&
+          color == other.color &&
+          italic == other.italic &&
+          weight == other.weight;
 }
 
 class SvgRow {

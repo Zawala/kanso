@@ -21,3 +21,10 @@ pub fn tls_ready() -> bool {
 pub fn secrets_probe() -> Result<(), KansoError> {
     kanso_mobile::diagnostics::secrets_probe()
 }
+
+/// Whether the library folder at `folder` is kept out of the device's
+/// backups: `Some(true)` on iOS once a library is open in it, `None` on
+/// Android (its manifest does that) and for a folder that isn't there.
+pub fn backup_excluded(folder: String) -> Option<bool> {
+    kanso_mobile::diagnostics::backup_excluded(std::path::Path::new(&folder))
+}

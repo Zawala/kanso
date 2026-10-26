@@ -80,11 +80,30 @@ void main() {
         final index = operation ~/ 10 % 3;
         switch (operation % 10) {
           case 0:
-            return dump(await notes.library.notes(everyNote));
+            final place = <ListPlace>[
+              const ListPlace.all(),
+              const ListPlace.pinned(),
+              const ListPlace.recent(),
+            ][index];
+            return dump(
+              await notes.library.list(
+                ListQuery(
+                  place: place,
+                  pinnedOnly: false,
+                  sort: SortKey.updated,
+                  descending: true,
+                ),
+              ),
+            );
           case 1:
             return dump(await notes.library.note(ids[index]));
           case 2:
-            return dump(await notes.library.search(_marker));
+            final scope = <SearchScope>[
+              const SearchScope.all(),
+              const SearchScope.titles(),
+              const SearchScope.tags(),
+            ][index];
+            return dump(await notes.library.search(_marker, scope: scope));
           case 3:
             return dump(await notes.library.properties(ids[index]));
           case 4:
@@ -97,11 +116,17 @@ void main() {
             return dump(await notes.renderer.previewHtml(ids[index], _palette));
           case 6:
             return dump(
-              await notes.library.save(
-                id: ids[index],
-                baseRev: 'x',
-                body: 'edited',
-              ),
+              <Object?>[
+                await notes.library.save(
+                  id: ids[index],
+                  baseRev: 'x',
+                  body: 'edited',
+                ),
+                await notes.library.change(<String>[
+                  ids[index],
+                ], const NoteChange.togglePin()),
+                await notes.library.overview(),
+              ],
             );
           case 7:
             return dump(

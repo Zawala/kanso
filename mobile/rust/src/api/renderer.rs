@@ -1,7 +1,10 @@
 //! Drawing: a note's preview, highlighting, themes, math and diagrams.
 
 use flutter_rust_bridge::frb;
-use kanso_mobile::{DiagramKind, KansoError, PaletteDto, Renderer, SpanRow, SvgRow, ThemeTokens};
+use kanso_mobile::{
+    BuiltinTheme, DiagramKind, KansoError, PaletteDto, Renderer, SpanRow, StyledRun, SvgRow,
+    ThemeTokens,
+};
 
 #[frb(opaque)]
 pub struct KansoRenderer(Renderer);
@@ -21,6 +24,23 @@ impl KansoRenderer {
 
     pub fn theme_tokens(theme_json: String) -> Result<ThemeTokens, KansoError> {
         Renderer::theme_tokens(theme_json)
+    }
+
+    pub fn builtin_themes() -> Result<Vec<BuiltinTheme>, KansoError> {
+        Renderer::builtin_themes()
+    }
+
+    pub fn builtin_theme_tokens(id: String) -> Result<ThemeTokens, KansoError> {
+        Renderer::builtin_theme_tokens(id)
+    }
+
+    pub fn styled_runs(
+        text: String,
+        start: u32,
+        end: u32,
+        theme_id: String,
+    ) -> Result<Vec<StyledRun>, KansoError> {
+        Renderer::styled_runs(text, start, end, theme_id)
     }
 
     pub fn math_svg(
