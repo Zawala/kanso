@@ -1,7 +1,10 @@
 name: CI
 
+# CI runs on master and for pull requests from forks only. A branch of this
+# repository is checked before it merges, and checked again on master.
 on:
   push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -24,9 +27,9 @@ jobs:
   # system, and the Linux runner has no dbus headers for the keyring. The
   # runner keeps its target folder between runs, so no cache step.
   rust:
-    # The self-hosted Mac never runs a fork's pull request: that would run a
+    # Self-hosted, so never for a pull request: a fork's would run a
     # stranger's code on the owner's machine.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -59,8 +62,8 @@ jobs:
   # need macOS's fonts and text system.
   portability:
     name: clippy + tests (${{ matrix.os }})
-    # Self-hosted, so never for a fork's pull request.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Self-hosted, so never for a pull request.
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -121,6 +124,7 @@ jobs:
   # set up by scripts/mobile/env.sh. The rust-toolchain.toml doesn't list the
   # phones' targets: the desktop builds never need them.
   engine-mobile:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -138,9 +142,9 @@ jobs:
       - run: scripts/mobile-test.sh ios-sim
 
   worker:
-    # The self-hosted Mac never runs a fork's pull request: that would run a
+    # Self-hosted, so never for a pull request: a fork's would run a
     # stranger's code on the owner's machine.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request'
     # On a Mac: the property tests time out on the small Linux containers.
     runs-on: [self-hosted, macOS]
     defaults:
@@ -158,9 +162,9 @@ jobs:
   # kansoapp.app: types, tests with their coverage floor, and a production
   # build. Nothing here needs Cloudflare credentials; deploying is by hand.
   site:
-    # The self-hosted Mac never runs a fork's pull request: that would run a
+    # Self-hosted, so never for a pull request: a fork's would run a
     # stranger's code on the owner's machine.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, macOS]
     defaults:
       run:
@@ -182,9 +186,9 @@ jobs:
   # Jobs share that Mac, so the script takes a free port the OS picks rather
   # than a fixed KANSO_E2E_PORT.
   e2e:
-    # The self-hosted Mac never runs a fork's pull request: that would run a
+    # Self-hosted, so never for a pull request: a fork's would run a
     # stranger's code on the owner's machine.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, macOS]
     needs: [rust, worker]
     env:
