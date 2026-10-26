@@ -21,21 +21,18 @@ use kanso_engine::account::provider::{
     ProviderDone, ProviderRoute, provider_begin, provider_finish,
 };
 use kanso_engine::account::words::{self, ErrorContext};
-use kanso_engine::account::{Failure, SOMETHING_WRONG, details_from};
+use kanso_engine::account::{Failure, SOMETHING_WRONG};
 use kanso_sync::passkey::PasskeyCeremony;
 use kanso_sync::provider::{IdentityIntent, LinkOutcome, ProviderStart};
-use kanso_sync::{Proof, Session, keychain};
+use kanso_sync::{Proof, Session};
 
 use crate::account::{AccountHandle, RunGuard};
-use crate::account_model::{
-    AccountDetails, DeviceRow, LinkedProviderRow, PasskeyRow, ProviderEvent, ProviderKind,
-};
-use crate::account_provider::{Events, PhoneBrowser, kind_of, open_apple, provider_of};
+use crate::account_model::{AccountDetails, ProviderEvent, ProviderKind};
+use crate::account_provider::{Events, PhoneBrowser, open_apple, provider_of};
 use crate::account_runtime::{begin_new, current, publish};
 use crate::account_settings::AccountSettings;
 use crate::boundary::guard;
 use crate::errors::KansoError;
-use crate::library::Inner;
 use crate::passkey_flow::{Ended, PasskeyError, RpRule, ended};
 use crate::syncing::account_error;
 
@@ -188,8 +185,8 @@ impl AccountSettings {
     }
 
     /// The account's page as it is now, fetched again after a change.
-    fn refreshed(&self, session: &Session) -> Result<AccountDetails, KansoError> {
-        refreshed_details(&self.inner, session)
+    fn refreshed(&self, _session: &Session) -> Result<AccountDetails, KansoError> {
+        self.details()
     }
 
     /// A link: the password proof, then the provider flow on this session's
@@ -277,87 +274,4 @@ impl AccountSettings {
             },
         }
     }
-}
-
-/// The signed-in account's page: its devices, storage, ways in and whether
-/// its recovery key is waiting to be confirmed saved. What the account page
-/// shows after a change; a session the server ended signs the phone out.
-pub(crate) fn refreshed_details(
-    inner: &Arc<Inner>,
-    session: &Session,
-) -> Result<AccountDetails, KansoError> {
-    let backend = inner.backend.as_ref();
-    let account = AccountHandle {
-        inner: inner.clone(),
-    };
-    let fetched = details_from(
-        kanso_sync::usage(backend, session),
-        kanso_sync::devices(backend, session),
-    );
-    let details = match fetched {
-        Ok(details) => details,
-        Err(reason) => {
-            let mut ended = Failure::words(&format!(
-                "{} Sign in again.",
-                words::signed_out_sentence(reason)
-            ));
-            ended.signed_out = Some(reason);
-            return Err(account.settle(ended, ErrorContext::Account));
-        }
-    };
-    if let Some(words) = details.failed {
-        return Err(KansoError::network(words));
-    }
-    let methods = kanso_sync::methods(backend, session)
-        .map_err(|err| account_error(&err, ErrorContext::Account))?;
-    let library_id = inner.store.meta(kanso_sync::meta_keys::LIBRARY_ID)?;
-    let recovery_key_unsaved = match library_id {
-        Some(library_id) => keychain::load_recovery_key(
-            inner.secrets.as_ref(),
-            &library_id,
-            &session.origin,
-            &session.account_id,
-        )?
-        .is_some(),
-        None => false,
-    };
-    Ok(AccountDetails {
-        username: session.username.clone(),
-        server: session.server.clone(),
-        devices: details
-            .devices
-            .unwrap_or_default()
-            .iter()
-            .map(|device| DeviceRow {
-                id: device.id.clone(),
-                title: words::device_title(device),
-                this_device: device.current,
-                last_seen_ms: (device.last_seen_at > 0).then_some(device.last_seen_at),
-            })
-            .collect(),
-        storage_line: details.usage.as_ref().map(words::storage_line),
-        has_password: methods.has_password,
-        providers: methods
-            .available
-            .iter()
-            .filter_map(|provider| {
-                kind_of(provider).map(|kind| LinkedProviderRow {
-                    provider: kind,
-                    linked: methods.linked.iter().any(|link| &link.provider == provider),
-                })
-            })
-            .collect(),
-        passkeys: methods
-            .passkeys
-            .iter()
-            .map(|passkey| PasskeyRow {
-                id: URL_SAFE_NO_PAD.encode(&passkey.credential_id),
-                label: passkey.manager().unwrap_or("Passkey").to_owned(),
-                added_ms: passkey.created_at,
-                last_used_ms: passkey.last_used_at,
-                can_unlock: passkey.prf,
-            })
-            .collect(),
-        recovery_key_unsaved,
-    })
 }

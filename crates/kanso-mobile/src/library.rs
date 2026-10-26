@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::Duration;
 
+use kanso_collab::CollabApi;
+use kanso_collab::http::HttpCollab;
 use kanso_engine::lock::Session as KeySession;
 use kanso_engine::sync::SyncState;
 use kanso_store::Store;
@@ -15,6 +17,7 @@ use kanso_sync::{Backend, HttpBackend, KdfParams};
 use crate::account::AccountHandle;
 use crate::account_settings::AccountSettings;
 use crate::approvals::Approvals;
+use crate::approver_model::Approver;
 use crate::backup;
 use crate::boundary::{guard, held};
 use crate::errors::KansoError;
@@ -22,8 +25,9 @@ use crate::gallery::Gallery;
 use crate::locks::LockSession;
 use crate::model::{LockEvent, SyncStatus};
 use crate::renderer::Renderer;
+use crate::schedule::AutoSync;
 use crate::secrets;
-use crate::sharing::SharedNotes;
+use crate::sharing::{SharedNotes, SharedState};
 use crate::stream::Listeners;
 use crate::syncing::SyncHandle;
 use crate::{Secrets, boundary};
@@ -50,6 +54,16 @@ pub(crate) struct Inner {
     pub(crate) sync_gate: Mutex<()>,
     /// Set to stop the sync that is running.
     pub(crate) sync_cancel: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>,
+    /// Shared notes: the collab server client, the engine of the signed-in
+    /// session, the open rooms (`sharing.rs`).
+    pub(crate) shared: SharedState,
+    /// The sync schedule while the app is in front (`schedule.rs`).
+    pub(crate) auto: AutoSync,
+    /// Where the gallery reads its index from and what it trusts; `None` is
+    /// the real server and the keys compiled in. Tests set their own.
+    pub(crate) gallery_source: Mutex<Option<crate::gallery_net::Source>>,
+    /// What this phone keeps while it approves other devices (`approvals`).
+    pub(crate) approver: Approver,
 }
 
 /// The libraries open in this process, by their database path. A background
@@ -88,18 +102,40 @@ impl Library {
         secrets: Arc<dyn Secrets>,
         backend: Arc<dyn Backend>,
     ) -> Result<Library, KansoError> {
-        guard(|| open_inner(path, secrets, backend, None))
+        guard(|| open_inner(path, secrets, backend, Arc::new(HttpCollab), None))
     }
 
     /// [`Library::open_with`], with cheap key derivation settings for new
-    /// lock passwords, so tests derive in milliseconds.
+    /// lock passwords, so tests derive in milliseconds, and a shared-note
+    /// server of its own in memory: a test never reaches a real one.
     #[cfg(any(test, feature = "test-support"))]
     pub fn open_for_test(
         path: &Path,
         secrets: Arc<dyn Secrets>,
         backend: Arc<dyn Backend>,
     ) -> Result<Library, KansoError> {
-        guard(|| open_inner(path, secrets, backend, Some(KdfParams::TEST)))
+        guard(|| {
+            open_inner(
+                path,
+                secrets,
+                backend,
+                Arc::new(kanso_collab::memory::MemoryCollab::new()),
+                Some(KdfParams::TEST),
+            )
+        })
+    }
+
+    /// [`Library::open_for_test`] with the shared-note server given too
+    /// (`kanso_collab::memory::MemoryCollab`), so two libraries can share
+    /// notes without a network.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn open_for_test_with_collab(
+        path: &Path,
+        secrets: Arc<dyn Secrets>,
+        backend: Arc<dyn Backend>,
+        collab: Arc<dyn CollabApi>,
+    ) -> Result<Library, KansoError> {
+        guard(|| open_inner(path, secrets, backend, collab, Some(KdfParams::TEST)))
     }
 
     /// The library already open at `path` in this process, if any.
@@ -230,6 +266,7 @@ fn open_inner(
     path: &Path,
     secrets: Arc<dyn Secrets>,
     backend: Arc<dyn Backend>,
+    collab: Arc<dyn CollabApi>,
     params: Option<KdfParams>,
 ) -> Result<Library, KansoError> {
     if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
@@ -263,6 +300,10 @@ fn open_inner(
         status_listeners: Listeners::default(),
         sync_gate: Mutex::new(()),
         sync_cancel: Mutex::new(None),
+        shared: SharedState::new(collab),
+        auto: AutoSync::default(),
+        gallery_source: Mutex::new(None),
+        approver: Approver::default(),
     });
     open.retain(|_, inner| inner.strong_count() > 0);
     open.insert(key, Arc::downgrade(&inner));

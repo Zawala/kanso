@@ -604,9 +604,20 @@ impl AccountHandle {
     /// the secret store goes, unless that holds another key by now.
     pub fn recovery_key_saved(&self) -> Result<(), KansoError> {
         guard(|| {
+            let library_id = self.inner.store.meta(meta_keys::LIBRARY_ID)?;
+            // The key this handle showed, or else the one kept in the secret
+            // store (a password or key change in `AccountSettings` keeps its
+            // key there and shows it itself).
             let saved = held(&self.inner.account.shown_key).take();
+            let saved = match (saved, &library_id) {
+                (Some(saved), _) => Some(saved),
+                (None, Some(library_id)) => {
+                    keychain::load_any_recovery_key(self.inner.secrets.as_ref(), library_id)?
+                        .map(|kept| kept.recovery_key)
+                }
+                (None, None) => None,
+            };
             if let Some(saved) = saved {
-                let library_id = self.inner.store.meta(meta_keys::LIBRARY_ID)?;
                 self.flow("").forget_saved_key(library_id, &saved);
             }
             Ok(())

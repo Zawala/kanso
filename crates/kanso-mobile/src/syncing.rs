@@ -14,8 +14,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, MutexGuard, TryLockError};
 
 use kanso_core::now_ms;
-use kanso_engine::account::Flow;
 use kanso_engine::account::words::{self, ErrorContext};
+use kanso_engine::account::{Failure, Flow};
 use kanso_engine::sync::{SyncState, forget_ended_session, run_once};
 use kanso_sync::keychain;
 use kanso_sync::{
@@ -127,6 +127,41 @@ impl SyncHandle {
             self.notify();
             Ok(())
         })
+    }
+
+    /// The app is in front (`true`) or not. In front: sync once now, again
+    /// [`kanso_engine::sync::AFTER_EDIT`] after a local edit and every
+    /// interval after that (the desktop's default), unless a problem holds
+    /// automatic syncs back, and sync shared notes after each account sync
+    /// that worked. Behind: the timers stop, a sync this schedule started is
+    /// cancelled (what it did is kept) and every live note's room closes.
+    /// Signed out, nothing runs. One sync runs at a time.
+    pub fn set_foreground(&self, foreground: bool) {
+        let _ = guard(|| {
+            self.inner.auto.set_foreground(&self.inner, foreground);
+            if !foreground {
+                crate::sharing::SharedNotes {
+                    inner: self.inner.clone(),
+                }
+                .close_all_live();
+            }
+            Ok(())
+        });
+    }
+
+    /// [`SyncHandle::set_foreground`]'s delays, shortened: a test can't wait
+    /// for the real ones.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_schedule_for_test(
+        &self,
+        after_edit: std::time::Duration,
+        interval: std::time::Duration,
+    ) {
+        let millis = |d: std::time::Duration| i64::try_from(d.as_millis()).unwrap_or(i64::MAX);
+        self.inner.auto.set_timing(crate::schedule::Timing {
+            after_edit_ms: millis(after_edit),
+            interval_ms: millis(interval),
+        });
     }
 
     /// Syncs now: pulls what other devices wrote and pushes what was written
@@ -375,6 +410,21 @@ pub(crate) fn account_error(err: &AccountError, context: ErrorContext) -> KansoE
         | AccountError::KeyMismatch
         | AccountError::Keychain(_) => KansoError::Auth { message },
         _ => KansoError::Invalid { message },
+    }
+}
+
+/// What a failed account task is to the shell.
+pub(crate) fn failure(failure: Failure) -> KansoError {
+    if failure.signed_out.is_some() {
+        KansoError::SignedOut
+    } else if failure.keychain_warning {
+        KansoError::Auth {
+            message: failure.words,
+        }
+    } else {
+        KansoError::Storage {
+            message: failure.words,
+        }
     }
 }
 
