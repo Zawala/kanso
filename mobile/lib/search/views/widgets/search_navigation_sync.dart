@@ -18,7 +18,7 @@ class SearchNavigationSync extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocListener<SearchBloc, SearchState>(
-      listenWhen: (before, after) => !_sameNotes(before, after),
+      listenWhen: (before, after) => !sameNotes(before, after),
       listener: (context, state) {
         context.read<ListNavigationBloc>().add(
           ListNavigationEvent.listShown(<String>[
@@ -30,7 +30,7 @@ class SearchNavigationSync extends StatelessWidget {
     );
   }
 
-  static bool _sameNotes(SearchState before, SearchState after) {
+  static bool sameNotes(SearchState before, SearchState after) {
     if (before.hits.length != after.hits.length) {
       return false;
     }

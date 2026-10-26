@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_icons.dart';
 import 'package:kanso/core/configs/kanso_sizes.dart';
 import 'package:kanso/core/models/data/note_status.dart';
-import 'package:kanso/core/models/data/tag_color.dart';
 import 'package:kanso/core/views/widgets/kanso_checkbox.dart';
 import 'package:kanso/core/views/widgets/kanso_chip.dart';
 import 'package:kanso/core/views/widgets/kanso_icon.dart';
@@ -19,6 +18,7 @@ import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
 import 'package:kanso/core/views/widgets/kanso_tag_chip.dart';
 
 import '../../../helpers/pump.dart';
+import '../../../helpers/tag_color.dart';
 
 void main() {
   group('KansoCheckbox', () {

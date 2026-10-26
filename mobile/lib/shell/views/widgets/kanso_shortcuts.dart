@@ -88,10 +88,10 @@ class KansoShortcuts extends StatelessWidget {
             },
           ),
           NextNoteIntent: CallbackAction<NextNoteIntent>(
-            onInvoke: (_) => _step(context, forward: true),
+            onInvoke: (_) => stepNote(context, forward: true),
           ),
           PreviousNoteIntent: CallbackAction<PreviousNoteIntent>(
-            onInvoke: (_) => _step(context, forward: false),
+            onInvoke: (_) => stepNote(context, forward: false),
           ),
           PinNoteIntent: CallbackAction<PinNoteIntent>(
             onInvoke: (_) {
@@ -110,7 +110,8 @@ class KansoShortcuts extends StatelessWidget {
     );
   }
 
-  Object? _step(BuildContext context, {required bool forward}) {
+  /// Opens the note one place on in the list, or back.
+  Object? stepNote(BuildContext context, {required bool forward}) {
     final here = location ?? const BrowseLocation.place(ListPlace.all());
     final next = neighbourNote(
       context.read<ListNavigationBloc>().state.noteIds,

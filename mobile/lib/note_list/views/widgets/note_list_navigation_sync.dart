@@ -18,7 +18,7 @@ class NoteListNavigationSync extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocListener<NoteListBloc, NoteListState>(
-      listenWhen: (before, after) => !_sameNotes(before, after),
+      listenWhen: (before, after) => !sameNotes(before, after),
       listener: (context, state) {
         context.read<ListNavigationBloc>().add(
           ListNavigationEvent.listShown(<String>[
@@ -30,7 +30,7 @@ class NoteListNavigationSync extends StatelessWidget {
     );
   }
 
-  static bool _sameNotes(NoteListState before, NoteListState after) {
+  static bool sameNotes(NoteListState before, NoteListState after) {
     if (before.rows.length != after.rows.length) {
       return false;
     }

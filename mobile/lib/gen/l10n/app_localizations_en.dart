@@ -24,9 +24,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get libraryRecent => 'Recent';
 
   @override
-  String get libraryTasks => 'Tasks';
-
-  @override
   String get libraryNotebooks => 'Notebooks';
 
   @override
@@ -34,12 +31,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get libraryTrash => 'Trash';
-
-  @override
-  String get librarySortNotebooks => 'Sort notebooks';
-
-  @override
-  String get libraryNewNotebook => 'New notebook';
 
   @override
   String get openSettings => 'Settings';
@@ -91,9 +82,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get noteListNewNote => 'New note';
-
-  @override
   String get noteListMore => 'More';
 
   @override
@@ -113,12 +101,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noteInfo => 'Note info';
-
-  @override
-  String get noteMetaNotebook => 'Notebook';
-
-  @override
-  String get noteMetaStatus => 'Status';
 
   @override
   String get noteMetaCreated => 'Created';
@@ -180,56 +162,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsClose => 'Close';
 
   @override
-  String get settingsGeneral => 'General';
-
-  @override
-  String get settingsDefaultNotebook => 'Default notebook';
-
-  @override
   String get settingsAppearance => 'Appearance';
 
   @override
   String get settingsTheme => 'Theme';
 
   @override
-  String get settingsIcons => 'Icons';
-
-  @override
   String get settingsTextSize => 'Text size';
 
   @override
   String get settingsSync => 'Sync';
-
-  @override
-  String get settingsSyncAccount => 'Account';
-
-  @override
-  String get settingsSyncedJustNow => 'Synced · just now';
-
-  @override
-  String get settingsWakeDevice =>
-      'Wake this device when notes change elsewhere';
-
-  @override
-  String get settingsLockedNotes => 'Locked notes';
-
-  @override
-  String get settingsUnlockFaceId => 'Unlock with Face ID';
-
-  @override
-  String get settingsLockAfter => 'Lock after';
-
-  @override
-  String get settingsTenMinutes => '10 minutes';
-
-  @override
-  String get settingsAccount => 'Account';
-
-  @override
-  String get settingsSignedInAs => 'Signed in as';
-
-  @override
-  String get settingsSignOut => 'Sign out';
 
   @override
   String get settingsAbout => 'About';
@@ -241,12 +183,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsWebsite => 'Website';
 
   @override
-  String get settingsReleaseNotes => 'Release notes';
-
-  @override
-  String get settingsHelp => 'Help';
-
-  @override
   String get settingsLicences => 'Licences';
 
   @override
@@ -256,57 +192,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themesInstalled => 'Installed';
 
   @override
-  String get themesGallery => 'Gallery';
-
-  @override
-  String get themesSearchHint => 'Search themes';
-
-  @override
-  String get themesFilterAll => 'All';
-
-  @override
-  String get themesFilterLight => 'Light';
-
-  @override
-  String get themesFilterDark => 'Dark';
-
-  @override
-  String get themesFilterInstalled => 'Installed';
-
-  @override
-  String get themesFilterUpdates => 'Updates';
-
-  @override
   String get themesBadgeBuiltIn => 'Built in';
 
   @override
   String get themesBadgeInstalled => 'Installed';
 
   @override
-  String get themesInstall => 'Install';
-
-  @override
   String get themesCurrent => 'In use';
 
   @override
-  String get themesAppearanceLight => 'Light';
-
-  @override
-  String get themesAppearanceDark => 'Dark';
-
-  @override
   String get lockedTitle => 'This note is locked';
-
-  @override
-  String lockedMessage(int minutes) {
-    return 'Unlock it to read and edit. It locks again after $minutes minutes or when you leave Kanso.';
-  }
-
-  @override
-  String get lockedUnlock => 'Unlock with Face ID';
-
-  @override
-  String get lockedUsePassword => 'Use password';
 
   @override
   String get errorSignedOutTitle => 'Signed out on this device';
@@ -329,9 +224,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Static screens for review. Nothing here saves or syncs.';
 
   @override
-  String get designGalleryAppearance => 'Appearance';
-
-  @override
   String get designGalleryPhone => 'Phone';
 
   @override
@@ -347,31 +239,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appearanceDark => 'Dark';
 
   @override
-  String get screenLibrary => 'Library';
-
-  @override
-  String get screenLibraryScrolled => 'Library, scrolled';
-
-  @override
-  String get screenNoteList => 'Note list';
-
-  @override
-  String get screenNotePreview => 'Note, preview';
-
-  @override
   String get screenNoteEdit => 'Note, edit';
-
-  @override
-  String get screenSearch => 'Search';
-
-  @override
-  String get screenSettings => 'Settings';
-
-  @override
-  String get screenThemePicker => 'Theme picker';
-
-  @override
-  String get screenLockedNote => 'Locked note';
 
   @override
   String get screenError => 'Error card';
@@ -387,12 +255,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get themesSampleQuote => 'a quote';
-
-  @override
-  String get screenSettingsScrolled => 'Settings, scrolled';
-
-  @override
-  String get screenThemePickerScrolled => 'Theme picker, scrolled';
 
   @override
   String get settingsFonts => 'Fonts';
@@ -460,12 +322,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get textSizeLarger => 'Larger';
 
   @override
-  String get fontsAdd => 'Add a font…';
-
-  @override
-  String get fontsAddFooter => 'Choose a .ttf or .otf file from Files.';
-
-  @override
   String get noteModeLabel => 'View mode';
 
   @override
@@ -486,87 +342,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get noNoteSelectedMessage =>
       'Choose a note from the list to read it here.';
-
-  @override
-  String get screenFonts => 'Fonts';
-
-  @override
-  String get screenFontsScrolled => 'Fonts, scrolled';
-
-  @override
-  String get screenLoadingList => 'Note list, loading';
-
-  @override
-  String get screenEmptyNotebook => 'Empty notebook';
-
-  @override
-  String get designGalleryCoreTitle => 'Library on this phone';
-
-  @override
-  String get designGalleryCoreCheck => 'Rust core';
-
-  @override
-  String get coreCheckTitle => 'Rust core';
-
-  @override
-  String get coreCheckLoading => 'Opening the library…';
-
-  @override
-  String get coreCheckLibrary => 'Library';
-
-  @override
-  String get coreCheckVersion => 'Version';
-
-  @override
-  String get coreCheckCertificates => 'Certificates';
-
-  @override
-  String get coreCheckCertificatesReady => 'Ready';
-
-  @override
-  String get coreCheckCertificatesNotReady => 'Not ready';
-
-  @override
-  String get coreCheckNotes => 'Notes';
-
-  @override
-  String get coreCheckLastChange => 'Last change';
-
-  @override
-  String get coreCheckNoChange => 'None yet';
-
-  @override
-  String coreCheckChanged(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count notes changed',
-      one: '1 note changed',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String get coreCheckNewNote => 'New note';
-
-  @override
-  String get coreCheckLatest => 'Latest notes';
-
-  @override
-  String get coreCheckActionFailed => 'That didn\'t work. Try again.';
-
-  @override
-  String get coreCheckFailedTitle => 'The library didn\'t open';
-
-  @override
-  String get coreCheckFailedMessage =>
-      'Something went wrong reading the notes on this phone. Try again.';
-
-  @override
-  String get coreCheckRetry => 'Try again';
-
-  @override
-  String get searchTitle => 'Search';
 
   @override
   String get libraryDesignGallery => 'Design gallery';

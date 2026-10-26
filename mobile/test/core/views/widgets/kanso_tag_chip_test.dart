@@ -4,11 +4,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kanso/core/models/data/tag_color.dart';
 import 'package:kanso/core/utils/muted_tag_color.dart';
 import 'package:kanso/core/views/widgets/kanso_tag_chip.dart';
 
 import '../../../helpers/pump.dart';
+import '../../../helpers/tag_color.dart';
 
 void main() {
   group('KansoTagChip', () {

@@ -3,7 +3,7 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'package:kanso/core/bridge/api/types.dart';
-import 'package:kanso/core/models/data/tag_color.dart';
+import 'tag_color.dart';
 
 /// A note for tests, in the notebook [notebookId].
 NoteView noteView(String id, {String notebookId = 'b_1'}) {

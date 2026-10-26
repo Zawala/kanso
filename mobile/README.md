@@ -2,11 +2,12 @@
 
 The Flutter app of [Kanso](../README.md), tracked in
 [#48](https://github.com/iamngoni/kanso/issues/48). This folder holds the
-scaffold: the design system (colours, type, icons, spacing, motion), the
-shared appearance state, the app shell (routes, links, one to three panes,
-preferences), the test and golden-image tooling, and CI, and the Rust core
-behind a bridge (`rust/`, `lib/core/bridge/`). The screens come in later
-steps.
+design system (colours, type, icons, spacing, motion), the app shell (routes,
+links, one to three panes, preferences, keyboard shortcuts), the screens for
+browsing (the library, the note list, a note's text, search) and for settings
+(theme, fonts, text size, sync status, About), the test and golden-image
+tooling, CI, and the Rust core behind a bridge (`rust/`, `lib/core/bridge/`).
+Writing and editing a note, and the rendered preview, come in later steps.
 
 - Flutter 3.44.8 (stable), Dart 3.12, strict analysis.
 - iOS and iPadOS 17 or later; Android 10 (API 29) or later; phones and tablets.
@@ -59,8 +60,7 @@ profile (`[profile.mobile]` in the root `Cargo.toml`) and the compilers of
 core open the library it built (`test/helpers/core_library.dart`). The app
 opens its library at `kanso/library.db` in the application support folder
 (`lib/core/configs/core_module.dart`); the background sync opens the same file.
-`preferences.json` sits beside it (see below). The design gallery lists a
-"Rust core" row that opens `lib/core_check/`, real calls to the library.
+`preferences.json` sits beside it (see below).
 
 ## Check
 
@@ -170,20 +170,52 @@ every domain from backups and from device transfers (Android 12 and later also
 need `dataExtractionRules`). `test/platform/backup_exclusion_test.dart` reads
 the manifest and both files.
 
+## Settings, themes and the first launch
+
+**Settings** (`lib/settings/`) has only rows that work: Appearance (Theme, Fonts,
+Text size), Sync (the live status, "Off" while no account is signed in, and a
+line that the notes are not in device backups) and About (the version, from
+`package_info_plus`; the website, opened with `url_launcher`; Licences). Licences
+is a page Kanso draws from Flutter's `LicenseRegistry`, never Flutter's own
+Material one. Settings opens as a sheet on a tablet and a page on a phone, and
+Fonts, Theme and Licences slide inside it. Everything the app does not do yet
+(default notebook, icon themes, locked notes, account, wake on change) is absent
+rather than disabled.
+
+**Theme picker** (`lib/themes/`): a switch to follow the system's light and dark
+mode, with the desktop's words, and the built-in themes as cards in a row, each
+drawn from its own tokens (`themePreviewFromBuiltin`), the ones in use outlined
+and first. Choosing one is `ThemeSelection.picked`, as on the desktop. The
+gallery of themes to install needs the signed catalogue and a network, and is not
+here.
+
+**First launch.** A card says once that the notes on this phone are not in
+device backups; OK is remembered in the preferences (`backupNoticeSeen`).
+
+**Keyboard shortcuts** (`lib/shell/views/widgets/kanso_shortcuts.dart`, bindings in
+`lib/shell/utils/kanso_shortcut_bindings.dart`). The secondary key is Command on
+iOS and Control on Android, as the desktop's: secondary+`[` and `]` back and
+forward through the notes opened, secondary+shift+F search all notes,
+secondary+`,` settings, secondary+`\` show or hide the library (the pane of
+three, or the drawer), secondary+option+down and up the next and previous note of
+the list, secondary+shift+P pin the open note. A new note, find in a note, the
+modes of a note and the command palette have none until what they act on is
+built.
+
 ## Design proposal
 
-The app opens on All Notes. The mock screens (`lib/design/`) that are not built
-yet are in a gallery for the owner to review, reached from the library in the
-development environment: the library, note list (and
-its loading and empty states), note (preview and edit), search, settings,
-fonts, theme picker, a locked note and an error card, for a phone and for a
-tablet in landscape, with a light, dark or system switch. The mock data is
-fixed (`lib/design/models/data/mock_data.dart`). The Fonts screen is live:
-choosing a font or a text size there restyles every note in the running app
-(`AppearanceBloc`, saved in the preferences). The
-components the screens are made of (`lib/core/views/widgets/`) are the ones
-the real app will use. The images in `test/design/views/pages/goldens/` are
-the proposal as pictures.
+What is built is the real screens, with their goldens beside their tests
+(`test/**/goldens/`). The mock screens (`lib/design/`) are those of the design
+proposal that are not built yet, in a gallery for the owner to review, reached
+from the library in the development environment: the note in edit, with the
+keyboard's accessory bar and the completion of a link, and the signed-out card,
+for a phone and for a tablet in landscape, with a light, dark or system switch.
+The mock data is fixed (`lib/design/models/data/mock_data.dart`), and the images in
+`test/design/views/pages/goldens/` are the proposal as pictures. The mocks of
+the screens that have been built were removed with them; the approved images are
+in the history.
+The components the screens are made of (`lib/core/views/widgets/`) are the
+ones the app uses.
 
 ## Golden images
 
@@ -303,5 +335,5 @@ stays in Instrument Sans. A note font can also be "System", the device's own
 font (San Francisco on iOS, the system font on Android): the one setting that
 looks different per platform on purpose, so no golden uses it.
 
-The licences are added to Flutter's licence page at start-up
+The licences are added to the registry the Licences page lists at start-up
 (`lib/core/utils/license_registration.dart`).

@@ -124,12 +124,6 @@ abstract class AppLocalizations {
   /// **'Recent'**
   String get libraryRecent;
 
-  /// The library row for open tasks across notes.
-  ///
-  /// In en, this message translates to:
-  /// **'Tasks'**
-  String get libraryTasks;
-
   /// The label above the list of notebooks.
   ///
   /// In en, this message translates to:
@@ -147,18 +141,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Trash'**
   String get libraryTrash;
-
-  /// What the sort button of the notebooks header does.
-  ///
-  /// In en, this message translates to:
-  /// **'Sort notebooks'**
-  String get librarySortNotebooks;
-
-  /// What the add button of the notebooks header does.
-  ///
-  /// In en, this message translates to:
-  /// **'New notebook'**
-  String get libraryNewNotebook;
 
   /// What the settings button does.
   ///
@@ -226,12 +208,6 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 note} other{{count} notes}}'**
   String noteListCount(int count);
 
-  /// What the add button of the note list does.
-  ///
-  /// In en, this message translates to:
-  /// **'New note'**
-  String get noteListNewNote;
-
   /// What the more button of the note list does.
   ///
   /// In en, this message translates to:
@@ -273,18 +249,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Note info'**
   String get noteInfo;
-
-  /// The label of a note's notebook.
-  ///
-  /// In en, this message translates to:
-  /// **'Notebook'**
-  String get noteMetaNotebook;
-
-  /// The label of a note's status.
-  ///
-  /// In en, this message translates to:
-  /// **'Status'**
-  String get noteMetaStatus;
 
   /// The label of when a note was made.
   ///
@@ -403,18 +367,6 @@ abstract class AppLocalizations {
   /// A section of settings.
   ///
   /// In en, this message translates to:
-  /// **'General'**
-  String get settingsGeneral;
-
-  /// The notebook new notes go to.
-  ///
-  /// In en, this message translates to:
-  /// **'Default notebook'**
-  String get settingsDefaultNotebook;
-
-  /// A section of settings.
-  ///
-  /// In en, this message translates to:
   /// **'Appearance'**
   String get settingsAppearance;
 
@@ -423,12 +375,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Theme'**
   String get settingsTheme;
-
-  /// The icon set.
-  ///
-  /// In en, this message translates to:
-  /// **'Icons'**
-  String get settingsIcons;
 
   /// The size of text in notes.
   ///
@@ -441,66 +387,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sync'**
   String get settingsSync;
-
-  /// The row that shows the sync account.
-  ///
-  /// In en, this message translates to:
-  /// **'Account'**
-  String get settingsSyncAccount;
-
-  /// The sync state, a moment after it finished.
-  ///
-  /// In en, this message translates to:
-  /// **'Synced · just now'**
-  String get settingsSyncedJustNow;
-
-  /// A switch for push notifications that trigger a sync.
-  ///
-  /// In en, this message translates to:
-  /// **'Wake this device when notes change elsewhere'**
-  String get settingsWakeDevice;
-
-  /// A section of settings.
-  ///
-  /// In en, this message translates to:
-  /// **'Locked notes'**
-  String get settingsLockedNotes;
-
-  /// A switch to unlock notes with Face ID.
-  ///
-  /// In en, this message translates to:
-  /// **'Unlock with Face ID'**
-  String get settingsUnlockFaceId;
-
-  /// How long until a note locks again.
-  ///
-  /// In en, this message translates to:
-  /// **'Lock after'**
-  String get settingsLockAfter;
-
-  /// A length of time.
-  ///
-  /// In en, this message translates to:
-  /// **'10 minutes'**
-  String get settingsTenMinutes;
-
-  /// A section of settings.
-  ///
-  /// In en, this message translates to:
-  /// **'Account'**
-  String get settingsAccount;
-
-  /// Who is signed in.
-  ///
-  /// In en, this message translates to:
-  /// **'Signed in as'**
-  String get settingsSignedInAs;
-
-  /// Signs out of the account.
-  ///
-  /// In en, this message translates to:
-  /// **'Sign out'**
-  String get settingsSignOut;
 
   /// A section of settings.
   ///
@@ -520,18 +406,6 @@ abstract class AppLocalizations {
   /// **'Website'**
   String get settingsWebsite;
 
-  /// Opens the release notes.
-  ///
-  /// In en, this message translates to:
-  /// **'Release notes'**
-  String get settingsReleaseNotes;
-
-  /// Opens the help.
-  ///
-  /// In en, this message translates to:
-  /// **'Help'**
-  String get settingsHelp;
-
   /// Opens the licences of what Kanso is made of.
   ///
   /// In en, this message translates to:
@@ -550,48 +424,6 @@ abstract class AppLocalizations {
   /// **'Installed'**
   String get themesInstalled;
 
-  /// The label above the themes that can be installed.
-  ///
-  /// In en, this message translates to:
-  /// **'Gallery'**
-  String get themesGallery;
-
-  /// The hint in the theme search field.
-  ///
-  /// In en, this message translates to:
-  /// **'Search themes'**
-  String get themesSearchHint;
-
-  /// A theme filter: every theme.
-  ///
-  /// In en, this message translates to:
-  /// **'All'**
-  String get themesFilterAll;
-
-  /// A theme filter: light themes.
-  ///
-  /// In en, this message translates to:
-  /// **'Light'**
-  String get themesFilterLight;
-
-  /// A theme filter: dark themes.
-  ///
-  /// In en, this message translates to:
-  /// **'Dark'**
-  String get themesFilterDark;
-
-  /// A theme filter: installed themes.
-  ///
-  /// In en, this message translates to:
-  /// **'Installed'**
-  String get themesFilterInstalled;
-
-  /// A theme filter: themes with an update.
-  ///
-  /// In en, this message translates to:
-  /// **'Updates'**
-  String get themesFilterUpdates;
-
   /// A badge on a theme that comes with Kanso.
   ///
   /// In en, this message translates to:
@@ -604,53 +436,17 @@ abstract class AppLocalizations {
   /// **'Installed'**
   String get themesBadgeInstalled;
 
-  /// Installs a theme.
-  ///
-  /// In en, this message translates to:
-  /// **'Install'**
-  String get themesInstall;
-
   /// Marks the theme in use.
   ///
   /// In en, this message translates to:
   /// **'In use'**
   String get themesCurrent;
 
-  /// A theme made for a light interface.
-  ///
-  /// In en, this message translates to:
-  /// **'Light'**
-  String get themesAppearanceLight;
-
-  /// A theme made for a dark interface.
-  ///
-  /// In en, this message translates to:
-  /// **'Dark'**
-  String get themesAppearanceDark;
-
   /// The title of the card shown in place of a locked note.
   ///
   /// In en, this message translates to:
   /// **'This note is locked'**
   String get lockedTitle;
-
-  /// Says how a locked note is opened and when it locks.
-  ///
-  /// In en, this message translates to:
-  /// **'Unlock it to read and edit. It locks again after {minutes} minutes or when you leave Kanso.'**
-  String lockedMessage(int minutes);
-
-  /// Unlocks a note with Face ID.
-  ///
-  /// In en, this message translates to:
-  /// **'Unlock with Face ID'**
-  String get lockedUnlock;
-
-  /// Unlocks a note with a password instead.
-  ///
-  /// In en, this message translates to:
-  /// **'Use password'**
-  String get lockedUsePassword;
 
   /// The title of the card shown when the session ended.
   ///
@@ -688,12 +484,6 @@ abstract class AppLocalizations {
   /// **'Static screens for review. Nothing here saves or syncs.'**
   String get designGalleryIntro;
 
-  /// The label of the control that switches between light and dark.
-  ///
-  /// In en, this message translates to:
-  /// **'Appearance'**
-  String get designGalleryAppearance;
-
   /// The group of mock screens drawn for a phone.
   ///
   /// In en, this message translates to:
@@ -727,56 +517,8 @@ abstract class AppLocalizations {
   /// The name of a mock screen.
   ///
   /// In en, this message translates to:
-  /// **'Library'**
-  String get screenLibrary;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Library, scrolled'**
-  String get screenLibraryScrolled;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Note list'**
-  String get screenNoteList;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Note, preview'**
-  String get screenNotePreview;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
   /// **'Note, edit'**
   String get screenNoteEdit;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Search'**
-  String get screenSearch;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Settings'**
-  String get screenSettings;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Theme picker'**
-  String get screenThemePicker;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Locked note'**
-  String get screenLockedNote;
 
   /// The name of a mock screen.
   ///
@@ -807,18 +549,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'a quote'**
   String get themesSampleQuote;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Settings, scrolled'**
-  String get screenSettingsScrolled;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Theme picker, scrolled'**
-  String get screenThemePickerScrolled;
 
   /// The settings row that opens the fonts of notes.
   ///
@@ -946,18 +676,6 @@ abstract class AppLocalizations {
   /// **'Larger'**
   String get textSizeLarger;
 
-  /// Starts adding a font from a file.
-  ///
-  /// In en, this message translates to:
-  /// **'Add a font…'**
-  String get fontsAdd;
-
-  /// Says which files can be added as fonts.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose a .ttf or .otf file from Files.'**
-  String get fontsAddFooter;
-
   /// Names the switch between a rendered note and its text.
   ///
   /// In en, this message translates to:
@@ -993,150 +711,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Choose a note from the list to read it here.'**
   String get noNoteSelectedMessage;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Fonts'**
-  String get screenFonts;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Fonts, scrolled'**
-  String get screenFontsScrolled;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Note list, loading'**
-  String get screenLoadingList;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Empty notebook'**
-  String get screenEmptyNotebook;
-
-  /// The gallery section that opens the core check.
-  ///
-  /// In en, this message translates to:
-  /// **'Library on this phone'**
-  String get designGalleryCoreTitle;
-
-  /// The gallery row that opens the core check page.
-  ///
-  /// In en, this message translates to:
-  /// **'Rust core'**
-  String get designGalleryCoreCheck;
-
-  /// The title of the core check page.
-  ///
-  /// In en, this message translates to:
-  /// **'Rust core'**
-  String get coreCheckTitle;
-
-  /// Says the library is being opened.
-  ///
-  /// In en, this message translates to:
-  /// **'Opening the library…'**
-  String get coreCheckLoading;
-
-  /// The label above the core check's facts.
-  ///
-  /// In en, this message translates to:
-  /// **'Library'**
-  String get coreCheckLibrary;
-
-  /// The core check row that shows the library's version.
-  ///
-  /// In en, this message translates to:
-  /// **'Version'**
-  String get coreCheckVersion;
-
-  /// The core check row that says whether the library can check a server's certificate.
-  ///
-  /// In en, this message translates to:
-  /// **'Certificates'**
-  String get coreCheckCertificates;
-
-  /// The library can check certificates.
-  ///
-  /// In en, this message translates to:
-  /// **'Ready'**
-  String get coreCheckCertificatesReady;
-
-  /// The library can't check certificates yet.
-  ///
-  /// In en, this message translates to:
-  /// **'Not ready'**
-  String get coreCheckCertificatesNotReady;
-
-  /// The core check row that shows how many notes the library holds.
-  ///
-  /// In en, this message translates to:
-  /// **'Notes'**
-  String get coreCheckNotes;
-
-  /// The core check row that shows the last change the library reported.
-  ///
-  /// In en, this message translates to:
-  /// **'Last change'**
-  String get coreCheckLastChange;
-
-  /// No change has been reported yet.
-  ///
-  /// In en, this message translates to:
-  /// **'None yet'**
-  String get coreCheckNoChange;
-
-  /// How many notes the last reported change touched.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 note changed} other{{count} notes changed}}'**
-  String coreCheckChanged(int count);
-
-  /// What the core check's button does: makes a note.
-  ///
-  /// In en, this message translates to:
-  /// **'New note'**
-  String get coreCheckNewNote;
-
-  /// The label above the newest notes in the core check.
-  ///
-  /// In en, this message translates to:
-  /// **'Latest notes'**
-  String get coreCheckLatest;
-
-  /// Says the last action in the core check failed.
-  ///
-  /// In en, this message translates to:
-  /// **'That didn\'t work. Try again.'**
-  String get coreCheckActionFailed;
-
-  /// The title of the core check's error card.
-  ///
-  /// In en, this message translates to:
-  /// **'The library didn\'t open'**
-  String get coreCheckFailedTitle;
-
-  /// Says what happened, and what to do.
-  ///
-  /// In en, this message translates to:
-  /// **'Something went wrong reading the notes on this phone. Try again.'**
-  String get coreCheckFailedMessage;
-
-  /// What the core check's error card button does.
-  ///
-  /// In en, this message translates to:
-  /// **'Try again'**
-  String get coreCheckRetry;
-
-  /// A search page's title.
-  ///
-  /// In en, this message translates to:
-  /// **'Search'**
-  String get searchTitle;
 
   /// The library row that opens the gallery of the design proposal; in development builds only.
   ///

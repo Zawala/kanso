@@ -20,9 +20,6 @@ abstract final class KansoEffects {
   /// The fill of a secondary button: the text colour, softly.
   static const double secondaryWash = 0.1;
 
-  /// A stronger wash, for a match in running text.
-  static const double matchWash = 0.3;
-
   /// A control that cannot be used.
   static const double disabled = 0.45;
 

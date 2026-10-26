@@ -50,7 +50,6 @@ void main() {
       'lists the screens that are not built yet, on a phone and a tablet',
       (tester) async {
         await _pump(tester);
-        expect(find.text('Rust core'), findsOneWidget);
         expect(find.text('Phone'), findsOneWidget);
         expect(find.text('Tablet'), findsOneWidget);
         // Every screen that is not built yet is listed once per layout.
