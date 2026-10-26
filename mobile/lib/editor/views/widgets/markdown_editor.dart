@@ -123,6 +123,8 @@ class _MarkdownEditorState extends State<MarkdownEditor>
     // ask for less there, so the two carets match.
     final caret = MarkdownEditor.caretHeightFor(style.fontSize ?? 16);
     final service = widget.spellCheckService;
+    widget.controller.misspelledStyle = widget.controller.misspelledStyle
+        .copyWith(decorationColor: colors.danger);
     return Actions(
       actions: <Type, Action<Intent>>{
         UndoTextIntent: CallbackAction<UndoTextIntent>(

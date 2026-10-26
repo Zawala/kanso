@@ -22,6 +22,23 @@ FakeEditorRepository registerEditorBloc(
   NotePlaceRepository? places,
 }) {
   final repository = FakeEditorRepository(document: document);
+  registerEditorBlocOn(
+    repository,
+    library: library,
+    links: links,
+    places: places,
+  );
+  return repository;
+}
+
+/// Registers an `EditorBloc` over [repository] (the fake one, or the real
+/// core's), for a test that builds the note page in edit mode.
+void registerEditorBlocOn(
+  EditorRepository repository, {
+  FixtureLibraryRepository? library,
+  FakeWebLinkRepository? links,
+  NotePlaceRepository? places,
+}) {
   if (getIt.isRegistered<EditorBloc>()) {
     getIt.unregister<EditorBloc>();
   }
@@ -38,5 +55,4 @@ FakeEditorRepository registerEditorBloc(
       getIt.unregister<EditorBloc>();
     }
   });
-  return repository;
 }

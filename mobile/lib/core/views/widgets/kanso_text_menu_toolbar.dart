@@ -27,20 +27,45 @@ class KansoTextMenuToolbar extends StatelessWidget {
   /// The label and action of each button, in order.
   final List<(String, VoidCallback)> buttons;
 
+  /// Where a menu over [state]'s selection is anchored: above its first line
+  /// and below its last, worked out the same on every platform (the
+  /// platforms' own differ).
+  static TextSelectionToolbarAnchors anchorsOf(EditableTextState state) {
+    final render = state.renderEditable;
+    final points = render.getEndpointsForSelection(
+      state.textEditingValue.selection,
+    );
+    if (points.isEmpty) {
+      return state.contextMenuAnchors;
+    }
+    final line = render.preferredLineHeight;
+    return TextSelectionToolbarAnchors.fromSelection(
+      renderBox: render,
+      startGlyphHeight: line,
+      endGlyphHeight: line,
+      selectionEndpoints: points,
+    );
+  }
+
   /// The most the menu is wide, in points.
   static const double maxWidth = 320;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    // The anchors are on the screen; the layout starts inside the padding.
+    final inset = MediaQuery.paddingOf(context).top;
+    final shift = Offset(inset, inset);
     return Padding(
-      padding: EdgeInsets.all(MediaQuery.paddingOf(context).top),
+      padding: EdgeInsets.all(inset),
       child: CustomSingleChildLayout(
         delegate: TextSelectionToolbarLayoutDelegate(
-          anchorAbove: anchors.primaryAnchor - const Offset(0, KansoSpacing.xs),
+          anchorAbove:
+              anchors.primaryAnchor - const Offset(0, KansoSpacing.xs) - shift,
           anchorBelow:
               (anchors.secondaryAnchor ?? anchors.primaryAnchor) +
-              const Offset(0, KansoSpacing.xs),
+              const Offset(0, KansoSpacing.xs) -
+              shift,
         ),
         child: Container(
           constraints: const BoxConstraints(maxWidth: maxWidth),

@@ -49,7 +49,7 @@ class KansoSpellCheckMenu extends StatelessWidget {
     }
 
     return KansoTextMenuToolbar(
-      anchors: state.contextMenuAnchors,
+      anchors: KansoTextMenuToolbar.anchorsOf(state),
       buttons: <(String, VoidCallback)>[
         for (final suggestion in span.suggestions.take(maxSuggestions))
           (suggestion, () => replaceWith(suggestion)),

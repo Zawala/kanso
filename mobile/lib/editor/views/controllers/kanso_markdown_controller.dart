@@ -74,8 +74,8 @@ class KansoMarkdownController extends TextEditingController {
   /// Told of an error that is neither of the above.
   final ValueChanged<ApplicationError>? onFailure;
 
-  /// How a misspelled word is drawn.
-  final TextStyle misspelledStyle;
+  /// How a misspelled word is drawn; the screen sets its colour.
+  TextStyle misspelledStyle;
 
   /// How the text being composed is drawn.
   final TextStyle composingStyle;
@@ -103,6 +103,7 @@ class KansoMarkdownController extends TextEditingController {
   TextRange? _spanComposing;
   List<TextRange>? _spanMisspellings;
   TextStyle? _spanBase;
+  TextStyle? _spanMisspelled;
   TextSpan? _span;
 
   /// The version of the text Rust has, as of the last thing it said.
@@ -516,7 +517,8 @@ class KansoMarkdownController extends TextEditingController {
         identical(_runs, _spanRuns) &&
         composing == _spanComposing &&
         identical(misspellings, _spanMisspellings) &&
-        style == _spanBase) {
+        style == _spanBase &&
+        misspelledStyle == _spanMisspelled) {
       return cached;
     }
     final span = editorSpans(
@@ -533,6 +535,7 @@ class KansoMarkdownController extends TextEditingController {
     _spanComposing = composing;
     _spanMisspellings = misspellings;
     _spanBase = style;
+    _spanMisspelled = misspelledStyle;
     _span = span;
     return span;
   }
