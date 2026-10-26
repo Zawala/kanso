@@ -1005,5 +1005,86 @@
   "searchLoading": "Searching",
   "@searchLoading": {
     "description": "What a screen reader says while the notes are searched."
+  },
+  "settingsThemeBoth": "{light}, {dark}",
+  "@settingsThemeBoth": {
+    "description": "The Theme row's value while the light and the dark theme follow the system: the names of both.",
+    "placeholders": {
+      "light": {
+        "type": "String"
+      },
+      "dark": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsSyncStatus": "Status",
+  "@settingsSyncStatus": {
+    "description": "The label of the row that shows the state of sync."
+  },
+  "settingsSyncOff": "Off",
+  "@settingsSyncOff": {
+    "description": "The state of sync while no account is signed in."
+  },
+  "settingsSyncOn": "On",
+  "@settingsSyncOn": {
+    "description": "The state of sync when an account is signed in and nothing has been synced yet."
+  },
+  "settingsSyncSyncing": "Syncing…",
+  "@settingsSyncSyncing": {
+    "description": "The state of sync while it runs."
+  },
+  "settingsSyncSynced": "Synced",
+  "@settingsSyncSynced": {
+    "description": "The state of sync when it has finished."
+  },
+  "settingsSyncAttention": "Needs attention",
+  "@settingsSyncAttention": {
+    "description": "The state of sync when it could not finish."
+  },
+  "settingsSyncBackupFooter": "The notes on this phone aren’t included in device backups.",
+  "@settingsSyncBackupFooter": {
+    "description": "Says under Sync that device backups do not hold the notes."
+  },
+  "settingsVersionValue": "{version} ({build})",
+  "@settingsVersionValue": {
+    "description": "The app's version and the number of its build.",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      }
+    }
+  },
+  "licencesLoading": "Loading licences",
+  "@licencesLoading": {
+    "description": "Says to a screen reader that the licences are being read."
+  },
+  "licencesFailedTitle": "The licences didn’t load",
+  "@licencesFailedTitle": {
+    "description": "The title of the card shown when the licences could not be read."
+  },
+  "licencesFailedMessage": "Something went wrong reading the licences. Try again.",
+  "@licencesFailedMessage": {
+    "description": "The message of the card shown when the licences could not be read."
+  },
+  "licencesEmptyTitle": "No licences",
+  "@licencesEmptyTitle": {
+    "description": "The title shown when there are no licences to list."
+  },
+  "licencesEmptyMessage": "The packages Kanso is made of will be listed here.",
+  "@licencesEmptyMessage": {
+    "description": "Says what the empty list of licences will hold."
+  },
+  "licencesCount": "{count, plural, =1{1 licence} other{{count} licences}}",
+  "@licencesCount": {
+    "description": "How many licences a package comes under.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

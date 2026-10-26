@@ -11,9 +11,7 @@ import '../../../core/views/widgets/kanso_sheet.dart';
 import '../../../shell/views/widgets/tablet_layout.dart';
 import '../../models/data/design_layout.dart';
 import '../../models/data/design_screen.dart';
-import '../widgets/fonts_pane.dart';
 import '../widgets/note_edit_pane.dart';
-import '../widgets/settings_pane.dart';
 import '../widgets/signed_out_card.dart';
 import '../widgets/theme_picker_pane.dart';
 
@@ -35,22 +33,11 @@ class TabletMockPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     const tablet = DesignLayout.tablet;
-    final scrolled =
-        screen == DesignScreen.settingsScrolled ||
-        screen == DesignScreen.fontsScrolled ||
-        screen == DesignScreen.themePickerScrolled;
+    final scrolled = screen == DesignScreen.themePickerScrolled;
     final Widget note = screen == DesignScreen.noteEdit
         ? const NoteEditPane(layout: tablet)
         : ColoredBox(color: colors.editor);
     final Widget? overlay = switch (screen) {
-      DesignScreen.settings || DesignScreen.settingsScrolled => KansoSheet(
-        height: designSize.height - 2 * KansoSizes.touchTarget,
-        child: SettingsPane(startAtEnd: scrolled),
-      ),
-      DesignScreen.fonts || DesignScreen.fontsScrolled => KansoSheet(
-        height: designSize.height - 2 * KansoSizes.touchTarget,
-        child: FontsPane(startAtEnd: scrolled),
-      ),
       DesignScreen.themePicker ||
       DesignScreen.themePickerScrolled => KansoSheet(
         height: designSize.height - 2 * KansoSizes.touchTarget,

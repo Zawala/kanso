@@ -9,9 +9,13 @@ import 'package:kanso/injection.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
+import 'package:kanso/settings/state/about/about_bloc.dart';
+import 'package:kanso/settings/state/licences/licences_bloc.dart';
 
 import 'browse_blocs.dart';
+import 'fixture_about_repository.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_licences_repository.dart';
 import 'fixture_renderer_repository.dart';
 import 'seeded_appearance_bloc.dart';
 
@@ -39,5 +43,15 @@ void registerPageBlocs(
     getIt.unregister<SearchBloc>();
   }
   getIt.registerFactory<SearchBloc>(() => SearchBloc(library));
+  if (getIt.isRegistered<AboutBloc>()) {
+    getIt.unregister<AboutBloc>();
+  }
+  getIt.registerFactory<AboutBloc>(() => AboutBloc(FixtureAboutRepository()));
+  if (getIt.isRegistered<LicencesBloc>()) {
+    getIt.unregister<LicencesBloc>();
+  }
+  getIt.registerFactory<LicencesBloc>(
+    () => LicencesBloc(FixtureLicencesRepository()),
+  );
   addTearDown(() => unawaited(getIt.reset()));
 }

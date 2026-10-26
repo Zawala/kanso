@@ -11,10 +11,6 @@ extension DesignScreenLabel on AppLocalizations {
   String screenName(DesignScreen screen) {
     return switch (screen) {
       DesignScreen.noteEdit => screenNoteEdit,
-      DesignScreen.settings => screenSettings,
-      DesignScreen.settingsScrolled => screenSettingsScrolled,
-      DesignScreen.fonts => screenFonts,
-      DesignScreen.fontsScrolled => screenFontsScrolled,
       DesignScreen.themePicker => screenThemePicker,
       DesignScreen.themePickerScrolled => screenThemePickerScrolled,
       DesignScreen.error => screenError,

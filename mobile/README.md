@@ -201,6 +201,8 @@ Every dependency is MIT, BSD or Apache licensed.
 | `path` | The build hook's file paths | BSD-3-Clause |
 | `dartz` | `Either` for repository results | MIT |
 | `path_provider` | The folder the library lives in | BSD-3-Clause |
+| `package_info_plus` | The version and build in Settings › About | BSD-3-Clause |
+| `url_launcher` | Opens the website from Settings › About | BSD-3-Clause |
 
 The Rust library adds `core-foundation` and `core-foundation-sys` (Apple
 targets only, MIT or Apache-2.0, already in the iOS tree through

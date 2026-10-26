@@ -47,7 +47,15 @@ Future<GoRouter> pumpRouted(
       GoRoute(path: '/notebooks/:id', builder: empty),
       GoRoute(path: '/tags/:id', builder: empty),
       GoRoute(path: '/search', builder: empty),
-      GoRoute(path: '/settings', builder: empty),
+      GoRoute(
+        path: '/settings',
+        builder: empty,
+        routes: <RouteBase>[
+          GoRoute(path: 'theme', builder: empty),
+          GoRoute(path: 'fonts', builder: empty),
+          GoRoute(path: 'licences', builder: empty),
+        ],
+      ),
       GoRoute(path: '/design', builder: empty),
     ],
   );

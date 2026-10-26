@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_theme.dart';
-import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/design/models/data/gallery_appearance.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
@@ -56,11 +55,8 @@ void main() {
         expect(find.text('Tablet'), findsOneWidget);
         // Every screen that is not built yet is listed once per layout.
         expect(find.text('Note, edit'), findsNWidgets(2));
-        expect(find.text('Settings'), findsNWidgets(2));
         expect(find.text('Theme picker'), findsNWidgets(2));
         expect(find.text('Error card'), findsNWidgets(2));
-        expect(find.text('Fonts'), findsNWidgets(2));
-        expect(find.text('Fonts, scrolled'), findsNWidgets(2));
         // The screens that are built are not mocks any more.
         expect(find.text('Note list'), findsNothing);
         expect(find.text('Library'), findsNothing);
@@ -92,18 +88,6 @@ void main() {
       tester.state<NavigatorState>(find.byType(Navigator)).pop();
       await tester.pumpAndSettle();
       expect(find.text('Design proposal'), findsOneWidget);
-    });
-
-    testWidgets('opens Fonts and a font chosen there restyles the notes', (
-      tester,
-    ) async {
-      final bloc = await _pump(tester);
-      await tester.tap(find.text('Fonts').first);
-      await tester.pumpAndSettle();
-      expect(find.text('Editor font'), findsOneWidget);
-      await tester.tap(find.text('Literata').last);
-      await tester.pumpAndSettle();
-      expect(bloc.state.fonts.previewFont, KansoFontFamily.literata);
     });
   });
 }

@@ -1527,6 +1527,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Searching'**
   String get searchLoading;
+
+  /// The Theme row's value while the light and the dark theme follow the system: the names of both.
+  ///
+  /// In en, this message translates to:
+  /// **'{light}, {dark}'**
+  String settingsThemeBoth(String light, String dark);
+
+  /// The label of the row that shows the state of sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get settingsSyncStatus;
+
+  /// The state of sync while no account is signed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get settingsSyncOff;
+
+  /// The state of sync when an account is signed in and nothing has been synced yet.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get settingsSyncOn;
+
+  /// The state of sync while it runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Syncing…'**
+  String get settingsSyncSyncing;
+
+  /// The state of sync when it has finished.
+  ///
+  /// In en, this message translates to:
+  /// **'Synced'**
+  String get settingsSyncSynced;
+
+  /// The state of sync when it could not finish.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs attention'**
+  String get settingsSyncAttention;
+
+  /// Says under Sync that device backups do not hold the notes.
+  ///
+  /// In en, this message translates to:
+  /// **'The notes on this phone aren’t included in device backups.'**
+  String get settingsSyncBackupFooter;
+
+  /// The app's version and the number of its build.
+  ///
+  /// In en, this message translates to:
+  /// **'{version} ({build})'**
+  String settingsVersionValue(String version, String build);
+
+  /// Says to a screen reader that the licences are being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading licences'**
+  String get licencesLoading;
+
+  /// The title of the card shown when the licences could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The licences didn’t load'**
+  String get licencesFailedTitle;
+
+  /// The message of the card shown when the licences could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the licences. Try again.'**
+  String get licencesFailedMessage;
+
+  /// The title shown when there are no licences to list.
+  ///
+  /// In en, this message translates to:
+  /// **'No licences'**
+  String get licencesEmptyTitle;
+
+  /// Says what the empty list of licences will hold.
+  ///
+  /// In en, this message translates to:
+  /// **'The packages Kanso is made of will be listed here.'**
+  String get licencesEmptyMessage;
+
+  /// How many licences a package comes under.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 licence} other{{count} licences}}'**
+  String licencesCount(int count);
 }
 
 class _AppLocalizationsDelegate

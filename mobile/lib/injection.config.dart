@@ -21,15 +21,19 @@ import 'core/configs/app_module.dart' as _i216;
 import 'core/configs/core_module.dart' as _i418;
 import 'core/models/data/design_gallery_access.dart' as _i289;
 import 'core/models/data/library_folder.dart' as _i72;
+import 'core/models/repos/abs/about_repository.dart' as _i80;
 import 'core/models/repos/abs/diagnostics_repository.dart' as _i984;
 import 'core/models/repos/abs/haptics_repository.dart' as _i1056;
 import 'core/models/repos/abs/library_repository.dart' as _i38;
+import 'core/models/repos/abs/licences_repository.dart' as _i951;
 import 'core/models/repos/abs/preferences_repository.dart' as _i384;
 import 'core/models/repos/abs/renderer_repository.dart' as _i732;
 import 'core/models/repos/abs/session_repository.dart' as _i333;
 import 'core/models/repos/abs/sync_repository.dart' as _i601;
 import 'core/models/repos/impl/file_preferences_repository.dart' as _i207;
 import 'core/models/repos/impl/flutter_haptics_repository.dart' as _i438;
+import 'core/models/repos/impl/flutter_licences_repository.dart' as _i1025;
+import 'core/models/repos/impl/package_info_about_repository.dart' as _i489;
 import 'core/models/repos/impl/rust_diagnostics_repository.dart' as _i1062;
 import 'core/models/repos/impl/rust_library_repository.dart' as _i152;
 import 'core/models/repos/impl/rust_renderer_repository.dart' as _i820;
@@ -45,6 +49,8 @@ import 'core_check/state/core_check/core_check_bloc.dart' as _i226;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 import 'search/state/search/search_bloc.dart' as _i696;
+import 'settings/state/about/about_bloc.dart' as _i380;
+import 'settings/state/licences/licences_bloc.dart' as _i570;
 
 const String _development = 'development';
 const String _production = 'production';
@@ -71,6 +77,15 @@ extension GetItInjectableX on _i174.GetIt {
       registerFor: {_development, _production},
       preResolve: true,
     );
+    gh.lazySingleton<_i80.AboutRepository>(
+      () => _i489.PackageInfoAboutRepository(),
+    );
+    gh.factory<_i380.AboutBloc>(
+      () => _i380.AboutBloc(gh<_i80.AboutRepository>()),
+    );
+    gh.lazySingleton<_i951.LicencesRepository>(
+      () => _i1025.FlutterLicencesRepository(),
+    );
     gh.singleton<_i289.DesignGalleryAccess>(
       () => appModule.closedGallery,
       registerFor: {_production, _integration},
@@ -78,6 +93,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.singleton<_i289.DesignGalleryAccess>(
       () => appModule.developmentGallery,
       registerFor: {_development},
+    );
+    gh.factory<_i570.LicencesBloc>(
+      () => _i570.LicencesBloc(gh<_i951.LicencesRepository>()),
     );
     await gh.singletonAsync<_i72.LibraryFolder>(
       () => coreModule.temporaryLibraryFolder(),

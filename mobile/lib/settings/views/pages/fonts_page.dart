@@ -5,8 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/context_extensions.dart';
-import '../../../shell/views/widgets/shell_back_button.dart';
-import '../../../shell/views/widgets/shell_page.dart';
+import '../widgets/fonts_pane.dart';
 
 /// Settings › Fonts: the fonts of notes and the size of their text.
 ///
@@ -18,10 +17,10 @@ class FontsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ShellPage(
-      title: context.l10n.fontsTitle,
-      leading: const ShellBackButton(),
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: context.colors.app,
+      body: FontsPane(startAtEnd: atTextSize),
     );
   }
 }

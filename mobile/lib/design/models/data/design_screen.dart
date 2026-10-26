@@ -8,18 +8,6 @@ enum DesignScreen {
   /// A note, as Markdown source, with the keyboard up.
   noteEdit,
 
-  /// Settings.
-  settings,
-
-  /// Settings, scrolled to their end.
-  settingsScrolled,
-
-  /// Choosing the fonts of notes and their text size.
-  fonts,
-
-  /// Choosing fonts, scrolled to the end.
-  fontsScrolled,
-
   /// Choosing a theme.
   themePicker,
 

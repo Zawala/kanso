@@ -31,46 +31,6 @@ void main() {
       );
     });
 
-    testWidgets('settings, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.settings),
-        name: 'tablet_settings_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('settings, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.settings),
-        name: 'tablet_settings_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
-    testWidgets('settings scrolled, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.settingsScrolled),
-        name: 'tablet_settings_scrolled_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('settings scrolled, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.settingsScrolled),
-        name: 'tablet_settings_scrolled_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
     testWidgets('theme picker, light', (tester) async {
       await expectGoldenOnBothPlatforms(
         tester,
@@ -126,46 +86,6 @@ void main() {
         tester,
         const TabletMockPage(screen: DesignScreen.error),
         name: 'tablet_error_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
-    testWidgets('fonts, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.fonts),
-        name: 'tablet_fonts_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('fonts, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.fonts),
-        name: 'tablet_fonts_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
-    testWidgets('fonts scrolled, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.fontsScrolled),
-        name: 'tablet_fonts_scrolled_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('fonts scrolled, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.fontsScrolled),
-        name: 'tablet_fonts_scrolled_dark',
         size: tabletLandscapeSize,
         brightness: Brightness.dark,
       );

@@ -787,4 +787,64 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get searchLoading => 'Searching';
+
+  @override
+  String settingsThemeBoth(String light, String dark) {
+    return '$light, $dark';
+  }
+
+  @override
+  String get settingsSyncStatus => 'Status';
+
+  @override
+  String get settingsSyncOff => 'Off';
+
+  @override
+  String get settingsSyncOn => 'On';
+
+  @override
+  String get settingsSyncSyncing => 'Syncing…';
+
+  @override
+  String get settingsSyncSynced => 'Synced';
+
+  @override
+  String get settingsSyncAttention => 'Needs attention';
+
+  @override
+  String get settingsSyncBackupFooter =>
+      'The notes on this phone aren’t included in device backups.';
+
+  @override
+  String settingsVersionValue(String version, String build) {
+    return '$version ($build)';
+  }
+
+  @override
+  String get licencesLoading => 'Loading licences';
+
+  @override
+  String get licencesFailedTitle => 'The licences didn’t load';
+
+  @override
+  String get licencesFailedMessage =>
+      'Something went wrong reading the licences. Try again.';
+
+  @override
+  String get licencesEmptyTitle => 'No licences';
+
+  @override
+  String get licencesEmptyMessage =>
+      'The packages Kanso is made of will be listed here.';
+
+  @override
+  String licencesCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count licences',
+      one: '1 licence',
+    );
+    return '$_temp0';
+  }
 }
