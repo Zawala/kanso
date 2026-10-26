@@ -7,6 +7,7 @@ heading compares the release with the one before.
 
 ### New
 
+- **editor:** Formatting shortcuts in the note's text, shown in the toolbar's tooltips and More menu and in Note › Format: ⌘B bold, ⌘I italic, ⇧⌘X strikethrough, ⌘E code, ⌥⌘C code block, ⇧⌘K link, ⌥⌘1 to ⌥⌘6 headings, ⌥⌘9 task, ⌥⌘8 bulleted and ⌥⌘7 numbered list, ⇧⌘. quote (Ctrl on Windows and Linux). Each acts on the selection (every line it touches for line formats), takes the format off again when pressed twice, and is one undo step. They don't fire in the title or search, or in Vim's Normal mode
 - **plugins:** The plugin directory is the `iamngoni/kanso-plugins` repository, fetched only from its path on raw.githubusercontent.com and signed by its CI with the directory key now compiled in; Kanso checks it 30 seconds after opening and every six hours while a plugin from it is installed, for withdrawn versions and updates; `kanso-plugin build-directory` and `verify-directory` build and check it; the Windows and Linux updaters replace `kanso-plugin-host` with `kanso`, all or nothing (#37)
 - **themes:** The theme gallery's signed catalog, path rules, install plan, key list and SVG sanitizer, with imported and on-disk icon themes held to it (#49 steps 1–2)
 - **themes:** Install, update and remove gallery color and icon themes under `<data>/gallery/`, with atomic swaps, crash-safe state, edited-copy detection, and the gallery-aware theme loaders (#49 step 3)
