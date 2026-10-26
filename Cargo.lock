@@ -4657,6 +4657,7 @@ name = "kanso-mobile"
 version = "0.8.4"
 dependencies = [
  "async-channel",
+ "base64 0.22.1",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "ed25519-dalek",

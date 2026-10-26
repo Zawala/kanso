@@ -15,6 +15,7 @@ use kanso_sync::{Backend, HttpBackend, KdfParams};
 use crate::account::AccountHandle;
 use crate::account_settings::AccountSettings;
 use crate::approvals::Approvals;
+use crate::approver_model::Approver;
 use crate::backup;
 use crate::boundary::{guard, held};
 use crate::errors::KansoError;
@@ -50,6 +51,8 @@ pub(crate) struct Inner {
     /// Where the gallery reads its index from and what it trusts; `None` is
     /// the real server and the keys compiled in. Tests set their own.
     pub(crate) gallery_source: Mutex<Option<crate::gallery_net::Source>>,
+    /// What this phone keeps while it approves other devices (`approvals`).
+    pub(crate) approver: Approver,
 }
 
 /// The libraries open in this process, by their database path. A background
@@ -263,6 +266,7 @@ fn open_inner(
         sync_gate: Mutex::new(()),
         sync_cancel: Mutex::new(None),
         gallery_source: Mutex::new(None),
+        approver: Approver::default(),
     });
     open.retain(|_, inner| inner.strong_count() > 0);
     open.insert(key, Arc::downgrade(&inner));
