@@ -6,22 +6,33 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart' show addTearDown;
 import 'package:kanso/injection.dart';
+import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 
 import 'browse_blocs.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_renderer_repository.dart';
 import 'seeded_appearance_bloc.dart';
 
 /// Registers, for a test that builds the app's pages, the BLoCs the pages
 /// make for themselves, over [library]; they are taken out again when the
 /// test ends.
-void registerPageBlocs(FixtureLibraryRepository library) {
+void registerPageBlocs(
+  FixtureLibraryRepository library, [
+  FixtureRendererRepository? renderer,
+]) {
   final haptics = RecordingHaptics();
   if (getIt.isRegistered<NoteListBloc>()) {
     getIt.unregister<NoteListBloc>();
   }
   getIt.registerFactory<NoteListBloc>(
     () => NoteListBloc(library, ForgetfulPreferencesRepository(), haptics),
+  );
+  if (getIt.isRegistered<NoteBloc>()) {
+    getIt.unregister<NoteBloc>();
+  }
+  getIt.registerFactory<NoteBloc>(
+    () => NoteBloc(library, renderer ?? FixtureRendererRepository()),
   );
   addTearDown(() => unawaited(getIt.reset()));
 }

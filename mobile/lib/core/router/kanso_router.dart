@@ -7,8 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:injectable/injectable.dart';
 
 import '../../design/views/pages/design_gallery_page.dart';
-import '../../design/views/widgets/no_note_selected_pane.dart';
 import '../../note/views/pages/note_page.dart';
+import '../../note/views/widgets/no_note_selected_pane.dart';
 import '../../note_list/views/pages/note_list_page.dart';
 import '../../search/views/pages/search_page.dart';
 import '../../settings/views/pages/fonts_page.dart';

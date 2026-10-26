@@ -4,44 +4,45 @@
 
 import 'package:flutter/material.dart';
 
-import '../../../core/configs/kanso_effects.dart';
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/note_status.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/status_label.dart';
+import '../../../core/utils/tag_row_color.dart';
 import '../../../core/views/widgets/kanso_icon.dart';
 import '../../../core/views/widgets/kanso_status_glyph.dart';
 import '../../../core/views/widgets/kanso_tag_chip.dart';
-import '../../models/data/mock_tag.dart';
 
 /// The facts of a note under its title: notebook and status, tags, and when
-/// it was made and last changed. [dimmed] greys it, for a locked note.
+/// it was made and last changed.
 class NoteMetadataBlock extends StatelessWidget {
   const NoteMetadataBlock({
     required this.notebook,
     required this.created,
     required this.updated,
     this.status = NoteStatus.none,
-    this.tags = const <MockTag>[],
-    this.dimmed = false,
+    this.tags = const <TagRow>[],
     super.key,
   });
 
+  /// Where the note is, as a path (`Projects / Kanso`).
   final String notebook;
+
+  /// When it was made and last changed, as the screen says it.
   final String created;
   final String updated;
   final NoteStatus status;
-  final List<MockTag> tags;
-  final bool dimmed;
+  final List<TagRow> tags;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final typography = context.typography;
     final l10n = context.l10n;
-    final block = Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Row(
@@ -62,10 +63,7 @@ class NoteMetadataBlock extends StatelessWidget {
             ),
             if (status != NoteStatus.none) ...<Widget>[
               const SizedBox(width: KansoSpacing.md),
-              KansoStatusGlyph(
-                status: status,
-                size: KansoSizes.iconSmall,
-              ),
+              KansoStatusGlyph(status: status, size: KansoSizes.iconSmall),
               const SizedBox(width: KansoSpacing.xs),
               Text(
                 l10n.statusName(status),
@@ -82,7 +80,7 @@ class NoteMetadataBlock extends StatelessWidget {
             runSpacing: KansoSpacing.xs,
             children: <Widget>[
               for (final tag in tags)
-                KansoTagChip(name: tag.name, color: tag.color.color),
+                KansoTagChip(name: tag.name, color: tag.tint),
             ],
           ),
         ],
@@ -91,20 +89,11 @@ class NoteMetadataBlock extends StatelessWidget {
           spacing: KansoSpacing.md,
           runSpacing: KansoSpacing.xxs,
           children: <Widget>[
-            Text(
-              '${l10n.noteMetaCreated} $created',
-              style: typography.meta,
-            ),
-            Text(
-              '${l10n.noteMetaUpdated} $updated',
-              style: typography.meta,
-            ),
+            Text('${l10n.noteMetaCreated} $created', style: typography.meta),
+            Text('${l10n.noteMetaUpdated} $updated', style: typography.meta),
           ],
         ),
       ],
     );
-    return dimmed
-        ? Opacity(opacity: KansoEffects.disabled, child: block)
-        : block;
   }
 }

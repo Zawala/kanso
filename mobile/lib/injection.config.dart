@@ -42,6 +42,7 @@ import 'core/state/library_index/library_index_bloc.dart' as _i861;
 import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
 import 'core_check/state/core_check/core_check_bloc.dart' as _i226;
+import 'note/state/note/note_bloc.dart' as _i618;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 
 const String _development = 'development';
@@ -133,6 +134,12 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i38.LibraryRepository>(),
         gh<_i384.PreferencesRepository>(),
         gh<_i1056.HapticsRepository>(),
+      ),
+    );
+    gh.factory<_i618.NoteBloc>(
+      () => _i618.NoteBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i732.RendererRepository>(),
       ),
     );
     gh.lazySingleton<_i601.SyncRepository>(

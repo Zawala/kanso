@@ -932,5 +932,29 @@
   "noteListDismiss": "OK",
   "@noteListDismiss": {
     "description": "The button that closes the line that says a change did not happen."
+  },
+  "noteLoading": "Loading the note",
+  "@noteLoading": {
+    "description": "What a screen reader says while a note is read."
+  },
+  "noteNotFoundTitle": "This note isn't here",
+  "@noteNotFoundTitle": {
+    "description": "The title shown when a note that was asked for does not exist."
+  },
+  "noteNotFoundMessage": "It may have been deleted, or it hasn't reached this phone yet.",
+  "@noteNotFoundMessage": {
+    "description": "What the screen of a note that is not there says."
+  },
+  "noteFailedTitle": "This note didn't load",
+  "@noteFailedTitle": {
+    "description": "The title of the card shown when a note could not be read."
+  },
+  "noteFailedMessage": "Something went wrong reading the note on this phone. Try again.",
+  "@noteFailedMessage": {
+    "description": "The message of the card shown when a note could not be read."
+  },
+  "lockedMessageSealed": "Its text stays sealed. Only its title can be shown here.",
+  "@lockedMessageSealed": {
+    "description": "What the card of a locked note says about its text."
   }
 }

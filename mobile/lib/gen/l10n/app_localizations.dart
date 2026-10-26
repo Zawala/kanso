@@ -1425,6 +1425,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OK'**
   String get noteListDismiss;
+
+  /// What a screen reader says while a note is read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading the note'**
+  String get noteLoading;
+
+  /// The title shown when a note that was asked for does not exist.
+  ///
+  /// In en, this message translates to:
+  /// **'This note isn\'t here'**
+  String get noteNotFoundTitle;
+
+  /// What the screen of a note that is not there says.
+  ///
+  /// In en, this message translates to:
+  /// **'It may have been deleted, or it hasn\'t reached this phone yet.'**
+  String get noteNotFoundMessage;
+
+  /// The title of the card shown when a note could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'This note didn\'t load'**
+  String get noteFailedTitle;
+
+  /// The message of the card shown when a note could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the note on this phone. Try again.'**
+  String get noteFailedMessage;
+
+  /// What the card of a locked note says about its text.
+  ///
+  /// In en, this message translates to:
+  /// **'Its text stays sealed. Only its title can be shown here.'**
+  String get lockedMessageSealed;
 }
 
 class _AppLocalizationsDelegate

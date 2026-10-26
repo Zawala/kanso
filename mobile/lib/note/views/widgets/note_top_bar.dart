@@ -8,34 +8,44 @@ import '../../../core/configs/kanso_icons.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
-import '../../models/data/design_layout.dart';
-import 'note_mode_toggle.dart';
 
-/// The bar above a note: the way back (on a tablet, back and forward), the
-/// preview and edit switch and the info button.
+/// The bar above a note. On a phone it has the way back to the list; on a
+/// tablet, with the list beside the note, the history's back and forward.
+/// Whatever the note has to offer goes in [trailing].
+///
+/// A way that leads nowhere ([onGoBack] and [onGoForward] when there is no
+/// note behind or ahead) is drawn dimmed.
 class NoteTopBar extends StatelessWidget {
   const NoteTopBar({
-    required this.layout,
-    this.editing = false,
-    this.showToggle = true,
+    required this.phone,
+    this.onBack,
+    this.onGoBack,
+    this.onGoForward,
+    this.trailing = const <Widget>[],
     super.key,
   });
 
-  final DesignLayout layout;
-  final bool editing;
-  final bool showToggle;
+  /// Whether it is a phone's bar, with the note on a page of its own.
+  final bool phone;
+
+  /// Back to the list, on a phone.
+  final VoidCallback? onBack;
+
+  /// Back and forward through the notes opened, on a tablet.
+  final VoidCallback? onGoBack;
+  final VoidCallback? onGoForward;
+  final List<Widget> trailing;
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final phone = layout == DesignLayout.phone;
     return KansoTopBar(
       bordered: false,
       leading: phone
           ? KansoIconButton(
               icon: KansoIcons.chevronLeft,
               semanticLabel: l10n.noteBack,
-              onPressed: () {},
+              onPressed: onBack,
             )
           : Row(
               mainAxisSize: MainAxisSize.min,
@@ -43,23 +53,16 @@ class NoteTopBar extends StatelessWidget {
                 KansoIconButton(
                   icon: KansoIcons.arrowLeft,
                   semanticLabel: l10n.noteBack,
-                  onPressed: () {},
+                  onPressed: onGoBack,
                 ),
                 KansoIconButton(
                   icon: KansoIcons.arrowRight,
                   semanticLabel: l10n.noteForward,
-                  onPressed: () {},
+                  onPressed: onGoForward,
                 ),
               ],
             ),
-      trailing: <Widget>[
-        if (showToggle) NoteModeToggle(editing: editing),
-        KansoIconButton(
-          icon: KansoIcons.info,
-          semanticLabel: l10n.noteInfo,
-          onPressed: () {},
-        ),
-      ],
+      trailing: trailing,
     );
   }
 }

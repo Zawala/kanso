@@ -14,11 +14,14 @@ import 'package:kanso/core/models/repos/abs/haptics_repository.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/note/models/data/note_screen_status.dart';
+import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/models/data/note_list_status.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 
 import 'close_bloc_later.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_renderer_repository.dart';
 import 'fixture_sync_repository.dart';
 import 'library_fixtures.dart';
 import 'seeded_appearance_bloc.dart';
@@ -56,6 +59,7 @@ class BrowseBlocs {
   final NavigationHistoryBloc history;
   final SyncStatusBloc sync;
   final FixtureSyncRepository syncRepository;
+  final FixtureRendererRepository renderer = FixtureRendererRepository();
   final RecordingHaptics haptics = RecordingHaptics();
 
   /// Makes them, with the library read, and closes them when the test ends.
@@ -103,14 +107,33 @@ class BrowseBlocs {
     return bloc;
   }
 
-  /// [child] with these BLoCs above it, and [list] if given.
-  Widget provide(Widget child, {NoteListBloc? list}) {
+  /// The note [id], read and highlighted in [themeId]; or only made when
+  /// [read] is false, so that it is still loading.
+  Future<NoteBloc> noteOf(
+    String id, {
+    String themeId = 'kanso-light',
+    bool read = true,
+  }) async {
+    final bloc = NoteBloc(library, renderer);
+    closeBlocLater(bloc);
+    if (read) {
+      bloc.add(NoteEvent.started(id, themeId));
+      await bloc.stream.firstWhere(
+        (state) => state.status != NoteScreenStatus.loading,
+      );
+    }
+    return bloc;
+  }
+
+  /// [child] with these BLoCs above it, and [list] and [note] if given.
+  Widget provide(Widget child, {NoteListBloc? list, NoteBloc? note}) {
     return MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<LibraryIndexBloc>.value(value: index),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
         BlocProvider<SyncStatusBloc>.value(value: sync),
         if (list != null) BlocProvider<NoteListBloc>.value(value: list),
+        if (note != null) BlocProvider<NoteBloc>.value(value: note),
       ],
       child: child,
     );

@@ -730,4 +730,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noteListDismiss => 'OK';
+
+  @override
+  String get noteLoading => 'Loading the note';
+
+  @override
+  String get noteNotFoundTitle => 'This note isn\'t here';
+
+  @override
+  String get noteNotFoundMessage =>
+      'It may have been deleted, or it hasn\'t reached this phone yet.';
+
+  @override
+  String get noteFailedTitle => 'This note didn\'t load';
+
+  @override
+  String get noteFailedMessage =>
+      'Something went wrong reading the note on this phone. Try again.';
+
+  @override
+  String get lockedMessageSealed =>
+      'Its text stays sealed. Only its title can be shown here.';
 }
