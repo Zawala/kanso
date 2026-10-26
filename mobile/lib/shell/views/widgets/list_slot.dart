@@ -18,7 +18,10 @@ class ListSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (location) {
-      PlaceLocation(:final place) => NoteListPage(place: place),
+      PlaceLocation(:final place, :final noteId) => NoteListPage(
+        place: place,
+        openNoteId: noteId,
+      ),
       SearchLocation(:final query, :final scope, :final notebookId) =>
         SearchPage(
           query: query,

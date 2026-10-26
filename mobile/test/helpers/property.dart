@@ -246,3 +246,75 @@ extension KansoHistoryAny on Any {
     (int kind, int note) => (kind, note),
   );
 }
+
+extension KansoListAny on Any {
+  /// The rows of a list in the order the library lists them: pinned first,
+  /// then the most recently changed. Their times are a few months of 2026,
+  /// so several share a day.
+  Generator<List<NoteRow>> get listedRows {
+    final row = combine3(
+      this.bool,
+      intInRange(1770000000000, 1790000000000),
+      intInRange(1770000000000, 1790000000000),
+      (bool pinned, int created, int updated) => NoteRow(
+        id: '',
+        rev: '',
+        title: '',
+        snippet: '',
+        notebookId: '',
+        status: 'none',
+        tags: const <String>[],
+        pinned: pinned,
+        createdMs: created,
+        updatedMs: updated,
+        tasksDone: 0,
+        tasksTotal: 0,
+        locked: false,
+      ),
+    );
+    return listWithLengthInRange<NoteRow>(0, 40, row).map((rows) {
+      final numbered =
+          <NoteRow>[
+            for (var i = 0; i < rows.length; i++)
+              NoteRow(
+                id: 'n$i',
+                rev: '',
+                title: 'Note $i',
+                snippet: '',
+                notebookId: 'b',
+                status: 'none',
+                tags: const <String>[],
+                pinned: rows[i].pinned,
+                createdMs: rows[i].createdMs,
+                updatedMs: rows[i].updatedMs,
+                tasksDone: 0,
+                tasksTotal: 0,
+                locked: false,
+              ),
+          ]..sort((a, b) {
+            if (a.pinned != b.pinned) {
+              return a.pinned ? -1 : 1;
+            }
+            return b.updatedMs.compareTo(a.updatedMs);
+          });
+      return numbered;
+    });
+  }
+
+  /// Any shape a list can have.
+  Generator<ListShape> get listShape => combine4(
+    this.bool,
+    this.bool,
+    this.bool,
+    choose(SortKey.values),
+    (bool byDate, bool created, bool groupPinned, SortKey sort) => ListShape(
+      sort: sort,
+      byDate: byDate,
+      date: created ? DateField.created : DateField.updated,
+      groupPinned: groupPinned,
+    ),
+  );
+
+  /// A time zone's offset from UTC, in seconds: from -12 to +14 hours.
+  Generator<int> get utcOffsetSeconds => intInRange(-12 * 3600, 14 * 3600 + 1);
+}

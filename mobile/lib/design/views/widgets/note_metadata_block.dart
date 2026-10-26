@@ -10,11 +10,11 @@ import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/note_status.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/status_label.dart';
 import '../../../core/views/widgets/kanso_icon.dart';
 import '../../../core/views/widgets/kanso_status_glyph.dart';
 import '../../../core/views/widgets/kanso_tag_chip.dart';
 import '../../models/data/mock_tag.dart';
-import '../../utils/status_label.dart';
 
 /// The facts of a note under its title: notebook and status, tags, and when
 /// it was made and last changed. [dimmed] greys it, for a locked note.

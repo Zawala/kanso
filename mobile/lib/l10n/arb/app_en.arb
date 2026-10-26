@@ -753,5 +753,159 @@
   "libraryNoTags": "No tags yet",
   "@libraryNoTags": {
     "description": "Shown under the Tags heading when no note has a tag."
+  },
+  "dayToday": "Today",
+  "@dayToday": {
+    "description": "A day in a list's header or a row's time: the day it is."
+  },
+  "dayYesterday": "Yesterday",
+  "@dayYesterday": {
+    "description": "A day in a list's header or a row's time: the day before."
+  },
+  "noteUntitled": "Untitled",
+  "@noteUntitled": {
+    "description": "What a note with no title is called in a list."
+  },
+  "noteListLocked": "Locked",
+  "@noteListLocked": {
+    "description": "The line of text a locked note's row shows in place of its text."
+  },
+  "noteListFailedTitle": "These notes didn't load",
+  "@noteListFailedTitle": {
+    "description": "The title of the card shown when a list of notes could not be read."
+  },
+  "noteListFailedMessage": "Something went wrong reading the notes on this phone. Try again.",
+  "@noteListFailedMessage": {
+    "description": "The message of the card shown when a list of notes could not be read."
+  },
+  "emptyAllTitle": "No notes yet",
+  "@emptyAllTitle": {
+    "description": "The title shown when the library has no notes."
+  },
+  "emptyAllMessage": "Notes will appear here.",
+  "@emptyAllMessage": {
+    "description": "What the empty list of all notes says will appear there."
+  },
+  "emptyPinnedTitle": "Nothing pinned",
+  "@emptyPinnedTitle": {
+    "description": "The title shown when no note is pinned."
+  },
+  "emptyPinnedMessage": "Pin a note by swiping it, and it will wait here.",
+  "@emptyPinnedMessage": {
+    "description": "What the empty list of pinned notes says."
+  },
+  "emptyRecentTitle": "Nothing recent",
+  "@emptyRecentTitle": {
+    "description": "The title shown when no note was changed lately."
+  },
+  "emptyRecentMessage": "Notes you have changed lately will appear here.",
+  "@emptyRecentMessage": {
+    "description": "What the empty list of recent notes says."
+  },
+  "emptyTrashTitle": "The trash is empty",
+  "@emptyTrashTitle": {
+    "description": "The title shown when the trash has no notes."
+  },
+  "emptyTrashMessage": "Notes you trash wait here until you move them out.",
+  "@emptyTrashMessage": {
+    "description": "What the empty trash says."
+  },
+  "emptyTagTitle": "No notes tagged {tag}",
+  "@emptyTagTitle": {
+    "description": "The title shown when no note has the tag.",
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  },
+  "emptyTagMessage": "Notes with this tag will appear in this list.",
+  "@emptyTagMessage": {
+    "description": "What the empty list of a tag's notes says."
+  },
+  "emptyNarrowedTitle": "No notes match",
+  "@emptyNarrowedTitle": {
+    "description": "The title shown when the list's narrowing hides every note."
+  },
+  "emptyNarrowedMessage": "Try another status, or turn off Pinned Only.",
+  "@emptyNarrowedMessage": {
+    "description": "What the list says when its narrowing hides every note."
+  },
+  "listOptionsTitle": "View options",
+  "@listOptionsTitle": {
+    "description": "The title of the sheet that sorts and narrows a list."
+  },
+  "listOptionsSortBy": "Sort by",
+  "@listOptionsSortBy": {
+    "description": "The heading of the choices of what to sort a list by."
+  },
+  "listOptionsDateUpdated": "Date Updated",
+  "@listOptionsDateUpdated": {
+    "description": "A way to sort a list: by when each note was last changed."
+  },
+  "listOptionsDateCreated": "Date Created",
+  "@listOptionsDateCreated": {
+    "description": "A way to sort a list: by when each note was made."
+  },
+  "listOptionsTitleSort": "Title",
+  "@listOptionsTitleSort": {
+    "description": "A way to sort a list: by each note's title."
+  },
+  "listOptionsNewestFirst": "Newest First",
+  "@listOptionsNewestFirst": {
+    "description": "A direction of a list sorted by date."
+  },
+  "listOptionsOldestFirst": "Oldest First",
+  "@listOptionsOldestFirst": {
+    "description": "A direction of a list sorted by date."
+  },
+  "listOptionsAToZ": "A to Z",
+  "@listOptionsAToZ": {
+    "description": "A direction of a list sorted by title."
+  },
+  "listOptionsZToA": "Z to A",
+  "@listOptionsZToA": {
+    "description": "A direction of a list sorted by title."
+  },
+  "listOptionsStatus": "Status",
+  "@listOptionsStatus": {
+    "description": "The heading of the choices of a status to narrow a list to."
+  },
+  "listOptionsAnyStatus": "Any Status",
+  "@listOptionsAnyStatus": {
+    "description": "The choice that does not narrow a list by status."
+  },
+  "listOptionsPinnedOnly": "Pinned Only",
+  "@listOptionsPinnedOnly": {
+    "description": "The choice that narrows a list to pinned notes."
+  },
+  "noteListDone": "Done",
+  "@noteListDone": {
+    "description": "The button that ends choosing several notes, or closes a sheet."
+  },
+  "noteListSelected": "{count} selected",
+  "@noteListSelected": {
+    "description": "How many notes are chosen.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noteListPin": "Pin",
+  "@noteListPin": {
+    "description": "The action that pins the notes chosen."
+  },
+  "noteListUnpin": "Unpin",
+  "@noteListUnpin": {
+    "description": "The action that unpins the notes chosen."
+  },
+  "noteListMove": "Move",
+  "@noteListMove": {
+    "description": "The action that moves notes to a notebook."
+  },
+  "noteListTrash": "Trash",
+  "@noteListTrash": {
+    "description": "The action that moves notes to the trash."
   }
 }

@@ -22,12 +22,14 @@ import 'core/configs/core_module.dart' as _i418;
 import 'core/models/data/design_gallery_access.dart' as _i289;
 import 'core/models/data/library_folder.dart' as _i72;
 import 'core/models/repos/abs/diagnostics_repository.dart' as _i984;
+import 'core/models/repos/abs/haptics_repository.dart' as _i1056;
 import 'core/models/repos/abs/library_repository.dart' as _i38;
 import 'core/models/repos/abs/preferences_repository.dart' as _i384;
 import 'core/models/repos/abs/renderer_repository.dart' as _i732;
 import 'core/models/repos/abs/session_repository.dart' as _i333;
 import 'core/models/repos/abs/sync_repository.dart' as _i601;
 import 'core/models/repos/impl/file_preferences_repository.dart' as _i207;
+import 'core/models/repos/impl/flutter_haptics_repository.dart' as _i438;
 import 'core/models/repos/impl/rust_diagnostics_repository.dart' as _i1062;
 import 'core/models/repos/impl/rust_library_repository.dart' as _i152;
 import 'core/models/repos/impl/rust_renderer_repository.dart' as _i820;
@@ -40,6 +42,7 @@ import 'core/state/library_index/library_index_bloc.dart' as _i861;
 import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
 import 'core_check/state/core_check/core_check_bloc.dart' as _i226;
+import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 
 const String _development = 'development';
 const String _production = 'production';
@@ -57,6 +60,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
     gh.lazySingleton<_i984.DiagnosticsRepository>(
       () => _i1062.RustDiagnosticsRepository(),
+    );
+    gh.lazySingleton<_i1056.HapticsRepository>(
+      () => _i438.FlutterHapticsRepository(),
     );
     await gh.singletonAsync<_i72.LibraryFolder>(
       () => coreModule.libraryFolder(),
@@ -120,6 +126,13 @@ extension GetItInjectableX on _i174.GetIt {
       () => _i226.CoreCheckBloc(
         gh<_i38.LibraryRepository>(),
         gh<_i984.DiagnosticsRepository>(),
+      ),
+    );
+    gh.factory<_i351.NoteListBloc>(
+      () => _i351.NoteListBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i384.PreferencesRepository>(),
+        gh<_i1056.HapticsRepository>(),
       ),
     );
     gh.lazySingleton<_i601.SyncRepository>(

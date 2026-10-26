@@ -17,6 +17,7 @@ import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 import 'package:kanso/note/views/pages/note_page.dart';
@@ -27,7 +28,8 @@ import 'package:kanso/settings/views/pages/licences_page.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
 import 'package:kanso/themes/views/pages/theme_picker_page.dart';
 
-import '../../helpers/mock_repositories.dart';
+import '../../helpers/browse_blocs.dart';
+import '../../helpers/register_page_blocs.dart';
 import '../../helpers/seeded_appearance_bloc.dart';
 
 Future<GoRouter> _pump(
@@ -38,8 +40,9 @@ Future<GoRouter> _pump(
 }) async {
   final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
-  final history = NavigationHistoryBloc(MockLibraryRepository());
-  addTearDown(history.close);
+  final blocs = await BrowseBlocs.start();
+  registerPageBlocs(blocs.library);
+  final history = blocs.history;
   tester.view
     ..physicalSize = size
     ..devicePixelRatio = 1;
@@ -58,6 +61,7 @@ Future<GoRouter> _pump(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<AppearanceBloc>.value(value: bloc),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
+        BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
       ],
       child: App(router: kansoRouter),
     ),

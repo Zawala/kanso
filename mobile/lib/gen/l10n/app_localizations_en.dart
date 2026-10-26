@@ -589,4 +589,121 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get libraryNoTags => 'No tags yet';
+
+  @override
+  String get dayToday => 'Today';
+
+  @override
+  String get dayYesterday => 'Yesterday';
+
+  @override
+  String get noteUntitled => 'Untitled';
+
+  @override
+  String get noteListLocked => 'Locked';
+
+  @override
+  String get noteListFailedTitle => 'These notes didn\'t load';
+
+  @override
+  String get noteListFailedMessage =>
+      'Something went wrong reading the notes on this phone. Try again.';
+
+  @override
+  String get emptyAllTitle => 'No notes yet';
+
+  @override
+  String get emptyAllMessage => 'Notes will appear here.';
+
+  @override
+  String get emptyPinnedTitle => 'Nothing pinned';
+
+  @override
+  String get emptyPinnedMessage =>
+      'Pin a note by swiping it, and it will wait here.';
+
+  @override
+  String get emptyRecentTitle => 'Nothing recent';
+
+  @override
+  String get emptyRecentMessage =>
+      'Notes you have changed lately will appear here.';
+
+  @override
+  String get emptyTrashTitle => 'The trash is empty';
+
+  @override
+  String get emptyTrashMessage =>
+      'Notes you trash wait here until you move them out.';
+
+  @override
+  String emptyTagTitle(String tag) {
+    return 'No notes tagged $tag';
+  }
+
+  @override
+  String get emptyTagMessage => 'Notes with this tag will appear in this list.';
+
+  @override
+  String get emptyNarrowedTitle => 'No notes match';
+
+  @override
+  String get emptyNarrowedMessage =>
+      'Try another status, or turn off Pinned Only.';
+
+  @override
+  String get listOptionsTitle => 'View options';
+
+  @override
+  String get listOptionsSortBy => 'Sort by';
+
+  @override
+  String get listOptionsDateUpdated => 'Date Updated';
+
+  @override
+  String get listOptionsDateCreated => 'Date Created';
+
+  @override
+  String get listOptionsTitleSort => 'Title';
+
+  @override
+  String get listOptionsNewestFirst => 'Newest First';
+
+  @override
+  String get listOptionsOldestFirst => 'Oldest First';
+
+  @override
+  String get listOptionsAToZ => 'A to Z';
+
+  @override
+  String get listOptionsZToA => 'Z to A';
+
+  @override
+  String get listOptionsStatus => 'Status';
+
+  @override
+  String get listOptionsAnyStatus => 'Any Status';
+
+  @override
+  String get listOptionsPinnedOnly => 'Pinned Only';
+
+  @override
+  String get noteListDone => 'Done';
+
+  @override
+  String noteListSelected(int count) {
+    return '$count selected';
+  }
+
+  @override
+  String get noteListPin => 'Pin';
+
+  @override
+  String get noteListUnpin => 'Unpin';
+
+  @override
+  String get noteListMove => 'Move';
+
+  @override
+  String get noteListTrash => 'Trash';
 }

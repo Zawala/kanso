@@ -1,0 +1,105 @@
+// Kanso — note_list_view.dart
+// Created 2026-10-26.
+// Licensed under AGPL-3.0-or-later (see LICENSE).
+
+import 'package:clock/clock.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/bridge/api/types.dart';
+import '../../../core/configs/kanso_spacing.dart';
+import '../../../core/models/data/browse_location.dart';
+import '../../../core/state/library_index/library_index_bloc.dart';
+import '../../../core/state/navigation_history/navigation_history_bloc.dart';
+import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/day_grouping.dart';
+import '../../../core/utils/list_labels.dart';
+import '../../../core/views/widgets/kanso_divider.dart';
+import '../../../core/views/widgets/kanso_section_header.dart';
+import '../../models/data/note_list_entry.dart';
+import '../../state/note_list/note_list_bloc.dart';
+import 'note_list_row.dart';
+
+/// The notes of a list under their headers, scrolling.
+///
+/// A tap opens a note in the place [location] is in, and while several
+/// are being chosen it chooses or lets go of it. [openNoteId] is the note
+/// open beside the list.
+class NoteListView extends StatelessWidget {
+  const NoteListView({
+    required this.state,
+    required this.index,
+    required this.location,
+    this.openNoteId,
+    super.key,
+  });
+
+  final NoteListState state;
+  final LibraryIndexState index;
+  final BrowseLocation location;
+  final String? openNoteId;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final now = clock.now();
+    final today = localDayOf(now.millisecondsSinceEpoch);
+    final byCreated = state.shape?.date == DateField.created;
+    final entries = state.entries;
+    final bloc = context.read<NoteListBloc>();
+    return CustomScrollView(
+      slivers: <Widget>[
+        SliverPadding(
+          padding: EdgeInsets.only(
+            top: KansoSpacing.xxs,
+            bottom: MediaQuery.paddingOf(context).bottom + KansoSpacing.md,
+          ),
+          sliver: SliverList.builder(
+            itemCount: entries.length,
+            itemBuilder: (context, at) {
+              return switch (entries[at]) {
+                HeaderEntry(:final bucket) => KansoSectionHeader(
+                  label: bucketLabel(l10n, bucket, today: today),
+                ),
+                NoteEntry(:final row) => Column(
+                  children: <Widget>[
+                    if (at > 0 && entries[at - 1] is NoteEntry)
+                      const KansoDivider(indent: KansoSpacing.md),
+                    NoteListRow(
+                      row: row,
+                      index: index,
+                      time: rowTimeLabel(
+                        l10n,
+                        byCreated ? row.createdMs : row.updatedMs,
+                        now: now,
+                      ),
+                      open: row.id == openNoteId,
+                      checked: state.selecting
+                          ? state.selected.contains(row.id)
+                          : null,
+                      onTap: () => state.selecting
+                          ? bloc.add(NoteListEvent.selectionToggled(row.id))
+                          : openNote(context, row.id),
+                      onLongPress: () => state.selecting
+                          ? bloc.add(NoteListEvent.selectionToggled(row.id))
+                          : bloc.add(NoteListEvent.selectionStarted(row.id)),
+                    ),
+                  ],
+                ),
+              };
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Opens the note [id] in the place being listed, and tells the history.
+  void openNote(BuildContext context, String id) {
+    context.read<NavigationHistoryBloc>().add(
+      NavigationHistoryEvent.visited(id),
+    );
+    context.go(location.withNote(id).location);
+  }
+}

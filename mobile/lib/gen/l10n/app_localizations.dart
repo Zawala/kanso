@@ -1179,6 +1179,222 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No tags yet'**
   String get libraryNoTags;
+
+  /// A day in a list's header or a row's time: the day it is.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get dayToday;
+
+  /// A day in a list's header or a row's time: the day before.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get dayYesterday;
+
+  /// What a note with no title is called in a list.
+  ///
+  /// In en, this message translates to:
+  /// **'Untitled'**
+  String get noteUntitled;
+
+  /// The line of text a locked note's row shows in place of its text.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked'**
+  String get noteListLocked;
+
+  /// The title of the card shown when a list of notes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'These notes didn\'t load'**
+  String get noteListFailedTitle;
+
+  /// The message of the card shown when a list of notes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the notes on this phone. Try again.'**
+  String get noteListFailedMessage;
+
+  /// The title shown when the library has no notes.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes yet'**
+  String get emptyAllTitle;
+
+  /// What the empty list of all notes says will appear there.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes will appear here.'**
+  String get emptyAllMessage;
+
+  /// The title shown when no note is pinned.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing pinned'**
+  String get emptyPinnedTitle;
+
+  /// What the empty list of pinned notes says.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin a note by swiping it, and it will wait here.'**
+  String get emptyPinnedMessage;
+
+  /// The title shown when no note was changed lately.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing recent'**
+  String get emptyRecentTitle;
+
+  /// What the empty list of recent notes says.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes you have changed lately will appear here.'**
+  String get emptyRecentMessage;
+
+  /// The title shown when the trash has no notes.
+  ///
+  /// In en, this message translates to:
+  /// **'The trash is empty'**
+  String get emptyTrashTitle;
+
+  /// What the empty trash says.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes you trash wait here until you move them out.'**
+  String get emptyTrashMessage;
+
+  /// The title shown when no note has the tag.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes tagged {tag}'**
+  String emptyTagTitle(String tag);
+
+  /// What the empty list of a tag's notes says.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes with this tag will appear in this list.'**
+  String get emptyTagMessage;
+
+  /// The title shown when the list's narrowing hides every note.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes match'**
+  String get emptyNarrowedTitle;
+
+  /// What the list says when its narrowing hides every note.
+  ///
+  /// In en, this message translates to:
+  /// **'Try another status, or turn off Pinned Only.'**
+  String get emptyNarrowedMessage;
+
+  /// The title of the sheet that sorts and narrows a list.
+  ///
+  /// In en, this message translates to:
+  /// **'View options'**
+  String get listOptionsTitle;
+
+  /// The heading of the choices of what to sort a list by.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort by'**
+  String get listOptionsSortBy;
+
+  /// A way to sort a list: by when each note was last changed.
+  ///
+  /// In en, this message translates to:
+  /// **'Date Updated'**
+  String get listOptionsDateUpdated;
+
+  /// A way to sort a list: by when each note was made.
+  ///
+  /// In en, this message translates to:
+  /// **'Date Created'**
+  String get listOptionsDateCreated;
+
+  /// A way to sort a list: by each note's title.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get listOptionsTitleSort;
+
+  /// A direction of a list sorted by date.
+  ///
+  /// In en, this message translates to:
+  /// **'Newest First'**
+  String get listOptionsNewestFirst;
+
+  /// A direction of a list sorted by date.
+  ///
+  /// In en, this message translates to:
+  /// **'Oldest First'**
+  String get listOptionsOldestFirst;
+
+  /// A direction of a list sorted by title.
+  ///
+  /// In en, this message translates to:
+  /// **'A to Z'**
+  String get listOptionsAToZ;
+
+  /// A direction of a list sorted by title.
+  ///
+  /// In en, this message translates to:
+  /// **'Z to A'**
+  String get listOptionsZToA;
+
+  /// The heading of the choices of a status to narrow a list to.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get listOptionsStatus;
+
+  /// The choice that does not narrow a list by status.
+  ///
+  /// In en, this message translates to:
+  /// **'Any Status'**
+  String get listOptionsAnyStatus;
+
+  /// The choice that narrows a list to pinned notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned Only'**
+  String get listOptionsPinnedOnly;
+
+  /// The button that ends choosing several notes, or closes a sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get noteListDone;
+
+  /// How many notes are chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} selected'**
+  String noteListSelected(int count);
+
+  /// The action that pins the notes chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get noteListPin;
+
+  /// The action that unpins the notes chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin'**
+  String get noteListUnpin;
+
+  /// The action that moves notes to a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Move'**
+  String get noteListMove;
+
+  /// The action that moves notes to the trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Trash'**
+  String get noteListTrash;
 }
 
 class _AppLocalizationsDelegate

@@ -32,6 +32,7 @@ import 'package:kanso/shell/views/widgets/library_navigation.dart';
 import '../../../helpers/close_bloc_later.dart';
 import '../../../helpers/fixture_library_repository.dart';
 import '../../../helpers/mock_repositories.dart';
+import '../../../helpers/register_page_blocs.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 
 const Size _landscape = Size(1180, 820);
@@ -49,6 +50,7 @@ Future<GoRouter> _pump(
   addTearDown(bloc.close);
   final library = FixtureLibraryRepository();
   addTearDown(() => unawaited(library.close()));
+  registerPageBlocs(library);
   final history = NavigationHistoryBloc(MockLibraryRepository());
   addTearDown(history.close);
   final index = LibraryIndexBloc(library)
@@ -362,7 +364,12 @@ void main() {
       expect(selected()['Trash'], isTrue);
       expect(selected()['All Notes'], isFalse);
       expect(selected()['Pinned'], isFalse);
-      await tester.tap(find.text('Pinned'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(LibraryNavigation),
+          matching: find.text('Pinned'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(selected()['Pinned'], isTrue);
       expect(selected()['Trash'], isFalse);

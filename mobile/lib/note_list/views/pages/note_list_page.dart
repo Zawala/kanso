@@ -3,36 +3,35 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/bridge/api/types.dart';
-import '../../../core/configs/kanso_icons.dart';
 import '../../../core/utils/context_extensions.dart';
-import '../../../core/utils/place_labels.dart';
-import '../../../core/views/widgets/kanso_drawer_scope.dart';
-import '../../../core/views/widgets/kanso_icon_button.dart';
-import '../../../shell/views/widgets/shell_page.dart';
+import '../../../injection.dart';
+import '../../state/note_list/note_list_bloc.dart';
+import '../widgets/note_list_pane.dart';
 
-/// The notes of a library place.
+/// The notes of a library place. Each place has its own list, read when it
+/// is opened and given up when it is left.
 class NoteListPage extends StatelessWidget {
-  const NoteListPage({required this.place, super.key});
+  const NoteListPage({required this.place, this.openNoteId, super.key});
 
   final ListPlace place;
 
+  /// The note open beside the list, in a window with room for both.
+  final String? openNoteId;
+
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    // Where the library is a drawer, a button opens it.
-    final drawer = KansoDrawerScope.maybeOf(context);
-    return ShellPage(
-      title: placeLabel(l10n, place),
-      leading: drawer == null
-          ? null
-          : KansoIconButton(
-              icon: KansoIcons.menu,
-              semanticLabel: l10n.openLibrary,
-              onPressed: drawer.open,
-            ),
-      backgroundColor: context.colors.list,
+    return BlocProvider<NoteListBloc>(
+      // A new place is a new list: nothing of the last one is kept.
+      key: ValueKey<ListPlace>(place),
+      create: (_) => getIt<NoteListBloc>()..add(NoteListEvent.started(place)),
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        backgroundColor: context.colors.list,
+        body: NoteListPane(openNoteId: openNoteId),
+      ),
     );
   }
 }
