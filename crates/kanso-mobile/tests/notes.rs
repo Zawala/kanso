@@ -7,7 +7,9 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use common::*;
-use kanso_mobile::{KansoError, LockState, NewNote, NoteQuery, PropertyKind, Range16, SortKey};
+use kanso_mobile::{
+    KansoError, ListPlace, ListQuery, LockState, NewNote, PropertyKind, Range16, SortKey,
+};
 use kanso_sync::MemoryServer;
 use proptest::prelude::*;
 use serde_json::json;
@@ -47,10 +49,10 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(24))]
 
     /// Whatever notes exist, a list holds exactly the notes its filters name
-    /// (outside the trash unless the trash is asked for), paging walks the
-    /// same order in slices, and sorting by title orders titles.
+    /// (outside the trash unless the trash is asked for), and sorting by
+    /// title orders titles, either way round.
     #[test]
-    fn prop_lists_hold_what_their_filters_name(seeds in seeds(), limit in 1u32..4) {
+    fn prop_lists_hold_what_their_filters_name(seeds in seeds()) {
         let mut ids = Vec::new();
         let mut books = Vec::new();
         let mut the_tag = String::new();
@@ -70,49 +72,43 @@ proptest! {
         let ids_where = |keep: &dyn Fn(&Seed) -> bool| -> BTreeSet<String> {
             seeds.iter().zip(&ids).filter(|(s, _)| keep(s)).map(|(_, id)| id.clone()).collect()
         };
-        let listed = |query: NoteQuery| -> BTreeSet<String> {
-            phone.library.notes(query).unwrap().into_iter().map(|row| row.id).collect()
+        let listed = |query: ListQuery| -> BTreeSet<String> {
+            phone.library.list(query).unwrap().rows.into_iter().map(|row| row.id).collect()
         };
 
-        prop_assert_eq!(listed(NoteQuery::default()), ids_where(&|s| !s.trashed));
+        prop_assert_eq!(listed(ListQuery::default()), ids_where(&|s| !s.trashed));
         prop_assert_eq!(
-            listed(NoteQuery { trash: true, ..NoteQuery::default() }),
+            listed(ListQuery { place: ListPlace::Trash, ..ListQuery::default() }),
             ids_where(&|s| s.trashed)
         );
         prop_assert_eq!(
-            listed(NoteQuery { notebook_id: Some(books[1].clone()), ..NoteQuery::default() }),
+            listed(ListQuery { place: ListPlace::Notebook { id: books[1].clone() }, ..ListQuery::default() }),
             ids_where(&|s| !s.trashed && s.book == 1)
         );
         prop_assert_eq!(
-            listed(NoteQuery { tag_id: Some(the_tag.clone()), ..NoteQuery::default() }),
+            listed(ListQuery { place: ListPlace::Tag { id: the_tag.clone() }, ..ListQuery::default() }),
             ids_where(&|s| !s.trashed && s.tagged)
         );
         prop_assert_eq!(
-            listed(NoteQuery { status: Some("active".into()), ..NoteQuery::default() }),
+            listed(ListQuery { status_only: Some("active".into()), ..ListQuery::default() }),
             ids_where(&|s| !s.trashed && s.status == "active")
         );
 
-        // Titles ascending, in slices of `limit`.
-        let by_title = |skip: u32, limit: u32| {
-            phone.library.notes(NoteQuery {
-                sort: SortKey::Title, descending: false, skip, limit, ..NoteQuery::default()
-            }).unwrap()
+        // Titles ascending, then descending: the same notes, reversed.
+        let by_title = |descending: bool| {
+            phone.library.list(ListQuery {
+                sort: SortKey::Title, descending, ..ListQuery::default()
+            }).unwrap().rows
         };
-        let all = by_title(0, 0);
+        let all = by_title(false);
         let titles: Vec<_> = all.iter().map(|row| row.title.clone()).collect();
         let mut sorted = titles.clone();
         sorted.sort();
         prop_assert_eq!(&titles, &sorted);
-        let mut paged = Vec::new();
-        let mut skip = 0;
-        loop {
-            let page = by_title(skip, limit);
-            prop_assert!(page.len() <= limit as usize);
-            if page.is_empty() { break; }
-            skip += page.len() as u32;
-            paged.extend(page);
-        }
-        prop_assert_eq!(paged, all);
+        let mut backwards: Vec<_> = by_title(true).into_iter().map(|row| row.title).collect();
+        backwards.reverse();
+        prop_assert_eq!(backwards, titles);
+        prop_assert_eq!(all.len(), ids_where(&|s| !s.trashed).len());
     }
 }
 
@@ -121,9 +117,9 @@ fn a_status_that_is_not_one_is_refused() {
     let phone = lone_phone();
     let err = phone
         .library
-        .notes(NoteQuery {
-            status: Some("someday".into()),
-            ..NoteQuery::default()
+        .list(ListQuery {
+            status_only: Some("someday".into()),
+            ..ListQuery::default()
         })
         .unwrap_err();
     assert!(matches!(err, KansoError::Invalid { .. }), "{err:?}");
@@ -140,7 +136,7 @@ fn a_row_carries_what_a_list_shows() {
             json!({"title": "Plan", "body": "- [x] one\n- [ ] two\n", "bookId": book_id, "pinned": true, "status": "active"}),
         );
     });
-    let rows = phone.library.notes(NoteQuery::default()).unwrap();
+    let rows = phone.library.list(ListQuery::default()).unwrap().rows;
     assert_eq!(rows.len(), 1);
     let row = &rows[0];
     assert_eq!(row.title, "Plan");
@@ -222,7 +218,7 @@ fn creating_makes_a_notebook_when_there_is_none_and_reads_back() {
         .unwrap_err();
     assert_eq!(err, KansoError::NotFound);
     // The task counts follow the text.
-    let rows = phone.library.notes(NoteQuery::default()).unwrap();
+    let rows = phone.library.list(ListQuery::default()).unwrap().rows;
     let row = rows.iter().find(|row| row.id == saved.id).unwrap();
     assert_eq!((row.tasks_done, row.tasks_total), (0, 1));
 }
@@ -259,19 +255,21 @@ fn trashing_moves_a_note_out_of_the_lists_and_into_the_trash() {
     phone.library.trash(&gone).unwrap();
     let listed: Vec<_> = phone
         .library
-        .notes(NoteQuery::default())
+        .list(ListQuery::default())
         .unwrap()
+        .rows
         .into_iter()
         .map(|row| row.id)
         .collect();
     assert_eq!(listed, vec![keep]);
     let trash = phone
         .library
-        .notes(NoteQuery {
-            trash: true,
-            ..NoteQuery::default()
+        .list(ListQuery {
+            place: ListPlace::Trash,
+            ..ListQuery::default()
         })
-        .unwrap();
+        .unwrap()
+        .rows;
     assert_eq!(trash.len(), 1);
     assert_eq!(trash[0].id, gone);
     assert_eq!(phone.library.note(&gone).unwrap().notebook_id, "trash");
@@ -304,8 +302,11 @@ fn notebooks_and_tags_come_as_the_sidebar_shows_them() {
     });
     let books = phone.library.notebooks().unwrap();
     let names: Vec<_> = books.iter().map(|b| b.name.as_str()).collect();
-    assert_eq!(names, vec!["Child", "Parent"]);
-    let child_row = &books[0];
+    // Tree order: the parent, then what is inside it.
+    assert_eq!(names, vec!["Parent", "Child"]);
+    assert_eq!((books[0].depth, books[1].depth), (0, 1));
+    assert_eq!(books[0].role, None);
+    let child_row = &books[1];
     assert_eq!(child_row.parent_id.as_deref(), Some(parent.as_str()));
     assert_eq!(child_row.count, 2);
     assert_eq!(child_row.icon.as_deref(), Some("rocket"));

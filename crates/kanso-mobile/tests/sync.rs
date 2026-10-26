@@ -5,7 +5,7 @@ mod common;
 use std::sync::{Arc, Mutex};
 
 use common::*;
-use kanso_mobile::{KansoError, Library, NoteQuery, SyncPhase, SyncProblemKind};
+use kanso_mobile::{KansoError, Library, ListQuery, SyncPhase, SyncProblemKind};
 use kanso_sync::{DEFAULT_SERVER, HttpBackend, MemorySecrets, MemoryServer, SignOutReason, Signup};
 use proptest::prelude::*;
 
@@ -182,7 +182,7 @@ proptest! {
         let status = b.library.sync().status().unwrap();
         prop_assert_eq!(status.phase, SyncPhase::Synced);
         prop_assert!(status.last_synced_ms.is_some());
-        prop_assert_eq!(b.library.notes(NoteQuery::default()).unwrap().len(), notes.len());
+        prop_assert_eq!(b.library.list(ListQuery::default()).unwrap().rows.len(), notes.len());
     }
 }
 

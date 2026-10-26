@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use common::*;
 use kanso_mobile::diagnostics::{panic_probe, tls_ready, version};
-use kanso_mobile::{KansoError, LockEvent, NoteQuery};
+use kanso_mobile::{KansoError, ListQuery, LockEvent};
 
 // no-prop-test: the probe's message is any text; boundary.rs covers that by
 // property. This is the facade end to end.
@@ -32,7 +32,10 @@ fn the_probe_is_an_error_and_every_call_still_works_after_it() {
         ));
     }
     assert_eq!(phone.library.note(&id).unwrap().title, "Before");
-    assert_eq!(phone.library.notes(NoteQuery::default()).unwrap().len(), 1);
+    assert_eq!(
+        phone.library.list(ListQuery::default()).unwrap().rows.len(),
+        1
+    );
     assert!(
         phone
             .library
