@@ -426,10 +426,6 @@ All secrets, in one table (names are exact):
 
 ## Known gaps
 
-- **Android's `INTERNET` permission** is declared only in the debug and profile manifests (the
-  Flutter template), not in `android/app/src/main/AndroidManifest.xml`. The release build can't
-  reach the sync server until it is added. It belongs with sync sign-in (step 8); the Android
-  emulator job in `mobile.yml` runs a debug build, so it doesn't catch it.
 - **Crash reporting** is not implemented: undecided (open question 1 of #48).
 - **The app's own screens are still being built** (steps 6-12). The store text describes the
   design; screenshots can only show what exists.
