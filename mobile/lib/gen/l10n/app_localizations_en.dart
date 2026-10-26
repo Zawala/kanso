@@ -847,4 +847,26 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get themesFollowSystem =>
+      'Switch between a light and a dark theme with the system';
+
+  @override
+  String get themesFollowSystemOn =>
+      'Showing the light theme in light mode and the dark one in dark mode.';
+
+  @override
+  String get themesFollowSystemOff =>
+      'Off: the theme stays as picked whatever the system’s mode.';
+
+  @override
+  String get themesFailedTitle => 'The themes didn’t load';
+
+  @override
+  String get themesFailedMessage =>
+      'Something went wrong reading the themes. Try again.';
+
+  @override
+  String get themesLoading => 'Loading themes';
 }

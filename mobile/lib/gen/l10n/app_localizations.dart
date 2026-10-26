@@ -1617,6 +1617,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 licence} other{{count} licences}}'**
   String licencesCount(int count);
+
+  /// The switch that makes the interface follow the system's light or dark mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch between a light and a dark theme with the system'**
+  String get themesFollowSystem;
+
+  /// Says what following the system does, while it is on.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing the light theme in light mode and the dark one in dark mode.'**
+  String get themesFollowSystemOn;
+
+  /// Says what happens while following the system is off.
+  ///
+  /// In en, this message translates to:
+  /// **'Off: the theme stays as picked whatever the system’s mode.'**
+  String get themesFollowSystemOff;
+
+  /// The title of the card shown when the themes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The themes didn’t load'**
+  String get themesFailedTitle;
+
+  /// The message of the card shown when the themes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the themes. Try again.'**
+  String get themesFailedMessage;
+
+  /// Says to a screen reader that the themes are being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading themes'**
+  String get themesLoading;
 }
 
 class _AppLocalizationsDelegate

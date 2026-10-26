@@ -31,46 +31,6 @@ void main() {
       );
     });
 
-    testWidgets('theme picker, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.themePicker),
-        name: 'tablet_theme_picker_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('theme picker, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.themePicker),
-        name: 'tablet_theme_picker_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
-    testWidgets('theme picker scrolled, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.themePickerScrolled),
-        name: 'tablet_theme_picker_scrolled_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('theme picker scrolled, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.themePickerScrolled),
-        name: 'tablet_theme_picker_scrolled_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
     testWidgets('error, light', (tester) async {
       await expectGoldenOnBothPlatforms(
         tester,

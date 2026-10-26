@@ -9,7 +9,6 @@ import '../models/data/design_screen.dart';
 import '../views/pages/error_mock_page.dart';
 import '../views/pages/note_edit_mock_page.dart';
 import '../views/pages/tablet_mock_page.dart';
-import '../views/pages/theme_picker_mock_page.dart';
 
 /// The page that draws [screen] for [layout].
 Widget pageForScreen(DesignScreen screen, DesignLayout layout) {
@@ -18,10 +17,6 @@ Widget pageForScreen(DesignScreen screen, DesignLayout layout) {
   }
   return switch (screen) {
     DesignScreen.noteEdit => const NoteEditMockPage(),
-    DesignScreen.themePicker => const ThemePickerMockPage(),
-    DesignScreen.themePickerScrolled => const ThemePickerMockPage(
-      scrolled: true,
-    ),
     DesignScreen.error => const ErrorMockPage(),
   };
 }

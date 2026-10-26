@@ -11,6 +11,7 @@ import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/licences/licences_bloc.dart';
+import 'package:kanso/themes/state/theme_picker/theme_picker_bloc.dart';
 
 import 'browse_blocs.dart';
 import 'fixture_about_repository.dart';
@@ -52,6 +53,12 @@ void registerPageBlocs(
   }
   getIt.registerFactory<LicencesBloc>(
     () => LicencesBloc(FixtureLicencesRepository()),
+  );
+  if (getIt.isRegistered<ThemePickerBloc>()) {
+    getIt.unregister<ThemePickerBloc>();
+  }
+  getIt.registerFactory<ThemePickerBloc>(
+    () => ThemePickerBloc(renderer ?? FixtureRendererRepository()),
   );
   addTearDown(() => unawaited(getIt.reset()));
 }

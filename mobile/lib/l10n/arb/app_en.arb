@@ -1086,5 +1086,29 @@
         "type": "int"
       }
     }
+  },
+  "themesFollowSystem": "Switch between a light and a dark theme with the system",
+  "@themesFollowSystem": {
+    "description": "The switch that makes the interface follow the system's light or dark mode."
+  },
+  "themesFollowSystemOn": "Showing the light theme in light mode and the dark one in dark mode.",
+  "@themesFollowSystemOn": {
+    "description": "Says what following the system does, while it is on."
+  },
+  "themesFollowSystemOff": "Off: the theme stays as picked whatever the system’s mode.",
+  "@themesFollowSystemOff": {
+    "description": "Says what happens while following the system is off."
+  },
+  "themesFailedTitle": "The themes didn’t load",
+  "@themesFailedTitle": {
+    "description": "The title of the card shown when the themes could not be read."
+  },
+  "themesFailedMessage": "Something went wrong reading the themes. Try again.",
+  "@themesFailedMessage": {
+    "description": "The message of the card shown when the themes could not be read."
+  },
+  "themesLoading": "Loading themes",
+  "@themesLoading": {
+    "description": "Says to a screen reader that the themes are being read."
   }
 }

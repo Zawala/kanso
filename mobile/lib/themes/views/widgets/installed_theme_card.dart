@@ -10,28 +10,33 @@ import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_badge.dart';
 import '../../../core/views/widgets/kanso_check_badge.dart';
+import '../../../core/views/widgets/kanso_pressable.dart';
 import '../../models/data/theme_preview.dart';
 import 'theme_code_preview.dart';
 
 /// A theme in the Installed row: a preview of Markdown in its colours and
 /// its name and a badge that says where it came from. The theme in use is
 /// outlined in the accent colour and wears a check mark badge on its
-/// preview.
+/// preview. Pressing it chooses the theme.
 class InstalledThemeCard extends StatelessWidget {
   const InstalledThemeCard({
     required this.theme,
     this.current = false,
+    this.onTap,
     super.key,
   });
 
   final ThemePreview theme;
   final bool current;
 
+  /// What choosing the theme does.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final l10n = context.l10n;
-    return Container(
+    final card = Container(
       width: KansoSizes.themeCardWidth,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -82,6 +87,14 @@ class InstalledThemeCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+    return Semantics(
+      selected: current,
+      child: KansoPressable(
+        onTap: onTap,
+        semanticLabel: theme.name,
+        child: card,
       ),
     );
   }

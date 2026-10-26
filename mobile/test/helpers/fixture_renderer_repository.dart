@@ -5,8 +5,11 @@
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart' show Fake;
 import 'package:kanso/core/bridge/api/types.dart';
+import 'package:kanso/core/configs/kanso_palette.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/repos/abs/renderer_repository.dart';
+
+import 'theme_tokens.dart';
 
 /// The colours of the runs [FixtureRendererRepository] makes.
 abstract final class FixtureRunColors {
@@ -26,6 +29,23 @@ class FixtureRendererRepository extends Fake implements RendererRepository {
 
   /// What it answers instead of runs, to test a text that cannot be styled.
   ApplicationError? failure;
+
+  @override
+  Future<Either<ApplicationError, List<BuiltinTheme>>> builtinThemes() async =>
+      Right<ApplicationError, List<BuiltinTheme>>(<BuiltinTheme>[
+        for (final palette in <KansoPalette>[
+          KansoPalette.kansoLight,
+          KansoPalette.kansoDark,
+        ])
+          BuiltinTheme(
+            id: palette.id,
+            name: palette.name,
+            author: 'Kanso',
+            license: 'MIT',
+            dark: palette.dark,
+            tokens: tokensFor(palette),
+          ),
+      ]);
 
   @override
   Future<Either<ApplicationError, List<StyledRun>>> styledRuns(

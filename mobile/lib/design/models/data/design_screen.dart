@@ -8,12 +8,6 @@ enum DesignScreen {
   /// A note, as Markdown source, with the keyboard up.
   noteEdit,
 
-  /// Choosing a theme.
-  themePicker,
-
-  /// Choosing a theme, scrolled to the end.
-  themePickerScrolled,
-
   /// The signed-out error card.
   error,
 }

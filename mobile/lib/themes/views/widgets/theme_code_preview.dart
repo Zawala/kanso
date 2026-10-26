@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import '../../../core/configs/kanso_radii.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/parse_inline_markdown.dart';
 import '../../models/data/theme_preview.dart';
-import '../../utils/parse_inline_markdown.dart';
 
 /// Four numbered lines of Markdown in a theme's own colours: a heading, a
 /// line with bold and italic, a line with code and a link, and a quote.

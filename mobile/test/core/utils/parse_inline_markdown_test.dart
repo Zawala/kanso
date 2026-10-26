@@ -4,7 +4,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:glados/glados.dart' show Glados, any;
-import 'package:kanso/design/utils/parse_inline_markdown.dart';
+import 'package:kanso/core/utils/parse_inline_markdown.dart';
 
 import '../../helpers/property.dart';
 

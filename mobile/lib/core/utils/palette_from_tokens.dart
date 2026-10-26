@@ -26,7 +26,7 @@ KansoPalette paletteFromTokens(String id, ThemeTokens tokens) {
   final ui = <String, int>{for (final row in tokens.ui) row.name: row.rgb};
   Color pick(String name, Color fallback) {
     final rgb = ui[name];
-    return rgb == null ? fallback : _opaque(rgb);
+    return rgb == null ? fallback : opaqueColor(rgb);
   }
 
   final colors = KansoColors(
@@ -60,10 +60,10 @@ KansoPalette paletteFromTokens(String id, ThemeTokens tokens) {
     for (final row in tokens.syntax) row.token: row,
   };
   final plain = rows['text']?.color;
-  final text = plain == null ? baseSyntax.text : _opaque(plain);
+  final text = plain == null ? baseSyntax.text : opaqueColor(plain);
   Color token(String name) {
     final rgb = rows[name]?.color;
-    return rgb == null ? text : _opaque(rgb);
+    return rgb == null ? text : opaqueColor(rgb);
   }
 
   final syntax = KansoSyntaxColors(
@@ -100,7 +100,7 @@ KansoPalette paletteFromTokens(String id, ThemeTokens tokens) {
     punctuation: token('punctuation'),
     bracket: token('bracket'),
     embedded: token('embedded'),
-    codeBackground: _opaque(tokens.palette.surface),
+    codeBackground: opaqueColor(tokens.palette.surface),
   );
 
   return KansoPalette(
@@ -118,4 +118,5 @@ KansoPalette paletteFromTokens(String id, ThemeTokens tokens) {
   );
 }
 
-Color _opaque(int rgb) => Color(0xFF000000 | rgb);
+/// The opaque colour of the 24-bit [rgb] value a theme token holds.
+Color opaqueColor(int rgb) => Color(0xFF000000 | rgb);

@@ -4,16 +4,13 @@
 
 import 'package:flutter/material.dart';
 
-import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_scrim.dart';
-import '../../../core/views/widgets/kanso_sheet.dart';
 import '../../../shell/views/widgets/tablet_layout.dart';
 import '../../models/data/design_layout.dart';
 import '../../models/data/design_screen.dart';
 import '../widgets/note_edit_pane.dart';
 import '../widgets/signed_out_card.dart';
-import '../widgets/theme_picker_pane.dart';
 
 /// A tablet screen in landscape: the library, the list and the note side by
 /// side, as empty panes, with a sheet or a card over them when the screen is
@@ -33,16 +30,10 @@ class TabletMockPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     const tablet = DesignLayout.tablet;
-    final scrolled = screen == DesignScreen.themePickerScrolled;
     final Widget note = screen == DesignScreen.noteEdit
         ? const NoteEditPane(layout: tablet)
         : ColoredBox(color: colors.editor);
     final Widget? overlay = switch (screen) {
-      DesignScreen.themePicker ||
-      DesignScreen.themePickerScrolled => KansoSheet(
-        height: designSize.height - 2 * KansoSizes.touchTarget,
-        child: ThemePickerPane(layout: tablet, startAtEnd: scrolled),
-      ),
       DesignScreen.error => const SignedOutCard(),
       _ => null,
     };
