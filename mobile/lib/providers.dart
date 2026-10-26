@@ -6,6 +6,10 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'core/state/appearance/appearance_bloc.dart';
+import 'core/state/library_index/library_index_bloc.dart';
+import 'core/state/navigation_history/navigation_history_bloc.dart';
+import 'core/state/sync_status/sync_status_bloc.dart';
+import 'injection.dart';
 
 /// The BLoCs the whole app shares, above the [child].
 ///
@@ -26,6 +30,17 @@ class AppProviders extends StatelessWidget {
     return MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<AppearanceBloc>.value(value: appearance),
+        BlocProvider<LibraryIndexBloc>(
+          create: (_) =>
+              getIt<LibraryIndexBloc>()..add(const LibraryIndexEvent.started()),
+        ),
+        BlocProvider<SyncStatusBloc>(
+          create: (_) =>
+              getIt<SyncStatusBloc>()..add(const SyncStatusEvent.started()),
+        ),
+        BlocProvider<NavigationHistoryBloc>(
+          create: (_) => getIt<NavigationHistoryBloc>(),
+        ),
       ],
       child: child,
     );

@@ -12,6 +12,7 @@ import 'library_drawer_host.dart';
 import 'library_navigation.dart';
 import 'list_note_layout.dart';
 import 'list_slot.dart';
+import 'navigation_history_listener.dart';
 import 'tablet_layout.dart';
 
 /// The frame around every place, search and note, in as many panes as the
@@ -50,40 +51,43 @@ class BrowseShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<LayoutClass>(
-      valueListenable: layout,
-      child: child,
-      builder: (context, layoutClass, child) {
-        final width = MediaQuery.sizeOf(context).width;
-        final listOnly = location?.noteId == null;
-        return switch (layoutClass) {
-          LayoutClass.single => LibraryDrawerHost(
-            location: location,
-            designGallery: designGallery,
-            width: width * KansoSizes.drawerFraction,
-            edgeDragEnabled: listOnly,
-            child: child!,
-          ),
-          LayoutClass.double => LibraryDrawerHost(
-            location: location,
-            designGallery: designGallery,
-            width: KansoSizes.libraryPane,
-            edgeDragEnabled: true,
-            child: ListNoteLayout(
+    return NavigationHistoryListener(
+      location: location,
+      child: ValueListenableBuilder<LayoutClass>(
+        valueListenable: layout,
+        child: child,
+        builder: (context, layoutClass, child) {
+          final width = MediaQuery.sizeOf(context).width;
+          final listOnly = location?.noteId == null;
+          return switch (layoutClass) {
+            LayoutClass.single => LibraryDrawerHost(
+              location: location,
+              designGallery: designGallery,
+              width: width * KansoSizes.drawerFraction,
+              edgeDragEnabled: listOnly,
+              child: child!,
+            ),
+            LayoutClass.double => LibraryDrawerHost(
+              location: location,
+              designGallery: designGallery,
+              width: KansoSizes.libraryPane,
+              edgeDragEnabled: true,
+              child: ListNoteLayout(
+                list: ListSlot(location: location),
+                note: child!,
+              ),
+            ),
+            LayoutClass.triple => TabletLayout(
+              library: LibraryNavigation(
+                location: location,
+                designGallery: designGallery,
+              ),
               list: ListSlot(location: location),
               note: child!,
             ),
-          ),
-          LayoutClass.triple => TabletLayout(
-            library: LibraryNavigation(
-              location: location,
-              designGallery: designGallery,
-            ),
-            list: ListSlot(location: location),
-            note: child!,
-          ),
-        };
-      },
+          };
+        },
+      ),
     );
   }
 }

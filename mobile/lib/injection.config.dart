@@ -36,6 +36,9 @@ import 'core/models/repos/impl/rust_sync_repository.dart' as _i564;
 import 'core/router/kanso_router.dart' as _i388;
 import 'core/router/layout_class_notifier.dart' as _i609;
 import 'core/state/appearance/appearance_bloc.dart' as _i551;
+import 'core/state/library_index/library_index_bloc.dart' as _i861;
+import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
+import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
 import 'core_check/state/core_check/core_check_bloc.dart' as _i226;
 
 const String _development = 'development';
@@ -107,6 +110,12 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i38.LibraryRepository>(
       () => _i152.RustLibraryRepository(gh<_i455.KansoLibrary>()),
     );
+    gh.factory<_i861.LibraryIndexBloc>(
+      () => _i861.LibraryIndexBloc(gh<_i38.LibraryRepository>()),
+    );
+    gh.factory<_i272.NavigationHistoryBloc>(
+      () => _i272.NavigationHistoryBloc(gh<_i38.LibraryRepository>()),
+    );
     gh.factory<_i226.CoreCheckBloc>(
       () => _i226.CoreCheckBloc(
         gh<_i38.LibraryRepository>(),
@@ -118,6 +127,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i333.SessionRepository>(
       () => _i899.RustSessionRepository(gh<_i983.KansoLocks>()),
+    );
+    gh.factory<_i185.SyncStatusBloc>(
+      () => _i185.SyncStatusBloc(gh<_i601.SyncRepository>()),
     );
     return this;
   }

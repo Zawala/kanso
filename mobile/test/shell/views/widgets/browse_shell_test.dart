@@ -16,6 +16,7 @@ import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_drawer_scope.dart';
 import 'package:kanso/core/views/widgets/kanso_sheet.dart';
 import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
@@ -26,6 +27,7 @@ import 'package:kanso/search/views/pages/search_page.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
 import 'package:kanso/shell/views/widgets/library_navigation.dart';
 
+import '../../../helpers/mock_repositories.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 
 const Size _landscape = Size(1180, 820);
@@ -41,6 +43,8 @@ Future<GoRouter> _pump(
 }) async {
   final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
+  final history = NavigationHistoryBloc(MockLibraryRepository());
+  addTearDown(history.close);
   tester.view
     ..physicalSize = size
     ..devicePixelRatio = 1;
@@ -56,8 +60,11 @@ Future<GoRouter> _pump(
   addTearDown(router.dispose);
   router.go(at);
   await tester.pumpWidget(
-    BlocProvider<AppearanceBloc>.value(
-      value: bloc,
+    MultiBlocProvider(
+      providers: <BlocProvider<dynamic>>[
+        BlocProvider<AppearanceBloc>.value(value: bloc),
+        BlocProvider<NavigationHistoryBloc>.value(value: history),
+      ],
       child: App(router: kansoRouter),
     ),
   );

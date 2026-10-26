@@ -235,3 +235,14 @@ extension KansoLocationAny on Any {
     },
   );
 }
+
+extension KansoHistoryAny on Any {
+  /// An operation on a navigation history: a kind from 0 to 6 (0 to 3 open
+  /// a note, 4 goes back, 5 forward, 6 trashes or restores one) and a note
+  /// from 0 to 5.
+  Generator<(int, int)> get historyOp => combine2(
+    intInRange(0, 7),
+    intInRange(0, 6),
+    (int kind, int note) => (kind, note),
+  );
+}
