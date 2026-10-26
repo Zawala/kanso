@@ -9,6 +9,11 @@
 //! object KansoNative {
 //!     /** Hands the library the app's Context. Idempotent. */
 //!     @JvmStatic external fun init(context: android.content.Context)
+//!
+//!     /** Saves the shared items waiting in `inboxPath` into the library at
+//!      *  `libraryPath`; the JSON of `crate::capture`, or null for a null
+//!      *  argument. Blocks. */
+//!     @JvmStatic external fun captureInbox(libraryPath: String, inboxPath: String): String?
 //! }
 //! ```
 //!
@@ -36,11 +41,15 @@
 //! verifier's own (`org.rustls.platformverifier.**`).
 //!
 //! A failure throws a `RuntimeException` into Kotlin, with the reason.
+//!
+//! `captureInbox` is `crate::capture`'s `kanso_capture_inbox` for Kotlin: it
+//! needs `init` to have run first, and returns its JSON as a string. A panic
+//! in it is caught and returned as a problem in the JSON.
 
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use jni::objects::{JClass, JObject};
+use jni::objects::{JClass, JObject, JString};
 use jni::{Env, EnvUnowned};
 
 /// Set once the verifier and the Keystore bridge are set up.
@@ -83,4 +92,37 @@ fn setup(env: &mut Env, context: JObject) -> Result<(), InitError> {
     kanso_tls::init_android(env, context).map_err(|err| InitError(err.to_string()))?;
     DONE.store(true, Ordering::Release);
     Ok(())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_kanso_kanso_KansoNative_captureInbox<'caller>(
+    mut unowned: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    library_path: JString<'caller>,
+    inbox_path: JString<'caller>,
+) -> JString<'caller> {
+    unowned
+        .with_env(|env| capture(env, &library_path, &inbox_path))
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+/// The JSON of saving `inbox_path` into `library_path`, or null for a null
+/// argument.
+fn capture<'local>(
+    env: &mut Env<'local>,
+    library_path: &JString,
+    inbox_path: &JString,
+) -> Result<JString<'local>, InitError> {
+    if library_path.is_null() || inbox_path.is_null() {
+        return Ok(JString::null());
+    }
+    let library = library_path.try_to_string(env)?;
+    let inbox = inbox_path.try_to_string(env)?;
+    // A panic must not unwind into the JVM.
+    let json = std::panic::catch_unwind(|| crate::capture::saved_json_on_phone(&library, &inbox))
+        .unwrap_or_else(|_| {
+            r#"{"notes":[],"problems":["Shared items couldn't be saved: an internal error."],"kept":0}"#
+                .to_owned()
+        });
+    Ok(JString::from_str(env, json)?)
 }

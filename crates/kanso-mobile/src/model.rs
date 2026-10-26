@@ -494,3 +494,18 @@ pub struct SvgRow {
     /// For inline math: how far below the top the text's baseline falls.
     pub baseline: Option<f32>,
 }
+
+/// What saving the shared items waiting in the inbox folder did
+/// ([`Library::save_drops`](crate::Library::save_drops)).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DropsSaved {
+    /// The IDs of the notes made, oldest item first. A note already made by
+    /// an earlier try is here too.
+    pub notes: Vec<String>,
+    /// What was left out or refused, a sentence each: a file that couldn't
+    /// be attached, an item discarded because the Inbox is locked.
+    pub problems: Vec<String>,
+    /// Items kept to try again, because saving them failed for a reason that
+    /// may pass.
+    pub kept: u32,
+}

@@ -27,6 +27,10 @@
 //!   diagrams.
 //! - [`background`] is the sync that runs with no app: the code behind the
 //!   C entry `kanso_background_sync` that `mobile/rust` exports.
+//! - [`capture`] saves what other apps shared into Kanso: the drops the
+//!   share extension, App Intents and the Android share activity leave in the
+//!   library's `inbox/` folder, each one note in the Inbox. The C entry
+//!   `kanso_capture_inbox` in `mobile/rust` calls it.
 //! - [`diagnostics`] has the version, the TLS check and the panic probe.
 //!
 //! # The edge
@@ -44,6 +48,7 @@ pub mod background;
 mod backup;
 pub mod boundary;
 mod builtin_themes;
+pub mod capture;
 pub mod diagnostics;
 mod errors;
 mod library;
