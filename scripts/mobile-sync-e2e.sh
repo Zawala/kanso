@@ -147,6 +147,8 @@ WORKER_STATE="$STATE/worker/data"
 # 1. The migrations, and sign-ups open.
 "${WRANGLER[@]}" d1 migrations apply kanso-sync --local --persist-to "$WORKER_STATE"
 "${WRANGLER[@]}" d1 execute kanso-sync --local --persist-to "$WORKER_STATE" --command "UPDATE settings SET value = 'open' WHERE name = 'signup'"
+# The default takes five new accounts a day; the facade's tests make more.
+"${WRANGLER[@]}" d1 execute kanso-sync --local --persist-to "$WORKER_STATE" --command "UPDATE settings SET value = '500' WHERE name = 'signups_per_day'"
 
 # 2. The Worker, with /__scheduled for the cron.
 "${WRANGLER[@]}" dev --local --persist-to "$WORKER_STATE" --ip 127.0.0.1 --port "$PORT" --inspector-port 0 \

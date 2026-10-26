@@ -573,6 +573,74 @@ impl AccountHandle {
         })
     }
 
+    /// Test only: makes this phone's locked sign-in the way a provider
+    /// sign-in leaves it, without a provider. Signs in to `username`'s
+    /// account with `password`, then keeps only what a locked session holds
+    /// (the token, no data key) as the pending item, so the state is
+    /// [`AccountState::Locked`] and the phone has to be approved or recover.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn lock_for_test(
+        &self,
+        server: String,
+        username: String,
+        password: String,
+        device_name: String,
+    ) -> Result<AccountState, KansoError> {
+        use kanso_sync::SessionToken;
+
+        guard(|| {
+            let password = Password::new(&password, &username)
+                .map_err(|err| KansoError::invalid(format!("For the password, {err}.")))?;
+            let _busy = begin_new(&self.inner)?;
+            let flow = self.flow(&device_name);
+            let device = flow
+                .device()
+                .map_err(|failure| self.settle(failure, ErrorContext::SignIn))?;
+            let signed = kanso_sync::sign_in(
+                self.inner.backend.as_ref(),
+                server.trim(),
+                &username,
+                &password,
+                &device,
+                &|_| {},
+            )
+            .map_err(|err| account_error(&err, ErrorContext::SignIn))?;
+            let session = signed.session;
+            let token = SessionToken::new(
+                session
+                    .authorization()
+                    .trim_start_matches("Bearer ")
+                    .to_owned(),
+            );
+            let mut locked = LockedSession::new(
+                session.server.clone(),
+                session.origin.clone(),
+                session.account_id.clone(),
+                session.username.clone(),
+                session.device_id.clone(),
+                token,
+                session.key_id(),
+                "0000000000000000".to_owned(),
+                None,
+                None,
+            )
+            .with_has_password(true)
+            .with_login_device(LoginDevice::for_identity(
+                &device,
+                &session.origin,
+                &session.account_id,
+            ));
+            locked.set_library_id(&device.library_id);
+            keychain::save_locked_pending(
+                self.inner.secrets.as_ref(),
+                &device.library_id,
+                &locked,
+            )?;
+            publish(&self.inner);
+            current(&self.inner)
+        })
+    }
+
     // ------------------------------------------------------ recovery key
 
     /// The recovery key shown last that hasn't been confirmed saved, for a
