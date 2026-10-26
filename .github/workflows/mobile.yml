@@ -1,18 +1,39 @@
 name: Mobile
 
-# The Flutter app in mobile/ (iPhone, iPad and Android). It reads the theme
-# files in themes/ (a submodule) in a test, so a change there runs it too.
+# The Flutter app in mobile/ (iPhone, iPad and Android) and the Rust library
+# it loads (mobile/rust, built from the workspace by mobile/hook/build.dart).
+# It reads the theme files in themes/ (a submodule) in a test, so a change
+# there runs it too, and a change to the core runs it because the library is
+# built into the app.
 on:
   push:
     paths:
       - "mobile/**"
       - ".github/workflows/mobile.yml"
       - "themes"
+      # The app builds the Rust library of mobile/rust from the workspace,
+      # with the toolchain and the compilers these name.
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "scripts/mobile*"
+      - "scripts/mobile/**"
+      - "scripts/ci-rust.sh"
   pull_request:
     paths:
       - "mobile/**"
       - ".github/workflows/mobile.yml"
       - "themes"
+      # The app builds the Rust library of mobile/rust from the workspace,
+      # with the toolchain and the compilers these name.
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "scripts/mobile*"
+      - "scripts/mobile/**"
+      - "scripts/ci-rust.sh"
   workflow_dispatch:
 
 permissions:
@@ -24,9 +45,15 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  CARGO_TERM_COLOR: always
+  # Property tests run with a fixed seed so a CI failure reproduces locally.
+  PROPTEST_RNG_SEED: "20261017"
   # The Flutter release the app is built and tested with. Bump it here and
   # in mobile/pubspec.yaml together.
   FLUTTER_VERSION: "3.44.8"
+  # The flutter_rust_bridge generator. Pinned with flutter_rust_bridge in
+  # mobile/pubspec.yaml and mobile/rust/Cargo.toml: all three the same.
+  FRB_VERSION: "2.13.0"
 
 defaults:
   run:
@@ -37,28 +64,70 @@ jobs:
   # image rendering differs slightly between operating systems, so they are
   # only compared on the system that wrote them. GitHub-hosted: this is a
   # public repository, and the self-hosted runners are for Rust.
+  #
+  # `flutter test` runs the hook too, so the binding tests call the real
+  # library, built for the runner.
   analyze-and-test:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The colour test reads themes/kanso-dark.json and kanso-light.json.
+          # The library embeds them too.
           submodules: true
+      # Installs the toolchain pinned in rust-toolchain.toml.
+      - run: ../scripts/ci-rust.sh
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      # The settings that live in two places are the same in both.
+      - name: Mobile profile and toolchain match
+        run: ../scripts/mobile-parity.sh
+      # The bridge generator, built once per version.
+      - name: Cache flutter_rust_bridge_codegen
+        id: frb
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cargo/bin/flutter_rust_bridge_codegen
+          key: frb-codegen-${{ runner.os }}-${{ env.FRB_VERSION }}
+      - name: Install flutter_rust_bridge_codegen
+        if: steps.frb.outputs.cache-hit != 'true'
+        run: cargo install flutter_rust_bridge_codegen --version "$FRB_VERSION" --locked
+      # The hook's output (cargo's build of the library, fat LTO) is slow to
+      # make; Cargo.lock and the toolchain decide when it is stale.
+      - name: Cache the library build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: mobile/.dart_tool/hooks_runner
+          key: hooks-${{ runner.os }}-test-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mobile/rust/rust-toolchain.toml') }}
+          restore-keys: hooks-${{ runner.os }}-test-
+      # CocoaPods is not used: the iOS project has no Podfile. A committed
+      # one means a plugin pulled the project back to CocoaPods.
+      - name: No Podfile is committed
+        run: |
+          if git ls-files --error-unmatch ios/Podfile >/dev/null 2>&1; then
+            echo "::error::mobile/ios/Podfile is committed. The iOS project builds without CocoaPods."
+            exit 1
+          fi
       # pubspec.lock is committed; a stale lock file fails here.
       - run: flutter pub get --enforce-lockfile
+      # The bridge (rust/src/frb_generated.rs and lib/core/bridge) is
+      # generated from rust/src/api and committed. Freezed's output for the
+      # bridge's enums is made by build_runner next.
+      - run: flutter_rust_bridge_codegen generate
       # Generated code (Freezed, Injectable, json_serializable) is committed.
       # Regenerate it and fail if anything changed or is missing.
       - run: dart run build_runner build --delete-conflicting-outputs
       - name: Generated code is current
         run: |
+          # A step that made a Podfile is not a change to keep.
+          rm -f ios/Podfile
           if [ -n "$(git status --porcelain -- .)" ]; then
             git status --short -- .
-            echo "::error::Generated code is out of date. Run build_runner and commit the result."
+            git diff --stat -- .
+            echo "::error::Generated code is out of date. Run flutter_rust_bridge_codegen generate and build_runner in mobile/ and commit the result."
             exit 1
           fi
       # The localisation classes (lib/gen/l10n) are committed too.
@@ -82,25 +151,54 @@ jobs:
           path: mobile/test/**/failures/
           if-no-files-found: ignore
 
-  # Proves the iOS project compiles for the simulator (iOS 17 and up, iPhone
-  # and iPad). No signing: nothing here ships.
+  # The release build for iPhone and iPad: iOS 17 and up, arm64 only (the
+  # library is not built for Intel simulators). No signing: nothing here
+  # ships. Checks the library is in the app with the symbols the background
+  # task and the bridge need, then records what the app weighs.
   build-ios:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: true
+      - run: ../scripts/ci-rust.sh
+      - run: rustup target add aarch64-apple-ios
+        working-directory: .
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      - name: Cache the library build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: mobile/.dart_tool/hooks_runner
+          key: hooks-${{ runner.os }}-ios-release-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mobile/rust/rust-toolchain.toml') }}
+          restore-keys: hooks-${{ runner.os }}-ios-release-
       - run: flutter pub get --enforce-lockfile
-      - run: flutter build ios --simulator --debug --no-codesign
+      - run: flutter build ios --release --no-codesign
+      - name: The library is in the app and exports what it must
+        run: ../scripts/mobile-artifact-check.sh ios build/ios/iphoneos/Runner.app
+      # No limit on the app; the library's own size must stay near the bare
+      # library's (see the script), which catches the mobile profile not
+      # applying. The tables go in the job summary.
+      - name: Size
+        run: ../scripts/mobile-size.sh ios --no-build | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # Proves the Android project compiles (Android 10 and up).
+  # The release build for Android (Android 10 and up), one APK per ABI as
+  # the Play Store delivers them. Release is what R8 shrinks, and nothing
+  # else exercises that: the check looks the classes the library calls by
+  # name up in the APK.
   build-android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: true
+      - run: ../scripts/ci-rust.sh
+      # The targets the hook's cargo builds for (one per ABI).
+      - run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+        working-directory: .
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
@@ -110,5 +208,107 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      - name: Cache the library build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: mobile/.dart_tool/hooks_runner
+          key: hooks-${{ runner.os }}-android-release-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mobile/rust/rust-toolchain.toml') }}
+          restore-keys: hooks-${{ runner.os }}-android-release-
       - run: flutter pub get --enforce-lockfile
-      - run: flutter build apk --debug
+      - run: flutter build apk --release --split-per-abi
+      - name: The APKs hold the library and the classes it calls
+        run: ../scripts/mobile-artifact-check.sh android build/app/outputs/flutter-apk/app-*-release.apk
+      - name: Size
+        run: ../scripts/mobile-size.sh android --no-build | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The integration tests in an iPhone simulator. macos-latest is Apple
+  # silicon, which the arm64-only library needs; the simulator is the first
+  # iPhone the runner has.
+  integration-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: true
+      - run: ../scripts/ci-rust.sh
+      - run: rustup target add aarch64-apple-ios-sim
+        working-directory: .
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Cache the library build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: mobile/.dart_tool/hooks_runner
+          key: hooks-${{ runner.os }}-ios-sim-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mobile/rust/rust-toolchain.toml') }}
+          restore-keys: hooks-${{ runner.os }}-ios-sim-
+      - run: flutter pub get --enforce-lockfile
+      - name: Boot an iPhone simulator
+        run: |
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          runtimes = json.load(sys.stdin)["devices"]
+          for runtime in sorted(runtimes, reverse=True):
+              for device in runtimes[runtime]:
+                  if device["name"].startswith("iPhone"):
+                      print(device["udid"])
+                      sys.exit(0)
+          sys.exit("no iPhone simulator is installed")
+          ')"
+          echo "KANSO_IOS_SIM_UDID=$udid" >> "$GITHUB_ENV"
+          # `bootstatus -b` boots a shut-down simulator and waits for it.
+          xcrun simctl bootstatus "$udid" -b
+      # Every call of the bridge, then the app's own flow.
+      - run: flutter test integration_test/facade_test.dart -d "$KANSO_IOS_SIM_UDID"
+      - run: flutter test integration_test/shell_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
+
+  # The integration tests in an Android 10 (API 29) emulator. On Linux, not
+  # a Mac: the Apple-silicon runners can't run an emulator (no nested
+  # virtualisation) and the Linux ones can with KVM; the emulator is x86-64.
+  # The facade suite reaches Kanso's default sync server over https, which
+  # proves the platform certificate verifier works from Rust.
+  integration-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: true
+      - run: ../scripts/ci-rust.sh
+      - run: rustup target add x86_64-linux-android
+        working-directory: .
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Cache the library build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: mobile/.dart_tool/hooks_runner
+          key: hooks-${{ runner.os }}-android-x86_64-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mobile/rust/rust-toolchain.toml') }}
+          restore-keys: hooks-${{ runner.os }}-android-x86_64-
+      - run: flutter pub get --enforce-lockfile
+      # The emulator needs /dev/kvm to be usable by this user.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 29
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
+          working-directory: mobile
+          # Each line runs as its own shell command.
+          script: |
+            flutter test integration_test/facade_test.dart -d emulator-5554
+            flutter test integration_test/shell_flow_test.dart -d emulator-5554
