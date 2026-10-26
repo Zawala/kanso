@@ -17,6 +17,7 @@ import '../../../core/utils/day_grouping.dart';
 import '../../../core/utils/list_labels.dart';
 import '../../../core/views/widgets/kanso_divider.dart';
 import '../../../core/views/widgets/kanso_section_header.dart';
+import '../../../core/views/widgets/kanso_swipe_host.dart';
 import '../../models/data/note_list_entry.dart';
 import '../../state/note_list/note_list_bloc.dart';
 import 'note_list_row.dart';
@@ -48,50 +49,66 @@ class NoteListView extends StatelessWidget {
     final byCreated = state.shape?.date == DateField.created;
     final entries = state.entries;
     final bloc = context.read<NoteListBloc>();
-    return CustomScrollView(
-      slivers: <Widget>[
-        SliverPadding(
-          padding: EdgeInsets.only(
-            top: KansoSpacing.xxs,
-            bottom: MediaQuery.paddingOf(context).bottom + KansoSpacing.md,
-          ),
-          sliver: SliverList.builder(
-            itemCount: entries.length,
-            itemBuilder: (context, at) {
-              return switch (entries[at]) {
-                HeaderEntry(:final bucket) => KansoSectionHeader(
-                  label: bucketLabel(l10n, bucket, today: today),
-                ),
-                NoteEntry(:final row) => Column(
-                  children: <Widget>[
-                    if (at > 0 && entries[at - 1] is NoteEntry)
-                      const KansoDivider(indent: KansoSpacing.md),
-                    NoteListRow(
-                      row: row,
-                      index: index,
-                      time: rowTimeLabel(
-                        l10n,
-                        byCreated ? row.createdMs : row.updatedMs,
-                        now: now,
+    // Rows keep what they hold (a swipe in progress) by what they are, not
+    // by where they are, so a note that moves takes it along.
+    Object keyOf(NoteListEntry entry) => switch (entry) {
+      HeaderEntry(:final bucket) => bucket,
+      NoteEntry(:final row) => row.id,
+    };
+    final positions = <Object, int>{
+      for (var at = 0; at < entries.length; at++) keyOf(entries[at]): at,
+    };
+    return KansoSwipeHost(
+      child: CustomScrollView(
+        slivers: <Widget>[
+          SliverPadding(
+            padding: EdgeInsets.only(
+              top: KansoSpacing.xxs,
+              bottom: MediaQuery.paddingOf(context).bottom + KansoSpacing.md,
+            ),
+            sliver: SliverList.builder(
+              itemCount: entries.length,
+              findChildIndexCallback: (key) =>
+                  key is ValueKey<Object> ? positions[key.value] : null,
+              itemBuilder: (context, at) {
+                final entry = entries[at];
+                return switch (entry) {
+                  HeaderEntry(:final bucket) => KansoSectionHeader(
+                    key: ValueKey<Object>(bucket),
+                    label: bucketLabel(l10n, bucket, today: today),
+                  ),
+                  NoteEntry(:final row) => Column(
+                    key: ValueKey<Object>(row.id),
+                    children: <Widget>[
+                      if (at > 0 && entries[at - 1] is NoteEntry)
+                        const KansoDivider(indent: KansoSpacing.md),
+                      NoteListRow(
+                        row: row,
+                        index: index,
+                        time: rowTimeLabel(
+                          l10n,
+                          byCreated ? row.createdMs : row.updatedMs,
+                          now: now,
+                        ),
+                        open: row.id == openNoteId,
+                        checked: state.selecting
+                            ? state.selected.contains(row.id)
+                            : null,
+                        onTap: () => state.selecting
+                            ? bloc.add(NoteListEvent.selectionToggled(row.id))
+                            : openNote(context, row.id),
+                        onLongPress: () => state.selecting
+                            ? bloc.add(NoteListEvent.selectionToggled(row.id))
+                            : bloc.add(NoteListEvent.selectionStarted(row.id)),
                       ),
-                      open: row.id == openNoteId,
-                      checked: state.selecting
-                          ? state.selected.contains(row.id)
-                          : null,
-                      onTap: () => state.selecting
-                          ? bloc.add(NoteListEvent.selectionToggled(row.id))
-                          : openNote(context, row.id),
-                      onLongPress: () => state.selecting
-                          ? bloc.add(NoteListEvent.selectionToggled(row.id))
-                          : bloc.add(NoteListEvent.selectionStarted(row.id)),
-                    ),
-                  ],
-                ),
-              };
-            },
+                    ],
+                  ),
+                };
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

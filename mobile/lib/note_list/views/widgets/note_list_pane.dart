@@ -4,26 +4,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../core/bridge/api/types.dart';
-import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
-import '../../../core/models/data/browse_location.dart';
-import '../../../core/models/data/search_scope_kind.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
-import '../../../core/utils/place_labels.dart';
-import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
-import '../../../core/views/widgets/kanso_button.dart';
-import '../../../core/views/widgets/kanso_message_card.dart';
-import '../../models/data/note_list_status.dart';
 import '../../state/note_list/note_list_bloc.dart';
-import 'empty_place_pane.dart';
-import 'list_options_sheet.dart';
-import 'loading_list_pane.dart';
-import 'note_list_top_bar.dart';
-import 'note_list_view.dart';
+import 'note_list_bar.dart';
+import 'note_list_body.dart';
+import 'note_list_notice.dart';
 
 /// The notes of a place: a bar, and under it the list grouped by date, or
 /// while it is read the shape of one, or why there is none.
@@ -39,85 +27,53 @@ class NoteListPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final colors = context.colors;
     return ColoredBox(
-      color: colors.list,
+      color: context.colors.list,
       child: BlocBuilder<LibraryIndexBloc, LibraryIndexState>(
         builder: (context, index) {
           return BlocBuilder<NoteListBloc, NoteListState>(
             builder: (context, state) {
               final bloc = context.read<NoteListBloc>();
-              final title = placeTitle(l10n, state.place, index);
-              final here = BrowseLocation.place(state.place);
-              final ready = state.status == NoteListStatus.ready;
-              return Column(
-                children: <Widget>[
-                  NoteListTopBar(
-                    title: title,
-                    subtitle: ready
-                        ? l10n.noteListCount(state.rows.length)
-                        : null,
-                    onSearch: () => context.go(
-                      BrowseLocation.search(
-                        scope: state.place is ListPlace_Notebook
-                            ? SearchScopeKind.notebook
-                            : SearchScopeKind.all,
-                        notebookId: switch (state.place) {
-                          ListPlace_Notebook(:final id) => id,
-                          _ => null,
-                        },
-                      ).location,
+              final error = state.actionError;
+              return PopScope(
+                // Back, on a phone that has one, ends choosing before it
+                // leaves.
+                canPop: !state.selecting,
+                onPopInvokedWithResult: (didPop, result) {
+                  if (!didPop) {
+                    bloc.add(const NoteListEvent.selectionCleared());
+                  }
+                },
+                child: Stack(
+                  children: <Widget>[
+                    Column(
+                      children: <Widget>[
+                        NoteListBar(state: state, index: index),
+                        Expanded(
+                          child: NoteListBody(
+                            state: state,
+                            index: index,
+                            openNoteId: openNoteId,
+                          ),
+                        ),
+                      ],
                     ),
-                    onOptions: () => showKansoBottomSheet<void>(
-                      context,
-                      builder: (_) => BlocProvider<NoteListBloc>.value(
-                        value: bloc,
-                        child: const ListOptionsSheet(),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: switch (state.status) {
-                      NoteListStatus.loading => const LoadingListPane(),
-                      NoteListStatus.failed => Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(KansoSpacing.md),
-                          child: KansoMessageCard(
-                            icon: KansoIcons.files,
-                            title: l10n.noteListFailedTitle,
-                            message: l10n.noteListFailedMessage,
-                            actions: <Widget>[
-                              KansoButton(
-                                label: l10n.retry,
-                                onPressed: () =>
-                                    bloc.add(const NoteListEvent.retried()),
-                              ),
-                            ],
+                    if (error != null)
+                      PositionedDirectional(
+                        start: KansoSpacing.md,
+                        end: KansoSpacing.md,
+                        bottom:
+                            MediaQuery.paddingOf(context).bottom +
+                            KansoSpacing.md,
+                        child: NoteListNotice(
+                          error: error,
+                          onDismiss: () => bloc.add(
+                            const NoteListEvent.errorDismissed(),
                           ),
                         ),
                       ),
-                      NoteListStatus.ready when state.rows.isEmpty =>
-                        EmptyPlacePane(
-                          place: state.place,
-                          name: switch (state.place) {
-                            ListPlace_Notebook(:final id) =>
-                              index.notebookName(id) ?? title,
-                            ListPlace_Tag(:final id) =>
-                              index.tag(id)?.name ?? title,
-                            _ => title,
-                          },
-                          narrowed: state.options.narrowed,
-                        ),
-                      NoteListStatus.ready => NoteListView(
-                        state: state,
-                        index: index,
-                        location: here,
-                        openNoteId: openNoteId,
-                      ),
-                    },
-                  ),
-                ],
+                  ],
+                ),
               );
             },
           );

@@ -1395,6 +1395,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Trash'**
   String get noteListTrash;
+
+  /// The title of the sheet that asks which notebook to move notes to.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Move 1 note to} other{Move {count} notes to}}'**
+  String moveSheetTitle(int count);
+
+  /// The button that closes a sheet without doing what it offers.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get noteListCancel;
+
+  /// The line shown when a change to notes did not happen.
+  ///
+  /// In en, this message translates to:
+  /// **'That didn\'t work. Try again.'**
+  String get noteListChangeFailed;
+
+  /// The line shown when notes could not be moved into or out of a locked notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked notebooks can\'t take or give up notes here yet.'**
+  String get noteListChangeLocked;
+
+  /// The button that closes the line that says a change did not happen.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get noteListDismiss;
 }
 
 class _AppLocalizationsDelegate

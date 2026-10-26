@@ -51,6 +51,9 @@ const EdgeInsets tabletSafeArea = EdgeInsets.only(top: 24, bottom: 20);
 /// Dark (which [brightness] chooses between); [brightness] is then only
 /// what the platform is told. The palette must come from the theme tokens,
 /// not be made up.
+///
+/// [interact] runs on the settled page, once per platform, before the
+/// picture is taken: a swipe, a long press, a tap that opens a sheet.
 Future<void> expectGoldenOnBothPlatforms(
   WidgetTester tester,
   Widget child, {
@@ -60,6 +63,7 @@ Future<void> expectGoldenOnBothPlatforms(
   EdgeInsets? safeArea,
   AppearanceState appearance = const AppearanceState(),
   KansoPalette? palette,
+  Future<void> Function(WidgetTester tester)? interact,
 }) async {
   final devicePixelRatio = size.shortestSide < 600 ? 3.0 : 2.0;
   final insets =
@@ -133,6 +137,10 @@ Future<void> expectGoldenOnBothPlatforms(
         ),
       );
       await tester.pumpAndSettle();
+      if (interact != null) {
+        await interact(tester);
+        await tester.pumpAndSettle();
+      }
       final boundary = tester.renderObject<RenderRepaintBoundary>(
         find.byKey(key),
       );

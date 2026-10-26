@@ -706,4 +706,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noteListTrash => 'Trash';
+
+  @override
+  String moveSheetTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Move $count notes to',
+      one: 'Move 1 note to',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get noteListCancel => 'Cancel';
+
+  @override
+  String get noteListChangeFailed => 'That didn\'t work. Try again.';
+
+  @override
+  String get noteListChangeLocked =>
+      'Locked notebooks can\'t take or give up notes here yet.';
+
+  @override
+  String get noteListDismiss => 'OK';
 }

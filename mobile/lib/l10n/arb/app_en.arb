@@ -907,5 +907,30 @@
   "noteListTrash": "Trash",
   "@noteListTrash": {
     "description": "The action that moves notes to the trash."
+  },
+  "moveSheetTitle": "{count, plural, =1{Move 1 note to} other{Move {count} notes to}}",
+  "@moveSheetTitle": {
+    "description": "The title of the sheet that asks which notebook to move notes to.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noteListCancel": "Cancel",
+  "@noteListCancel": {
+    "description": "The button that closes a sheet without doing what it offers."
+  },
+  "noteListChangeFailed": "That didn't work. Try again.",
+  "@noteListChangeFailed": {
+    "description": "The line shown when a change to notes did not happen."
+  },
+  "noteListChangeLocked": "Locked notebooks can't take or give up notes here yet.",
+  "@noteListChangeLocked": {
+    "description": "The line shown when notes could not be moved into or out of a locked notebook."
+  },
+  "noteListDismiss": "OK",
+  "@noteListDismiss": {
+    "description": "The button that closes the line that says a change did not happen."
   }
 }

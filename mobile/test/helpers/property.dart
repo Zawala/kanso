@@ -318,3 +318,21 @@ extension KansoListAny on Any {
   /// A time zone's offset from UTC, in seconds: from -12 to +14 hours.
   Generator<int> get utcOffsetSeconds => intInRange(-12 * 3600, 14 * 3600 + 1);
 }
+
+/// One release of a swipe: how far the row was moved and how fast the
+/// finger was going along that way (both in points, and points a second),
+/// the row's width, and which of the sides have actions and commit, as the
+/// bits of a number from 0 to 15.
+typedef SwipeRelease = (int offset, int velocity, int width, int sides);
+
+extension KansoSwipeAny on Any {
+  /// Any release of a swipe, in either direction.
+  Generator<SwipeRelease> get swipeRelease => combine4(
+    intInRange(-600, 601),
+    intInRange(-3000, 3001),
+    intInRange(200, 1201),
+    intInRange(0, 16),
+    (int offset, int velocity, int width, int sides) =>
+        (offset, velocity, width, sides),
+  );
+}
