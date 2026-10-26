@@ -5,8 +5,11 @@ name: Mobile
 # It reads the theme files in themes/ (a submodule) in a test, so a change
 # there runs it too, and a change to the core runs it because the library is
 # built into the app.
+# CI runs on master and for pull requests from forks only. A branch of this
+# repository is checked before it merges, and checked again on master.
 on:
   push:
+    branches: [master]
     paths:
       - "mobile/**"
       - ".github/workflows/mobile.yml"
@@ -68,6 +71,7 @@ jobs:
   # `flutter test` runs the hook too, so the binding tests call the real
   # library, built for the runner.
   analyze-and-test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -156,6 +160,7 @@ jobs:
   # ships. Checks the library is in the app with the symbols the background
   # task and the bridge need, then records what the app weighs.
   build-ios:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -190,6 +195,7 @@ jobs:
   # else exercises that: the check looks the classes the library calls by
   # name up in the APK.
   build-android:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -225,6 +231,7 @@ jobs:
   # silicon, which the arm64-only library needs; the simulator is the first
   # iPhone the runner has.
   integration-ios:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -280,6 +287,7 @@ jobs:
   # runner removes the app it installed, so the debug APK it built goes on
   # again first.
   integration-android:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
