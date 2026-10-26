@@ -287,7 +287,10 @@ The server sees:
   data key.
 - **Account event sockets:** while one is open, the account ID, device ID, connect and disconnect
   times, and the transient event type and approval ID. Not note content, ciphertext, names, keys or
-  codes, and no event log: the Durable Object has no storage.
+  codes, and no event log. The Durable Object keeps only the account ID and a push alarm.
+- **Push tokens:** a device's APNs or FCM token, its platform and environment, when it registered,
+  and when it was last woken, on its session row (migration `0011`). The token reaches Apple or
+  Google when a push is sent. No push carries a note, a title, a count, a name or an ID.
 - **Network:** IP addresses, times and the `kanso-sync/<version>` user agent, in Cloudflare's own
   request handling. Workers invocation logs and traces are pinned off
   (`observability.logs.invocation_logs: false`, `observability.traces.enabled: false`), and the
@@ -1583,6 +1586,8 @@ server's origin (M5), so the owner must choose the final URL before the first ac
 | PUT | `/v2/account/device` | yes | Set this device's sealed name |
 | GET | `/v2/account/devices` | yes | List active devices |
 | DELETE | `/v2/account/devices/<device_id>` | yes | Sign out one device |
+| PUT | `/v2/account/devices/<device_id>/push` | yes | Set this device's push token |
+| DELETE | `/v2/account/devices/<device_id>/push` | yes | Turn this device's pushes off |
 | POST | `/v2/push` | yes | Write sealed documents |
 | GET | `/v2/changes?since=&limit=` | yes | The account's change feed |
 | PUT | `/v2/files/<wire_id>` | yes | Store sealed file bytes |
@@ -2025,6 +2030,66 @@ ended before the deletion, so the client reports that instead.
   trust. It answers 204, or 404 when the account has no row for that device (an unknown ID, or
   another account's device), or 400 for a malformed ID. Deleting the current device is a logout
   (reason `signed_out`).
+
+#### PUT and DELETE /v2/account/devices/<device_id>/push
+
+Push notifications are silent wake-ups: a device that has a token is nudged when another device of
+the account (or a member of a shared note) changes something, then pulls over HTTPS as usual. The
+push says nothing about what changed.
+
+- **PUT** `{"platform", "token", "environment"}` sets the caller's own token and answers 204.
+  `platform` is `apns` or `fcm`; `environment` is `production` or `development` (`fcm` has only
+  `production`). An APNs token is lowercase hex, an even 32–200 characters; an FCM token is 100–4096
+  characters of `A-Z a-z 0-9 _ : -`. The same shapes are `CHECK`s on `sessions`. Registering again
+  replaces the token. A token another session holds is cleared from it in the same batch, so a
+  token is on one session at most.
+- **DELETE** clears the token and answers 204 whether or not one was set.
+- 400 for a bad body or a malformed device ID; 404 for any device but the session's own (another
+  device of the account, another account's, an unknown one), as `DELETE /v2/account/devices/<id>`
+  answers a device that isn't the caller's; 401 for a session that has ended.
+
+**What wakes a device.** A `POST /v2/push` with at least one `ok` result wakes the account's other
+active devices that have a token; a shared note's update or comment (`POST
+/v2/collab/shares/<id>/log`) wakes the active devices of every member account of the share. Never
+the sending device, never a revoked session, never a disabled account's. A push that is all
+conflicts wakes nobody. Waking costs the route one D1 `UPDATE` and one Durable Object call, and a
+failure of either is logged (`push`, `wake_failed` or `schedule_failed`) and never fails the route.
+
+**Coalescing.** A device is sent at most one push per 30 seconds. The `UPDATE` sets `push_due_at =
+coalesce(push_due_at, max(now, push_last_sent_at + 30000))` on the matching rows and returns the
+earliest; the route tells the account's `AccountRoom` (`schedule`), which arms its alarm for that
+time unless an earlier one is set. The alarm claims the rows whose due time has come and whose last
+push is 30 seconds old (`UPDATE ... SET push_last_sent_at = now, push_due_at = NULL ... RETURNING`),
+sends to each (four at a time), clears a token the provider reports gone (only if the row still
+holds the token that was sent), and arms itself again for the earliest row still waiting. A burst of
+changes therefore ends in one trailing push, never in none. A send that fails is logged
+(`push`, `refused` or `send_failed`, with the platform and status) and not retried until the next
+change.
+
+**Cleared tokens.** A trigger (migration `0011`) clears the token, platform, environment, update
+time and due time when a session's `revoked_at` goes from `NULL` to a time (sign-out, revoke,
+expiry, eviction, password change, recovery, rekey) and when its `token_hash` changes (the device
+signed in again; it registers again). `push_last_sent_at` stays, so a device that signs in again is
+still owed its 30 seconds. Account deletion deletes the rows.
+
+**Providers.**
+
+- *APNs* (token auth): an ES256 JWT `{alg, kid: APNS_KEY_ID}` with `{iss: APNS_TEAM_ID, iat}`,
+  signed with the `.p8` key in `APNS_KEY_P8` and cached in the Worker for 40 minutes. `POST
+  https://api.push.apple.com/3/device/<token>` (`api.sandbox.push.apple.com` for `development`)
+  with `authorization: bearer <jwt>`, `apns-push-type: background`, `apns-priority: 5`,
+  `apns-topic: <APNS_TOPIC>`, `apns-expiration: <now + 1 hour, in seconds>`, `apns-collapse-id:
+  sync`, and the body `{"aps":{"content-available":1}}`. A token is gone on 410, or on 400
+  `BadDeviceToken`. A 403 `ExpiredProviderToken` drops the cached JWT.
+- *FCM* (HTTP v1): `FCM_SERVICE_ACCOUNT` is the service account's JSON key. An RS256 assertion
+  (`scope` `https://www.googleapis.com/auth/firebase.messaging`, `aud` the key's `token_uri`,
+  one hour) is exchanged for an access token, cached until five minutes before it expires. `POST
+  https://fcm.googleapis.com/v1/projects/<project_id>/messages:send` with the body `{"message":
+  {"token": "<token>", "android": {"priority": "HIGH", "ttl": "3600s", "collapse_key": "sync"}}}`
+  and no `data` or `notification`. A token is gone when `error.details[]` has `errorCode`
+  `UNREGISTERED`. A 401 drops the cached access token.
+- A platform whose secrets are missing is skipped with one log line (`push`, `unconfigured`, the
+  platform) per alarm; its tokens are still stored.
 
 #### POST /v2/push
 
@@ -2643,6 +2708,15 @@ reason, its device's unconsumed `link` and `proof` flows (provider flows by inte
 kind) and `passkey_register` flows are consumed in the same transaction; when an account is
 disabled, all of the account's. All three are additive and applied by `npm run migrate:remote`.
 
+### Migration `0011_push.sql`
+
+Adds to `sessions`: `push_platform`, `push_token`, `push_environment`, `push_updated_at`,
+`push_last_sent_at` and `push_due_at`, all nullable, with `CHECK`s on the token's shape for its
+platform, on the three being set together, and on `push_due_at` existing only with a token; a unique
+index on `push_token` where it is set; an index of an account's due rows; and the trigger
+`sessions_push_clear` described under "PUT and DELETE /v2/account/devices/<device_id>/push".
+Additive, applied by `npm run migrate:remote` before the Worker that uses it is deployed.
+
 ### Sessions in the Worker
 
 Every session route authenticates with one read:
@@ -2780,6 +2854,11 @@ Changes to `cloud/wrangler.jsonc`:
 ]
 // AUTH_PEPPER (required): wrangler secret put AUTH_PEPPER. SYNC_TOKEN is no longer read.
 ```
+
+Push notifications add the var `APNS_TOPIC` (`app.kanso.Kanso`) and four secrets, set with
+`wrangler secret put`: `APNS_KEY_P8` (the `.p8` PEM), `APNS_KEY_ID`, `APNS_TEAM_ID` and
+`FCM_SERVICE_ACCOUNT` (the service account's JSON key). The `AccountRoom` class keeps its v2
+`new_classes` migration: alarms work on it, so no migration tag is added.
 
 Merge the new `ACCOUNT_ROOM` binding and v2 migration with the existing `NOTE_ROOM` and v1
 migration. Do not replace or renumber the deployed v1 migration; append v2.
