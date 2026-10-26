@@ -35,7 +35,8 @@
 //! - [`SharedNotes`] (`library.shared()`) shares notes with other accounts
 //!   and keeps an open shared note live.
 //! - [`Gallery`] (`library.gallery()`) lists and installs the gallery's
-//!   themes.
+//!   themes, checked as the desktop checks them: the signed index, then
+//!   each file's pinned hash.
 //! - [`background`] is the sync that runs with no app: the code behind the
 //!   C entry `kanso_background_sync` that `mobile/rust` exports.
 //! - [`diagnostics`] has the version, the TLS check and the panic probe.
@@ -62,6 +63,9 @@ mod builtin_themes;
 pub mod diagnostics;
 mod errors;
 mod gallery;
+mod gallery_model;
+mod gallery_net;
+mod gallery_store;
 mod library;
 mod locks;
 mod matching;
@@ -81,6 +85,7 @@ pub use account_settings::AccountSettings;
 pub use approvals::Approvals;
 pub use errors::KansoError;
 pub use gallery::Gallery;
+pub use gallery_model::*;
 pub use library::Library;
 pub use locks::LockSession;
 pub use model::*;

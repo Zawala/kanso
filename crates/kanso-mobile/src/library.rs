@@ -47,6 +47,9 @@ pub(crate) struct Inner {
     pub(crate) sync_gate: Mutex<()>,
     /// Set to stop the sync that is running.
     pub(crate) sync_cancel: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>,
+    /// Where the gallery reads its index from and what it trusts; `None` is
+    /// the real server and the keys compiled in. Tests set their own.
+    pub(crate) gallery_source: Mutex<Option<crate::gallery_net::Source>>,
 }
 
 /// The libraries open in this process, by their database path. A background
@@ -259,6 +262,7 @@ fn open_inner(
         status_listeners: Listeners::default(),
         sync_gate: Mutex::new(()),
         sync_cancel: Mutex::new(None),
+        gallery_source: Mutex::new(None),
     });
     open.retain(|_, inner| inner.strong_count() > 0);
     open.insert(key, Arc::downgrade(&inner));
