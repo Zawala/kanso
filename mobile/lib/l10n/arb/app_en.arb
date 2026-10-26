@@ -183,6 +183,10 @@
   "@accessoryOutdent": {
     "description": "A keyboard shortcut that outdents a line."
   },
+  "accessoryRedo": "Redo",
+  "@accessoryRedo": {
+    "description": "What the undo key of the keyboard bar does when it is held, for a screen reader's list of actions."
+  },
   "accessoryUndo": "Undo",
   "@accessoryUndo": {
     "description": "A keyboard shortcut that undoes the last change."

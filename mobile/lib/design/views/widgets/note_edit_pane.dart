@@ -4,17 +4,18 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
+import '../../../editor/views/widgets/keyboard_accessory_bar.dart';
 import '../../../editor/views/widgets/properties_row.dart';
 import '../../../note/models/data/note_mode.dart';
 import '../../../note/views/widgets/note_mode_toggle.dart';
 import '../../../note/views/widgets/note_top_bar.dart';
 import '../../models/data/design_layout.dart';
 import '../../models/data/mock_data.dart';
-import 'keyboard_accessory_bar.dart';
 import 'keyboard_placeholder.dart';
 import 'note_source_body.dart';
 import 'wiki_completion_popup.dart';
@@ -71,7 +72,18 @@ class NoteEditPane extends StatelessWidget {
               ],
             ),
           ),
-          const KeyboardAccessoryBar(),
+          KeyboardAccessoryBar(
+            editorContext: const EditorContext(
+              inList: true,
+              inTable: false,
+              inCode: false,
+              completionHere: false,
+              history: HistoryState(canUndo: true, canRedo: false),
+            ),
+            onCommand: (_) {},
+            onUndo: () {},
+            onRedo: () {},
+          ),
           const KeyboardPlaceholder(),
         ],
       ),

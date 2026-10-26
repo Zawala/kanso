@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/bridge/api/types.dart' hide EditorEvent;
 import '../../../core/configs/kanso_spacing.dart';
+import '../../../note/models/data/note_mode.dart';
 import '../../../note/state/note/note_bloc.dart';
 import '../../models/data/flush_reason.dart';
 import '../../models/repos/abs/editor_repository.dart';
@@ -15,7 +16,9 @@ import '../../state/editor/editor_bloc.dart';
 import '../controllers/kanso_markdown_controller.dart';
 import 'editor_conflict_strip.dart';
 import 'editor_failure_strip.dart';
+import 'editor_shortcuts.dart';
 import 'editor_title_field.dart';
+import 'keyboard_accessory_bar.dart';
 import 'markdown_editor.dart';
 import 'properties_row.dart';
 
@@ -271,12 +274,29 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                   SliverPadding(
                     padding: EdgeInsets.symmetric(horizontal: gutter),
                     sliver: SliverToBoxAdapter(
-                      child: MarkdownEditor(
+                      child: EditorShortcuts(
                         controller: controller,
-                        focusNode: textFocus,
-                        spellCheckService: long
-                            ? null
-                            : DefaultSpellCheckService(),
+                        completionOpen: () => controller.completion != null,
+                        onSave: () => editor.add(
+                          const EditorEvent.flushRequested(
+                            FlushReason.shortcut,
+                          ),
+                        ),
+                        onDismissCompletion: () =>
+                            editor.add(const EditorEvent.completionDismissed()),
+                        onEscape: () {
+                          textFocus.unfocus();
+                          note.add(
+                            const NoteEvent.modeChanged(NoteMode.preview),
+                          );
+                        },
+                        child: MarkdownEditor(
+                          controller: controller,
+                          focusNode: textFocus,
+                          spellCheckService: long
+                              ? null
+                              : DefaultSpellCheckService(),
+                        ),
                       ),
                     ),
                   ),
@@ -295,6 +315,32 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                   ),
                 ],
               ),
+            ),
+            ListenableBuilder(
+              listenable: textFocus,
+              builder: (context, _) {
+                if (!textFocus.hasFocus) {
+                  return const SizedBox.shrink();
+                }
+                final insets = MediaQuery.viewInsetsOf(context).bottom;
+                return Padding(
+                  // With no keyboard (a hardware one), the home indicator.
+                  padding: EdgeInsets.only(
+                    bottom: insets > 0
+                        ? 0
+                        : MediaQuery.paddingOf(context).bottom,
+                  ),
+                  child: BlocBuilder<EditorBloc, EditorState>(
+                    buildWhen: (before, now) => before.context != now.context,
+                    builder: (context, state) => KeyboardAccessoryBar(
+                      editorContext: state.context,
+                      onCommand: controller.run,
+                      onUndo: controller.undo,
+                      onRedo: controller.redo,
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),

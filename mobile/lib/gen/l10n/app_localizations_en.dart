@@ -153,6 +153,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accessoryOutdent => 'Outdent';
 
   @override
+  String get accessoryRedo => 'Redo';
+
+  @override
   String get accessoryUndo => 'Undo';
 
   @override

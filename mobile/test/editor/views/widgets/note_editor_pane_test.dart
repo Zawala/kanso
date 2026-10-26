@@ -3,14 +3,18 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart' as core;
+import 'package:kanso/core/bridge/api/types.dart' show EditCommand, FormatKind;
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/views/widgets/kanso_segment_cell.dart';
+import 'package:kanso/editor/views/widgets/accessory_key.dart';
 import 'package:kanso/editor/views/widgets/editor_conflict_strip.dart';
 import 'package:kanso/editor/views/widgets/editor_failure_strip.dart';
 import 'package:kanso/editor/views/widgets/editor_title_field.dart';
 import 'package:kanso/editor/views/widgets/kanso_editable_text.dart';
+import 'package:kanso/editor/views/widgets/keyboard_accessory_bar.dart';
 import 'package:kanso/editor/views/widgets/note_editor_pane.dart';
 import 'package:kanso/editor/views/widgets/properties_row.dart';
 import 'package:kanso/note/models/data/note_mode.dart';
@@ -21,6 +25,7 @@ import 'package:kanso/note/views/widgets/note_bottom_bar.dart';
 import 'package:kanso/note/views/widgets/note_info_sheet.dart';
 import 'package:kanso/note/views/widgets/note_mode_toggle.dart';
 import 'package:kanso/note/views/widgets/note_pane.dart';
+import 'package:kanso/shell/utils/kanso_shortcut_bindings.dart';
 
 import '../../../helpers/browse_blocs.dart';
 import '../../../helpers/fake_editor_document.dart';
@@ -58,6 +63,10 @@ Future<_Page> _open(
       tester,
       blocs.provide(NotePane(inPane: inPane), note: note),
       size: size,
+      wrap: (page) => Shortcuts(
+        shortcuts: kansoShortcutBindings(TargetPlatform.iOS),
+        child: page,
+      ),
     ),
   );
   if (edit) {
@@ -373,6 +382,65 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('the keyboard bar is there while the text has the focus', (
+      tester,
+    ) async {
+      final page = await _open(tester);
+      await tester.pump();
+      expect(find.byType(KeyboardAccessoryBar), findsOneWidget);
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) => widget is AccessoryKey && widget.semanticLabel == 'Bold',
+        ),
+      );
+      expect(page.document.commands, <EditCommand>[
+        const EditCommand.format(format: FormatKind.bold),
+      ]);
+      // The title is not Markdown: no bar there.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(EditorTitleField),
+          matching: find.byType(EditableText),
+        ),
+      );
+      await tester.pump();
+      expect(find.byType(KeyboardAccessoryBar), findsNothing);
+    });
+
+    testWidgets('Command-1 edits and Command-3 reads', (tester) async {
+      final page = await _open(tester, edit: false);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit1);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+      await tester.pump();
+      expect(page.note.state.mode, NoteMode.edit);
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit3);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+      expect(page.note.state.mode, NoteMode.preview);
+    });
+
+    testWidgets(
+      'Command-S saves now, and Escape goes to Preview',
+      (
+        tester,
+      ) async {
+        final page = await _open(tester);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+        await _settle(tester);
+        expect(page.document.calls, contains('flush'));
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pump();
+        expect(page.note.state.mode, NoteMode.preview);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+    );
 
     testWidgets('the toggle marks the mode', (tester) async {
       await _open(tester);

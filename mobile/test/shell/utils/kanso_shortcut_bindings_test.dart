@@ -25,8 +25,10 @@ void main() {
           NextNoteIntent,
           PreviousNoteIntent,
           PinNoteIntent,
+          EditNoteIntent,
+          PreviewNoteIntent,
         });
-        expect(bindings, hasLength(8));
+        expect(bindings, hasLength(10));
       }
     });
 
@@ -69,6 +71,8 @@ void main() {
       expect(bindings[PreviousNoteIntent]!.alt, isTrue);
       expect(bindings[PinNoteIntent]!.trigger, LogicalKeyboardKey.keyP);
       expect(bindings[PinNoteIntent]!.shift, isTrue);
+      expect(bindings[EditNoteIntent]!.trigger, LogicalKeyboardKey.digit1);
+      expect(bindings[PreviewNoteIntent]!.trigger, LogicalKeyboardKey.digit3);
     });
 
     test('there is no shortcut for what is not built yet', () {
@@ -78,9 +82,8 @@ void main() {
       for (final key in <LogicalKeyboardKey>[
         LogicalKeyboardKey.keyN,
         LogicalKeyboardKey.keyK,
-        LogicalKeyboardKey.digit1,
+        // The phone has no split view of a note.
         LogicalKeyboardKey.digit2,
-        LogicalKeyboardKey.digit3,
       ]) {
         expect(triggers, isNot(contains(key)));
       }

@@ -346,6 +346,12 @@ abstract class AppLocalizations {
   /// **'Outdent'**
   String get accessoryOutdent;
 
+  /// What the undo key of the keyboard bar does when it is held, for a screen reader's list of actions.
+  ///
+  /// In en, this message translates to:
+  /// **'Redo'**
+  String get accessoryRedo;
+
   /// A keyboard shortcut that undoes the last change.
   ///
   /// In en, this message translates to:

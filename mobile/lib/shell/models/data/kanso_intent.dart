@@ -48,3 +48,13 @@ class PreviousNoteIntent extends KansoIntent {
 class PinNoteIntent extends KansoIntent {
   const PinNoteIntent();
 }
+
+/// Show the open note as text to edit.
+class EditNoteIntent extends KansoIntent {
+  const EditNoteIntent();
+}
+
+/// Show the open note to read.
+class PreviewNoteIntent extends KansoIntent {
+  const PreviewNoteIntent();
+}

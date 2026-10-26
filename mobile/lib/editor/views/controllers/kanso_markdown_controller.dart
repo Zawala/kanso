@@ -287,6 +287,30 @@ class KansoMarkdownController extends TextEditingController {
     }, _adopt);
   }
 
+  /// Moves the active row of the completions [delta] rows, within them.
+  void stepCompletion(int delta) {
+    final offered = completion;
+    if (offered == null || offered.items.isEmpty) {
+      return;
+    }
+    final next = (completionIndex + delta).clamp(0, offered.items.length - 1);
+    if (next != completionIndex) {
+      completionIndex = next;
+      notifyListeners();
+    }
+  }
+
+  /// Chooses the active row of the completions; false when there is none.
+  bool chooseCompletion() {
+    final offered = completion;
+    if (offered == null ||
+        completionIndex < 0 ||
+        completionIndex >= offered.items.length) {
+      return false;
+    }
+    return insert(offered.items[completionIndex]);
+  }
+
   /// Puts the completion [item] in the place the completion names, as one
   /// step.
   bool insert(CompletionItem item) {
