@@ -30,8 +30,9 @@ import 'tablet_layout.dart';
 /// * Three ([LayoutClass.triple]): the library, the list and the note.
 ///
 /// [child] keeps its state when the window changes from one to another, so
-/// the open note is still open.
-class BrowseShell extends StatelessWidget {
+/// the open note is still open; so does the list, so a turn of the device
+/// leaves it where it was scrolled.
+class BrowseShell extends StatefulWidget {
   const BrowseShell({
     required this.layout,
     required this.location,
@@ -54,14 +55,26 @@ class BrowseShell extends StatelessWidget {
   final Widget child;
 
   @override
+  State<BrowseShell> createState() => BrowseShellState();
+}
+
+/// The state of a [BrowseShell]: it holds the key that carries the list from
+/// one layout of the panes to the next.
+class BrowseShellState extends State<BrowseShell> {
+  final GlobalKey listKey = GlobalKey(debugLabel: 'list');
+
+  @override
   Widget build(BuildContext context) {
+    final location = widget.location;
+    final layout = widget.layout;
+    final designGallery = widget.designGallery;
     return NavigationHistoryListener(
       location: location,
       // The panes beside the pages are not in a page's Scaffold.
       child: KansoPlainText(
         child: ValueListenableBuilder<LayoutClass>(
           valueListenable: layout,
-          child: child,
+          child: widget.child,
           builder: (context, layoutClass, child) {
             final width = MediaQuery.sizeOf(context).width;
             final listOnly = location?.noteId == null;
@@ -92,7 +105,7 @@ class BrowseShell extends StatelessWidget {
               LayoutClass.double => drawerAround(
                 LayoutClass.double,
                 ListNoteLayout(
-                  list: ListSlot(location: location),
+                  list: ListSlot(key: listKey, location: location),
                   note: child!,
                 ),
                 KansoSizes.libraryPane,
@@ -106,7 +119,7 @@ class BrowseShell extends StatelessWidget {
                       return drawerAround(
                         LayoutClass.triple,
                         ListNoteLayout(
-                          list: ListSlot(location: location),
+                          list: ListSlot(key: listKey, location: location),
                           note: child!,
                         ),
                         KansoSizes.libraryPane,
@@ -120,7 +133,7 @@ class BrowseShell extends StatelessWidget {
                           location: location,
                           designGallery: designGallery,
                         ),
-                        list: ListSlot(location: location),
+                        list: ListSlot(key: listKey, location: location),
                         note: child!,
                       ),
                     );
