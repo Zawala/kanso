@@ -370,6 +370,84 @@ void librarySuite(OpenLibrary open) {
       expect(heard.any(written.contains), isTrue);
     });
 
+    test('lists open tasks in groups, ticks one and takes it back', () async {
+      final library = await open();
+      final id = await makeNote(
+        library,
+        'Plan',
+        '- [ ] Pay rent @2020-01-01\n- [ ] Later @2999-01-01\n- [ ] Plain\n',
+      );
+      final board = await library.tasks(
+        query: const TaskListQuery(
+          showDone: false,
+          kept: <String>[],
+        ),
+      );
+      expect(
+        board.groups.map((group) => group.group),
+        <TaskGroupKind>[
+          TaskGroupKind.overdue,
+          TaskGroupKind.upcoming,
+          TaskGroupKind.noDate,
+        ],
+      );
+      expect(
+        board.groups.map((group) => group.label),
+        <String>['Overdue', 'Upcoming', 'No date'],
+      );
+      final rent = board.groups.first.items.single;
+      expect(rent.text, 'Pay rent');
+      expect(rent.sourceText, 'Pay rent @2020-01-01');
+      expect(rent.noteId, id);
+      expect(rent.noteTitle, 'Plan');
+      expect(rent.line, 0);
+      expect(rent.dueTone, DueTone.overdue);
+      expect(rent.dueLabel, startsWith('Overdue'));
+      expect(await library.overdueTasks(), 1);
+
+      final ticked = await library.setTask(
+        noteId: id,
+        line: rent.line,
+        text: rent.sourceText,
+        checked: true,
+      );
+      expect(ticked, isA<Ticked_Changed>());
+      expect(await library.overdueTasks(), 0);
+      final kept = await library.tasks(
+        query: TaskListQuery(
+          showDone: false,
+          kept: <String>[rent.key],
+        ),
+      );
+      expect(kept.groups.first.group, TaskGroupKind.overdue);
+      expect(kept.groups.first.items.single.checked, isTrue);
+
+      expect(await library.undo(ticket: (ticked as Ticked_Changed).undo), 1);
+      expect(await library.overdueTasks(), 1);
+    });
+
+    test('leaves the tasks of locked notes out', () async {
+      final library = await open();
+      final visible = await makeNote(library, 'Seen', '- [ ] open @2020-01-01');
+      final hidden = await makeNote(library, 'Hidden', '- [ ] SEALEDTASK');
+      final locks = library.locks();
+      await locks.lockNote(id: hidden, password: lockPassword);
+      expect(await locks.isUnlocked(), isTrue);
+      for (var round = 0; round < 2; round++) {
+        final board = await library.tasks(
+          query: const TaskListQuery(
+            showDone: true,
+            kept: <String>[],
+          ),
+        );
+        final items = board.groups.expand((group) => group.items).toList();
+        expect(items.map((item) => item.noteId), <String>[visible]);
+        expect(items.map((item) => item.text), isNot(contains('SEALEDTASK')));
+        expect(await library.overdueTasks(), 1);
+        await locks.lock();
+      }
+    });
+
     test('the parts of a library come from it', () async {
       final library = await open();
       expect(library.locks(), isA<Object>());

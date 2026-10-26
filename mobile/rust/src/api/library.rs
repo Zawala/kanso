@@ -6,7 +6,7 @@ use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
     Hit, KansoError, Library, LibraryOverview, ListQuery, NewNote, NoteChange, NoteList, NoteView,
-    NotebookRow, Property, Saved, SearchScope, Table, TagRow,
+    NotebookRow, Property, Saved, SearchScope, Table, TagRow, TaskBoard, TaskListQuery, Ticked,
 };
 
 use super::locks::KansoLocks;
@@ -29,6 +29,35 @@ impl KansoLibrary {
 
     pub fn overview(&self) -> Result<LibraryOverview, KansoError> {
         self.0.overview()
+    }
+
+    /// The Tasks place: open tasks across the notes, in groups; locked
+    /// notes are left out.
+    pub fn tasks(&self, query: TaskListQuery) -> Result<TaskBoard, KansoError> {
+        self.0.tasks(query)
+    }
+
+    /// How many open tasks are overdue (the Tasks place's badge).
+    pub fn overdue_tasks(&self) -> Result<u32, KansoError> {
+        self.0.overdue_tasks()
+    }
+
+    /// Ticks (or clears) a task in its note, in one write; the ticket takes
+    /// it back with `undo`.
+    pub fn set_task(
+        &self,
+        note_id: String,
+        line: u32,
+        text: String,
+        checked: bool,
+    ) -> Result<Ticked, KansoError> {
+        self.0.set_task(&note_id, line, &text, checked)
+    }
+
+    /// Takes back the change kept under `ticket`; says how many notes it
+    /// wrote.
+    pub fn undo(&self, ticket: u64) -> Result<u32, KansoError> {
+        self.0.undo(ticket)
     }
 
     pub fn change(&self, ids: Vec<String>, change: NoteChange) -> Result<u32, KansoError> {

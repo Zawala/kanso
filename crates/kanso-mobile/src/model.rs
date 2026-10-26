@@ -217,6 +217,88 @@ pub enum Ticked {
     Missing,
 }
 
+/// What the Tasks place lists.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TaskListQuery {
+    /// Only tasks in this notebook's notes; `None` is every notebook.
+    pub notebook_id: Option<String>,
+    /// Done tasks too, in Completed.
+    pub show_done: bool,
+    /// Keys ([`TaskItem::key`]) of tasks ticked here since the place opened:
+    /// they stay in the group they were in, struck through, rather than
+    /// vanish under the finger, until the place is opened again.
+    pub kept: Vec<String>,
+}
+
+/// Where a task belongs, relative to now.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskGroupKind {
+    /// Not done, and its day (or its time today) has passed.
+    Overdue,
+    /// Not done and due today, at or after now.
+    Today,
+    /// Not done and due after today.
+    Upcoming,
+    /// Not done and without a date.
+    NoDate,
+    /// Done.
+    Done,
+}
+
+/// How a due chip is drawn: the theme's color is the shell's choice by tone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DueTone {
+    /// Upcoming: quiet.
+    Plain,
+    /// Due today.
+    Today,
+    /// Past, and the task isn't done: a warm red.
+    Overdue,
+    /// The task is done: muted.
+    Done,
+}
+
+/// A task of the Tasks place.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TaskItem {
+    /// Identifies the task for [`TaskListQuery::kept`] and for lists.
+    pub key: String,
+    pub note_id: String,
+    pub note_title: String,
+    pub notebook_id: String,
+    /// The notebook's name; empty for a note in none.
+    pub notebook_name: String,
+    /// The line (0-based) it is on in the note's text.
+    pub line: u32,
+    /// Its words as a list shows them: the due date taken out.
+    pub text: String,
+    /// Its words as written, due date included: what `Library::set_task`
+    /// is handed.
+    pub source_text: String,
+    pub checked: bool,
+    /// The due chip's words ("Tomorrow", "Overdue · Yesterday",
+    /// "Fri 25 Oct 09:00"); `None` for a task without a date.
+    pub due_label: Option<String>,
+    /// The chip's tone; `None` for a task without a date.
+    pub due_tone: Option<DueTone>,
+}
+
+/// A group of the Tasks place, with its tasks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TaskSection {
+    pub group: TaskGroupKind,
+    /// "Overdue", "Today", "Upcoming", "No date", "Completed".
+    pub label: String,
+    pub items: Vec<TaskItem>,
+}
+
+/// The Tasks place: the groups that have tasks, in the desktop's order
+/// (Overdue, Today, Upcoming, No date, Completed).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TaskBoard {
+    pub groups: Vec<TaskSection>,
+}
+
 /// A write's result: the document and its new revision.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Saved {
