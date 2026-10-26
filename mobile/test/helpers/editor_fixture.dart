@@ -6,15 +6,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/library.dart';
 import 'package:kanso/core/bridge/api/types.dart';
+import 'package:kanso/core/configs/kanso_palette.dart';
+import 'package:kanso/core/models/data/layout_class.dart';
 import 'package:kanso/editor/models/repos/impl/rust_editor_repository.dart';
 import 'package:kanso/editor/views/widgets/kanso_editable_text.dart';
 import 'package:kanso/note/models/data/note_mode.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note/views/widgets/note_pane.dart';
+import 'package:kanso/shell/views/widgets/list_note_layout.dart';
 import 'package:kanso/shell/views/widgets/tablet_layout.dart';
 
 import 'browse_blocs.dart';
 import 'core_library.dart';
+import 'kanso_viewport.dart';
 import 'library_fixtures.dart';
 import 'register_editor_bloc.dart';
 
@@ -28,6 +32,24 @@ const String goldenText =
 
 /// The properties of that note, as front matter.
 const String goldenFront = '---\nowner: Ada\nstatus: active\nrank: 2\n---\n';
+
+/// [note] as the note pane of a window of [viewport]: beside empty panes for
+/// the list, and for the library when there is room for it.
+Widget inPanes(KansoViewport viewport, Brightness brightness, Widget note) {
+  final palette = brightness == Brightness.dark
+      ? KansoPalette.kansoDark
+      : KansoPalette.kansoLight;
+  final list = ColoredBox(color: palette.colors.list);
+  return switch (viewport.layout) {
+    LayoutClass.single => note,
+    LayoutClass.double => ListNoteLayout(list: list, note: note),
+    LayoutClass.triple => TabletLayout(
+      library: ColoredBox(color: palette.colors.sidebar),
+      list: list,
+      note: note,
+    ),
+  };
+}
 
 /// The note page in edit mode over a real library: the Rust core's colours,
 /// completions and sessions behind the screens, and the fixture library
@@ -106,18 +128,20 @@ class EditorFixture {
     note: note,
   );
 
-  /// The note pane beside empty panes, on a tablet.
-  Widget tablet(Color library, Color list) => blocs.provide(
-    Scaffold(
-      resizeToAvoidBottomInset: false,
-      body: TabletLayout(
-        library: ColoredBox(color: library),
-        list: ColoredBox(color: list),
-        note: const NotePane(inPane: true),
+  /// The page as a window of [viewport] has it: the phone's page, or the
+  /// note pane beside the panes the window has room for, empty.
+  Widget inViewport(KansoViewport viewport, Brightness brightness) {
+    if (viewport.layout == LayoutClass.single) {
+      return phone;
+    }
+    return blocs.provide(
+      Scaffold(
+        resizeToAvoidBottomInset: false,
+        body: inPanes(viewport, brightness, const NotePane(inPane: true)),
       ),
-    ),
-    note: note,
-  );
+      note: note,
+    );
+  }
 
   /// Lets what the core answers (the session, colours, completions) arrive
   /// and be drawn.
