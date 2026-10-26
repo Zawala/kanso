@@ -56,6 +56,7 @@ pub mod secrets;
 mod stream;
 mod syncing;
 mod theme_tokens;
+mod undo;
 
 pub use errors::KansoError;
 pub use library::Library;

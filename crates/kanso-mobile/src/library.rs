@@ -21,6 +21,7 @@ use crate::renderer::Renderer;
 use crate::secrets;
 use crate::stream::Listeners;
 use crate::syncing::SyncHandle;
+use crate::undo::UndoBook;
 use crate::{Secrets, boundary};
 
 /// How often the auto-lock timer looks at the clock.
@@ -42,6 +43,8 @@ pub(crate) struct Inner {
     pub(crate) sync_gate: Mutex<()>,
     /// Set to stop the sync that is running.
     pub(crate) sync_cancel: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>,
+    /// The changes the Undo notice can take back.
+    pub(crate) undo: Mutex<UndoBook>,
 }
 
 /// The libraries open in this process, by their database path. A background
@@ -219,6 +222,7 @@ fn open_inner(
         status_listeners: Listeners::default(),
         sync_gate: Mutex::new(()),
         sync_cancel: Mutex::new(None),
+        undo: Mutex::new(UndoBook::default()),
     });
     open.retain(|_, inner| inner.strong_count() > 0);
     open.insert(key, Arc::downgrade(&inner));

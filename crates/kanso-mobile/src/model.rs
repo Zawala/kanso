@@ -204,6 +204,19 @@ pub struct NewNote {
     pub body: String,
 }
 
+/// What ticking (or clearing) a task did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ticked {
+    /// The note was written with revision `rev`; `undo` is the ticket that
+    /// takes the tick back (`Library::undo`).
+    Changed { rev: String, undo: u64 },
+    /// The task already was that way.
+    Unchanged,
+    /// The task isn't in the note any more: its text changed since it was
+    /// read.
+    Missing,
+}
+
 /// A write's result: the document and its new revision.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Saved {
