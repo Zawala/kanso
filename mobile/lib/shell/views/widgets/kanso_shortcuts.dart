@@ -17,6 +17,7 @@ import '../../../core/utils/neighbour_note.dart';
 import '../../../core/views/widgets/kanso_drawer_scope.dart';
 import '../../models/data/kanso_intent.dart';
 import '../../state/library_pane/library_pane_bloc.dart';
+import '../../state/note_creation/note_creation_bloc.dart';
 import '../../utils/kanso_shortcut_bindings.dart';
 
 /// The keyboard shortcuts for moving around on a tablet (see
@@ -92,6 +93,20 @@ class KansoShortcuts extends StatelessWidget {
           ),
           PreviousNoteIntent: CallbackAction<PreviousNoteIntent>(
             onInvoke: (_) => stepNote(context, forward: false),
+          ),
+          NewNoteIntent: CallbackAction<NewNoteIntent>(
+            onInvoke: (_) {
+              final here = location;
+              final pinned =
+                  here is PlaceLocation && here.place is ListPlace_Pinned;
+              context.read<NoteCreationBloc>().add(
+                NoteCreationEvent.requested(
+                  here is PlaceLocation ? here.place : const ListPlace.all(),
+                  pinned: pinned,
+                ),
+              );
+              return null;
+            },
           ),
           PinNoteIntent: CallbackAction<PinNoteIntent>(
             onInvoke: (_) {

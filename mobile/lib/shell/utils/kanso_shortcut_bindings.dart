@@ -18,12 +18,13 @@ import '../models/data/kanso_intent.dart';
 /// | secondary + `\` | show or hide the library |
 /// | secondary + option + down and up | the next and the previous note |
 /// | secondary + shift + P | pin or unpin the open note |
+/// | secondary + N | a new note, in the place being listed |
 /// | secondary + 1 and 3 | edit the open note, and read it |
 ///
 /// Command-2 is not bound: the phone has no split view of a note.
 ///
-/// Not yet: a new note, find in a note and the command palette, which come
-/// with what they act on.
+/// Not yet: find in a note and the command palette, which come with what
+/// they act on.
 Map<ShortcutActivator, Intent> kansoShortcutBindings(TargetPlatform platform) {
   final apple =
       platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
@@ -51,6 +52,7 @@ Map<ShortcutActivator, Intent> kansoShortcutBindings(TargetPlatform platform) {
     secondary(LogicalKeyboardKey.arrowUp, alt: true):
         const PreviousNoteIntent(),
     secondary(LogicalKeyboardKey.keyP, shift: true): const PinNoteIntent(),
+    secondary(LogicalKeyboardKey.keyN): const NewNoteIntent(),
     secondary(LogicalKeyboardKey.digit1): const EditNoteIntent(),
     secondary(LogicalKeyboardKey.digit3): const PreviewNoteIntent(),
   };

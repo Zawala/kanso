@@ -161,11 +161,35 @@ class FixtureLibraryRepository implements LibraryRepository {
   Future<Either<ApplicationError, Unit>> trash(String id) =>
       throw UnimplementedError();
 
+  /// The notebooks `createNotebook` was asked to make, with their parents.
+  final List<(String, String?)> notebooksCreated = <(String, String?)>[];
+
+  /// What `createNotebook` answers when it is set; the notebook, appended
+  /// to the notebooks, otherwise.
+  Either<ApplicationError, NotebookRow>? createNotebookResult;
+
   @override
   Future<Either<ApplicationError, NotebookRow>> createNotebook(
     String name, {
     String? parentId,
-  }) => throw UnimplementedError();
+  }) async {
+    notebooksCreated.add((name, parentId));
+    final fixed = createNotebookResult;
+    if (fixed != null) {
+      return fixed;
+    }
+    final made = NotebookRow(
+      id: 'book:made-${notebooksCreated.length}',
+      name: name,
+      parentId: parentId,
+      count: 0,
+      locked: false,
+      depth: 0,
+    );
+    notebookRows = <NotebookRow>[...notebookRows, made];
+    changeStream.add(<String>[made.id]);
+    return Right<ApplicationError, NotebookRow>(made);
+  }
 
   @override
   Future<Either<ApplicationError, List<Property>>> properties(String id) =>

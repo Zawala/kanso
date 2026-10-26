@@ -78,7 +78,7 @@ void librarySuite(OpenLibrary open) {
     );
 
     test(
-      'a new note takes its list\'s place and the preferred notebook',
+      "a new note takes its list's place and the preferred notebook",
       () async {
         final library = await open();
         final first = await library.createNotebook(name: 'Archive');

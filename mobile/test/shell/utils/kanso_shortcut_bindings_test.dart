@@ -25,10 +25,11 @@ void main() {
           NextNoteIntent,
           PreviousNoteIntent,
           PinNoteIntent,
+          NewNoteIntent,
           EditNoteIntent,
           PreviewNoteIntent,
         });
-        expect(bindings, hasLength(10));
+        expect(bindings, hasLength(11));
       }
     });
 
@@ -71,6 +72,8 @@ void main() {
       expect(bindings[PreviousNoteIntent]!.alt, isTrue);
       expect(bindings[PinNoteIntent]!.trigger, LogicalKeyboardKey.keyP);
       expect(bindings[PinNoteIntent]!.shift, isTrue);
+      expect(bindings[NewNoteIntent]!.trigger, LogicalKeyboardKey.keyN);
+      expect(bindings[NewNoteIntent]!.shift, isFalse);
       expect(bindings[EditNoteIntent]!.trigger, LogicalKeyboardKey.digit1);
       expect(bindings[PreviewNoteIntent]!.trigger, LogicalKeyboardKey.digit3);
     });
@@ -80,7 +83,6 @@ void main() {
         TargetPlatform.iOS,
       ).keys.map((a) => _activator(a).trigger).toSet();
       for (final key in <LogicalKeyboardKey>[
-        LogicalKeyboardKey.keyN,
         LogicalKeyboardKey.keyK,
         // The phone has no split view of a note.
         LogicalKeyboardKey.digit2,

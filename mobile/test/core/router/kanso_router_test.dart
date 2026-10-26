@@ -30,6 +30,7 @@ import 'package:kanso/settings/views/pages/fonts_page.dart';
 import 'package:kanso/settings/views/pages/licences_page.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
+import 'package:kanso/shell/state/note_creation/note_creation_bloc.dart';
 import 'package:kanso/themes/views/pages/theme_picker_page.dart';
 
 import '../../helpers/browse_blocs.dart';
@@ -69,6 +70,7 @@ Future<GoRouter> _pump(
         BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
+        BlocProvider<NoteCreationBloc>.value(value: blocs.creation),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
       ],
       child: App(router: kansoRouter),

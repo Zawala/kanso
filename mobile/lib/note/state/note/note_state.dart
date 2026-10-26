@@ -17,6 +17,10 @@ abstract class NoteState with _$NoteState {
     /// Whether the note is read or edited.
     @Default(NoteMode.preview) NoteMode mode,
 
+    /// Whether the note was just made, so that it opened ready to write in:
+    /// with the title to type in when it has none.
+    @Default(false) bool openedNew,
+
     /// Where the caret starts when the editor opens: the offset asked for,
     /// or where it was left; null for the start of the text. In units of the
     /// text the editor shows, which has no front matter, unless

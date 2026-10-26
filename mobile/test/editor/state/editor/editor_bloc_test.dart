@@ -15,12 +15,10 @@ import 'package:kanso/editor/models/data/editor_destination.dart';
 import 'package:kanso/editor/models/data/editor_status.dart';
 import 'package:kanso/editor/models/data/flush_reason.dart';
 import 'package:kanso/editor/state/editor/editor_bloc.dart';
-import 'package:kanso/note/models/repos/impl/memory_note_place_repository.dart';
 
 import '../../../helpers/fake_editor_document.dart';
 import '../../../helpers/fake_editor_repository.dart';
 import '../../../helpers/fake_web_link_repository.dart';
-import '../../../helpers/fixture_library_repository.dart';
 
 const _noHistory = HistoryState(canUndo: false, canRedo: false);
 const _context = EditorContext(
@@ -65,14 +63,9 @@ bool? _conflictDeleted(EditorState state) {
 
 void main() {
   late FakeEditorDocument document;
-  late FixtureLibraryRepository library;
-  late MemoryNotePlaceRepository places;
   late FakeWebLinkRepository links;
 
   setUp(() {
-    library = FixtureLibraryRepository();
-    addTearDown(library.close);
-    places = MemoryNotePlaceRepository();
     links = FakeWebLinkRepository();
     document = FakeEditorDocument(text: 'the text', title: 'A title')
       ..properties = const <Property>[_property];
@@ -82,8 +75,6 @@ void main() {
   EditorBloc build({ApplicationError? error}) {
     final bloc = EditorBloc(
       FakeEditorRepository(document: document, error: error),
-      library,
-      places,
       links,
     );
     addTearDown(bloc.close);
@@ -551,8 +542,8 @@ void main() {
       await bloc.stream.firstWhere((s) => s.destination == null);
     });
 
-    test('a link that leads to no note makes it, and goes to it, ready to '
-        'write', () async {
+    test('a link that leads to no note goes to making it, once what was typed '
+        'is saved', () async {
       final bloc = await ready();
       bloc.add(
         const EditorEvent.linkOpenRequested(
@@ -560,24 +551,8 @@ void main() {
         ),
       );
       final state = await bloc.stream.firstWhere((s) => s.destination != null);
-      expect(library.created.single.title, 'Not yet');
-      expect(state.destination, const EditorDestination.note('note:new-1'));
-      expect(places.takeOpenedNew('note:new-1'), isTrue);
-    });
-
-    test('a note that could not be made says so and goes nowhere', () async {
-      library.createResult = const Left<ApplicationError, Saved>(
-        ApplicationError.storage(message: 'disk'),
-      );
-      final bloc = await ready();
-      bloc.add(
-        const EditorEvent.linkOpenRequested(
-          LinkTarget.newNote(title: 'Not yet'),
-        ),
-      );
-      final state = await bloc.stream.firstWhere((s) => s.linkError != null);
-      expect(state.destination, isNull);
-      expect(places.takeOpenedNew('note:new-1'), isFalse);
+      expect(state.destination, const EditorDestination.newNote('Not yet'));
+      expect(document.calls, contains('flush'));
     });
 
     test(

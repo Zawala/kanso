@@ -182,10 +182,39 @@ void main() {
       expect(find.byType(LibraryNavigation), findsNothing);
     });
 
-    testWidgets('has no shortcut for what is not built: a new note, find in '
-        'a note, the modes of a note, the command palette', (tester) async {
+    testWidgets('secondary + N makes a note in the place being listed and '
+        'opens it', (tester) async {
+      final app = await pumpBrowseApp(
+        tester,
+        _landscape,
+        at: '/notebooks/${MockIds.kanso}',
+      );
+      await _shortcut(tester, LogicalKeyboardKey.keyN);
+      final made = app.blocs.library.created.single;
+      expect(made.place, const ListPlace.notebook(id: MockIds.kanso));
+      expect(made.pinned, isFalse);
+      expect(
+        Uri.decodeComponent(app.where),
+        '/notebooks/${MockIds.kanso}/note/note:new-1',
+      );
+    });
+
+    testWidgets('secondary + N in Pinned makes a pinned note, and from a '
+        'search a note in All Notes', (tester) async {
       final app = await pumpBrowseApp(tester, _landscape, at: '/pinned');
       await _shortcut(tester, LogicalKeyboardKey.keyN);
+      expect(app.blocs.library.created.single.pinned, isTrue);
+      expect(app.where, startsWith('/pinned/note/'));
+      app.router.go('/search?q=tea');
+      await tester.pumpAndSettle();
+      await _shortcut(tester, LogicalKeyboardKey.keyN);
+      expect(app.blocs.library.created.last.place, const ListPlace.all());
+      expect(app.where, startsWith('/notes/note/'));
+    });
+
+    testWidgets('has no shortcut for what is not built: find in a note, the '
+        'modes of a note on the list, the command palette', (tester) async {
+      final app = await pumpBrowseApp(tester, _landscape, at: '/pinned');
       await _shortcut(tester, LogicalKeyboardKey.digit1);
       await _shortcut(tester, LogicalKeyboardKey.digit2);
       await _shortcut(tester, LogicalKeyboardKey.digit3);

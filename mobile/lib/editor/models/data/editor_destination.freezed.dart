@@ -14,61 +14,30 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$EditorDestination {
 
- String get noteId;
-/// Create a copy of EditorDestination
-/// with the given fields replaced by the non-null parameter values.
-@JsonKey(includeFromJson: false, includeToJson: false)
-@pragma('vm:prefer-inline')
-$EditorDestinationCopyWith<EditorDestination> get copyWith => _$EditorDestinationCopyWithImpl<EditorDestination>(this as EditorDestination, _$identity);
+
 
 
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is EditorDestination&&(identical(other.noteId, noteId) || other.noteId == noteId));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is EditorDestination);
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,noteId);
+int get hashCode => runtimeType.hashCode;
 
 @override
 String toString() {
-  return 'EditorDestination(noteId: $noteId)';
+  return 'EditorDestination()';
 }
 
 
 }
 
 /// @nodoc
-abstract mixin class $EditorDestinationCopyWith<$Res>  {
-  factory $EditorDestinationCopyWith(EditorDestination value, $Res Function(EditorDestination) _then) = _$EditorDestinationCopyWithImpl;
-@useResult
-$Res call({
- String noteId
-});
-
-
-
-
-}
-/// @nodoc
-class _$EditorDestinationCopyWithImpl<$Res>
-    implements $EditorDestinationCopyWith<$Res> {
-  _$EditorDestinationCopyWithImpl(this._self, this._then);
-
-  final EditorDestination _self;
-  final $Res Function(EditorDestination) _then;
-
-/// Create a copy of EditorDestination
-/// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? noteId = null,}) {
-  return _then(_self.copyWith(
-noteId: null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
-as String,
-  ));
-}
-
+class $EditorDestinationCopyWith<$Res>  {
+$EditorDestinationCopyWith(EditorDestination _, $Res Function(EditorDestination) __);
 }
 
 
@@ -86,11 +55,12 @@ extension EditorDestinationPatterns on EditorDestination {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( NoteDestination value)?  note,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( NoteDestination value)?  note,TResult Function( NewNoteDestination value)?  newNote,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case NoteDestination() when note != null:
-return note(_that);case _:
+return note(_that);case NewNoteDestination() when newNote != null:
+return newNote(_that);case _:
   return orElse();
 
 }
@@ -108,11 +78,12 @@ return note(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( NoteDestination value)  note,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( NoteDestination value)  note,required TResult Function( NewNoteDestination value)  newNote,}){
 final _that = this;
 switch (_that) {
 case NoteDestination():
-return note(_that);}
+return note(_that);case NewNoteDestination():
+return newNote(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -126,11 +97,12 @@ return note(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( NoteDestination value)?  note,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( NoteDestination value)?  note,TResult? Function( NewNoteDestination value)?  newNote,}){
 final _that = this;
 switch (_that) {
 case NoteDestination() when note != null:
-return note(_that);case _:
+return note(_that);case NewNoteDestination() when newNote != null:
+return newNote(_that);case _:
   return null;
 
 }
@@ -147,10 +119,11 @@ return note(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String noteId)?  note,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String noteId)?  note,TResult Function( String title)?  newNote,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case NoteDestination() when note != null:
-return note(_that.noteId);case _:
+return note(_that.noteId);case NewNoteDestination() when newNote != null:
+return newNote(_that.title);case _:
   return orElse();
 
 }
@@ -168,10 +141,11 @@ return note(_that.noteId);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String noteId)  note,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String noteId)  note,required TResult Function( String title)  newNote,}) {final _that = this;
 switch (_that) {
 case NoteDestination():
-return note(_that.noteId);}
+return note(_that.noteId);case NewNoteDestination():
+return newNote(_that.title);}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -185,10 +159,11 @@ return note(_that.noteId);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String noteId)?  note,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String noteId)?  note,TResult? Function( String title)?  newNote,}) {final _that = this;
 switch (_that) {
 case NoteDestination() when note != null:
-return note(_that.noteId);case _:
+return note(_that.noteId);case NewNoteDestination() when newNote != null:
+return newNote(_that.title);case _:
   return null;
 
 }
@@ -203,11 +178,11 @@ class NoteDestination implements EditorDestination {
   const NoteDestination(this.noteId);
   
 
-@override final  String noteId;
+ final  String noteId;
 
 /// Create a copy of EditorDestination
 /// with the given fields replaced by the non-null parameter values.
-@override @JsonKey(includeFromJson: false, includeToJson: false)
+@JsonKey(includeFromJson: false, includeToJson: false)
 @pragma('vm:prefer-inline')
 $NoteDestinationCopyWith<NoteDestination> get copyWith => _$NoteDestinationCopyWithImpl<NoteDestination>(this, _$identity);
 
@@ -233,7 +208,7 @@ String toString() {
 /// @nodoc
 abstract mixin class $NoteDestinationCopyWith<$Res> implements $EditorDestinationCopyWith<$Res> {
   factory $NoteDestinationCopyWith(NoteDestination value, $Res Function(NoteDestination) _then) = _$NoteDestinationCopyWithImpl;
-@override @useResult
+@useResult
 $Res call({
  String noteId
 });
@@ -252,9 +227,75 @@ class _$NoteDestinationCopyWithImpl<$Res>
 
 /// Create a copy of EditorDestination
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? noteId = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? noteId = null,}) {
   return _then(NoteDestination(
 null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NewNoteDestination implements EditorDestination {
+  const NewNoteDestination(this.title);
+  
+
+ final  String title;
+
+/// Create a copy of EditorDestination
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NewNoteDestinationCopyWith<NewNoteDestination> get copyWith => _$NewNoteDestinationCopyWithImpl<NewNoteDestination>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NewNoteDestination&&(identical(other.title, title) || other.title == title));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,title);
+
+@override
+String toString() {
+  return 'EditorDestination.newNote(title: $title)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NewNoteDestinationCopyWith<$Res> implements $EditorDestinationCopyWith<$Res> {
+  factory $NewNoteDestinationCopyWith(NewNoteDestination value, $Res Function(NewNoteDestination) _then) = _$NewNoteDestinationCopyWithImpl;
+@useResult
+$Res call({
+ String title
+});
+
+
+
+
+}
+/// @nodoc
+class _$NewNoteDestinationCopyWithImpl<$Res>
+    implements $NewNoteDestinationCopyWith<$Res> {
+  _$NewNoteDestinationCopyWithImpl(this._self, this._then);
+
+  final NewNoteDestination _self;
+  final $Res Function(NewNoteDestination) _then;
+
+/// Create a copy of EditorDestination
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? title = null,}) {
+  return _then(NewNoteDestination(
+null == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
 as String,
   ));
 }

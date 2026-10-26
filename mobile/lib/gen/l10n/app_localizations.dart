@@ -1102,6 +1102,24 @@ abstract class AppLocalizations {
   /// **'Locked notebooks can\'t take or give up notes here yet.'**
   String get noteListChangeLocked;
 
+  /// What the add button of the note list does.
+  ///
+  /// In en, this message translates to:
+  /// **'New note'**
+  String get noteListNewNote;
+
+  /// The line shown when a new note was asked for in a notebook that is locked.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock this notebook to add notes to it.'**
+  String get noteListNewNoteLocked;
+
+  /// The line shown when a new note could not be made.
+  ///
+  /// In en, this message translates to:
+  /// **'The note couldn\'t be made. Try again.'**
+  String get noteListNewNoteFailed;
+
   /// The button that closes the line that says a change did not happen.
   ///
   /// In en, this message translates to:

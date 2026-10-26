@@ -49,6 +49,11 @@ class PinNoteIntent extends KansoIntent {
   const PinNoteIntent();
 }
 
+/// Make a new note, in the place being listed.
+class NewNoteIntent extends KansoIntent {
+  const NewNoteIntent();
+}
+
 /// Show the open note as text to edit.
 class EditNoteIntent extends KansoIntent {
   const EditNoteIntent();

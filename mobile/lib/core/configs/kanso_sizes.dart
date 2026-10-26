@@ -25,6 +25,9 @@ abstract final class KansoSizes {
   /// 32: a filter chip.
   static const double chip = 32;
 
+  /// 56: the button for a new note that floats over a phone's list.
+  static const double floatingButton = 56;
+
   /// 22: a tag chip.
   static const double tagChip = 22;
 

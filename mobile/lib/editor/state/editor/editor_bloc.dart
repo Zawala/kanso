@@ -14,8 +14,6 @@ import 'package:injectable/injectable.dart';
 import '../../../core/bridge/api/types.dart' hide EditorEvent;
 import '../../../core/bridge/api/types.dart' as core;
 import '../../../core/models/data/application_error.dart';
-import '../../../core/models/repos/abs/library_repository.dart';
-import '../../../note/models/repos/abs/note_place_repository.dart';
 import '../../models/data/editor_destination.dart';
 import '../../models/data/editor_status.dart';
 import '../../models/data/flush_reason.dart';
@@ -42,8 +40,7 @@ typedef EditorSignal = core.EditorEvent;
 /// kept: the state holds none.
 @injectable
 class EditorBloc extends Bloc<EditorEvent, EditorState> {
-  EditorBloc(this._editors, this._library, this._places, this._links)
-    : super(const EditorState()) {
+  EditorBloc(this._editors, this._links) : super(const EditorState()) {
     on<EditorStartedEvent>(_onStarted, transformer: restartable());
     on<EditorSignalReceivedEvent>(_onSignal, transformer: sequential());
     on<EditorEditedEvent>(_onEdited);
@@ -65,8 +62,6 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
   }
 
   final EditorRepository _editors;
-  final LibraryRepository _library;
-  final NotePlaceRepository _places;
   final WebLinkRepository _links;
   EditorDocument? _document;
   StreamSubscription<EditorSignal>? _events;
@@ -362,19 +357,14 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
         await _flush(FlushReason.navigation, emit);
         emit(state.copyWith(destination: EditorDestination.note(id)));
       case LinkTarget_NewNote(:final title):
-        final made = await _library.create(NewNote(title: title, body: ''));
-        await made.fold(
-          (error) async => emit(state.copyWith(linkError: error)),
-          (saved) async {
-            _places.markOpenedNew(saved.id);
-            await _flush(FlushReason.navigation, emit);
-            emit(
-              state.copyWith(
-                destination: EditorDestination.note(saved.id),
-                linkError: null,
-              ),
-            );
-          },
+        // The note is made by the app's `NoteCreationBloc`, as any new note
+        // is, once what was typed is saved.
+        await _flush(FlushReason.navigation, emit);
+        emit(
+          state.copyWith(
+            destination: EditorDestination.newNote(title),
+            linkError: null,
+          ),
         );
       case LinkTarget_Web(:final url):
         final opened = await _links.open(url);

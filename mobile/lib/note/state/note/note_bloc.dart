@@ -81,6 +81,7 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
         noteId: event.id,
         themeId: event.themeId,
         mode: fresh ? NoteMode.edit : NoteMode.preview,
+        openedNew: fresh,
       ),
     );
     _stale = false;

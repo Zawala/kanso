@@ -445,6 +445,7 @@ void main() {
         places.markOpenedNew(MockIds.syncDesign);
         final bloc = await started();
         expect(bloc.state.mode, NoteMode.edit);
+        expect(bloc.state.openedNew, isTrue);
         final again = build()
           ..add(const NoteEvent.started(MockIds.syncDesign, 'kanso-light'));
         addTearDown(again.close);
@@ -452,6 +453,7 @@ void main() {
           (state) => state.status == NoteScreenStatus.ready,
         );
         expect(again.state.mode, NoteMode.preview);
+        expect(again.state.openedNew, isFalse);
       });
 
       test('edit with a tap names the caret in the whole body', () async {

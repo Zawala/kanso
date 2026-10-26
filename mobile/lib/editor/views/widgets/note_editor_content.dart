@@ -13,6 +13,7 @@ import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/browse_location.dart';
 import '../../../note/models/data/note_mode.dart';
 import '../../../note/state/note/note_bloc.dart';
+import '../../../shell/state/note_creation/note_creation_bloc.dart';
 import '../../models/data/editor_destination.dart';
 import '../../models/data/flush_reason.dart';
 import '../../models/data/outside_side.dart';
@@ -263,13 +264,20 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
           listener: (context, state) {
             final destination = state.destination;
             editor.add(const EditorEvent.destinationHandled());
-            if (destination case NoteDestination(:final noteId)) {
-              context.go(
-                BrowseLocation.place(
-                  const ListPlace.all(),
-                  noteId: noteId,
-                ).location,
-              );
+            switch (destination) {
+              case NoteDestination(:final noteId):
+                context.go(
+                  BrowseLocation.place(
+                    const ListPlace.all(),
+                    noteId: noteId,
+                  ).location,
+                );
+              case NewNoteDestination(:final title):
+                context.read<NoteCreationBloc>().add(
+                  NoteCreationEvent.titled(title),
+                );
+              case null:
+                break;
             }
           },
         ),

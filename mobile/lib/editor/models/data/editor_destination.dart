@@ -12,4 +12,7 @@ part 'editor_destination.freezed.dart';
 sealed class EditorDestination with _$EditorDestination {
   /// To the note [noteId].
   const factory EditorDestination.note(String noteId) = NoteDestination;
+
+  /// To a note titled [title] that is to be made.
+  const factory EditorDestination.newNote(String title) = NewNoteDestination;
 }

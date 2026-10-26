@@ -710,6 +710,18 @@
   "@noteListChangeLocked": {
     "description": "The line shown when notes could not be moved into or out of a locked notebook."
   },
+  "noteListNewNote": "New note",
+  "@noteListNewNote": {
+    "description": "What the add button of the note list does."
+  },
+  "noteListNewNoteLocked": "Unlock this notebook to add notes to it.",
+  "@noteListNewNoteLocked": {
+    "description": "The line shown when a new note was asked for in a notebook that is locked."
+  },
+  "noteListNewNoteFailed": "The note couldn't be made. Try again.",
+  "@noteListNewNoteFailed": {
+    "description": "The line shown when a new note could not be made."
+  },
   "noteListDismiss": "OK",
   "@noteListDismiss": {
     "description": "The button that closes the line that says a change did not happen."
