@@ -427,7 +427,7 @@ impl Library {
             }
             Ok(kanso_core::properties::parse(&note.body)
                 .into_iter()
-                .map(|(key, value)| property(key, &value))
+                .map(|(key, value)| property_row(key, &value))
                 .collect())
         })
     }
@@ -634,7 +634,7 @@ fn view(note: Note, state: LockView) -> NoteView {
     }
 }
 
-fn property(key: String, value: &kanso_core::properties::Value) -> Property {
+pub(crate) fn property_row(key: String, value: &kanso_core::properties::Value) -> Property {
     use kanso_core::properties::Value as V;
     let (kind, items) = match value {
         V::Text(_) => (PropertyKind::Text, Vec::new()),
