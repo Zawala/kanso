@@ -165,6 +165,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsClose => 'Close';
 
   @override
+  String get settingsGeneral => 'General';
+
+  @override
+  String get settingsDefaultNotebook => 'Default notebook';
+
+  @override
+  String get defaultNotebookFirst => 'First notebook';
+
+  @override
+  String get defaultNotebookFooter =>
+      'New notes go here, except those made from a notebook\'s own list. A locked notebook can\'t be chosen.';
+
+  @override
   String get settingsAppearance => 'Appearance';
 
   @override

@@ -373,6 +373,30 @@ abstract class AppLocalizations {
   /// A section of settings.
   ///
   /// In en, this message translates to:
+  /// **'General'**
+  String get settingsGeneral;
+
+  /// The notebook new notes go to.
+  ///
+  /// In en, this message translates to:
+  /// **'Default notebook'**
+  String get settingsDefaultNotebook;
+
+  /// The choice of the first notebook in the library as the one new notes go to.
+  ///
+  /// In en, this message translates to:
+  /// **'First notebook'**
+  String get defaultNotebookFirst;
+
+  /// The note under the notebooks that can be the default one.
+  ///
+  /// In en, this message translates to:
+  /// **'New notes go here, except those made from a notebook\'s own list. A locked notebook can\'t be chosen.'**
+  String get defaultNotebookFooter;
+
+  /// A section of settings.
+  ///
+  /// In en, this message translates to:
   /// **'Appearance'**
   String get settingsAppearance;
 

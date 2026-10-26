@@ -199,6 +199,22 @@
   "@settingsClose": {
     "description": "Closes a page."
   },
+  "settingsGeneral": "General",
+  "@settingsGeneral": {
+    "description": "A section of settings."
+  },
+  "settingsDefaultNotebook": "Default notebook",
+  "@settingsDefaultNotebook": {
+    "description": "The notebook new notes go to."
+  },
+  "defaultNotebookFirst": "First notebook",
+  "@defaultNotebookFirst": {
+    "description": "The choice of the first notebook in the library as the one new notes go to."
+  },
+  "defaultNotebookFooter": "New notes go here, except those made from a notebook's own list. A locked notebook can't be chosen.",
+  "@defaultNotebookFooter": {
+    "description": "The note under the notebooks that can be the default one."
+  },
   "settingsAppearance": "Appearance",
   "@settingsAppearance": {
     "description": "A section of settings."

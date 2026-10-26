@@ -12,6 +12,7 @@ import 'core/state/navigation_history/navigation_history_bloc.dart';
 import 'core/state/sync_status/sync_status_bloc.dart';
 import 'injection.dart';
 import 'settings/state/backup_notice/backup_notice_bloc.dart';
+import 'settings/state/default_notebook/default_notebook_bloc.dart';
 import 'shell/state/library_pane/library_pane_bloc.dart';
 import 'shell/state/note_creation/note_creation_bloc.dart';
 
@@ -45,6 +46,11 @@ class AppProviders extends StatelessWidget {
         BlocProvider<BackupNoticeBloc>(
           create: (_) =>
               getIt<BackupNoticeBloc>()..add(const BackupNoticeEvent.started()),
+        ),
+        BlocProvider<DefaultNotebookBloc>(
+          create: (_) =>
+              getIt<DefaultNotebookBloc>()
+                ..add(const DefaultNotebookEvent.started()),
         ),
         BlocProvider<ListNavigationBloc>(
           create: (_) => getIt<ListNavigationBloc>(),
