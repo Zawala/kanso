@@ -37,6 +37,9 @@ pub(crate) struct Inner {
     pub(crate) store: Arc<Store>,
     pub(crate) secrets: Arc<dyn Secrets>,
     pub(crate) backend: Arc<dyn Backend>,
+    /// What the account tasks share: the question that waits, the provider
+    /// flow that runs, the passkey listeners.
+    pub(crate) account: crate::account_runtime::Runtime,
     /// The lock keys typed this session.
     pub(crate) keys: Mutex<KeySession>,
     pub(crate) lock_events: Listeners<LockEvent>,
@@ -253,6 +256,7 @@ fn open_inner(
         store,
         secrets,
         backend,
+        account: crate::account_runtime::Runtime::default(),
         keys: Mutex::new(keys),
         lock_events: Listeners::default(),
         sync_state: Mutex::new(SyncState::Off),

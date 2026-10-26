@@ -4657,6 +4657,7 @@ name = "kanso-mobile"
 version = "0.8.4"
 dependencies = [
  "async-channel",
+ "base64 0.22.1",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "jni",
@@ -4669,9 +4670,11 @@ dependencies = [
  "kanso-tls",
  "proptest",
  "security-framework 3.7.0",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "url",
  "zeroize",
 ]
 

@@ -52,7 +52,10 @@
 //! store ([`secrets`]), never handed to the shell.
 
 mod account;
+mod account_methods;
 mod account_model;
+mod account_provider;
+mod account_runtime;
 mod account_settings;
 mod approvals;
 pub mod background;
@@ -68,6 +71,8 @@ mod matching;
 mod model;
 mod notes;
 pub mod passkey_bridge;
+mod passkey_flow;
+mod provider_loopback;
 mod renderer;
 pub mod secrets;
 mod sharing;

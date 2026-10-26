@@ -1,8 +1,9 @@
 //! Signing in and syncing.
 //!
 //! Small in step 4 and real: a person signs in with a password, the library
-//! syncs on request, and the status says where it stands. Signing in with a
-//! provider, approving a device and the automatic schedule come later.
+//! syncs on request, and the status says where it stands. Every other way in
+//! (a provider, a passkey, a device's approval, the recovery key) is
+//! [`crate::AccountHandle`]'s.
 //!
 //! The session (token and data key) is kept by this crate in the platform's
 //! secret store and read back when a sync starts; the shell never holds it.
@@ -13,15 +14,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, MutexGuard, TryLockError};
 
 use kanso_core::now_ms;
+use kanso_engine::account::Flow;
 use kanso_engine::account::words::{self, ErrorContext};
-use kanso_engine::account::{self, Failure, Flow, Next};
 use kanso_engine::sync::{SyncState, forget_ended_session, run_once};
 use kanso_sync::keychain;
 use kanso_sync::{
-    AccountError, Machine, Password, SecretError, Session, SignupState, SyncError, SyncProblem,
-    SyncReport, meta_keys,
+    AccountError, Machine, SecretError, Session, SignupState, SyncError, SyncProblem, SyncReport,
+    meta_keys,
 };
 
+use crate::account::AccountHandle;
+use crate::account_model::AccountState;
 use crate::boundary::{guard, held};
 use crate::errors::KansoError;
 use crate::library::Inner;
@@ -81,12 +84,12 @@ impl SyncHandle {
 
     /// Signs in to `username`'s account on `server` with its password, naming
     /// this phone `device_name` to the account's other devices, and binds
-    /// this library to the account.
+    /// this library to the account. [`AccountHandle::sign_in_password`] is
+    /// the call that can ask the binding question; this one never asks.
     ///
     /// A library that already holds notes of its own, and isn't this
-    /// account's, is not bound: Kanso can't ask yet whether to add them or
-    /// replace them, so it refuses with [`KansoError::Invalid`], and the
-    /// server's new session is ended.
+    /// account's, is not bound: it refuses with [`KansoError::Invalid`], and
+    /// the server's new session is ended.
     pub fn sign_in_password(
         &self,
         server: String,
@@ -95,44 +98,17 @@ impl SyncHandle {
         device_name: String,
     ) -> Result<SyncStatus, KansoError> {
         guard(|| {
-            let _stopped = self.stop_sync();
-            let password = Password::new(&password, &username)
-                .map_err(|err| KansoError::invalid(format!("For the password, {err}.")))?;
-            let flow = self.flow(&device_name);
-            let device = flow.device().map_err(failure)?;
-            let signed = kanso_sync::sign_in(
-                self.inner.backend.as_ref(),
-                server.trim(),
-                &username,
-                &password,
-                &device,
-                &|_| {},
-            )
-            .map_err(|err| account_error(&err, ErrorContext::SignIn))?;
-            let auth = flow
-                .authenticated(device.library_id, signed.session, signed.evicted, None)
-                .map_err(failure)?;
-            let next = account::after_auth(
-                kanso_sync::Flow::SignIn,
-                &auth.library,
-                &auth.session.username,
-                false,
-            );
-            match next {
-                Next::Bind(choice) => {
-                    flow.bind_and_save(auth.session, auth.library_id, choice, None)
-                        .map_err(failure)?;
-                }
-                Next::Abandon | Next::Ask(_) => {
-                    flow.abandon(&auth.session);
-                    return Err(KansoError::invalid(
-                        "This phone's library already has notes that aren't this account's. \
-                         Sign in from an empty library.",
-                    ));
-                }
+            let account = AccountHandle {
+                inner: self.inner.clone(),
+            };
+            let state = account.sign_in_password(server, username, password, device_name)?;
+            if let AccountState::Question(_) = state {
+                account.answer_binding(None)?;
+                return Err(KansoError::invalid(
+                    "This phone's library already has notes that aren't this account's. \
+                     Sign in from an empty library.",
+                ));
             }
-            *held(&self.inner.sync_state) = SyncState::Off;
-            self.notify();
             self.current_status()
         })
     }
@@ -270,6 +246,8 @@ impl SyncHandle {
 
     /// Tells the status listeners where sync stands.
     pub(crate) fn notify(&self) {
+        // Signing in or out moves the account's state too.
+        crate::account_runtime::publish(&self.inner);
         if self.inner.status_listeners.is_empty() {
             return;
         }
@@ -400,25 +378,10 @@ pub(crate) fn account_error(err: &AccountError, context: ErrorContext) -> KansoE
     }
 }
 
-/// What a failed account task is to the shell.
-fn failure(failure: Failure) -> KansoError {
-    if failure.signed_out.is_some() {
-        KansoError::SignedOut
-    } else if failure.keychain_warning {
-        KansoError::Auth {
-            message: failure.words,
-        }
-    } else {
-        KansoError::Storage {
-            message: failure.words,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use kanso_engine::strategies;
-    use kanso_sync::{Session, SignOutReason};
+    use kanso_sync::{Password, Session, SignOutReason};
     use proptest::prelude::*;
 
     use std::sync::OnceLock;

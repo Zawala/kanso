@@ -9,6 +9,9 @@ publish = false
 
 [dependencies]
 async-channel.workspace = true
+# Passkey answers from the native plugin arrive as base64url text (already in
+# the tree through kanso-sync; MIT or Apache-2.0).
+base64.workspace = true
 kanso-core.workspace = true
 # The highlighter (`highlight`, with the grammars for fenced code) is the
 # phones' editor colors.
@@ -21,8 +24,13 @@ kanso-sync = { path = "../kanso-sync", default-features = false }
 # Whether Android has handed over its Context yet (`Library::open`) and the
 # phone's certificate store.
 kanso-tls.workspace = true
+# The native plugin's answers are read with derive.
+serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# The pages a provider sign-in asks the shell to open are checked once more
+# before they leave (MIT or Apache-2.0; already in the tree through kanso-sync).
+url = "2.5"
 # The secret stores hand values back zeroed on drop.
 zeroize.workspace = true
 
@@ -55,3 +63,5 @@ kanso-mobile = { path = ".", features = ["test-support"] }
 kanso-engine = { workspace = true, features = ["test-support"] }
 proptest.workspace = true
 tempfile.workspace = true
+# `TestAuthenticator`, a software passkey, plays the platform's sheet.
+kanso-sync = { path = "../kanso-sync", default-features = false, features = ["test-support"] }
