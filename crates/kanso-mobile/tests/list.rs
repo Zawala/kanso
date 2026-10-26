@@ -8,8 +8,11 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use common::*;
+use kanso_core::model::LOCK_FIELD;
 use kanso_core::now_ms;
-use kanso_mobile::{DateField, ListPlace, ListQuery, NotebookRole, SortKey};
+use kanso_mobile::{
+    DateField, KansoError, ListPlace, ListQuery, NoteChange, NotebookRole, SortKey,
+};
 use kanso_sync::MemoryServer;
 use proptest::prelude::*;
 use serde_json::json;
@@ -134,6 +137,129 @@ proptest! {
         prop_assert_eq!(recent.shape.date, DateField::Updated);
         prop_assert!(recent.shape.by_date && !recent.shape.group_pinned);
     }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(24))]
+
+    /// A change to several notes does what it says to each of them, in one
+    /// write, and says how many it wrote: a note already as asked isn't
+    /// written. Pinning twice undoes itself for notes that were alike.
+    #[test]
+    fn prop_a_change_does_what_it_says(seeds in seeds(), pick in proptest::collection::vec(any::<bool>(), 10), kind in 0usize..3) {
+        let (phone, ids, books) = seeded(&seeds);
+        let library = &phone.library;
+        let chosen: Vec<String> = ids.iter().zip(pick).filter(|(_, p)| *p).map(|(id, _)| id.clone()).collect();
+        let before: Vec<_> = chosen.iter().map(|id| library.note(id).unwrap()).collect();
+        let change = match kind {
+            0 => NoteChange::TogglePin,
+            1 => NoteChange::Trash,
+            _ => NoteChange::Move { notebook_id: books[1].clone() },
+        };
+        let written = library.change(chosen.clone(), change.clone()).unwrap();
+        let after: Vec<_> = chosen.iter().map(|id| library.note(id).unwrap()).collect();
+        let changed = before.iter().zip(&after).filter(|(b, a)| b.rev != a.rev).count();
+        prop_assert_eq!(written as usize, changed);
+        match change {
+            NoteChange::TogglePin => {
+                let all_pinned = before.iter().all(|n| n.pinned);
+                prop_assert!(after.iter().all(|n| n.pinned == !all_pinned));
+            }
+            NoteChange::Trash => prop_assert!(after.iter().all(|n| n.notebook_id == "trash")),
+            NoteChange::Move { ref notebook_id } => {
+                prop_assert!(after.iter().all(|n| &n.notebook_id == notebook_id));
+            }
+        }
+        // Asked again, a move or a trash writes nothing.
+        if kind != 0 {
+            prop_assert_eq!(library.change(chosen, change).unwrap(), 0);
+        }
+    }
+}
+
+// no-prop-test: the refusals, one each; the change's content is the property
+// above.
+#[test]
+fn a_change_that_cannot_be_made_writes_nothing() {
+    let (mut inbox, mut sealed_book, mut plain_book) =
+        (String::new(), String::new(), String::new());
+    let mut note_ids = Vec::new();
+    let phone = phone_with(&server(), |store| {
+        plain_book = book(store, "Plain");
+        inbox = book(store, "Other");
+        sealed_book = store
+            .put(
+                kanso_core::DocType::Book,
+                json!({"name": "Sealed", LOCK_FIELD: {}}),
+                kanso_store::Put::Upsert,
+                kanso_store::Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        note_ids.push(raw_note(store, json!({"title": "A", "bookId": plain_book})));
+        note_ids.push(raw_note(
+            store,
+            json!({"title": "B", "bookId": sealed_book}),
+        ));
+    });
+    let library = &phone.library;
+    let revs = |ids: &[String]| -> Vec<String> {
+        ids.iter().map(|id| library.note(id).unwrap().rev).collect()
+    };
+    let before = revs(&note_ids);
+
+    // A note that is not one: nothing is written for the others either.
+    let err = library
+        .change(
+            vec![note_ids[0].clone(), "note:nowhere".into()],
+            NoteChange::TogglePin,
+        )
+        .unwrap_err();
+    assert_eq!(err, KansoError::NotFound);
+    // A notebook that is not one.
+    let err = library
+        .change(
+            vec![note_ids[0].clone()],
+            NoteChange::Move {
+                notebook_id: "book:nowhere".into(),
+            },
+        )
+        .unwrap_err();
+    assert_eq!(err, KansoError::NotFound);
+    // An unlocked note into a locked notebook goes one at a time.
+    let err = library
+        .change(
+            vec![note_ids[0].clone()],
+            NoteChange::Move {
+                notebook_id: sealed_book.clone(),
+            },
+        )
+        .unwrap_err();
+    assert_eq!(err, KansoError::Locked);
+    // A note leaves a locked notebook one at a time too.
+    let err = library
+        .change(
+            vec![note_ids[1].clone()],
+            NoteChange::Move {
+                notebook_id: inbox.clone(),
+            },
+        )
+        .unwrap_err();
+    assert_eq!(err, KansoError::Locked);
+    assert_eq!(revs(&note_ids), before, "nothing was written");
+
+    // What is allowed: pinning and trashing, even in the locked notebook.
+    assert_eq!(
+        library
+            .change(note_ids.clone(), NoteChange::TogglePin)
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        library.change(note_ids.clone(), NoteChange::Trash).unwrap(),
+        2
+    );
+    assert_eq!(library.change(vec![], NoteChange::Trash).unwrap(), 0);
 }
 
 // no-prop-test: the order of a small fixed tree and its roles.

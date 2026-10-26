@@ -151,6 +151,17 @@ pub struct LibraryOverview {
     pub trash: u32,
 }
 
+/// What is done to every note in a change.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NoteChange {
+    /// Pins every note, or unpins them when they are all pinned.
+    TogglePin,
+    /// Into this notebook.
+    Move { notebook_id: String },
+    /// Into the trash.
+    Trash,
+}
+
 /// A notebook's job, which it keeps however it is renamed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NotebookRole {

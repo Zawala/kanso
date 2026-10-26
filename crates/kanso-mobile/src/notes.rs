@@ -16,9 +16,10 @@ use kanso_core::query::{Field, Query};
 use kanso_core::query_view::ViewNote;
 use kanso_core::roles::{ROLE_FIELD, Role};
 use kanso_core::{DocType, Note, NoteStatus, new_id, now_ms};
+use kanso_engine::batch::{self, Change};
 use kanso_engine::list::{self, DAY_MS, DateKey, Filter, RECENT_DAYS};
 use kanso_engine::lock::LockView;
-use kanso_store::{Origin, Put, SearchParams, Sort};
+use kanso_store::{NoteSummary, Origin, Put, SearchParams, Sort};
 use serde_json::{Value, json};
 
 use crate::boundary::{guard, held};
@@ -26,9 +27,9 @@ use crate::errors::KansoError;
 use crate::library::Library;
 use crate::matching::ranges;
 use crate::model::{
-    DateField, Hit, LibraryOverview, ListPlace, ListQuery, ListShape, LockState, NewNote, NoteList,
-    NoteRow, NoteView, NotebookRole, NotebookRow, Property, PropertyKind, Saved, SortKey, Table,
-    TableRow, TagRow,
+    DateField, Hit, LibraryOverview, ListPlace, ListQuery, ListShape, LockState, NewNote,
+    NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, Property, PropertyKind,
+    Saved, SortKey, Table, TableRow, TagRow,
 };
 
 impl Library {
@@ -101,6 +102,80 @@ impl Library {
                 recent: self.inner.store.count_recent(recent_since())?,
                 trash: counts.trash,
             })
+        })
+    }
+
+    /// Makes one change to every note in `ids` in one write, and says how
+    /// many notes it wrote (none when they were already as asked). Pinning
+    /// pins them all, or unpins them when they are all pinned.
+    ///
+    /// Nothing is written when an ID isn't a note ([`KansoError::NotFound`]),
+    /// or when unlocked notes would go into a locked notebook or a note
+    /// would leave one ([`KansoError::Locked`]): those go one at a time, with
+    /// the lock open, as on the desktop. A locked note can be pinned, trashed
+    /// and moved between unlocked notebooks.
+    pub fn change(&self, ids: Vec<String>, change: NoteChange) -> Result<u32, KansoError> {
+        guard(|| {
+            let store = &self.inner.store;
+            let mut seen = std::collections::HashSet::new();
+            let ids: Vec<String> = ids
+                .into_iter()
+                .filter(|id| seen.insert(id.clone()))
+                .collect();
+            let locked_books = store.locked_books()?;
+            let mut notes = Vec::with_capacity(ids.len());
+            let mut in_locked_book = std::collections::HashSet::new();
+            for id in &ids {
+                let note = self.stored(id)?;
+                let sealed = store.note_is_locked(id)?;
+                if locked_books.contains(&note.book_id) {
+                    in_locked_book.insert(note.id.clone());
+                }
+                notes.push(NoteSummary {
+                    locked: sealed || locked_books.contains(&note.book_id),
+                    id: note.id,
+                    rev: note.rev.unwrap_or_default(),
+                    title: note.title,
+                    snippet: String::new(),
+                    book_id: note.book_id,
+                    status: note.status,
+                    tags: note.tags,
+                    pinned: note.pinned,
+                    updated_at: note.updated_at,
+                    created_at: note.created_at,
+                    tasks_done: 0,
+                    tasks_total: 0,
+                });
+            }
+            let change = match change {
+                NoteChange::TogglePin => Change::TogglePin,
+                NoteChange::Trash => Change::Move(TRASH_BOOK_ID.to_owned()),
+                NoteChange::Move { notebook_id } => {
+                    if notebook_id != TRASH_BOOK_ID
+                        && !store.books()?.iter().any(|book| book.id == notebook_id)
+                    {
+                        return Err(KansoError::NotFound);
+                    }
+                    Change::Move(notebook_id)
+                }
+            };
+            if batch::needs_one_by_one(&notes, &change, &locked_books) {
+                return Err(KansoError::Locked);
+            }
+            let edits = batch::plan(&notes, &change);
+            if let Change::Move(book) = &change
+                && book != TRASH_BOOK_ID
+                && edits.iter().any(|edit| in_locked_book.contains(&edit.id))
+            {
+                return Err(KansoError::Locked);
+            }
+            if edits.is_empty() {
+                return Ok(0);
+            }
+            let count = edits.len() as u32;
+            let changes = edits.into_iter().map(|edit| edit.change).collect();
+            store.merge_many(DocType::Note, changes, Origin::Ui)?;
+            Ok(count)
         })
     }
 

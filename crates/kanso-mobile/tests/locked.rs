@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 use common::*;
 use kanso_engine::lock::AUTO_LOCK;
 use kanso_mobile::{
-    KansoError, ListPlace, ListQuery, LockEvent, NoteRow, PaletteDto, Renderer, SortKey,
+    KansoError, ListPlace, ListQuery, LockEvent, NoteChange, NoteRow, PaletteDto, Renderer, SortKey,
 };
 use proptest::prelude::*;
 
@@ -93,6 +93,7 @@ enum Op {
     /// A place and narrowing of the list: which place, status narrowing,
     /// pinned only, which sort.
     List(usize, bool, bool, usize),
+    Change(usize, usize),
 }
 
 fn ops() -> impl Strategy<Value = Vec<Op>> {
@@ -118,6 +119,7 @@ fn ops() -> impl Strategy<Value = Vec<Op>> {
             1 => Just(Op::Idle),
             4 => (0..6usize, any::<bool>(), any::<bool>(), 0..3usize)
                 .prop_map(|(p, s, o, k)| Op::List(p, s, o, k)),
+            3 => (index.clone(), 0..3usize).prop_map(|(i, k)| Op::Change(i, k)),
         ],
         1..24,
     )
@@ -274,6 +276,21 @@ proptest! {
                         returned.push(format!("{list:?}"));
                     }
                     returned.push(format!("{:?}", library.overview().unwrap()));
+                }
+                Op::Change(i, kind) => {
+                    let notebooks = library.notebooks().unwrap();
+                    let change = match kind {
+                        0 => NoteChange::TogglePin,
+                        1 => NoteChange::Trash,
+                        _ => NoteChange::Move { notebook_id: notebooks.last().unwrap().id.clone() },
+                    };
+                    // Pinning, trashing and moving between unlocked
+                    // notebooks are allowed on a locked note, open or not.
+                    let written = library.change(vec![ids[*i].clone()], change).unwrap();
+                    if *kind == 1 {
+                        trashed[*i] = true;
+                    }
+                    returned.push(format!("{written}"));
                 }
                 Op::Create => {
                     let saved = library
