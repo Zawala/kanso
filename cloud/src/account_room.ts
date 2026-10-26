@@ -6,9 +6,17 @@
 // Events are hints, never state. A frame carries only its type and an
 // approval ID; the device then reads the row over HTTPS. No frame carries a
 // device name, a code, an ephemeral key, a wrapped key or note content. The
-// room keeps no storage and no event log: D1's approval row is the authority,
-// and a frame that is lost is caught up by the app's GET after a launch, a
-// Settings open, a foreground or a reconnect.
+// room keeps no event log: D1's approval row is the authority, and a frame
+// that is lost is caught up by the app's GET after a launch, a Settings open,
+// a foreground or a reconnect.
+//
+// The room is also where an account's push notifications are sent from
+// (src/push.ts). It stores one value, the account ID, and holds one alarm:
+// when a change marks a device due, the Worker calls `schedule`, which arms
+// the alarm for the earliest due time, and the alarm sends what is due and
+// arms itself again for what is still waiting. That is what coalesces a burst
+// of changes into one push per device per 30 s. D1 holds what is due; a lost
+// alarm is re-armed by the next change.
 //
 // The room is reachable only through the Worker, which authenticates the
 // session and the device proof before forwarding the upgrade. Sockets use the
@@ -20,6 +28,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./env";
+import { deliverDue, pushSender } from "./push";
 
 /** The internal headers the Worker sends with an upgrade. */
 export const ACCOUNT_ROOM_HEADERS = {
@@ -94,6 +103,31 @@ export class AccountRoom extends DurableObject<Env> {
 			} catch {
 				// Already closing.
 			}
+		}
+	}
+
+	/** Arms the push alarm for `dueAt` (Unix ms) unless one is set for an earlier time. */
+	async schedule(accountId: string, dueAt: number): Promise<void> {
+		await this.ctx.storage.put("account", accountId);
+		await this.arm(dueAt);
+	}
+
+	private async arm(at: number): Promise<void> {
+		const set = await this.ctx.storage.getAlarm();
+		if (set === null || at < set) await this.ctx.storage.setAlarm(at);
+	}
+
+	/** Sends the pushes that are due, then arms for the next. D1 errors are logged and rethrown, so the runtime retries. */
+	override async alarm(): Promise<void> {
+		const accountId = await this.ctx.storage.get<string>("account");
+		if (accountId === undefined) return;
+		const now = Date.now();
+		try {
+			const { next } = await deliverDue(this.env, accountId, now, pushSender(this.env));
+			if (next !== null) await this.arm(Math.max(next, now + 1));
+		} catch (err) {
+			console.error(JSON.stringify({ route: "push", error: "alarm_failed", kind: (err as Error)?.name ?? typeof err }));
+			throw err;
 		}
 	}
 

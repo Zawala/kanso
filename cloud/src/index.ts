@@ -18,6 +18,8 @@
 //   PUT    /v2/account/device           set this device's sealed name                 (session)
 //   GET    /v2/account/devices          list active devices                           (session)
 //   DELETE /v2/account/devices/<id>     sign out one device                           (session)
+//   PUT    /v2/account/devices/<id>/push  set this device's push token                (session)
+//   DELETE /v2/account/devices/<id>/push  turn this device's pushes off                (session)
 //   POST   /v2/push                     write sealed documents                        (session)
 //   GET    /v2/changes?since=&limit=    the account's change feed                     (session)
 //   PUT    /v2/files/<wire_id>          store sealed file bytes                       (session)
@@ -94,6 +96,7 @@ import { bindingFilter } from "./limits";
 import * as methods from "./methods";
 import * as passkeys from "./passkeys";
 import * as proofs from "./proofs";
+import * as pushes from "./push";
 import { runCron } from "./purge";
 import * as shares from "./shares";
 import * as signIn from "./sign_in";
@@ -224,6 +227,11 @@ function segment(raw: string): string {
 function match(path: string): Route | null {
 	const fixed = ROUTES[path];
 	if (fixed) return fixed;
+	const devicePush = /^\/v2\/account\/devices\/([^/]+)\/push$/.exec(path);
+	if (devicePush) {
+		const id = segment(devicePush[1]);
+		return { name: "device_push", methods: { PUT: json(pushes.registerPush(id)), DELETE: { handler: pushes.unregisterPush(id) } } };
+	}
 	const device = /^\/v2\/account\/devices\/([^/]+)$/.exec(path);
 	if (device) return { name: "revoke_device", methods: { DELETE: { handler: auth.revokeDevice(segment(device[1])) } } };
 	const file = /^\/v2\/files\/([^/]+)$/.exec(path);
