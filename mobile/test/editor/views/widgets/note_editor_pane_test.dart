@@ -17,8 +17,10 @@ import 'package:kanso/editor/views/widgets/editor_failure_strip.dart';
 import 'package:kanso/editor/views/widgets/editor_title_field.dart';
 import 'package:kanso/editor/views/widgets/kanso_editable_text.dart';
 import 'package:kanso/editor/views/widgets/keyboard_accessory_bar.dart';
+import 'package:kanso/editor/views/widgets/new_property_row.dart';
 import 'package:kanso/editor/views/widgets/note_editor_pane.dart';
 import 'package:kanso/editor/views/widgets/properties_row.dart';
+import 'package:kanso/editor/views/widgets/property_row.dart';
 import 'package:kanso/note/models/data/note_mode.dart';
 import 'package:kanso/note/models/data/note_place.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
@@ -514,6 +516,113 @@ void main() {
       await _settle(tester);
       expect(page.document.calls, contains('flush'));
       expect(page.router.state.uri.path, '/notes/note/note%3Aplan');
+    });
+
+    testWidgets('the properties open, change, go and come', (tester) async {
+      final handle = tester.ensureSemantics();
+      final blocs = await BrowseBlocs.start();
+      final document =
+          FakeEditorDocument(text: 'Hello', title: 'Sync design notes')
+            ..properties = const <core.Property>[
+              core.Property(
+                key: 'owner',
+                kind: core.PropertyKind.text,
+                text: 'Ada',
+                items: <String>[],
+              ),
+            ];
+      addTearDown(document.events_.close);
+      registerEditorBloc(document);
+      final note = await blocs.noteOf(MockIds.syncDesign);
+      await atMockNow(
+        () => pumpRouted(
+          tester,
+          blocs.provide(const NotePane(inPane: false), note: note),
+        ),
+      );
+      note.add(const NoteEvent.modeChanged(NoteMode.edit));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Properties · 1'), findsOneWidget);
+      expect(find.byType(PropertyRow), findsNothing);
+      await tester.tap(find.byType(PropertiesRow));
+      await tester.pump();
+      expect(find.byType(PropertyRow), findsOneWidget);
+
+      // Change the value.
+      document.properties = const <core.Property>[
+        core.Property(
+          key: 'owner',
+          kind: core.PropertyKind.text,
+          text: 'Grace',
+          items: <String>[],
+        ),
+      ];
+      final owner = find.descendant(
+        of: find.byType(PropertyRow),
+        matching: find.byType(EditableText),
+      );
+      await tester.enterText(owner, 'Grace');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await _settle(tester);
+      expect(document.calls, contains('setProperty 0 owner Grace'));
+      expect(find.text('Grace'), findsOneWidget);
+
+      // Take it away.
+      document.properties = const <core.Property>[];
+      await tester.tap(find.bySemanticsLabel('Remove owner'));
+      await _settle(tester);
+      expect(document.calls, contains('removeProperty 0'));
+      expect(find.text('Properties · 0'), findsOneWidget);
+      expect(find.byType(PropertyRow), findsNothing);
+
+      // Put one in.
+      document.properties = const <core.Property>[
+        core.Property(
+          key: 'status',
+          kind: core.PropertyKind.text,
+          text: 'open',
+          items: <String>[],
+        ),
+      ];
+      await tester.tap(find.text('Add property'));
+      await tester.pump();
+      await tester.pump();
+      final fields = find.descendant(
+        of: find.byType(NewPropertyRow),
+        matching: find.byType(EditableText),
+      );
+      await tester.enterText(fields.first, 'status');
+      await tester.enterText(fields.last, 'open');
+      await tester.tap(find.bySemanticsLabel('Add'));
+      await _settle(tester);
+      expect(document.calls, contains('setProperty null status open'));
+      expect(find.text('Properties · 1'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('a property that does not work says so', (tester) async {
+      final handle = tester.ensureSemantics();
+      final page = await _open(tester);
+      page.document.failures['setProperty'] = const ApplicationError.invalid(
+        message: 'A property needs a name.',
+      );
+      await tester.tap(find.byType(PropertiesRow));
+      await tester.pump();
+      await tester.tap(find.text('Add property'));
+      await tester.pump();
+      await tester.pump();
+      final fields = find.descendant(
+        of: find.byType(NewPropertyRow),
+        matching: find.byType(EditableText),
+      );
+      await tester.enterText(fields.first, 'x');
+      await tester.tap(find.bySemanticsLabel('Add'));
+      await _settle(tester);
+      await _settle(tester);
+      expect(find.text("That property couldn't be set."), findsOneWidget);
+      handle.dispose();
     });
 
     testWidgets('the toggle marks the mode', (tester) async {

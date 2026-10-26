@@ -443,6 +443,45 @@
   "@editorOpeningLabel": {
     "description": "What a screen reader says while a note is opened for editing."
   },
+  "propertiesAdd": "Add property",
+  "@propertiesAdd": {
+    "description": "Adds a property to the note."
+  },
+  "propertiesName": "Name",
+  "@propertiesName": {
+    "description": "The hint of the field for the name of a new property."
+  },
+  "propertiesValue": "Value",
+  "@propertiesValue": {
+    "description": "The hint of the field for the value of a property."
+  },
+  "propertiesRemove": "Remove {name}",
+  "@propertiesRemove": {
+    "description": "Removes a property from the note; for a screen reader.",
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "propertiesConfirmAdd": "Add",
+  "@propertiesConfirmAdd": {
+    "description": "Adds the property that was just named."
+  },
+  "propertiesCancelAdd": "Cancel",
+  "@propertiesCancelAdd": {
+    "description": "Gives up on adding a property."
+  },
+  "propertiesFailed": "That property couldn't be set.",
+  "@propertiesFailed": {
+    "description": "Says that a property of the note could not be set."
+  },
+  "propertiesShow": "Show properties",
+  "@propertiesShow": {
+    "description": "What the row of properties does when it is closed, for a screen reader."
+  },
+  "propertiesHide": "Hide properties",
+  "@propertiesHide": {
+    "description": "What the row of properties does when it is open, for a screen reader."
+  },
   "noteModeLabel": "View mode",
   "@noteModeLabel": {
     "description": "Names the switch between a rendered note and its text."

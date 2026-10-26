@@ -26,7 +26,7 @@ import 'editor_title_field.dart';
 import 'keyboard_accessory_bar.dart';
 import 'link_context_menu.dart';
 import 'markdown_editor.dart';
-import 'properties_row.dart';
+import 'properties_section.dart';
 
 /// The open note's editor: the strips for a change made elsewhere or a
 /// failed save, the title, the properties, and the text, in one page that
@@ -278,12 +278,25 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                           ),
                           BlocBuilder<EditorBloc, EditorState>(
                             buildWhen: (before, now) =>
-                                before.properties.length !=
-                                now.properties.length,
-                            builder: (context, state) => Align(
-                              alignment: AlignmentDirectional.centerStart,
-                              child: PropertiesRow(
-                                count: state.properties.length,
+                                before.properties != now.properties ||
+                                before.propertiesOpen != now.propertiesOpen ||
+                                before.propertyError != now.propertyError,
+                            builder: (context, state) => PropertiesSection(
+                              properties: state.properties,
+                              open: state.propertiesOpen,
+                              failed: state.propertyError != null,
+                              onToggle: () => editor.add(
+                                const EditorEvent.propertiesToggled(),
+                              ),
+                              onSet: (key, value, {index}) => editor.add(
+                                EditorEvent.propertySet(
+                                  key: key,
+                                  value: value,
+                                  index: index,
+                                ),
+                              ),
+                              onRemove: (index) => editor.add(
+                                EditorEvent.propertyRemoved(index),
                               ),
                             ),
                           ),

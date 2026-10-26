@@ -736,6 +736,60 @@ abstract class AppLocalizations {
   /// **'Opening the note'**
   String get editorOpeningLabel;
 
+  /// Adds a property to the note.
+  ///
+  /// In en, this message translates to:
+  /// **'Add property'**
+  String get propertiesAdd;
+
+  /// The hint of the field for the name of a new property.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get propertiesName;
+
+  /// The hint of the field for the value of a property.
+  ///
+  /// In en, this message translates to:
+  /// **'Value'**
+  String get propertiesValue;
+
+  /// Removes a property from the note; for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}'**
+  String propertiesRemove(String name);
+
+  /// Adds the property that was just named.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get propertiesConfirmAdd;
+
+  /// Gives up on adding a property.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get propertiesCancelAdd;
+
+  /// Says that a property of the note could not be set.
+  ///
+  /// In en, this message translates to:
+  /// **'That property couldn\'t be set.'**
+  String get propertiesFailed;
+
+  /// What the row of properties does when it is closed, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Show properties'**
+  String get propertiesShow;
+
+  /// What the row of properties does when it is open, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide properties'**
+  String get propertiesHide;
+
   /// Names the switch between a rendered note and its text.
   ///
   /// In en, this message translates to:

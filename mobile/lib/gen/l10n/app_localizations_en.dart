@@ -354,6 +354,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get editorOpeningLabel => 'Opening the note';
 
   @override
+  String get propertiesAdd => 'Add property';
+
+  @override
+  String get propertiesName => 'Name';
+
+  @override
+  String get propertiesValue => 'Value';
+
+  @override
+  String propertiesRemove(String name) {
+    return 'Remove $name';
+  }
+
+  @override
+  String get propertiesConfirmAdd => 'Add';
+
+  @override
+  String get propertiesCancelAdd => 'Cancel';
+
+  @override
+  String get propertiesFailed => 'That property couldn\'t be set.';
+
+  @override
+  String get propertiesShow => 'Show properties';
+
+  @override
+  String get propertiesHide => 'Hide properties';
+
+  @override
   String get noteModeLabel => 'View mode';
 
   @override
