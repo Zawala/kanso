@@ -46,6 +46,8 @@ import 'core/state/library_index/library_index_bloc.dart' as _i861;
 import 'core/state/list_navigation/list_navigation_bloc.dart' as _i907;
 import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
+import 'editor/models/repos/abs/editor_repository.dart' as _i979;
+import 'editor/models/repos/impl/rust_editor_repository.dart' as _i606;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 import 'search/state/search/search_bloc.dart' as _i696;
@@ -145,6 +147,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i38.LibraryRepository>(
       () => _i152.RustLibraryRepository(gh<_i455.KansoLibrary>()),
+    );
+    gh.lazySingleton<_i979.EditorRepository>(
+      () => _i606.RustEditorRepository(gh<_i455.KansoLibrary>()),
     );
     gh.factory<_i861.LibraryIndexBloc>(
       () => _i861.LibraryIndexBloc(gh<_i38.LibraryRepository>()),

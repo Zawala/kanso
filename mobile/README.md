@@ -62,6 +62,13 @@ opens its library at `kanso/library.db` in the application support folder
 (`lib/core/configs/core_module.dart`); the background sync opens the same file.
 `preferences.json` sits beside it (see below).
 
+A note open for editing is a `KansoEditor` (`KansoLibrary.edit`): the text, its
+undo history, the editor's commands, the colours of the text, completion and
+saving are in Rust, and the field only hands over what changed. The calls it
+makes on every keystroke are `#[frb(sync)]`, so they run on the UI isolate in
+microseconds and a command and the field's text change in the same turn;
+`lib/editor/models/repos/` wraps them (`EditorDocument`).
+
 ## Release
 
 The release builds, signing, TestFlight and Play uploads, Shorebird patches and the store
