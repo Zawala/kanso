@@ -287,6 +287,17 @@ class KansoMarkdownController extends TextEditingController {
     }, _adopt);
   }
 
+  /// Shows [offered] as what completes at the caret, with its first row
+  /// active; null for none.
+  void offer(Completion? offered) {
+    if (offered == completion && completionIndex == 0) {
+      return;
+    }
+    completion = offered;
+    completionIndex = 0;
+    notifyListeners();
+  }
+
   /// Moves the active row of the completions [delta] rows, within them.
   void stepCompletion(int delta) {
     final offered = completion;

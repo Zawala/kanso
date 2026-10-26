@@ -28,6 +28,15 @@ Future<void> _settle(WidgetTester tester) async {
   await tester.pump();
 }
 
+const Completion _offered = Completion(
+  kind: CompletionKind.wiki,
+  replace: Range16(start: 0, end: 3),
+  items: <CompletionItem>[
+    CompletionItem(label: 'Plan', insert: '[[Plan]]', newNote: false),
+    CompletionItem(label: 'Plot', insert: '[[Plot]]', newNote: false),
+  ],
+);
+
 void main() {
   group('KansoMarkdownController on a document', () {
     testWidgets('tells the document each change against the version it has', (
@@ -265,6 +274,55 @@ void main() {
       expect(controller.text, 'short');
       expect(controller.selection.baseOffset, 5);
       expect(controller.version, 4);
+    });
+
+    testWidgets('moves through the completions within them', (tester) async {
+      final document = FakeEditorDocument(text: '[[P');
+      final controller = await pumpFakeEditor(tester, document);
+      var changes = 0;
+      controller
+        ..addListener(() => changes++)
+        ..stepCompletion(1);
+      expect(controller.completionIndex, 0, reason: 'nothing offered');
+      expect(controller.chooseCompletion(), isFalse);
+      controller.offer(_offered);
+      expect(changes, 1);
+      controller
+        ..stepCompletion(1)
+        ..stepCompletion(5);
+      expect(controller.completionIndex, 1);
+      controller.stepCompletion(-9);
+      expect(controller.completionIndex, 0);
+      // An offer that is the same changes nothing.
+      changes = 0;
+      controller.offer(_offered);
+      expect(changes, 0);
+      // A new offer starts at its first row.
+      controller
+        ..stepCompletion(1)
+        ..offer(null);
+      expect(controller.completion, isNull);
+      expect(controller.completionIndex, 0);
+    });
+
+    testWidgets('chooses the active completion as one step, and it is spent', (
+      tester,
+    ) async {
+      final document = FakeEditorDocument(text: '[[P');
+      final controller = await pumpFakeEditor(tester, document);
+      controller
+        ..offer(_offered)
+        ..stepCompletion(1);
+      document.nextOutcome = const EditOutcome(
+        version: 5,
+        replace: Replacement(start: 0, end: 3, text: '[[Plot]]'),
+        selection: Range16(start: 8, end: 8),
+        history: HistoryState(canUndo: true, canRedo: false),
+      );
+      expect(controller.chooseCompletion(), isTrue);
+      expect(controller.text, '[[Plot]]');
+      expect(controller.completion, isNull);
+      expect(controller.chooseCompletion(), isFalse);
     });
 
     testWidgets('knows which text is code and is not spell checked', (

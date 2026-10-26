@@ -47,7 +47,10 @@ import 'core/state/list_navigation/list_navigation_bloc.dart' as _i907;
 import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
 import 'editor/models/repos/abs/editor_repository.dart' as _i979;
+import 'editor/models/repos/abs/web_link_repository.dart' as _i272;
 import 'editor/models/repos/impl/rust_editor_repository.dart' as _i606;
+import 'editor/models/repos/impl/url_launcher_web_link_repository.dart'
+    as _i635;
 import 'editor/state/editor/editor_bloc.dart' as _i964;
 import 'note/models/repos/abs/note_place_repository.dart' as _i930;
 import 'note/models/repos/impl/memory_note_place_repository.dart' as _i503;
@@ -83,6 +86,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i1056.HapticsRepository>(
       () => _i438.FlutterHapticsRepository(),
+    );
+    gh.lazySingleton<_i272.WebLinkRepository>(
+      () => _i635.UrlLauncherWebLinkRepository(),
     );
     await gh.singletonAsync<_i72.LibraryFolder>(
       () => coreModule.libraryFolder(),
@@ -176,14 +182,19 @@ extension GetItInjectableX on _i174.GetIt {
     gh.factory<_i696.SearchBloc>(
       () => _i696.SearchBloc(gh<_i38.LibraryRepository>()),
     );
-    gh.factory<_i964.EditorBloc>(
-      () => _i964.EditorBloc(gh<_i979.EditorRepository>()),
-    );
     gh.factory<_i351.NoteListBloc>(
       () => _i351.NoteListBloc(
         gh<_i38.LibraryRepository>(),
         gh<_i384.PreferencesRepository>(),
         gh<_i1056.HapticsRepository>(),
+      ),
+    );
+    gh.factory<_i964.EditorBloc>(
+      () => _i964.EditorBloc(
+        gh<_i979.EditorRepository>(),
+        gh<_i38.LibraryRepository>(),
+        gh<_i930.NotePlaceRepository>(),
+        gh<_i272.WebLinkRepository>(),
       ),
     );
     gh.lazySingleton<_i601.SyncRepository>(

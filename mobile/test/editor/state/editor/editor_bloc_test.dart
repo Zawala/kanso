@@ -5,17 +5,22 @@
 import 'dart:async';
 
 import 'package:bloc_test/bloc_test.dart';
+import 'package:dartz/dartz.dart' show Left, Unit;
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kanso/core/bridge/api/types.dart' hide EditorEvent;
 import 'package:kanso/core/bridge/api/types.dart' as core;
+import 'package:kanso/core/bridge/api/types.dart' hide EditorEvent;
 import 'package:kanso/core/models/data/application_error.dart';
+import 'package:kanso/editor/models/data/editor_destination.dart';
 import 'package:kanso/editor/models/data/editor_status.dart';
 import 'package:kanso/editor/models/data/flush_reason.dart';
 import 'package:kanso/editor/state/editor/editor_bloc.dart';
+import 'package:kanso/note/models/repos/impl/memory_note_place_repository.dart';
 
 import '../../../helpers/fake_editor_document.dart';
 import '../../../helpers/fake_editor_repository.dart';
+import '../../../helpers/fake_web_link_repository.dart';
+import '../../../helpers/fixture_library_repository.dart';
 
 const _noHistory = HistoryState(canUndo: false, canRedo: false);
 const _context = EditorContext(
@@ -60,8 +65,15 @@ bool? _conflictDeleted(EditorState state) {
 
 void main() {
   late FakeEditorDocument document;
+  late FixtureLibraryRepository library;
+  late MemoryNotePlaceRepository places;
+  late FakeWebLinkRepository links;
 
   setUp(() {
+    library = FixtureLibraryRepository();
+    addTearDown(library.close);
+    places = MemoryNotePlaceRepository();
+    links = FakeWebLinkRepository();
     document = FakeEditorDocument(text: 'the text', title: 'A title')
       ..properties = const <Property>[_property];
     addTearDown(document.events_.close);
@@ -70,6 +82,9 @@ void main() {
   EditorBloc build({ApplicationError? error}) {
     final bloc = EditorBloc(
       FakeEditorRepository(document: document, error: error),
+      library,
+      places,
+      links,
     );
     addTearDown(bloc.close);
     return bloc;
@@ -520,6 +535,78 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(document.calls, isNot(contains('flush')));
       expect(bloc.state.status, EditorStatus.opening);
+    });
+  });
+
+  group('EditorBloc linkOpenRequested and destinationHandled', () {
+    test('a link to a note goes there, once what was typed is saved', () async {
+      final bloc = await ready();
+      bloc.add(
+        const EditorEvent.linkOpenRequested(LinkTarget.note(id: 'note:other')),
+      );
+      final state = await bloc.stream.firstWhere((s) => s.destination != null);
+      expect(state.destination, const EditorDestination.note('note:other'));
+      expect(document.calls, contains('flush'));
+      bloc.add(const EditorEvent.destinationHandled());
+      await bloc.stream.firstWhere((s) => s.destination == null);
+    });
+
+    test('a link that leads to no note makes it, and goes to it, ready to '
+        'write', () async {
+      final bloc = await ready();
+      bloc.add(
+        const EditorEvent.linkOpenRequested(
+          LinkTarget.newNote(title: 'Not yet'),
+        ),
+      );
+      final state = await bloc.stream.firstWhere((s) => s.destination != null);
+      expect(library.created.single.title, 'Not yet');
+      expect(state.destination, const EditorDestination.note('note:new-1'));
+      expect(places.takeOpenedNew('note:new-1'), isTrue);
+    });
+
+    test('a note that could not be made says so and goes nowhere', () async {
+      library.createResult = const Left<ApplicationError, Saved>(
+        ApplicationError.storage(message: 'disk'),
+      );
+      final bloc = await ready();
+      bloc.add(
+        const EditorEvent.linkOpenRequested(
+          LinkTarget.newNote(title: 'Not yet'),
+        ),
+      );
+      final state = await bloc.stream.firstWhere((s) => s.linkError != null);
+      expect(state.destination, isNull);
+      expect(places.takeOpenedNew('note:new-1'), isFalse);
+    });
+
+    test(
+      'an address is opened where addresses are, and the editor stays',
+      () async {
+        final bloc = await ready();
+        bloc.add(
+          const EditorEvent.linkOpenRequested(
+            LinkTarget.web(url: 'https://kansoapp.app'),
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(links.opened, <String>['https://kansoapp.app']);
+        expect(bloc.state.destination, isNull);
+        expect(bloc.state.linkError, isNull);
+      },
+    );
+
+    test('an address that did not open says so', () async {
+      links.answer = const Left<ApplicationError, Unit>(
+        ApplicationError.invalid(message: 'no'),
+      );
+      final bloc = await ready();
+      bloc.add(
+        const EditorEvent.linkOpenRequested(
+          LinkTarget.web(url: 'javascript:alert(1)'),
+        ),
+      );
+      await bloc.stream.firstWhere((s) => s.linkError != null);
     });
   });
 

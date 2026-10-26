@@ -58,6 +58,14 @@ sealed class EditorEvent with _$EditorEvent {
   const factory EditorEvent.lifecycleChanged(AppLifecycleState lifecycle) =
       EditorLifecycleChangedEvent;
 
+  /// The person asked to open where the link [target] leads.
+  const factory EditorEvent.linkOpenRequested(LinkTarget target) =
+      EditorLinkOpenRequestedEvent;
+
+  /// The screen has gone to the destination the state named.
+  const factory EditorEvent.destinationHandled() =
+      EditorDestinationHandledEvent;
+
   /// The editor is left: save, keeping what was typed, and let go.
   const factory EditorEvent.closed() = EditorClosedEvent;
 }

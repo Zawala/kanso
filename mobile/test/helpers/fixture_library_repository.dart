@@ -141,9 +141,21 @@ class FixtureLibraryRepository implements LibraryRepository {
     required String body,
   }) => throw UnimplementedError();
 
+  /// The notes `create` was asked to make.
+  final List<NewNote> created = <NewNote>[];
+
+  /// What `create` answers when it is set; a note with an id of its own
+  /// otherwise.
+  Either<ApplicationError, Saved>? createResult;
+
   @override
-  Future<Either<ApplicationError, Saved>> create(NewNote note) =>
-      throw UnimplementedError();
+  Future<Either<ApplicationError, Saved>> create(NewNote note) async {
+    created.add(note);
+    return createResult ??
+        Right<ApplicationError, Saved>(
+          Saved(id: 'note:new-${created.length}', rev: '1-new'),
+        );
+  }
 
   @override
   Future<Either<ApplicationError, Unit>> trash(String id) =>

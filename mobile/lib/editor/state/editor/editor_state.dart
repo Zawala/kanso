@@ -36,6 +36,13 @@ abstract class EditorState with _$EditorState {
     /// What is offered where the caret is, if anything.
     Completion? completion,
 
+    /// Where the person asked to go (a link followed), for the screen to go
+    /// to; it says so with `destinationHandled` when it has.
+    EditorDestination? destination,
+
+    /// Why a link could not be opened.
+    ApplicationError? linkError,
+
     /// How many times the field must take the text of [snapshot] again.
     @Default(0) int reloadSeq,
 

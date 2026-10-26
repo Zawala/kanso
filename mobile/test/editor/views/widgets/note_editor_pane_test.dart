@@ -5,11 +5,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kanso/core/bridge/api/types.dart' as core;
 import 'package:kanso/core/bridge/api/types.dart' show EditCommand, FormatKind;
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/views/widgets/kanso_segment_cell.dart';
 import 'package:kanso/editor/views/widgets/accessory_key.dart';
+import 'package:kanso/editor/views/widgets/completion_popup.dart';
 import 'package:kanso/editor/views/widgets/editor_conflict_strip.dart';
 import 'package:kanso/editor/views/widgets/editor_failure_strip.dart';
 import 'package:kanso/editor/views/widgets/editor_title_field.dart';
@@ -25,6 +27,7 @@ import 'package:kanso/note/views/widgets/note_bottom_bar.dart';
 import 'package:kanso/note/views/widgets/note_info_sheet.dart';
 import 'package:kanso/note/views/widgets/note_mode_toggle.dart';
 import 'package:kanso/note/views/widgets/note_pane.dart';
+import 'package:kanso/search/views/widgets/highlighted_text.dart';
 import 'package:kanso/shell/utils/kanso_shortcut_bindings.dart';
 
 import '../../../helpers/browse_blocs.dart';
@@ -35,11 +38,12 @@ import '../../../helpers/register_editor_bloc.dart';
 
 /// The note page of the mock library with a fake editing session behind it.
 class _Page {
-  _Page(this.blocs, this.note, this.document);
+  _Page(this.blocs, this.note, this.document, this.router);
 
   final BrowseBlocs blocs;
   final NoteBloc note;
   final FakeEditorDocument document;
+  final GoRouter router;
 }
 
 Future<_Page> _open(
@@ -58,8 +62,9 @@ Future<_Page> _open(
     blocs.places.keep(MockIds.syncDesign, place);
   }
   final note = await blocs.noteOf(MockIds.syncDesign);
+  late final GoRouter router;
   await atMockNow(
-    () => pumpRouted(
+    () async => router = await pumpRouted(
       tester,
       blocs.provide(NotePane(inPane: inPane), note: note),
       size: size,
@@ -75,7 +80,7 @@ Future<_Page> _open(
     await tester.pump();
     await tester.pump();
   }
-  return _Page(blocs, note, document);
+  return _Page(blocs, note, document, router);
 }
 
 /// Lets the BLoCs' own futures finish, which the frames do not wait for.
@@ -441,6 +446,75 @@ void main() {
       },
       variant: TargetPlatformVariant.only(TargetPlatform.iOS),
     );
+
+    testWidgets(
+      'what completes at the caret is offered, and a tap chooses it',
+      (
+        tester,
+      ) async {
+        final page = await _open(tester, text: '[[Pl');
+        page.document
+          ..context = const core.EditorContext(
+            inList: false,
+            inTable: false,
+            inCode: false,
+            completionHere: true,
+            history: core.HistoryState(canUndo: false, canRedo: false),
+          )
+          ..offered = const core.Completion(
+            kind: core.CompletionKind.wiki,
+            replace: core.Range16(start: 0, end: 4),
+            items: <core.CompletionItem>[
+              core.CompletionItem(
+                label: 'Plan',
+                detail: 'Projects / Kanso',
+                highlight: core.Range16(start: 0, end: 2),
+                insert: '[[Plan]]',
+                newNote: false,
+              ),
+            ],
+          );
+        final field = tester.widget<EditableText>(
+          find.byType(KansoEditableText),
+        );
+        field.controller.selection = const TextSelection.collapsed(offset: 3);
+        await _settle(tester);
+        await _settle(tester);
+        expect(find.byType(CompletionPopup), findsOneWidget);
+        expect(find.text('Projects / Kanso'), findsOneWidget);
+        page.document.nextOutcome = const core.EditOutcome(
+          version: 9,
+          replace: core.Replacement(start: 0, end: 4, text: '[[Plan]]'),
+          selection: core.Range16(start: 8, end: 8),
+          history: core.HistoryState(canUndo: true, canRedo: false),
+        );
+        await tester.tap(
+          find.byWidgetPredicate(
+            (widget) => widget is HighlightedText && widget.text == 'Plan',
+          ),
+        );
+        await _settle(tester);
+        expect(field.controller.text, '[[Plan]]');
+      },
+    );
+
+    testWidgets('Open link goes to the note the link is to, saving first', (
+      tester,
+    ) async {
+      final page = await _open(tester, text: 'see [[Plan]] now');
+      page.document.link = const core.LinkTarget.note(id: 'note:plan');
+      await tester.longPressAt(
+        tester.getTopLeft(find.byType(KansoEditableText)) +
+            const Offset(55, 10),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.text('Open link'));
+      await _settle(tester);
+      await _settle(tester);
+      expect(page.document.calls, contains('flush'));
+      expect(page.router.state.uri.path, '/notes/note/note%3Aplan');
+    });
 
     testWidgets('the toggle marks the mode', (tester) async {
       await _open(tester);

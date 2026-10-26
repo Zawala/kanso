@@ -575,6 +575,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get menuDelete => 'Delete';
 
   @override
+  String get menuOpenLink => 'Open link';
+
+  @override
+  String completionAnnouncement(int count, String label) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count suggestions',
+      one: '1 suggestion',
+    );
+    return '$_temp0, $label selected';
+  }
+
+  @override
   String get searchIdleTitle => 'Search your notes';
 
   @override

@@ -30,7 +30,8 @@ class MarkdownEditor extends StatefulWidget {
     this.autofocus = false,
     this.spellCheckService,
     this.scrollPadding = const EdgeInsets.all(24),
-    this.menuExtras,
+    this.menuBuilder,
+    this.editableKey,
     super.key,
   });
 
@@ -44,9 +45,13 @@ class MarkdownEditor extends StatefulWidget {
   /// How much room to keep around the caret when it is scrolled into view.
   final EdgeInsets scrollPadding;
 
-  /// Buttons of the screen's own for the text menu, asked for each time it
-  /// opens (Open link, when the caret is in a link).
-  final List<(String, VoidCallback)> Function(BuildContext context)? menuExtras;
+  /// The menu over the text, in place of the plain one (Cut, Copy, Paste and
+  /// Select All): the screen's own, with Open link when the caret is in a
+  /// link.
+  final EditableTextContextMenuBuilder? menuBuilder;
+
+  /// A key for the editable text inside, to find where the caret is.
+  final GlobalKey<EditableTextState>? editableKey;
 
   /// How tall the caret is, in points, for an editor font [fontSize] high.
   static double caretHeightFor(double fontSize) =>
@@ -63,9 +68,11 @@ class _MarkdownEditorState extends State<MarkdownEditor>
       KansoEditorSelectionControls();
   late KansoUndoManagerClient undoClient;
 
+  final GlobalKey<EditableTextState> ownKey = GlobalKey<EditableTextState>();
+
   @override
-  final GlobalKey<EditableTextState> editableTextKey =
-      GlobalKey<EditableTextState>();
+  GlobalKey<EditableTextState> get editableTextKey =>
+      widget.editableKey ?? ownKey;
 
   @override
   bool get forcePressEnabled => false;
@@ -142,10 +149,9 @@ class _MarkdownEditorState extends State<MarkdownEditor>
           keyboardAppearance: Theme.brightnessOf(context),
           selectionControls: selectionControls,
           magnifierConfiguration: KansoMagnifier.configuration(),
-          contextMenuBuilder: (context, state) => KansoTextContextMenu(
-            state: state,
-            extra: widget.menuExtras?.call(context) ?? const [],
-          ),
+          contextMenuBuilder:
+              widget.menuBuilder ??
+              (context, state) => KansoTextContextMenu(state: state),
           spellCheckConfiguration: service == null
               ? const SpellCheckConfiguration.disabled()
               : SpellCheckConfiguration(

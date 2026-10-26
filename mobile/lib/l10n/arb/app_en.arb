@@ -723,6 +723,18 @@
   "@menuDelete": {
     "description": "The button of the spelling menu that deletes the misspelled word."
   },
+  "menuOpenLink": "Open link",
+  "@menuOpenLink": {
+    "description": "The button of the editor's menu that opens the link the caret is in."
+  },
+  "completionAnnouncement": "{count, plural, =1{1 suggestion} other{{count} suggestions}}, {label} selected",
+  "@completionAnnouncement": {
+    "description": "What a screen reader says when suggestions for a link or a tag appear: how many, and which one is selected.",
+    "placeholders": {
+      "count": {"type": "int"},
+      "label": {"type": "String"}
+    }
+  },
   "searchIdleTitle": "Search your notes",
   "@searchIdleTitle": {
     "description": "The title shown under an empty search."

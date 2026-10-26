@@ -5,20 +5,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/bridge/api/types.dart' hide EditorEvent;
+import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
+import '../../../core/models/data/browse_location.dart';
 import '../../../note/models/data/note_mode.dart';
 import '../../../note/state/note/note_bloc.dart';
+import '../../models/data/editor_destination.dart';
 import '../../models/data/flush_reason.dart';
 import '../../models/repos/abs/editor_repository.dart';
 import '../../state/editor/editor_bloc.dart';
 import '../controllers/kanso_markdown_controller.dart';
+import 'completion_host.dart';
 import 'editor_conflict_strip.dart';
 import 'editor_failure_strip.dart';
 import 'editor_shortcuts.dart';
 import 'editor_title_field.dart';
 import 'keyboard_accessory_bar.dart';
+import 'link_context_menu.dart';
 import 'markdown_editor.dart';
 import 'properties_row.dart';
 
@@ -80,6 +86,8 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
   late final FocusNode textFocus;
   late final FocusNode titleFocus;
   late final ScrollController scroll;
+  final GlobalKey<EditableTextState> editableKey =
+      GlobalKey<EditableTextState>();
   late final AppLifecycleListener lifecycle;
   EditorContext? lastContext;
 
@@ -192,10 +200,22 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
         ),
         BlocListener<EditorBloc, EditorState>(
           listenWhen: (before, now) => before.completion != now.completion,
+          listener: (context, state) => controller.offer(state.completion),
+        ),
+        BlocListener<EditorBloc, EditorState>(
+          listenWhen: (before, now) =>
+              now.destination != null && before.destination != now.destination,
           listener: (context, state) {
-            controller
-              ..completion = state.completion
-              ..completionIndex = 0;
+            final destination = state.destination;
+            editor.add(const EditorEvent.destinationHandled());
+            if (destination case NoteDestination(:final noteId)) {
+              context.go(
+                BrowseLocation.place(
+                  const ListPlace.all(),
+                  noteId: noteId,
+                ).location,
+              );
+            }
           },
         ),
         BlocListener<NoteBloc, NoteState>(
@@ -290,12 +310,25 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                             const NoteEvent.modeChanged(NoteMode.preview),
                           );
                         },
-                        child: MarkdownEditor(
+                        child: CompletionHost(
                           controller: controller,
-                          focusNode: textFocus,
-                          spellCheckService: long
-                              ? null
-                              : DefaultSpellCheckService(),
+                          editableKey: editableKey,
+                          reservedBottom: KansoSizes.touchTarget + 1,
+                          child: MarkdownEditor(
+                            controller: controller,
+                            focusNode: textFocus,
+                            editableKey: editableKey,
+                            spellCheckService: long
+                                ? null
+                                : DefaultSpellCheckService(),
+                            menuBuilder: (context, state) => LinkContextMenu(
+                              state: state,
+                              document: widget.document,
+                              onOpen: (target) => editor.add(
+                                EditorEvent.linkOpenRequested(target),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),

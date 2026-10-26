@@ -9,6 +9,7 @@ import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
+import '../../../editor/views/widgets/completion_popup.dart';
 import '../../../editor/views/widgets/keyboard_accessory_bar.dart';
 import '../../../editor/views/widgets/properties_row.dart';
 import '../../../note/models/data/note_mode.dart';
@@ -18,7 +19,6 @@ import '../../models/data/design_layout.dart';
 import '../../models/data/mock_data.dart';
 import 'keyboard_placeholder.dart';
 import 'note_source_body.dart';
-import 'wiki_completion_popup.dart';
 
 /// A note as Markdown source with the keyboard up: the properties
 /// collapsed above the text, a link to another note being typed with its
@@ -65,9 +65,23 @@ class NoteEditPane extends StatelessWidget {
                   typing: MockData.editTyping,
                 ),
                 const SizedBox(height: KansoSpacing.xs),
-                const WikiCompletionPopup(
-                  typed: 'Sy',
-                  completions: MockData.completions,
+                CompletionPopup(
+                  completion: Completion(
+                    kind: CompletionKind.wiki,
+                    replace: const Range16(start: 0, end: 0),
+                    items: <CompletionItem>[
+                      for (final choice in MockData.completions)
+                        CompletionItem(
+                          label: choice.title,
+                          detail: choice.notebook,
+                          highlight: const Range16(start: 0, end: 2),
+                          insert: '',
+                          newNote: false,
+                        ),
+                    ],
+                  ),
+                  activeIndex: 0,
+                  onChoose: (_) {},
                 ),
               ],
             ),

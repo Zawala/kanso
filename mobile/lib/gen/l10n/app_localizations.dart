@@ -1126,6 +1126,18 @@ abstract class AppLocalizations {
   /// **'Delete'**
   String get menuDelete;
 
+  /// The button of the editor's menu that opens the link the caret is in.
+  ///
+  /// In en, this message translates to:
+  /// **'Open link'**
+  String get menuOpenLink;
+
+  /// What a screen reader says when suggestions for a link or a tag appear: how many, and which one is selected.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 suggestion} other{{count} suggestions}}, {label} selected'**
+  String completionAnnouncement(int count, String label);
+
   /// The title shown under an empty search.
   ///
   /// In en, this message translates to:
