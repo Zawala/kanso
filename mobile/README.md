@@ -168,6 +168,15 @@ at the looser 60 Hz interval. A simulator or emulator cannot measure 120 Hz;
 the numbers are for a device. The iPhone's `Info.plist` has
 `CADisableMinimumFrameDurationOnPhone`, which lets Flutter draw at 120 Hz.
 
+### Typing into a long note
+
+`editor_typing_performance_test.dart` types into a note of up to 50,000 words
+the way a person does (and `editor_bench_app.dart` runs the same script as an
+app, for a wireless iPhone). Long notes are edited a window at a time. How to
+run it, the limits, and the results are in
+[`docs/editor-gate.md`](docs/editor-gate.md); the manual device checks are in
+[`docs/editor-device-checks.md`](docs/editor-device-checks.md).
+
 ## The app shell
 
 **Routes** (`lib/core/router/`, go_router). `/` goes to `/notes`; the places
