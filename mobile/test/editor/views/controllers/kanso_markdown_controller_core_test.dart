@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
+import 'package:kanso/editor/utils/editor_timing.dart';
 
 import '../../../helpers/editor_harness.dart';
 import '../../../helpers/fake_editor_document.dart';
@@ -105,6 +106,66 @@ void main() {
       await _settle(tester);
       await _settle(tester);
       expect(controller.runs.single.color, 0x00FF00);
+    });
+
+    testWidgets('shows colours for a text a few keys old, moved along them', (
+      tester,
+    ) async {
+      final document = FakeEditorDocument(text: '# a');
+      final controller = await pumpFakeEditor(tester, document);
+      await _settle(tester);
+      final shown = <List<EditorRun>>[];
+      controller.addListener(() => shown.add(controller.runs));
+      final fresh = <int>[];
+      EditorTiming.observer = (name, micros) {
+        if (name == 'kanso.freshRuns') {
+          fresh.add(micros);
+        }
+      };
+      addTearDown(() => EditorTiming.observer = null);
+      // Two keys, typed before the colours of the text as it was after the
+      // first have come back.
+      document
+        ..batchVersion = 2
+        ..batchRuns = <EditorRun>[_run(0, 4, color: 0xFF0000)];
+      tester.testTextInput.updateEditingValue(_at('# ab', 4));
+      tester.testTextInput.updateEditingValue(_at('# abc', 5));
+      await tester.pump();
+      await _settle(tester);
+      final moved = shown.where(
+        (runs) => runs.any((run) => run.color == 0xFF0000),
+      );
+      expect(moved, isNotEmpty, reason: 'colours of the older text are shown');
+      expect(
+        moved.first.single.range,
+        const Range16(start: 0, end: 5),
+        reason: 'moved along the key typed since',
+      );
+      // The first key is fresh with those colours, the second with the ones
+      // asked for next.
+      await _settle(tester);
+      expect(fresh, hasLength(2));
+      expect(document.runRequests, greaterThan(2));
+    });
+
+    testWidgets('colours for a text before a window moved are dropped', (
+      tester,
+    ) async {
+      final document = FakeEditorDocument(text: '# a');
+      final controller = await pumpFakeEditor(tester, document);
+      await _settle(tester);
+      tester.testTextInput.updateEditingValue(_at('# ab', 4));
+      // The text comes from outside: the keys before it cannot be followed.
+      document
+        ..text = 'other'
+        ..version += 5;
+      controller.reload(document.current);
+      document
+        ..batchVersion = 2
+        ..batchRuns = <EditorRun>[_run(0, 4, color: 0xFF0000)];
+      await tester.pump();
+      await _settle(tester);
+      expect(controller.runs.where((run) => run.color == 0xFF0000), isEmpty);
     });
 
     testWidgets('asks for colours once for a burst of keystrokes in a frame', (

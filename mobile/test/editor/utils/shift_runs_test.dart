@@ -115,6 +115,29 @@ void main() {
       expect(shifted.map((r) => r.color), <int?>[1, 3, 4]);
     });
 
+    test('gives the new text to one run when a change covers two in part', () {
+      final shifted = shiftRuns(
+        <EditorRun>[_run(0, 4, 1), _run(4, 8, 2)],
+        start: 2,
+        end: 6,
+        inserted: 2,
+      );
+      expect(shifted.map((r) => (r.range.start, r.range.end)), <(int, int)>[
+        (0, 4),
+        (4, 6),
+      ]);
+    });
+
+    test('drops a run the change covers entirely, whatever it puts in', () {
+      final shifted = shiftRuns(
+        <EditorRun>[_run(3, 5, 1)],
+        start: 2,
+        end: 6,
+        inserted: 3,
+      );
+      expect(shifted, isEmpty);
+    });
+
     test('keeps what a run says besides where it is', () {
       const run = EditorRun(
         range: Range16(start: 1, end: 3),

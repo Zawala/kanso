@@ -16,8 +16,8 @@ import '../../core/bridge/api/types.dart';
 ///   run that ends where text is typed (typing on at the end of a word keeps
 ///   the word's colour until the fresh colours arrive).
 /// - A run the change covers only in part is cut to what is left, with the
-///   new text in it when it started before the change; one it covers
-///   entirely goes.
+///   new text in it when it started before the change (so the new text is
+///   in one run only); one it covers entirely goes.
 ///
 /// The runs stay in order and never overlap.
 List<EditorRun> shiftRuns(
@@ -37,8 +37,11 @@ List<EditorRun> shiftRuns(
       shifted.add(grows ? _with(run, from, to + inserted) : run);
     } else if (from >= end) {
       shifted.add(delta == 0 ? run : _with(run, from + delta, to + delta));
+    } else if (from >= start && to <= end) {
+      // Covered entirely by the change.
+      continue;
     } else {
-      final newFrom = from < start ? from : start;
+      final newFrom = from < start ? from : start + inserted;
       final newTo = to > end ? to + delta : start + inserted;
       if (newTo > newFrom) {
         shifted.add(_with(run, newFrom, newTo));

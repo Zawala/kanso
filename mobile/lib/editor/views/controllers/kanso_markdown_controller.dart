@@ -15,6 +15,7 @@ import '../../models/data/editor_window.dart';
 import '../../models/data/outside_side.dart';
 import '../../models/repos/abs/editor_repository.dart';
 import '../../utils/diff_values.dart';
+import '../../utils/edit_log.dart';
 import '../../utils/editor_spans.dart';
 import '../../utils/editor_timing.dart';
 import '../../utils/editor_window.dart';
@@ -152,6 +153,10 @@ class KansoMarkdownController extends TextEditingController {
   bool _runsScheduled = false;
   bool _runsInFlight = false;
   EditorSnapshot? _waiting;
+
+  // The changes made since the colours on screen were asked for: colours
+  // that come back for an older text are moved along them and shown.
+  final EditLog _log = EditLog();
 
   // The note outside the window: the text before it, which ends with the
   // line break that ends the line before the window, and the text after
@@ -330,6 +335,13 @@ class KansoMarkdownController extends TextEditingController {
         _fail(error);
       },
       (outcome) {
+        _log.record(
+          from: _version,
+          to: outcome.version,
+          start: diff.start,
+          end: diff.end,
+          inserted: diff.text.length,
+        );
         _version = outcome.version;
         _history = outcome.history;
         _stamp();
@@ -474,6 +486,7 @@ class KansoMarkdownController extends TextEditingController {
     final replace = outcome.replace;
     final text = super.value.text;
     final origin = _before.length;
+    final previous = _version;
     _version = outcome.version;
     _history = outcome.history;
     _stamp();
@@ -501,6 +514,13 @@ class KansoMarkdownController extends TextEditingController {
       onEdited?.call();
       return true;
     }
+    _log.record(
+      from: previous,
+      to: outcome.version,
+      start: replace == null ? 0 : replace.start - origin,
+      end: replace == null ? 0 : replace.end - origin,
+      inserted: replace == null ? 0 : replace.text.length,
+    );
     var next = text;
     if (replace != null) {
       next = next.replaceRange(
@@ -552,6 +572,7 @@ class KansoMarkdownController extends TextEditingController {
     final length = snapshot.text.length;
     _version = snapshot.version;
     _history = snapshot.history;
+    _log.reset();
     _replaceWindow(
       snapshot.text,
       old.isValid
@@ -660,6 +681,7 @@ class KansoMarkdownController extends TextEditingController {
     _outsideRuns.clear();
     _outsideAsked.clear();
     _outsideQueue.clear();
+    _log.reset();
     final text = next.slice(note);
     if (keepRuns) {
       // The colours that fall in the new window, in its units.
@@ -808,7 +830,6 @@ class KansoMarkdownController extends TextEditingController {
     while (_outsideQueue.isNotEmpty && !_disposed) {
       final (side, chunk) = _outsideQueue.removeAt(0);
       final generation = _outsideGeneration;
-      final version = _version;
       final origin = _before.length;
       final length = super.value.text.length;
       // The side's text without the line break that joins it to the window.
@@ -844,16 +865,6 @@ class KansoMarkdownController extends TextEditingController {
           _outsideAsked.remove((side, chunk));
         },
         (batch) {
-          if (batch.version != version) {
-            // Typed while it was on the way: ask again once it is quiet.
-            _outsideAsked.remove((side, chunk));
-            Timer(const Duration(milliseconds: 300), () {
-              if (!_disposed && generation == _outsideGeneration) {
-                outsideChanged.value++;
-              }
-            });
-            return;
-          }
           _outsideRuns[(side, chunk)] = <EditorRun>[
             for (final run in batch.runs)
               EditorRun(
@@ -945,33 +956,48 @@ class KansoMarkdownController extends TextEditingController {
         // Any other error leaves the text as it is coloured: plain is fine.
       },
       (batch) {
-        if (batch.version == _version && origin == _before.length) {
-          _runs = origin == 0
-              ? batch.runs
-              : <EditorRun>[
-                  for (final run in batch.runs)
-                    EditorRun(
-                      range: Range16(
-                        start: run.range.start - origin,
-                        end: run.range.end - origin,
-                      ),
-                      color: run.color,
-                      italic: run.italic,
-                      weight: run.weight,
-                      quiet: run.quiet,
-                    ),
-                ];
-          notifyListeners();
-          for (final (version, stamped) in _unseen) {
-            if (version <= batch.version) {
-              EditorTiming.since('kanso.freshRuns', stamped);
-            }
-          }
-          _unseen.removeWhere((entry) => entry.$1 <= batch.version);
-        } else {
-          // Left behind by a change made while it was on the way.
+        // Colours of a text a few keys old are moved along the keys since;
+        // only a window that has moved, or a text that came from outside,
+        // leaves them behind.
+        final List<EditorRun>? carried = origin == _before.length
+            ? _log.carry(
+                origin == 0
+                    ? batch.runs
+                    : <EditorRun>[
+                        for (final run in batch.runs)
+                          EditorRun(
+                            range: Range16(
+                              start: run.range.start - origin,
+                              end: run.range.end - origin,
+                            ),
+                            color: run.color,
+                            italic: run.italic,
+                            weight: run.weight,
+                            quiet: run.quiet,
+                          ),
+                      ],
+                from: batch.version,
+                now: _version,
+              )
+            : null;
+        if (carried == null) {
+          // Left behind by a change that cannot be followed.
+          _runsDue = true;
+          return;
+        }
+        _runs = carried;
+        _log.forget(batch.version);
+        if (batch.version != _version) {
+          // Not the latest text: the colours of that are asked for next.
           _runsDue = true;
         }
+        notifyListeners();
+        for (final (version, stamped) in _unseen) {
+          if (version <= batch.version) {
+            EditorTiming.since('kanso.freshRuns', stamped);
+          }
+        }
+        _unseen.removeWhere((entry) => entry.$1 <= batch.version);
       },
     );
     if (_runsDue) {
