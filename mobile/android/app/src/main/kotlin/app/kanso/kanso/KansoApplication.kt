@@ -1,6 +1,7 @@
 package app.kanso.kanso
 
 import android.app.Application
+import app.kanso.kanso_lock.RustAnswer as LockAnswer
 
 /**
  * Sets the library up as the process starts: the Keystore's storage, the
@@ -15,5 +16,7 @@ class KansoApplication : Application() {
         KansoSecrets.attach(this)
         System.loadLibrary(KansoNative.LIBRARY)
         KansoNative.init(this)
+        // The plugin is a library and cannot see KansoNative: hand it the call.
+        LockAnswer.install { ticket, status, secret -> KansoNative.biometricAnswer(ticket, status, secret) }
     }
 }
