@@ -17,7 +17,8 @@ use crate::builtin_themes;
 use crate::errors::KansoError;
 use crate::library::{Inner, Library};
 use crate::model::{
-    BuiltinTheme, DiagramKind, PaletteDto, Range16, SpanRow, StyledRun, SvgRow, ThemeTokens,
+    BuiltinTheme, DiagramKind, PaletteDto, PreviewOptions, Range16, SpanRow, StyledRun, SvgRow,
+    ThemeTokens,
 };
 use crate::theme_tokens;
 
@@ -28,31 +29,11 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    /// A note as a standalone HTML page in `palette`'s colors, its math and
-    /// diagrams drawn and its images inlined. [`KansoError::Locked`] while
-    /// the note is locked and closed.
+    /// A note as a standalone HTML page in `palette`'s colors, for the app's
+    /// WebView: see [`Renderer::preview_html_with`], with the default
+    /// options. [`KansoError::Locked`] while the note is locked and closed.
     pub fn preview_html(&self, id: &str, palette: PaletteDto) -> Result<String, KansoError> {
-        guard(|| {
-            let library = Library {
-                inner: self.inner.clone(),
-            };
-            let (note, text) = library.readable_text(id)?.ok_or(KansoError::Locked)?;
-            let store = &self.inner.store;
-            let attachments = |file: &str| {
-                store
-                    .attachment(file)
-                    .ok()
-                    .flatten()
-                    .map(|(content_type, blob)| (content_type, blob.data))
-            };
-            Ok(html::page_with(
-                &note.title,
-                &text,
-                &palette_of(palette),
-                &attachments,
-                &html::PageOptions::default(),
-            ))
-        })
+        self.preview_html_with(id, palette, PreviewOptions::default())
     }
 
     /// The runs of `text` between `start` and `end` (UTF-16 units) that the
