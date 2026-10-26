@@ -4,7 +4,7 @@
  * must be left alone (modifiers, IME composition), caret reporting, and the
  * coloured layer mirroring the text exactly.
  */
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import fc from "fast-check";
 import { useState } from "react";
@@ -220,6 +220,15 @@ describe("Editor", () => {
       expect(layer(container).querySelector(".tone-strong")).toHaveTextContent("**b**");
       expect(layer(container).querySelector(".tone-tag")).toHaveTextContent("#tag");
       expect(layer(container).querySelector(".tone-done")).not.toBeNull();
+    });
+
+    it("colours code inside a fence with a known language and still mirrors the text exactly", async () => {
+      const value = '# Code\n\n```rust\nfn main() {\n    let s = "hi"; // greet\n}\n```\n\nafter';
+      const { container } = render(<Editor value={value} onChange={() => undefined} label="Note" />);
+      await waitFor(() => expect(layer(container).querySelector(".tok-keyword")).not.toBeNull());
+      expect(layer(container).querySelector(".tok-string")).toHaveTextContent('"hi"');
+      expect(layer(container).querySelector(".tok-comment")).toHaveTextContent("// greet");
+      expect(layer(container).textContent).toBe(`${value}\n `);
     });
 
     it("follows the text as it is typed", async () => {

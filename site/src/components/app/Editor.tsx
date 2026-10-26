@@ -6,7 +6,9 @@
  */
 import { type KeyboardEvent, useLayoutEffect, useRef } from "react";
 import { type TextState, onBackspace, onEnter, onTab, onType } from "../../lib/editing";
+import { scopeClass } from "../../lib/codeHighlight";
 import { highlight } from "../../lib/markdown";
+import { useHighlighter } from "./useHighlighter";
 
 export interface Caret {
   readonly line: number;
@@ -68,6 +70,7 @@ export function Editor({ value, onChange, onCaret, label }: EditorProps) {
     else if (event.key.length === 1) apply(onType(state, event.key), event);
   };
 
+  useHighlighter(/^\s*(```|~~~)/m.test(value));
   const lines = highlight(value);
 
   return (
@@ -76,7 +79,7 @@ export function Editor({ value, onChange, onCaret, label }: EditorProps) {
         {lines.map((spans, i) => (
           <span key={i}>
             {spans.map((span, k) => (
-              <span key={k} className={span.tone === "plain" ? undefined : `tone-${span.tone}`}>
+              <span key={k} className={span.scope ? scopeClass(span.scope) : span.tone === "plain" ? undefined : `tone-${span.tone}`}>
                 {span.text}
               </span>
             ))}

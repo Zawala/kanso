@@ -187,6 +187,17 @@ Claude Code, Claude Desktop, Codex, Cursor, VS Code, Gemini CLI, Windsurf, Zed a
 
 Kanso is free software under the AGPL-3.0. It's written in Rust and drawn by your graphics card, with no web browser hiding inside.
 
+Notes stay plain Markdown files, so reading one back is this small:
+
+\`\`\`rust
+// A note is just text on disk.
+fn read_note(path: &Path) -> io::Result<String> {
+    let text = fs::read_to_string(path)?;
+    println!("{} words", text.split_whitespace().count());
+    Ok(text)
+}
+\`\`\`
+
 Read the code, open an issue, send a pull request: [github.com/iamngoni/kanso](https://github.com/iamngoni/kanso).`,
   },
   {

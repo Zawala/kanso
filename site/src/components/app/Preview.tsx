@@ -5,7 +5,9 @@
  */
 import { Check, Copy } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { languageFor, scopeClass, tokenize } from "../../lib/codeHighlight";
 import { type Block, type Inline, parse } from "../../lib/markdown";
+import { useHighlighter } from "./useHighlighter";
 
 export interface PreviewProps {
   source: string;
@@ -98,6 +100,7 @@ function BlockView({ block, onToggleTask, onOpenWiki }: { block: Block } & Omit<
 
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const [copied, setCopied] = useState(false);
+  useHighlighter(languageFor(lang) !== null);
   const copy = () => {
     navigator.clipboard?.writeText(code).then(
       () => {
@@ -109,8 +112,15 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   };
   return (
     <div className="group relative">
-      <pre>
-        <code>{code}</code>
+      {/* Room above the code for the language label, so it never sits on the first line. */}
+      <pre className={lang ? "pt-[2.1em]" : undefined}>
+        <code>
+          {tokenize(code, lang).map((token, i) => (
+            <span key={i} className={scopeClass(token.scope)}>
+              {token.text}
+            </span>
+          ))}
+        </code>
       </pre>
       <div className="absolute top-1.5 right-1.5 flex items-center gap-2 font-[family-name:var(--font-ui)] text-[11px] text-fg-3">
         {lang && <span>{lang}</span>}
