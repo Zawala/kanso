@@ -13,6 +13,7 @@ import 'package:kanso/core/models/data/library_index_status.dart';
 import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/models/repos/abs/haptics_repository.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
+import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/note/models/data/note_screen_status.dart';
@@ -21,6 +22,7 @@ import 'package:kanso/note_list/models/data/note_list_status.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/models/data/search_status.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
+import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 
 import 'close_bloc_later.dart';
 import 'fixture_library_repository.dart';
@@ -54,6 +56,8 @@ class BrowseBlocs {
     this.history,
     this.sync,
     this.syncRepository,
+    this.listNavigation,
+    this.libraryPane,
   );
 
   /// The mock library (see [FixtureLibraryRepository]).
@@ -61,6 +65,8 @@ class BrowseBlocs {
   final LibraryIndexBloc index;
   final NavigationHistoryBloc history;
   final SyncStatusBloc sync;
+  final ListNavigationBloc listNavigation;
+  final LibraryPaneBloc libraryPane;
   final FixtureSyncRepository syncRepository;
   final FixtureRendererRepository renderer = FixtureRendererRepository();
   final RecordingHaptics haptics = RecordingHaptics();
@@ -86,7 +92,19 @@ class BrowseBlocs {
     if (sync.state.status == null) {
       await sync.stream.firstWhere((state) => state.status != null);
     }
-    return BrowseBlocs._(fixture, index, history, sync, account);
+    final listNavigation = ListNavigationBloc(fixture);
+    final libraryPane = LibraryPaneBloc();
+    closeBlocLater(listNavigation);
+    closeBlocLater(libraryPane);
+    return BrowseBlocs._(
+      fixture,
+      index,
+      history,
+      sync,
+      account,
+      listNavigation,
+      libraryPane,
+    );
   }
 
   /// A list of [place], read; or only made when [read] is false, so that it
@@ -162,6 +180,8 @@ class BrowseBlocs {
         BlocProvider<LibraryIndexBloc>.value(value: index),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
         BlocProvider<SyncStatusBloc>.value(value: sync),
+        BlocProvider<ListNavigationBloc>.value(value: listNavigation),
+        BlocProvider<LibraryPaneBloc>.value(value: libraryPane),
         if (list != null) BlocProvider<NoteListBloc>.value(value: list),
         if (note != null) BlocProvider<NoteBloc>.value(value: note),
         if (search != null) BlocProvider<SearchBloc>.value(value: search),

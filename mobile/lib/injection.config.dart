@@ -43,6 +43,7 @@ import 'core/router/kanso_router.dart' as _i388;
 import 'core/router/layout_class_notifier.dart' as _i609;
 import 'core/state/appearance/appearance_bloc.dart' as _i551;
 import 'core/state/library_index/library_index_bloc.dart' as _i861;
+import 'core/state/list_navigation/list_navigation_bloc.dart' as _i907;
 import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
 import 'core_check/state/core_check/core_check_bloc.dart' as _i226;
@@ -52,6 +53,7 @@ import 'search/state/search/search_bloc.dart' as _i696;
 import 'settings/state/about/about_bloc.dart' as _i380;
 import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
 import 'settings/state/licences/licences_bloc.dart' as _i570;
+import 'shell/state/library_pane/library_pane_bloc.dart' as _i612;
 import 'themes/state/theme_picker/theme_picker_bloc.dart' as _i149;
 
 const String _development = 'development';
@@ -67,6 +69,7 @@ extension GetItInjectableX on _i174.GetIt {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
     final coreModule = _$CoreModule();
     final appModule = _$AppModule();
+    gh.factory<_i612.LibraryPaneBloc>(() => _i612.LibraryPaneBloc());
     gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
     gh.lazySingleton<_i984.DiagnosticsRepository>(
       () => _i1062.RustDiagnosticsRepository(),
@@ -146,6 +149,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i861.LibraryIndexBloc>(
       () => _i861.LibraryIndexBloc(gh<_i38.LibraryRepository>()),
+    );
+    gh.factory<_i907.ListNavigationBloc>(
+      () => _i907.ListNavigationBloc(gh<_i38.LibraryRepository>()),
     );
     gh.factory<_i272.NavigationHistoryBloc>(
       () => _i272.NavigationHistoryBloc(gh<_i38.LibraryRepository>()),

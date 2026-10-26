@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/models/data/search_scope_kind.dart';
+import '../../../core/state/list_navigation/list_navigation_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../injection.dart';
 import '../../state/search/search_bloc.dart';
+import '../widgets/search_navigation_sync.dart';
 import '../widgets/search_pane.dart';
 import '../widgets/search_sync.dart';
 
@@ -34,17 +36,24 @@ class SearchPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider<SearchBloc>(
-      create: (_) =>
-          getIt<SearchBloc>()
-            ..add(SearchEvent.started(query, scope, notebookId)),
-      child: SearchSync(
-        query: query,
-        scope: scope,
-        notebookId: notebookId,
-        child: Scaffold(
-          resizeToAvoidBottomInset: false,
-          backgroundColor: context.colors.list,
-          body: SearchPane(initialQuery: query, openNoteId: openNoteId),
+      create: (context) {
+        // Nothing of the last results is left for the keyboard to step to.
+        context.read<ListNavigationBloc>().add(
+          const ListNavigationEvent.listShown(<String>[]),
+        );
+        return getIt<SearchBloc>()
+          ..add(SearchEvent.started(query, scope, notebookId));
+      },
+      child: SearchNavigationSync(
+        child: SearchSync(
+          query: query,
+          scope: scope,
+          notebookId: notebookId,
+          child: Scaffold(
+            resizeToAvoidBottomInset: false,
+            backgroundColor: context.colors.list,
+            body: SearchPane(initialQuery: query, openNoteId: openNoteId),
+          ),
         ),
       ),
     );

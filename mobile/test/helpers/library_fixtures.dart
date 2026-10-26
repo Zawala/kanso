@@ -505,3 +505,23 @@ NoteView mockNote({
     updatedMs: mockMs(10, 26, 9, 41),
   );
 }
+
+/// A plain note for every row of [mockRows] that is not locked, so each can
+/// be opened: the row's own title, the open note's text.
+Map<String, NoteView> readableMockNotes() => <String, NoteView>{
+  for (final row in mockRows)
+    if (!row.locked)
+      row.id: NoteView(
+        id: row.id,
+        rev: '1-${row.id}',
+        title: row.title,
+        body: mockNoteBody,
+        lock: const LockState.plain(),
+        notebookId: MockIds.kanso,
+        tags: const <String>[],
+        status: 'none',
+        pinned: false,
+        createdMs: mockMs(10, 12, 8, 5),
+        updatedMs: mockMs(10, 26, 9, 41),
+      ),
+};

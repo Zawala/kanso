@@ -18,6 +18,7 @@ import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
+import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
@@ -28,6 +29,7 @@ import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/settings/views/pages/fonts_page.dart';
 import 'package:kanso/settings/views/pages/licences_page.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
+import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/themes/views/pages/theme_picker_page.dart';
 
 import '../../helpers/browse_blocs.dart';
@@ -65,6 +67,8 @@ Future<GoRouter> _pump(
         BlocProvider<NavigationHistoryBloc>.value(value: history),
         BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
         BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
+        BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
+        BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
       ],
       child: App(router: kansoRouter),
