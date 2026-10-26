@@ -457,7 +457,7 @@ abstract class AppLocalizations {
   /// Says what happened and that no notes are lost.
   ///
   /// In en, this message translates to:
-  /// **'Your session on this phone ended. Sign in again to keep syncing; your notes stay here.'**
+  /// **'Your session on this device ended. Sign in again to keep syncing; your notes stay here.'**
   String get errorSignedOutMessage;
 
   /// Starts signing in again.
@@ -739,7 +739,7 @@ abstract class AppLocalizations {
   /// The message of the card shown when the notebooks and tags could not be read.
   ///
   /// In en, this message translates to:
-  /// **'Something went wrong reading the notebooks and tags on this phone. Try again.'**
+  /// **'Something went wrong reading the notebooks and tags on this device. Try again.'**
   String get libraryFailedMessage;
 
   /// Shown under the Notebooks heading when the library has no notebooks.
@@ -787,7 +787,7 @@ abstract class AppLocalizations {
   /// The message of the card shown when a list of notes could not be read.
   ///
   /// In en, this message translates to:
-  /// **'Something went wrong reading the notes on this phone. Try again.'**
+  /// **'Something went wrong reading the notes on this device. Try again.'**
   String get noteListFailedMessage;
 
   /// The title shown when the library has no notes.
@@ -1015,7 +1015,7 @@ abstract class AppLocalizations {
   /// What the screen of a note that is not there says.
   ///
   /// In en, this message translates to:
-  /// **'It may have been deleted, or it hasn\'t reached this phone yet.'**
+  /// **'It may have been deleted, or it hasn\'t reached this device yet.'**
   String get noteNotFoundMessage;
 
   /// The title of the card shown when a note could not be read.
@@ -1027,7 +1027,7 @@ abstract class AppLocalizations {
   /// The message of the card shown when a note could not be read.
   ///
   /// In en, this message translates to:
-  /// **'Something went wrong reading the note on this phone. Try again.'**
+  /// **'Something went wrong reading the note on this device. Try again.'**
   String get noteFailedMessage;
 
   /// What the card of a locked note says about its text.
@@ -1093,7 +1093,7 @@ abstract class AppLocalizations {
   /// The message of the card shown when a search failed.
   ///
   /// In en, this message translates to:
-  /// **'Something went wrong searching the notes on this phone. Try again.'**
+  /// **'Something went wrong searching the notes on this device. Try again.'**
   String get searchFailedMessage;
 
   /// What a screen reader says while the notes are searched.
@@ -1147,7 +1147,7 @@ abstract class AppLocalizations {
   /// Says under Sync that device backups do not hold the notes.
   ///
   /// In en, this message translates to:
-  /// **'The notes on this phone aren’t included in device backups.'**
+  /// **'The notes on this device aren’t included in device backups.'**
   String get settingsSyncBackupFooter;
 
   /// The app's version and the number of its build.
@@ -1231,13 +1231,13 @@ abstract class AppLocalizations {
   /// The title of the card that says the notes are not in device backups.
   ///
   /// In en, this message translates to:
-  /// **'Notes stay on this phone'**
+  /// **'Notes stay on this device'**
   String get backupNoticeTitle;
 
   /// Says that device backups do not hold the notes.
   ///
   /// In en, this message translates to:
-  /// **'The notes on this phone aren’t included in device backups, so losing or resetting the phone takes them with it.'**
+  /// **'The notes on this device aren’t included in device backups, so losing or resetting the device takes them with it.'**
   String get backupNoticeMessage;
 
   /// Dismisses the notice about device backups.

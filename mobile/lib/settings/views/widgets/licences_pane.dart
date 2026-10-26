@@ -106,6 +106,9 @@ class LicencesPane extends StatelessWidget {
                     child: ColoredBox(
                       color: context.groupedSurface,
                       child: ListView.separated(
+                        // The list is below the bar: the status bar's inset
+                        // is not its to add.
+                        padding: EdgeInsets.zero,
                         itemCount: packages.length,
                         separatorBuilder: (context, index) =>
                             const KansoDivider(indent: KansoSpacing.md),

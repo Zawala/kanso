@@ -71,6 +71,11 @@ use inline_glue::InlineAssist;
 
 #[path = "editor_collab.rs"]
 mod collab_glue;
+#[path = "editor_format.rs"]
+pub(crate) mod format_keys;
+#[cfg(test)]
+#[path = "editor_format_tests.rs"]
+mod format_tests;
 #[path = "ai_inline.rs"]
 pub(crate) mod inline_glue;
 #[cfg(test)]
@@ -3289,15 +3294,23 @@ impl NoteEditor {
         // Out of the Tab order while focus mode hides them.
         let tab_stop = !self.chrome_hidden();
         let button = |id: &'static str, icon: Icon, tooltip: &'static str, format: Format| {
-            Button::new(id)
+            let button = Button::new(id)
                 .ghost()
                 .small()
                 .tab_stop(tab_stop)
-                .icon(icon.text_color(colors.text_secondary))
-                .tooltip(tooltip)
-                .on_click(
-                    cx.listener(move |this, _, window, cx| this.apply_format(format, window, cx)),
-                )
+                .icon(icon.text_color(colors.text_secondary));
+            // The tooltip names the shortcut when the format has one.
+            let button = match format_keys::format_action(format) {
+                Some(action) => button.tooltip_with_action(
+                    tooltip,
+                    action.as_ref(),
+                    Some(format_keys::FORMAT_CONTEXT),
+                ),
+                None => button.tooltip(tooltip),
+            };
+            button.on_click(
+                cx.listener(move |this, _, window, cx| this.apply_format(format, window, cx)),
+            )
         };
         let separator = || {
             div()
@@ -3308,6 +3321,8 @@ impl NoteEditor {
                 .bg(colors.divider)
         };
         let view = cx.entity();
+        // The menu looks up its shortcuts from the text, where they apply.
+        let body_focus = self.body.read(cx).focus_handle(cx);
         h_flex()
             .id("format-bar")
             .flex_none()
@@ -3379,21 +3394,29 @@ impl NoteEditor {
                     .tab_stop(tab_stop)
                     .icon(Icon::new(IconName::Ellipsis).text_color(colors.text_secondary))
                     .tooltip("More formatting")
-                    .dropdown_menu(move |mut menu, _, _| {
+                    .dropdown_menu(move |menu, _, _| {
+                        let mut menu = menu.action_context(body_focus.clone());
                         for (label, format) in [
                             ("Bold", Format::Bold),
                             ("Italic", Format::Italic),
                             ("Strikethrough", Format::Strikethrough),
+                            ("Code Block", Format::CodeBlock),
+                            ("Heading 4", Format::Heading(4)),
+                            ("Heading 5", Format::Heading(5)),
+                            ("Heading 6", Format::Heading(6)),
                             ("Horizontal Rule", Format::Rule),
                         ] {
                             let view = view.clone();
-                            menu = menu.item(PopupMenuItem::new(label).on_click(
-                                move |_, window, cx| {
+                            let mut item =
+                                PopupMenuItem::new(label).on_click(move |_, window, cx| {
                                     view.update(cx, |this, cx| {
                                         this.apply_format(format, window, cx)
                                     });
-                                },
-                            ));
+                                });
+                            if let Some(action) = format_keys::format_action(format) {
+                                item = item.action(action);
+                            }
+                            menu = menu.item(item);
                         }
                         menu
                     }),
@@ -4111,7 +4134,7 @@ impl Render for NoteEditor {
             });
         }
         // The writing aids take their keys before the text editor does.
-        let source = div()
+        let source = Self::with_format_shortcuts(div(), cx)
             .flex_1()
             .h_full()
             .min_w_0()

@@ -23,7 +23,7 @@ void main() {
     final semantics = tester.ensureSemantics();
     await startApp(tester);
     final seeded = await seedLibrary();
-    await pumpUntil(tester, find.text('Weekly review'));
+    await pumpUntil(tester, inList('Weekly review'));
 
     // A note.
     await openLink(
@@ -37,9 +37,9 @@ void main() {
       tester,
       'kanso://open/notebook/${Uri.encodeComponent(seeded.garden)}',
     );
-    await pumpUntil(tester, find.text('Garden beds'));
-    expect(find.text('Seed catalogue'), findsOneWidget);
-    expect(find.text('Sprint plan'), findsNothing);
+    await pumpUntil(tester, inList('Garden beds'));
+    expect(inList('Seed catalogue'), findsOneWidget);
+    expect(inList('Sprint plan'), findsNothing);
 
     // A search, with its words in the field and its results.
     await openLink(tester, 'kanso://open/search?q=beta');

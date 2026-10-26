@@ -20,6 +20,9 @@ pub enum Format {
     Quote,
     /// Inline code, or a fenced block when the selection spans lines.
     Code,
+    /// A fenced block around the selected lines (or an empty one at the
+    /// cursor), taken away again when they are already fenced.
+    CodeBlock,
     Bold,
     Italic,
     Strikethrough,
@@ -46,6 +49,7 @@ pub fn format(format: Format, text: &str, selection: Range<usize>) -> Edit {
         Format::Task => list(text, selection, ListKind::Task),
         Format::Quote => quote(text, selection),
         Format::Code => code(text, selection),
+        Format::CodeBlock => code_block(text, selection),
         Format::Bold => wrap(text, selection, "**"),
         Format::Italic => wrap(text, selection, "_"),
         Format::Strikethrough => wrap(text, selection, "~~"),
@@ -386,6 +390,42 @@ fn code(text: &str, selection: Range<usize>) -> Edit {
     }
 }
 
+/// A fenced block around the lines the selection touches, or the fences
+/// taken off when those lines are inside them or are themselves a fenced
+/// block. On an empty line the block starts empty, with the cursor in it.
+fn code_block(text: &str, selection: Range<usize>) -> Edit {
+    let block = selected_lines(text, &selection);
+    let unfence = |before: Range<usize>, after: Range<usize>| {
+        let inner = text[before.end + 1..after.start - 1].to_owned();
+        Edit {
+            range: before.start..after.end,
+            selection: before.start..before.start + inner.len(),
+            text: inner,
+        }
+    };
+    // A selection that ends at a line's start leaves that line out, unless
+    // the line is the last one inside the fences (an empty line).
+    let whole = line_start(text, selection.start)..line_end(text, selection.end);
+    for lines in [&block, &whole] {
+        if let Some((before, after)) = fences_around(text, lines) {
+            return unfence(before, after);
+        }
+    }
+    // The fences themselves are selected, with something between them.
+    let lines: Vec<&str> = text[block.clone()].split('\n').collect();
+    if lines.len() >= 3 && is_fence(lines[0]) && is_fence(lines[lines.len() - 1]) {
+        let first_end = block.start + lines[0].len();
+        let last_start = block.end - lines[lines.len() - 1].len();
+        return unfence(block.start..first_end, last_start..block.end);
+    }
+    let inner = &text[block.clone()];
+    Edit {
+        range: block.clone(),
+        text: format!("```\n{inner}\n```"),
+        selection: block.start + 4..block.start + 4 + inner.len(),
+    }
+}
+
 /// Whether the selection is a web address, which becomes a link's target
 /// rather than its text.
 fn looks_like_url(text: &str) -> bool {
@@ -458,15 +498,19 @@ mod tests {
         }
     }
 
-    const ALL: [Format; 15] = [
+    const ALL: [Format; 19] = [
         Format::Heading(1),
         Format::Heading(2),
         Format::Heading(3),
+        Format::Heading(4),
+        Format::Heading(5),
+        Format::Heading(6),
         Format::Bulleted,
         Format::Numbered,
         Format::Task,
         Format::Quote,
         Format::Code,
+        Format::CodeBlock,
         Format::Bold,
         Format::Italic,
         Format::Strikethrough,
@@ -476,10 +520,13 @@ mod tests {
         Format::Rule,
     ];
 
-    const LINE_FORMATS: [Format; 7] = [
+    const LINE_FORMATS: [Format; 10] = [
         Format::Heading(1),
         Format::Heading(2),
         Format::Heading(3),
+        Format::Heading(4),
+        Format::Heading(5),
+        Format::Heading(6),
         Format::Bulleted,
         Format::Numbered,
         Format::Task,
@@ -510,6 +557,37 @@ mod tests {
             let selection = clamp(&text, at(a)..at(b));
             (text, selection)
         })
+    }
+
+    /// Plain lines of letters, accents, CJK and emoji (one to four bytes a
+    /// character), some empty, so edges fall at line starts and ends.
+    fn unicode() -> impl Strategy<Value = String> {
+        prop::collection::vec("[a-zé日本😀 ]{0,8}", 1..6).prop_map(|lines| lines.join("\n"))
+    }
+
+    /// A text and a selection in it, anywhere on a character boundary or at
+    /// a line's start or end.
+    fn with_edge_selection(
+        text: impl Strategy<Value = String>,
+    ) -> impl Strategy<Value = (String, Range<usize>)> {
+        (
+            text,
+            any::<prop::sample::Index>(),
+            any::<prop::sample::Index>(),
+        )
+            .prop_map(|(text, a, b)| {
+                let mut offsets: Vec<usize> = text
+                    .char_indices()
+                    .map(|(ix, _)| ix)
+                    .chain([text.len()])
+                    .collect();
+                offsets.sort_unstable();
+                let (a, b) = (
+                    offsets[a.index(offsets.len())],
+                    offsets[b.index(offsets.len())],
+                );
+                (text, a.min(b)..a.max(b))
+            })
     }
 
     fn lines(text: &str) -> Vec<&str> {
@@ -649,6 +727,50 @@ mod tests {
             }
         }
 
+        /// The shortcuts' round trip: bold, italic, strikethrough and inline
+        /// code wrap any selection (empty, at a line's edge, over several
+        /// lines, with accents, CJK or emoji) and the same format again
+        /// unwraps it, giving back the text and the selection. The wrap
+        /// keeps the same text selected, or sits the caret between the
+        /// markers when nothing was.
+        #[test]
+        fn prop_inline_shortcuts_round_trip((text, selection) in with_edge_selection(unicode()), which in 0usize..4) {
+            let format_ = [Format::Bold, Format::Italic, Format::Strikethrough, Format::Code][which];
+            let multi_line = text[selection.clone()].contains('\n');
+            // Code across lines becomes a fenced block, which has its own
+            // property below.
+            prop_assume!(!(format_ == Format::Code && multi_line));
+            let once = format(format_, &text, selection.clone());
+            let changed = once.apply(&text);
+            prop_assert_eq!(&changed[once.selection.clone()], &text[selection.clone()]);
+            prop_assert!(changed.len() > text.len());
+            let twice = format(format_, &changed, once.selection.clone());
+            prop_assert_eq!(twice.apply(&changed), text);
+            prop_assert_eq!(twice.selection, selection);
+        }
+
+        /// A line format applied twice to any multi-line selection, with
+        /// accents, CJK and emoji and blank lines among the lines, gives the
+        /// text back.
+        #[test]
+        fn prop_line_shortcuts_twice_restore((text, selection) in with_edge_selection(unicode()), which in 0..LINE_FORMATS.len()) {
+            let first = format(LINE_FORMATS[which], &text, selection.clone());
+            let changed = first.apply(&text);
+            let second = format(LINE_FORMATS[which], &changed, first.selection.clone());
+            prop_assert_eq!(second.apply(&changed), text);
+        }
+
+        /// A code block applied twice to any selection gives the text back,
+        /// and fences exactly the lines the selection touches.
+        #[test]
+        fn prop_code_block_twice_restores((text, selection) in with_edge_selection(unicode())) {
+            let once = format(Format::CodeBlock, &text, selection.clone());
+            let changed = once.apply(&text);
+            prop_assert_eq!(&changed[once.selection.clone()], &text[selected_lines(&text, &selection)]);
+            let twice = format(Format::CodeBlock, &changed, once.selection.clone());
+            prop_assert_eq!(twice.apply(&changed), text);
+        }
+
         /// Templates: the cursor or selection lands inside what was
         /// inserted, a link keeps the selected text as its label, and the
         /// template sits on lines of its own when it is a block.
@@ -750,6 +872,34 @@ mod tests {
             apply(Format::Code, "a\n```\nfn x\nfn y\n```\nb", 6..15).0,
             "a\nfn x\nfn y\nb"
         );
+    }
+
+    #[test]
+    fn shortcut_examples() {
+        // ⌘B on "hello" selected, then with nothing selected.
+        assert_eq!(
+            apply(Format::Bold, "hello", 0..5),
+            ("**hello**".into(), "hello".into())
+        );
+        let edit = format(Format::Bold, "", 0..0);
+        assert_eq!((edit.apply(""), edit.selection), ("****".into(), 2..2));
+        // ⇧⌘L on two lines.
+        assert_eq!(
+            apply(Format::Task, "one\ntwo", 0..7).0,
+            "- [ ] one\n- [ ] two"
+        );
+        // A code block around the cursor's line, empty at the cursor, and gone again.
+        assert_eq!(
+            apply(Format::CodeBlock, "a\nfn x\nb", 3..3),
+            ("a\n```\nfn x\n```\nb".into(), "fn x".into())
+        );
+        let edit = format(Format::CodeBlock, "", 0..0);
+        assert_eq!(
+            (edit.apply(""), edit.selection),
+            ("```\n\n```".into(), 4..4)
+        );
+        assert_eq!(apply(Format::CodeBlock, "```\nfn x\n```", 0..12).0, "fn x");
+        assert_eq!(apply(Format::Heading(6), "word", 0..0).0, "###### word");
     }
 
     #[test]

@@ -24,13 +24,19 @@ import 'fixture_library_repository.dart';
 import 'register_page_blocs.dart';
 import 'seeded_appearance_bloc.dart';
 
+/// The boundary around the app that a picture is taken of.
+const Key appBoundaryKey = ValueKey<String>('app-boundary');
+
 /// The app on the mock library, and what a test can look at of it.
 class BrowseApp {
-  BrowseApp(this.router, this.blocs, this.appearance);
+  BrowseApp(this.router, this.blocs, this.appearance, this.layoutClass);
 
   final GoRouter router;
   final BrowseBlocs blocs;
   final AppearanceBloc appearance;
+
+  /// The layout class the router lays its pages out for.
+  final LayoutClassNotifier layoutClass;
 
   /// Where the router is, as an address.
   String get where => router.routerDelegate.currentConfiguration.uri.toString();
@@ -39,45 +45,71 @@ class BrowseApp {
 /// Pumps the whole app, as `main` builds it but over the mock library, open
 /// at [at] in a window of [size], light. [library] is the library to use
 /// when a test has made one.
+///
+/// [devicePixelRatio] and [safeArea] (in logical pixels) are the window's
+/// density and the status bar and home indicator the platform reports.
+/// [tabletDevice] says whether the display is a tablet's, which a narrow
+/// window of one (a Split View half) is not enough to tell; it defaults to
+/// what the window's own size says. [backupNotice] is the notice's BLoC; it
+/// defaults to one that is not shown. The app is inside a repaint boundary,
+/// [appBoundaryKey], to take a picture of.
 Future<BrowseApp> pumpBrowseApp(
   WidgetTester tester,
   Size size, {
   String at = '/notes',
   AppearanceState appearance = const AppearanceState(),
   FixtureLibraryRepository? library,
+  double devicePixelRatio = 1,
+  EdgeInsets safeArea = EdgeInsets.zero,
+  bool? tabletDevice,
+  BackupNoticeBloc? backupNotice,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start(library);
   registerPageBlocs(blocs.library);
+  final padding = FakeViewPadding(
+    left: safeArea.left * devicePixelRatio,
+    top: safeArea.top * devicePixelRatio,
+    right: safeArea.right * devicePixelRatio,
+    bottom: safeArea.bottom * devicePixelRatio,
+  );
   tester.view
-    ..physicalSize = size
-    ..devicePixelRatio = 1;
+    ..devicePixelRatio = devicePixelRatio
+    ..physicalSize = size * devicePixelRatio
+    ..padding = padding
+    ..viewPadding = padding;
   addTearDown(tester.view.reset);
   final kansoRouter = KansoRouter(
     const DesignGalleryAccess(available: false),
     LayoutClassNotifier.starting(
       KansoLayout.classFor(size),
-      tabletDevice: size.shortestSide >= KansoLayout.tabletShortestSide,
+      tabletDevice:
+          tabletDevice ?? size.shortestSide >= KansoLayout.tabletShortestSide,
     ),
   );
   final router = kansoRouter.config;
   addTearDown(router.dispose);
   router.go(at);
   await tester.pumpWidget(
-    MultiBlocProvider(
-      providers: <BlocProvider<dynamic>>[
-        BlocProvider<AppearanceBloc>.value(value: bloc),
-        BlocProvider<NavigationHistoryBloc>.value(value: blocs.history),
-        BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
-        BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
-        BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
-        BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
-        BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
-      ],
-      child: App(router: kansoRouter),
+    RepaintBoundary(
+      key: appBoundaryKey,
+      child: MultiBlocProvider(
+        providers: <BlocProvider<dynamic>>[
+          BlocProvider<AppearanceBloc>.value(value: bloc),
+          BlocProvider<NavigationHistoryBloc>.value(value: blocs.history),
+          BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
+          BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
+          BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
+          BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
+          BlocProvider<BackupNoticeBloc>.value(
+            value: backupNotice ?? hiddenBackupNoticeBloc(),
+          ),
+        ],
+        child: App(router: kansoRouter),
+      ),
     ),
   );
   await tester.pumpAndSettle();
-  return BrowseApp(router, blocs, bloc);
+  return BrowseApp(router, blocs, bloc, kansoRouter.layoutClass);
 }

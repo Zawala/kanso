@@ -97,7 +97,42 @@ pinned note, a locked one):
 flutter test integration_test/browse_flow_test.dart -d <simulator or emulator>
 ```
 
-CI runs them on an iPhone simulator and an Android 10 emulator. The Android job
+### On tablets
+
+The flows are written for every layout class (see below): where the library is
+a pane there is no drawer to open, where the note is beside its list there is
+no page to go back from, and search is the field at the top of the library
+rather than a button in the list's bar. `helpers/flow_driver.dart` has the
+helpers (`inList`, `leaveNote`, `closeLibrary`, `openSearch`) that do the right
+thing in each. `--dart-define=KANSO_ORIENTATION=portrait` or `landscape` turns
+the device first (`SystemChrome.setPreferredOrientations`) and waits until the
+window is that way round; without it the device keeps its own.
+
+```sh
+# An iPad simulator (boot it first: xcrun simctl boot <udid>)
+xcrun simctl list devices available | grep iPad
+flutter test integration_test/browse_flow_test.dart \
+  -d <iPad simulator udid> --dart-define=KANSO_ORIENTATION=landscape
+
+# A Pixel Tablet emulator (the AVD profile `pixel_tablet`, 2560x1600)
+flutter test integration_test/browse_flow_test.dart \
+  -d emulator-5556 --dart-define=KANSO_ORIENTATION=landscape
+```
+
+An iPad in portrait lays the app out in two panes (the list and the note),
+in landscape in three; a Pixel Tablet is three panes in landscape (its natural
+way round, 1280 x 800 dp) and two in portrait. On an Android emulator the flows
+turn the screen themselves; set it first with
+`adb shell settings put system accelerometer_rotation 0` and
+`adb shell settings put system user_rotation 1` (portrait; 0 is landscape).
+An iPad simulator cannot be turned from a script, and iPadOS ignores what an
+app asks for while it runs in a window, so there the flow gives the window the
+turned size (`tester.view.physicalSize`) and prints that it did: the panes
+and the flow are those of a turned iPad, the screen is not. Turn the
+simulator by hand (Device > Rotate Left) and the flow runs on the real turn.
+
+CI runs them on an iPhone simulator and an Android 10 emulator, and again on an
+iPad simulator and a Pixel Tablet emulator in both orientations. The Android job
 then runs `scripts/mobile-backup-check.sh`, which asks the installed package
 (`dumpsys package`) and fails if its flags list `ALLOW_BACKUP`.
 
@@ -223,6 +258,42 @@ the screens that have been built were removed with them; the approved images are
 in the history.
 The components the screens are made of (`lib/core/views/widgets/`) are the
 ones the app uses.
+
+## Windows and the viewport matrix
+
+The panes the app shows come from the size of the window (`KansoLayout`):
+one below 740 logical pixels wide or when the shortest side is under 600 (a
+phone, even turned), two from 740, three from 1020. A tablet's window changes
+with rotation, Split View, Slide Over and Stage Manager, so the tests use a
+small, explicit set of windows, `KansoViewport` in
+`test/helpers/kanso_viewport.dart`. Each is a size a real device reports, its
+density and safe area, and the layout it must get; `kanso_viewport_test.dart`
+checks that against `KansoLayout.classFor`, so the table cannot drift from the
+code.
+
+| Viewport | Size (logical px) | Density | Panes | Source |
+| --- | --- | --- | --- | --- |
+| `phone` | 393 x 852 | 3 | one | iPhone 17 (Apple HIG device sizes) |
+| `iPadPortrait` | 820 x 1180 | 2 | two | iPad 10th gen, iPad Air 11-inch |
+| `iPadLandscape` | 1180 x 820 | 2 | three | the same, turned |
+| `iPad13Portrait` | 1032 x 1376 | 2 | three | iPad Pro 13-inch (M4, M5) |
+| `androidTablet` | 1280 x 800 | 2 | three | Pixel Tablet, 2560 x 1600 px at xhdpi |
+| `androidTabletPortrait` | 800 x 1280 | 2 | two | the same, turned |
+| `splitViewTwoThirds` | 800 x 820 | 2 | two | iPad 11-inch landscape, two thirds |
+| `splitViewHalf` | 590 x 820 | 2 | one | the same, half |
+| `slideOver` | 375 x 820 | 2 | one | Slide Over, the width of an iPhone |
+
+`test/shell/views/widgets/viewport_goldens_test.dart` draws the whole app (its
+router, shell and panes, on the mock library) at `iPadPortrait`,
+`iPadLandscape` and `androidTablet`, light and dark: the library as a drawer, a
+list loading, empty, failed, choosing, its options and the move sheet and a
+swipe; a note open, locked, not found, failed and loading; a search idle, with
+results, none, failed, loading and finding a locked note; settings, fonts,
+themes, licences and the backup notice. The same file draws the licences on a
+phone, which had no picture. `viewport_resize_test.dart` walks a window through
+the table (landscape, two thirds, half, Slide Over and back; a turn of an iPad)
+and checks that the layout class follows, the open note, the list's scroll and
+the search stay, the settings sheet fits every window, and nothing overflows.
 
 ## Golden images
 

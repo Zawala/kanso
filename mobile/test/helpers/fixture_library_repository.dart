@@ -51,6 +51,18 @@ class FixtureLibraryRepository implements LibraryRepository {
   /// When set, `search` waits for it: a search that is still running.
   Completer<void>? searchGate;
 
+  /// When set, `note` waits for it: a note that is still loading.
+  Completer<void>? noteGate;
+
+  /// When set, `note` fails with it for every note.
+  ApplicationError? noteFailure;
+
+  /// When set, `notebooks` waits for it: a library that is still loading.
+  Completer<void>? notebooksGate;
+
+  /// When set, `notebooks` fails with it: a library that cannot be read.
+  ApplicationError? notebooksFailure;
+
   final List<ListQuery> listQueries = <ListQuery>[];
   final List<(List<String>, NoteChange)> changesMade =
       <(List<String>, NoteChange)>[];
@@ -82,6 +94,11 @@ class FixtureLibraryRepository implements LibraryRepository {
 
   @override
   Future<Either<ApplicationError, NoteView>> note(String id) async {
+    await noteGate?.future;
+    final failure = noteFailure;
+    if (failure != null) {
+      return Left<ApplicationError, NoteView>(failure);
+    }
     final note = notes[id];
     return note == null
         ? const Left<ApplicationError, NoteView>(
@@ -91,8 +108,13 @@ class FixtureLibraryRepository implements LibraryRepository {
   }
 
   @override
-  Future<Either<ApplicationError, List<NotebookRow>>> notebooks() async =>
-      Right<ApplicationError, List<NotebookRow>>(notebookRows);
+  Future<Either<ApplicationError, List<NotebookRow>>> notebooks() async {
+    await notebooksGate?.future;
+    final failure = notebooksFailure;
+    return failure == null
+        ? Right<ApplicationError, List<NotebookRow>>(notebookRows)
+        : Left<ApplicationError, List<NotebookRow>>(failure);
+  }
 
   @override
   Future<Either<ApplicationError, List<TagRow>>> tags() async =>
