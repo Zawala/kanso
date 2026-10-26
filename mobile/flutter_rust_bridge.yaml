@@ -1,0 +1,22 @@
+# flutter_rust_bridge 2.13.0 (pinned in pubspec.yaml and rust/Cargo.toml).
+# Regenerate from this folder: flutter_rust_bridge_codegen generate
+# CI regenerates and fails if the committed files differ.
+rust_input: crate::api
+rust_root: rust/
+rust_output: rust/src/frb_generated.rs
+dart_output: lib/core/bridge
+dart_entrypoint_class_name: KansoCore
+# Timestamps are i64 milliseconds; there is no web build.
+type_64bit_int: true
+web: false
+# The module is declared in rust/src/lib.rs, with the attributes that keep
+# `cargo fmt` and clippy off generated code.
+add_mod_to_lib: false
+dart_format_line_length: 80
+# Freezed's output for the generated enums is made with the app's other
+# generated code (`dart run build_runner build`), not by the generator, which
+# would rewrite every generated file in the app.
+build_runner: false
+# Handles are reference-counted (`RustOpaqueMoi`): no async runtime in the
+# library, and a `&self` call needs no lock of the bridge's.
+default_rust_opaque_codec: Moi

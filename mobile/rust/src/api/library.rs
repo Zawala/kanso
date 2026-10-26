@@ -1,0 +1,84 @@
+//! A library of notes: lists, reading, writing, search, properties and
+//! query views, and the stream of changes.
+
+use crate::frb_generated::StreamSink;
+use flutter_rust_bridge::frb;
+use kanso_mobile::{
+    Hit, KansoError, Library, NewNote, NoteQuery, NoteRow, NoteView, NotebookRow, Property, Saved,
+    Table, TagRow,
+};
+
+use super::locks::KansoLocks;
+use super::renderer::KansoRenderer;
+use super::sync::KansoSync;
+
+/// An open library. Cheap to clone on the Rust side; Dart holds one.
+#[frb(opaque)]
+pub struct KansoLibrary(Library);
+
+impl KansoLibrary {
+    /// Opens (creating if needed) the library whose database file is `path`.
+    pub fn open(path: String) -> Result<KansoLibrary, KansoError> {
+        Library::open(std::path::Path::new(&path)).map(KansoLibrary)
+    }
+
+    pub fn notes(&self, query: NoteQuery) -> Result<Vec<NoteRow>, KansoError> {
+        self.0.notes(query)
+    }
+
+    pub fn note(&self, id: String) -> Result<NoteView, KansoError> {
+        self.0.note(&id)
+    }
+
+    pub fn save(&self, id: String, base_rev: String, body: String) -> Result<Saved, KansoError> {
+        self.0.save(&id, &base_rev, body)
+    }
+
+    pub fn create(&self, note: NewNote) -> Result<Saved, KansoError> {
+        self.0.create(note)
+    }
+
+    pub fn trash(&self, id: String) -> Result<(), KansoError> {
+        self.0.trash(&id)
+    }
+
+    pub fn notebooks(&self) -> Result<Vec<NotebookRow>, KansoError> {
+        self.0.notebooks()
+    }
+
+    pub fn tags(&self) -> Result<Vec<TagRow>, KansoError> {
+        self.0.tags()
+    }
+
+    pub fn search(&self, text: String, limit: u32) -> Result<Vec<Hit>, KansoError> {
+        self.0.search(&text, limit)
+    }
+
+    pub fn properties(&self, id: String) -> Result<Vec<Property>, KansoError> {
+        self.0.properties(&id)
+    }
+
+    pub fn query_view(&self, source: String, self_id: Option<String>) -> Result<Table, KansoError> {
+        self.0.query_view(&source, self_id)
+    }
+
+    /// The IDs of what changed, in batches, until Dart stops listening.
+    pub fn changes(&self, sink: StreamSink<Vec<String>>) {
+        self.0.changes(move |ids| sink.add(ids).is_ok());
+    }
+
+    #[frb(sync)]
+    pub fn locks(&self) -> KansoLocks {
+        KansoLocks::new(self.0.locks())
+    }
+
+    #[frb(sync)]
+    pub fn syncing(&self) -> KansoSync {
+        KansoSync::new(self.0.sync())
+    }
+
+    #[frb(sync)]
+    pub fn renderer(&self) -> KansoRenderer {
+        KansoRenderer::new(self.0.renderer())
+    }
+}

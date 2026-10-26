@@ -1,1 +1,5 @@
 #include "Generated.xcconfig"
+
+// The Rust library is built for Apple silicon simulators only (hook/build.dart);
+// Intel simulators are not supported. After the include, which sets its own.
+EXCLUDED_ARCHS[sdk=iphonesimulator*] = $(inherited) x86_64

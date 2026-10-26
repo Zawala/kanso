@@ -1017,6 +1017,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Empty notebook'**
   String get screenEmptyNotebook;
+
+  /// The gallery section that opens the core check.
+  ///
+  /// In en, this message translates to:
+  /// **'Library on this phone'**
+  String get designGalleryCoreTitle;
+
+  /// The gallery row that opens the core check page.
+  ///
+  /// In en, this message translates to:
+  /// **'Rust core'**
+  String get designGalleryCoreCheck;
+
+  /// The title of the core check page.
+  ///
+  /// In en, this message translates to:
+  /// **'Rust core'**
+  String get coreCheckTitle;
+
+  /// Says the library is being opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening the library…'**
+  String get coreCheckLoading;
+
+  /// The label above the core check's facts.
+  ///
+  /// In en, this message translates to:
+  /// **'Library'**
+  String get coreCheckLibrary;
+
+  /// The core check row that shows the library's version.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get coreCheckVersion;
+
+  /// The core check row that says whether the library can check a server's certificate.
+  ///
+  /// In en, this message translates to:
+  /// **'Certificates'**
+  String get coreCheckCertificates;
+
+  /// The library can check certificates.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get coreCheckCertificatesReady;
+
+  /// The library can't check certificates yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not ready'**
+  String get coreCheckCertificatesNotReady;
+
+  /// The core check row that shows how many notes the library holds.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes'**
+  String get coreCheckNotes;
+
+  /// The core check row that shows the last change the library reported.
+  ///
+  /// In en, this message translates to:
+  /// **'Last change'**
+  String get coreCheckLastChange;
+
+  /// No change has been reported yet.
+  ///
+  /// In en, this message translates to:
+  /// **'None yet'**
+  String get coreCheckNoChange;
+
+  /// How many notes the last reported change touched.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 note changed} other{{count} notes changed}}'**
+  String coreCheckChanged(int count);
+
+  /// What the core check's button does: makes a note.
+  ///
+  /// In en, this message translates to:
+  /// **'New note'**
+  String get coreCheckNewNote;
+
+  /// The label above the newest notes in the core check.
+  ///
+  /// In en, this message translates to:
+  /// **'Latest notes'**
+  String get coreCheckLatest;
+
+  /// Says the last action in the core check failed.
+  ///
+  /// In en, this message translates to:
+  /// **'That didn\'t work. Try again.'**
+  String get coreCheckActionFailed;
+
+  /// The title of the core check's error card.
+  ///
+  /// In en, this message translates to:
+  /// **'The library didn\'t open'**
+  String get coreCheckFailedTitle;
+
+  /// Says what happened, and what to do.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the notes on this phone. Try again.'**
+  String get coreCheckFailedMessage;
+
+  /// What the core check's error card button does.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get coreCheckRetry;
 }
 
 class _AppLocalizationsDelegate

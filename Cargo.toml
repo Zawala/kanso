@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "mobile/rust"]
 
 [workspace.package]
 version = "0.8.4"
@@ -23,6 +23,7 @@ kanso-render = { path = "crates/kanso-render" }
 kanso-voice = { path = "crates/kanso-voice" }
 kanso-collab = { path = "crates/kanso-collab" }
 kanso-gallery = { path = "crates/kanso-gallery" }
+kanso-mobile = { path = "crates/kanso-mobile" }
 # The provider layer: OpenAI, Anthropic, Gemini, Cohere, Bedrock and every
 # OpenAI-compatible endpoint, with streaming, tools and typed timeouts. Pinned
 # to a commit on its master.

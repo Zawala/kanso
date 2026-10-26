@@ -68,7 +68,9 @@ the hardened runtime keeps the microphone from Kanso and macOS never asks.
 
 The core the mobile app shares (`kanso-core`, `kanso-store`, `kanso-engine`,
 `kanso-render`, `kanso-collab`, `kanso-import`, `kanso-sync` and `kanso-ai`,
-the last two without their desktop features, plus `kanso-tls`) builds for
+the last two without their desktop features, plus `kanso-tls`), the facade the
+app calls (`kanso-mobile`) and the library the app loads
+(`kanso-mobile-bridge`, in `mobile/rust`) build for
 `aarch64-apple-ios`, `aarch64-apple-ios-sim`, `aarch64-linux-android`,
 `armv7-linux-androideabi` and `x86_64-linux-android`. Add the targets once
 with `rustup target add`; Android needs the NDK (`ANDROID_NDK_HOME`, else the
@@ -79,7 +81,10 @@ the C compilers and bindgen at.
 scripts/mobile-check.sh                  # cargo check for the five targets, the banned-dependency look, clippy
 scripts/mobile-test.sh ios-sim           # the tests, in a booted iPhone simulator
 scripts/mobile-test.sh android           # the tests, on the one device or emulator adb lists
-scripts/mobile-size.sh                   # the size table: iOS and Android, full and minimal, unwinding and aborting
+scripts/mobile-size.sh ios|android       # what the release app and its library weigh (builds it; --no-build measures the last build)
+scripts/mobile-artifact-check.sh ios|android <app>  # a built app has the library, its exported symbols, and (Android) the classes R8 must keep
+scripts/mobile-parity.sh                 # the mobile profile in hook/build.dart equals [profile.mobile]; both toolchain files name one channel
+scripts/mobile-background-check.sh       # the background sync entry, called from a plain C process
 ```
 
 - `mobile-test.sh` runs each crate's library and integration tests (not
@@ -94,8 +99,47 @@ scripts/mobile-size.sh                   # the size table: iOS and Android, full
 - `cargo build --profile mobile` is the phones' release build: `opt-level =
   "z"`, fat LTO, one codegen unit, and `panic = "unwind"`, so the facade
   catches a panic and returns an error. The desktop's `[profile.release]` is
-  unchanged. `crates/kanso-mobile-size` is a temporary stand-in for the
-  library, only there to measure; the mobile library replaces it.
+  unchanged. The Flutter app's hook builds the library with the same settings
+  (`mobile/hook/build.dart`, as `CARGO_PROFILE_RELEASE_*`), and
+  `scripts/mobile-parity.sh` fails when the two differ.
+- What the app weighs (`scripts/mobile-size.sh`, release build, last measured
+  with Flutter 3.44.8; MB are 10^6 bytes). The library is `kanso_mobile_bridge`
+  as the app embeds it, built with `[profile.mobile]` (symbols already
+  stripped, so `strip` saves nothing more); Zip is the library alone under
+  `zip -9`:
+
+  | Platform | Library (raw) | Library (zip) | App package | Under gzip again |
+  |---|---:|---:|---:|---:|
+  | iOS device, arm64 (`.ipa` equivalent) | 42.24 MB | 8.24 MB | 17.08 MB | not measured |
+  | Android arm64-v8a (APK) | 44.75 MB | 8.89 MB | 64.07 MB | 18.71 MB |
+
+  The library is half the iOS download and, uncompressed, more than two thirds
+  of the Android APK (which stores libraries uncompressed so Android can map
+  them; the Play Store compresses its transfers). The rest of the iOS app is
+  Flutter.framework 4.44 MB and App.framework 4.26 MB zipped; of the APK,
+  libflutter.so 11.58 MB, libapp.so 4.65 MB and assets 4.98 MB. The script
+  fails when the library zipped is over 12 MB (`KANSO_MAX_LIB_ZIP`): the bare
+  library of #93 was 8.66 MB (iOS) and 9.56 MB (Android) zipped, so more means
+  the profile stopped applying. CI (`.github/workflows/mobile.yml`) prints the
+  tables in the job summary of `build-ios` and `build-android`, for every
+  Android ABI. The earlier measurement put about three quarters of the bare library in the tree-sitter grammars; dropping some
+  on phones is a separate decision.
+- `kanso-mobile` is the facade: plain Rust with no bridge generator, tested on
+  a computer and on the simulators. `mobile/rust` (`kanso-mobile-bridge`) is
+  the library the app loads: it wraps the facade for flutter_rust_bridge and
+  defines the C entry the background jobs call, `kanso_background_sync`
+  (`src/background.rs`), and on Android the native method that hands over the
+  app's `Context` (`src/android.rs`). `mobile-background-check.sh` builds the
+  library for this computer and calls the entry from a C program
+  (`mobile/rust/tests/c_abi/main.c`), as the system's job calls it, with no
+  Dart in the process.
+- Secrets (the session, the data key) are kept by Rust in the platform's
+  store: the Keychain on iOS, the Keystore on Android through a Kotlin class
+  (`kanso_mobile::secrets::android` lists its three methods), memory on a
+  computer. The tests never touch your own Keychain.
+- The Rust library has its own `mobile/rust/rust-toolchain.toml`, which must
+  name the same channel as the root's (the native-assets build runs cargo in
+  that folder).
 - rquickjs ships no bindings for phones, so `kanso-render` builds them with
   libclang (Xcode's, or the NDK's) on iOS and Android. A bindgen setting for
   your own Mac in `BINDGEN_EXTRA_CLANG_ARGS` would be passed to the phones'

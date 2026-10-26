@@ -3,7 +3,7 @@
 //! cropped to what it really covers.
 
 use std::hash::{Hash as _, Hasher as _};
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, OnceLock};
 
 /// A number as SVG writes it: at most two decimals, no trailing zeros.
 pub fn number(value: f32) -> String {
@@ -144,35 +144,61 @@ impl RootTag {
     }
 }
 
+/// The fonts the app hands over with [`set_fonts`], read once when the font
+/// database is built.
+static EXTRA_FONTS: OnceLock<Vec<Vec<u8>>> = OnceLock::new();
+
+/// The database [`fonts`] hands out, built on first use.
+static DATABASE: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
+    Arc::new(font_database(
+        EXTRA_FONTS.get().map_or(&[][..], Vec::as_slice),
+    ))
+});
+
+/// Adds the app's own fonts (the bytes of TrueType and OpenType files) to
+/// the ones drawings are set in, so a diagram's text is set in the faces the
+/// rest of the app uses and not in whichever the phone has. Faces that don't
+/// parse are skipped. It takes effect only if it is called before the first
+/// drawing, and only once: it says whether the fonts were taken.
+// no-prop-test: hands bytes to a process-wide cell; `font_database` is tested.
+pub fn set_fonts(fonts: Vec<Vec<u8>>) -> bool {
+    LazyLock::get(&DATABASE).is_none() && EXTRA_FONTS.set(fonts).is_ok()
+}
+
 /// The fonts drawings are set in: this machine's. The font database finds
 /// none of a phone's on its own (it has no folder for Android, and looks for
 /// iOS's where Linux keeps them), so those are loaded from where the system
 /// keeps them, and the generic families are set to faces that exist there.
 /// Without that, text in a drawing would be left out, or set in whichever
-/// face came first. The app's own fonts are not here: the facade passes them
-/// in (#48, step 4).
+/// face came first. The app's own fonts come from [`set_fonts`].
 // no-prop-test: reads the machine's fonts; the drawing tests go through it.
 pub(crate) fn fonts() -> Arc<usvg::fontdb::Database> {
-    static FONTS: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
-        let mut db = usvg::fontdb::Database::new();
-        db.load_system_fonts();
-        #[cfg(target_os = "ios")]
-        {
-            db.load_fonts_dir("/System/Library/Fonts");
-            db.set_serif_family("Times New Roman");
-            db.set_sans_serif_family("Helvetica");
-            db.set_monospace_family("Courier");
-        }
-        #[cfg(target_os = "android")]
-        {
-            db.load_fonts_dir("/system/fonts");
-            db.set_serif_family("Noto Serif");
-            db.set_sans_serif_family("Roboto");
-            db.set_monospace_family("Droid Sans Mono");
-        }
-        Arc::new(db)
-    });
-    FONTS.clone()
+    DATABASE.clone()
+}
+
+/// A font database of this machine's fonts and then `extra`, the app's.
+// no-prop-test: reads the machine's fonts; the test below checks what it adds.
+fn font_database(extra: &[Vec<u8>]) -> usvg::fontdb::Database {
+    let mut db = usvg::fontdb::Database::new();
+    db.load_system_fonts();
+    #[cfg(target_os = "ios")]
+    {
+        db.load_fonts_dir("/System/Library/Fonts");
+        db.set_serif_family("Times New Roman");
+        db.set_sans_serif_family("Helvetica");
+        db.set_monospace_family("Courier");
+    }
+    #[cfg(target_os = "android")]
+    {
+        db.load_fonts_dir("/system/fonts");
+        db.set_serif_family("Noto Serif");
+        db.set_sans_serif_family("Roboto");
+        db.set_monospace_family("Droid Sans Mono");
+    }
+    for bytes in extra {
+        db.load_font_data(bytes.clone());
+    }
+    db
 }
 
 /// A flattened drawing: standalone SVG and its size in points.
@@ -313,5 +339,22 @@ mod tests {
                 prop_assert_eq!(reparsed.get(n), Some(v.as_str()));
             }
         }
+    }
+
+    /// The app's mono face, as the phones ship it.
+    const APP_FONT: &[u8] =
+        include_bytes!("../../../mobile/assets/fonts/JetBrainsMono-Regular.ttf");
+
+    // no-prop-test: one font file and one that isn't; there is nothing to vary.
+    #[test]
+    fn the_apps_fonts_join_the_machines_and_broken_ones_are_skipped() {
+        let base = font_database(&[]);
+        let with = font_database(&[APP_FONT.to_vec(), b"not a font".to_vec()]);
+        assert_eq!(with.len(), base.len() + 1);
+        assert!(with.faces().any(|face| {
+            face.families
+                .iter()
+                .any(|(name, _)| name == "JetBrains Mono")
+        }));
     }
 }
