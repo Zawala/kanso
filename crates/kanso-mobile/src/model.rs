@@ -162,6 +162,21 @@ pub enum NoteChange {
     Trash,
 }
 
+/// What a search looks in.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum SearchScope {
+    /// Titles and texts.
+    #[default]
+    All,
+    /// Titles only.
+    Titles,
+    /// Tag names (a tag, or the tags inside it). A locked note is never
+    /// found this way.
+    Tags,
+    /// One notebook's notes.
+    Notebook { id: String },
+}
+
 /// A notebook's job, which it keeps however it is renamed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NotebookRole {

@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 use common::*;
 use kanso_mobile::{
-    KansoError, ListPlace, ListQuery, LockState, NewNote, PropertyKind, Range16, SortKey,
+    KansoError, ListPlace, ListQuery, LockState, NewNote, PropertyKind, Range16, SearchScope,
+    SortKey,
 };
 use kanso_sync::MemoryServer;
 use proptest::prelude::*;
@@ -330,7 +331,7 @@ fn search_finds_words_and_says_where_they_matched() {
         "We met at the café on Tuesday. Café again.",
     );
     note(&phone.library, "Other", "nothing here");
-    let hits = phone.library.search("café", 0).unwrap();
+    let hits = phone.library.search("café", SearchScope::All, 0).unwrap();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].row.id, hit);
     // "Café" is four UTF-16 units at the start of the title.
@@ -342,11 +343,37 @@ fn search_finds_words_and_says_where_they_matched() {
         let word = String::from_utf16(&units[range.start as usize..range.end as usize]).unwrap();
         assert_eq!(word.to_lowercase(), "café");
     }
-    assert!(phone.library.search("   ", 0).unwrap().is_empty());
-    assert_eq!(phone.library.search("tuesday", 1).unwrap().len(), 1);
-    assert!(phone.library.search("zebra", 0).unwrap().is_empty());
+    assert!(
+        phone
+            .library
+            .search("   ", SearchScope::All, 0)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        phone
+            .library
+            .search("tuesday", SearchScope::All, 1)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        phone
+            .library
+            .search("zebra", SearchScope::All, 0)
+            .unwrap()
+            .is_empty()
+    );
     // A phrase and a field.
-    assert_eq!(phone.library.search("title:other", 0).unwrap().len(), 1);
+    assert_eq!(
+        phone
+            .library
+            .search("title:other", SearchScope::All, 0)
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 proptest! {

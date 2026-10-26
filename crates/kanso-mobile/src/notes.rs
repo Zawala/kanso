@@ -12,7 +12,7 @@
 use std::time::Instant;
 
 use kanso_core::model::{BOOK_COLOR_FIELD, BOOK_ICON_FIELD, TRASH_BOOK_ID};
-use kanso_core::query::{Field, Query};
+use kanso_core::query::{Clause, Field, Query};
 use kanso_core::query_view::ViewNote;
 use kanso_core::roles::{ROLE_FIELD, Role};
 use kanso_core::{DocType, Note, NoteStatus, new_id, now_ms};
@@ -29,7 +29,7 @@ use crate::matching::ranges;
 use crate::model::{
     DateField, Hit, LibraryOverview, ListPlace, ListQuery, ListShape, LockState, NewNote,
     NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, Property, PropertyKind,
-    Saved, SortKey, Table, TableRow, TagRow,
+    Saved, SearchScope, SortKey, Table, TableRow, TagRow,
 };
 
 impl Library {
@@ -312,29 +312,53 @@ impl Library {
         })
     }
 
-    /// Searches titles and texts (and the words in images) for `text`, which
-    /// may use the search language (`tag:work "two words" -status:dropped`).
-    /// The hits come with where the words matched. A locked note is found by
-    /// its title; its text isn't searched, and its snippet stays empty.
-    /// `limit` 0 is no limit.
-    pub fn search(&self, text: &str, limit: u32) -> Result<Vec<Hit>, KansoError> {
+    /// Searches `scope` for `text`, which may use the search language
+    /// (`tag:work "two words" -status:dropped`). The hits come with where
+    /// the words matched. A locked note is found by its title; its text isn't
+    /// searched, its snippet stays empty, and a search by tag or status
+    /// (typed, or the Tags scope) leaves it out. `limit` 0 is no limit.
+    ///
+    /// - `All`: titles and texts (and the words in images).
+    /// - `Titles`: the bare words must be in the title.
+    /// - `Tags`: the bare words must name a tag, or a tag it is inside
+    ///   (`work` finds `work/acme`).
+    /// - `Notebook`: as `All`, within one notebook.
+    pub fn search(
+        &self,
+        text: &str,
+        scope: SearchScope,
+        limit: u32,
+    ) -> Result<Vec<Hit>, KansoError> {
         guard(|| {
-            let query = Query::parse(text);
-            if query.is_empty() {
+            let typed = Query::parse(text);
+            if typed.is_empty() {
                 return Ok(Vec::new());
             }
+            let query = scoped(typed, &scope);
+            let by_content = query.clauses.iter().any(|clause| {
+                matches!(
+                    clause.field,
+                    Some(Field::Tag | Field::TagId | Field::Status)
+                )
+            });
             let params = SearchParams {
                 query: query.clone(),
-                limit: (limit > 0).then_some(limit as usize),
+                // A limit counts what is kept, so it comes after leaving
+                // locked notes out.
+                limit: (limit > 0 && !by_content).then_some(limit as usize),
                 ocr: true,
                 ..SearchParams::default()
             };
             let title_terms: Vec<&str> = query.terms_for(Field::Title).collect();
             let body_terms: Vec<&str> = query.terms_for(Field::Body).collect();
-            Ok(self
-                .inner
-                .store
-                .search_summaries(&params)?
+            let mut found = self.inner.store.search_summaries(&params)?;
+            if by_content {
+                found.retain(|summary| !summary.locked);
+                if limit > 0 {
+                    found.truncate(limit as usize);
+                }
+            }
+            Ok(found
                 .into_iter()
                 .map(|summary| {
                     let row = row(summary);
@@ -450,6 +474,29 @@ impl Library {
 /// The time Recent reaches back to.
 fn recent_since() -> i64 {
     now_ms() - RECENT_DAYS * DAY_MS
+}
+
+/// `query` as `scope` narrows it: the bare words of Titles are title words,
+/// those of Tags are tag names, and a notebook's search is in that notebook.
+fn scoped(mut query: Query, scope: &SearchScope) -> Query {
+    let field = match scope {
+        SearchScope::Titles => Some(Field::Title),
+        SearchScope::Tags => Some(Field::Tag),
+        SearchScope::All | SearchScope::Notebook { .. } => None,
+    };
+    if let Some(field) = field {
+        for clause in &mut query.clauses {
+            if clause.field.is_none() {
+                clause.field = Some(field);
+            }
+        }
+    }
+    if let SearchScope::Notebook { id } = scope {
+        query
+            .clauses
+            .push(Clause::field(Field::BookId, id.as_str()));
+    }
+    query
 }
 
 /// The notebooks as rows, in tree order.

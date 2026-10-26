@@ -11,7 +11,7 @@ use common::*;
 use kanso_core::model::LOCK_FIELD;
 use kanso_core::now_ms;
 use kanso_mobile::{
-    DateField, KansoError, ListPlace, ListQuery, NoteChange, NotebookRole, SortKey,
+    DateField, KansoError, ListPlace, ListQuery, NoteChange, NotebookRole, SearchScope, SortKey,
 };
 use kanso_sync::MemoryServer;
 use proptest::prelude::*;
@@ -305,5 +305,62 @@ fn notebooks_come_in_tree_order_with_their_roles_and_depth() {
         rows.iter()
             .filter(|r| r.id != templates)
             .all(|r| r.role.is_none())
+    );
+}
+
+// no-prop-test: one library, scopes read side by side.
+#[test]
+fn a_search_looks_where_its_scope_says() {
+    let (mut garden, mut named, mut texted, mut planted) =
+        (String::new(), String::new(), String::new(), String::new());
+    let phone = phone_with(&server(), |store| {
+        let archive = book(store, "Archive");
+        garden = book(store, "Garden");
+        let veg = tag(store, "veg");
+        let errand = tag(store, "errand");
+        named = raw_note(
+            store,
+            json!({"title": "Tomato plan", "body": "water the beans daily", "bookId": archive, "tags": [veg]}),
+        );
+        texted = raw_note(
+            store,
+            json!({"title": "Shopping", "body": "buy tomato seeds", "bookId": archive, "tags": [errand]}),
+        );
+        planted = raw_note(
+            store,
+            json!({"title": "Beds", "body": "tomato rows", "bookId": garden}),
+        );
+    });
+    let library = &phone.library;
+    let (named, texted, planted) = (&named, &texted, &planted);
+    let found = |text: &str, scope: SearchScope| -> BTreeSet<String> {
+        library
+            .search(text, scope, 0)
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.row.id)
+            .collect()
+    };
+    let set = |ids: &[&String]| ids.iter().map(|id| (*id).clone()).collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        found("tomato", SearchScope::All),
+        set(&[named, texted, planted])
+    );
+    assert_eq!(found("tomato", SearchScope::Titles), set(&[named]));
+    assert_eq!(
+        found("tomato", SearchScope::Notebook { id: garden.clone() }),
+        set(&[planted])
+    );
+    assert_eq!(found("veg", SearchScope::Tags), set(&[named]));
+    assert!(found("tomato", SearchScope::Tags).is_empty());
+    // The matches follow the scope: titles only light up in the title.
+    let hit = &library.search("tomato", SearchScope::Titles, 0).unwrap()[0];
+    assert!(!hit.title_ranges.is_empty());
+    assert!(hit.snippet_ranges.is_empty());
+    // A limit counts what is kept.
+    assert_eq!(
+        library.search("tomato", SearchScope::All, 2).unwrap().len(),
+        2
     );
 }

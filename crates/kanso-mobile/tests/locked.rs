@@ -19,7 +19,8 @@ use std::time::{Duration, Instant};
 use common::*;
 use kanso_engine::lock::AUTO_LOCK;
 use kanso_mobile::{
-    KansoError, ListPlace, ListQuery, LockEvent, NoteChange, NoteRow, PaletteDto, Renderer, SortKey,
+    KansoError, ListPlace, ListQuery, LockEvent, NoteChange, NoteRow, PaletteDto, Renderer,
+    SearchScope, SortKey,
 };
 use proptest::prelude::*;
 
@@ -94,6 +95,7 @@ enum Op {
     /// pinned only, which sort.
     List(usize, bool, bool, usize),
     Change(usize, usize),
+    SearchIn(usize, usize),
 }
 
 fn ops() -> impl Strategy<Value = Vec<Op>> {
@@ -120,6 +122,7 @@ fn ops() -> impl Strategy<Value = Vec<Op>> {
             4 => (0..6usize, any::<bool>(), any::<bool>(), 0..3usize)
                 .prop_map(|(p, s, o, k)| Op::List(p, s, o, k)),
             3 => (index.clone(), 0..3usize).prop_map(|(i, k)| Op::Change(i, k)),
+            3 => (0..4usize, 0..5usize).prop_map(|(s, w)| Op::SearchIn(s, w)),
         ],
         1..24,
     )
@@ -188,14 +191,14 @@ proptest! {
                     returned.push(format!("{view:?}"));
                 }
                 Op::Search(i) => {
-                    let hits = library.search(&marker(*i), 0).unwrap();
+                    let hits = library.search(&marker(*i), SearchScope::All, 0).unwrap();
                     if !locked[*i] && !trashed[*i] {
                         prop_assert!(hits.iter().any(|h| h.row.id == ids[*i]), "a plain note is found");
                     }
                     returned.push(format!("{hits:?}"));
                 }
                 Op::SearchWord => {
-                    returned.push(format!("{:?}", library.search("SECRET MARKER plan", 0).unwrap()));
+                    returned.push(format!("{:?}", library.search("SECRET MARKER plan", SearchScope::All, 0).unwrap()));
                 }
                 Op::Properties(i) => {
                     let props = library.properties(&ids[*i]).unwrap();
@@ -291,6 +294,30 @@ proptest! {
                         trashed[*i] = true;
                     }
                     returned.push(format!("{written}"));
+                }
+                Op::SearchIn(scope, word) => {
+                    let notebooks = library.notebooks().unwrap();
+                    let scope = match scope {
+                        0 => SearchScope::All,
+                        1 => SearchScope::Titles,
+                        2 => SearchScope::Tags,
+                        _ => SearchScope::Notebook { id: notebooks.first().unwrap().id.clone() },
+                    };
+                    let word = ["SECRET", "TAGMARK0000", "Note", "status:none", "tag:TAGMARK0001"][*word];
+                    let by_content = matches!(scope, SearchScope::Tags)
+                        || word.starts_with("status:")
+                        || word.starts_with("tag:");
+                    let hits = library.search(word, scope.clone(), 0).unwrap();
+                    let rows: Vec<NoteRow> = hits.iter().map(|h| h.row.clone()).collect();
+                    check_rows(&rows, &ids, &locked)?;
+                    if by_content {
+                        for row in &rows {
+                            if let Some(i) = ids.iter().position(|id| *id == row.id) {
+                                prop_assert!(!locked[i], "a locked note found by its tags or status: {:?}", row);
+                            }
+                        }
+                    }
+                    returned.push(format!("{hits:?}"));
                 }
                 Op::Create => {
                     let saved = library
