@@ -710,6 +710,30 @@
   "@noteListChangeLocked": {
     "description": "The line shown when notes could not be moved into or out of a locked notebook."
   },
+  "libraryNewNotebook": "New notebook",
+  "@libraryNewNotebook": {
+    "description": "What the add button of the notebooks header does."
+  },
+  "newNotebookTitle": "New notebook",
+  "@newNotebookTitle": {
+    "description": "The title of the sheet that makes a notebook."
+  },
+  "newNotebookNameHint": "Name",
+  "@newNotebookNameHint": {
+    "description": "The hint, and the label, of the field for a new notebook's name."
+  },
+  "newNotebookCreate": "Create",
+  "@newNotebookCreate": {
+    "description": "The button that makes the notebook."
+  },
+  "newNotebookInvalid": "Give the notebook a name.",
+  "@newNotebookInvalid": {
+    "description": "The line shown when a new notebook's name is empty or not accepted."
+  },
+  "newNotebookFailed": "The notebook couldn't be made. Try again.",
+  "@newNotebookFailed": {
+    "description": "The line shown when a notebook could not be made."
+  },
   "noteListNewNote": "New note",
   "@noteListNewNote": {
     "description": "What the add button of the note list does."

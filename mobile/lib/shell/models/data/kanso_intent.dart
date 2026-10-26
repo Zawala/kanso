@@ -54,6 +54,11 @@ class NewNoteIntent extends KansoIntent {
   const NewNoteIntent();
 }
 
+/// Make a new notebook: asks for its name.
+class NewNotebookIntent extends KansoIntent {
+  const NewNotebookIntent();
+}
+
 /// Show the open note as text to edit.
 class EditNoteIntent extends KansoIntent {
   const EditNoteIntent();

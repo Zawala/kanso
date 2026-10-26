@@ -1102,6 +1102,42 @@ abstract class AppLocalizations {
   /// **'Locked notebooks can\'t take or give up notes here yet.'**
   String get noteListChangeLocked;
 
+  /// What the add button of the notebooks header does.
+  ///
+  /// In en, this message translates to:
+  /// **'New notebook'**
+  String get libraryNewNotebook;
+
+  /// The title of the sheet that makes a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'New notebook'**
+  String get newNotebookTitle;
+
+  /// The hint, and the label, of the field for a new notebook's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get newNotebookNameHint;
+
+  /// The button that makes the notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get newNotebookCreate;
+
+  /// The line shown when a new notebook's name is empty or not accepted.
+  ///
+  /// In en, this message translates to:
+  /// **'Give the notebook a name.'**
+  String get newNotebookInvalid;
+
+  /// The line shown when a notebook could not be made.
+  ///
+  /// In en, this message translates to:
+  /// **'The notebook couldn\'t be made. Try again.'**
+  String get newNotebookFailed;
+
   /// What the add button of the note list does.
   ///
   /// In en, this message translates to:

@@ -168,12 +168,16 @@ class FixtureLibraryRepository implements LibraryRepository {
   /// to the notebooks, otherwise.
   Either<ApplicationError, NotebookRow>? createNotebookResult;
 
+  /// When set, `createNotebook` waits for it: a notebook still being made.
+  Completer<void>? notebookGate;
+
   @override
   Future<Either<ApplicationError, NotebookRow>> createNotebook(
     String name, {
     String? parentId,
   }) async {
     notebooksCreated.add((name, parentId));
+    await notebookGate?.future;
     final fixed = createNotebookResult;
     if (fixed != null) {
       return fixed;

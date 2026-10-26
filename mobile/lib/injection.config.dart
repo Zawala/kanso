@@ -52,6 +52,7 @@ import 'editor/models/repos/impl/rust_editor_repository.dart' as _i606;
 import 'editor/models/repos/impl/url_launcher_web_link_repository.dart'
     as _i635;
 import 'editor/state/editor/editor_bloc.dart' as _i964;
+import 'library/state/new_notebook/new_notebook_bloc.dart' as _i991;
 import 'note/models/repos/abs/note_place_repository.dart' as _i930;
 import 'note/models/repos/impl/memory_note_place_repository.dart' as _i503;
 import 'note/state/note/note_bloc.dart' as _i618;
@@ -179,6 +180,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i272.NavigationHistoryBloc>(
       () => _i272.NavigationHistoryBloc(gh<_i38.LibraryRepository>()),
+    );
+    gh.factory<_i991.NewNotebookBloc>(
+      () => _i991.NewNotebookBloc(gh<_i38.LibraryRepository>()),
     );
     gh.factory<_i696.SearchBloc>(
       () => _i696.SearchBloc(gh<_i38.LibraryRepository>()),

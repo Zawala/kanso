@@ -26,10 +26,11 @@ void main() {
           PreviousNoteIntent,
           PinNoteIntent,
           NewNoteIntent,
+          NewNotebookIntent,
           EditNoteIntent,
           PreviewNoteIntent,
         });
-        expect(bindings, hasLength(11));
+        expect(bindings, hasLength(12));
       }
     });
 
@@ -74,6 +75,8 @@ void main() {
       expect(bindings[PinNoteIntent]!.shift, isTrue);
       expect(bindings[NewNoteIntent]!.trigger, LogicalKeyboardKey.keyN);
       expect(bindings[NewNoteIntent]!.shift, isFalse);
+      expect(bindings[NewNotebookIntent]!.trigger, LogicalKeyboardKey.keyN);
+      expect(bindings[NewNotebookIntent]!.shift, isTrue);
       expect(bindings[EditNoteIntent]!.trigger, LogicalKeyboardKey.digit1);
       expect(bindings[PreviewNoteIntent]!.trigger, LogicalKeyboardKey.digit3);
     });

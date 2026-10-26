@@ -562,6 +562,24 @@ class AppLocalizationsEn extends AppLocalizations {
       'Locked notebooks can\'t take or give up notes here yet.';
 
   @override
+  String get libraryNewNotebook => 'New notebook';
+
+  @override
+  String get newNotebookTitle => 'New notebook';
+
+  @override
+  String get newNotebookNameHint => 'Name';
+
+  @override
+  String get newNotebookCreate => 'Create';
+
+  @override
+  String get newNotebookInvalid => 'Give the notebook a name.';
+
+  @override
+  String get newNotebookFailed => 'The notebook couldn\'t be made. Try again.';
+
+  @override
   String get noteListNewNote => 'New note';
 
   @override

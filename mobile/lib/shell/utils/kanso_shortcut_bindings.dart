@@ -19,6 +19,7 @@ import '../models/data/kanso_intent.dart';
 /// | secondary + option + down and up | the next and the previous note |
 /// | secondary + shift + P | pin or unpin the open note |
 /// | secondary + N | a new note, in the place being listed |
+/// | secondary + shift + N | a new notebook |
 /// | secondary + 1 and 3 | edit the open note, and read it |
 ///
 /// Command-2 is not bound: the phone has no split view of a note.
@@ -53,6 +54,7 @@ Map<ShortcutActivator, Intent> kansoShortcutBindings(TargetPlatform platform) {
         const PreviousNoteIntent(),
     secondary(LogicalKeyboardKey.keyP, shift: true): const PinNoteIntent(),
     secondary(LogicalKeyboardKey.keyN): const NewNoteIntent(),
+    secondary(LogicalKeyboardKey.keyN, shift: true): const NewNotebookIntent(),
     secondary(LogicalKeyboardKey.digit1): const EditNoteIntent(),
     secondary(LogicalKeyboardKey.digit3): const PreviewNoteIntent(),
   };
