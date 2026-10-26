@@ -98,6 +98,7 @@ pinned note, a locked one):
 | --- | --- |
 | `browse_flow_test.dart` | All Notes under Pinned and Today; the library and a notebook's notes; a note opened and closed; a swipe pins; two notes chosen and moved; a note trashed and the Trash count; the locked note shows its title and its lock, and its text is nowhere |
 | `search_flow_test.dart` | Type a word and see what matched highlighted; narrow to titles; open a hit |
+| `new_note_flow_test.dart` | The Default notebook chosen in Settings; + makes a note in it, opened to write its title; a note made from a tag's list is tagged; ⌘N; a new notebook, and a note made in its own list |
 | `open_flow_test.dart` | `kanso://open/note/…`, `…/notebook/…` and `…/search?q=…` as the platform hands them over; a note that is not there; a locked note |
 
 ```sh
@@ -183,8 +184,8 @@ run it, the limits, and the results are in
 are `/notes`, `/pinned`, `/recent`, `/trash`, `/notebooks/:notebookId` and
 `/tags/:tagId`; each of them and `/search?q=&scope=&in=` takes `/note/:noteId`
 for a note opened from it. Ids are written with `Uri.encodeComponent` (note ids
-contain `:`). `/settings` has `/settings/theme`, `/settings/fonts?at=size` and
-`/settings/licences` inside it, and `/design` is the gallery of the design
+contain `:`). `/settings` has `/settings/notebook`, `/settings/theme`,
+`/settings/fonts?at=size` and `/settings/licences` inside it, and `/design` is the gallery of the design
 proposal, in the development environment only (a row in its library). Places
 and searches are `BrowseLocation` (`core/models/data/browse_location.dart`),
 which writes and reads these addresses.
@@ -230,15 +231,33 @@ the manifest and both files.
 
 ## Settings, themes and the first launch
 
-**Settings** (`lib/settings/`) has only rows that work: Appearance (Theme, Fonts,
-Text size), Sync (the live status, "Off" while no account is signed in, and a
+**Settings** (`lib/settings/`) has only rows that work: General (Default
+notebook), Appearance (Theme, Fonts, Text size), Sync (the live status, "Off" while no account is signed in, and a
 line that the notes are not in device backups) and About (the version, from
 `package_info_plus`; the website, opened with `url_launcher`; Licences). Licences
 is a page Kanso draws from Flutter's `LicenseRegistry`, never Flutter's own
 Material one. Settings opens as a sheet on a tablet and a page on a phone, and
 Fonts, Theme and Licences slide inside it. Everything the app does not do yet
-(default notebook, icon themes, locked notes, account, wake on change) is absent
-rather than disabled.
+(icon themes, locked notes, account, wake on change) is absent rather than
+disabled.
+
+**Default notebook** (`DefaultNotebookBloc`, `Preferences.defaultNotebookId`):
+Settings › General › Default notebook lists "First notebook" and the notebooks
+in the library's order, one checked; a locked notebook is dimmed and cannot be
+chosen. It is where a new note goes unless it is made from a notebook's own
+list; a notebook that is gone or locked reads as "First notebook".
+
+**New notes** (`NoteCreationBloc`, shared by the buttons, ⌘N and a link in a
+note to a note that is not there). Where a note goes is the Rust core's
+(`kanso_engine::list::new_note_target`, which the desktop's New Note asks too):
+the notebook of the list it is made from, else the Default notebook, else the
+first. A tag's list tags the note and Pinned pins it. On a phone the button is
+afloat over the list; where the list is beside the note it is in the list's bar
+(a tablet without a keyboard has no ⌘N). The note opens in Edit with its title
+to type; in a notebook that is locked and closed a line says to unlock it.
+**New notebook** is the + of the library's Notebooks header and
+secondary+shift+N: a sheet with a name (`NewNotebookBloc`) that makes a
+notebook at the top and opens its list.
 
 **Theme picker** (`lib/themes/`): a switch to follow the system's light and dark
 mode, with the desktop's words, and the built-in themes as cards in a row, each
@@ -256,9 +275,9 @@ iOS and Control on Android, as the desktop's: secondary+`[` and `]` back and
 forward through the notes opened, secondary+shift+F search all notes,
 secondary+`,` settings, secondary+`\` show or hide the library (the pane of
 three, or the drawer), secondary+option+down and up the next and previous note of
-the list, secondary+shift+P pin the open note. A new note, find in a note, the
-modes of a note and the command palette have none until what they act on is
-built.
+the list, secondary+shift+P pin the open note, secondary+`N` a new note in the place
+being listed and secondary+shift+`N` a new notebook. Find in a note and the
+command palette have none until what they act on is built.
 
 ## Design proposal
 

@@ -23,6 +23,7 @@ import 'package:kanso/note_list/models/data/note_list_status.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/models/data/search_status.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
+import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/shell/state/note_creation/note_creation_bloc.dart';
 
@@ -61,6 +62,7 @@ class BrowseBlocs {
     this.listNavigation,
     this.libraryPane,
     this.creation,
+    this.defaultNotebook,
   );
 
   /// The mock library (see [FixtureLibraryRepository]).
@@ -71,6 +73,7 @@ class BrowseBlocs {
   final ListNavigationBloc listNavigation;
   final LibraryPaneBloc libraryPane;
   final NoteCreationBloc creation;
+  final DefaultNotebookBloc defaultNotebook;
   final FixtureSyncRepository syncRepository;
   final FixtureRendererRepository renderer = FixtureRendererRepository();
   final RecordingHaptics haptics = RecordingHaptics();
@@ -110,6 +113,10 @@ class BrowseBlocs {
       ForgetfulPreferencesRepository(),
     );
     closeBlocLater(creation);
+    final defaultNotebook = DefaultNotebookBloc(
+      ForgetfulPreferencesRepository(),
+    );
+    closeBlocLater(defaultNotebook);
     return BrowseBlocs._(
       fixture,
       index,
@@ -119,6 +126,7 @@ class BrowseBlocs {
       listNavigation,
       libraryPane,
       creation,
+      defaultNotebook,
     );
   }
 
@@ -198,6 +206,7 @@ class BrowseBlocs {
         BlocProvider<ListNavigationBloc>.value(value: listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: libraryPane),
         BlocProvider<NoteCreationBloc>.value(value: creation),
+        BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
         if (list != null) BlocProvider<NoteListBloc>.value(value: list),
         if (note != null) BlocProvider<NoteBloc>.value(value: note),
         if (search != null) BlocProvider<SearchBloc>.value(value: search),
