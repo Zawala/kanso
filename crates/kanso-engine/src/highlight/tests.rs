@@ -666,18 +666,37 @@ fn an_error_early_in_a_note_is_not_parsed_to_its_end_for_a_range_near_it() {
     for n in 0..200 {
         text.push_str(&format!("Paragraph {n} with *emphasis*.\n\n"));
     }
-    let range = 0..text.find("Paragraph 3 ").unwrap();
+
+    // A range that is most of the parse that is made for it: the parse is
+    // kept, and typing past its end does not make it again.
+    let near = 0..text.find("Paragraph 3 ").unwrap();
     let mut highlighter = Highlighter::new();
-    let first = highlighter.spans(&text, range.clone());
-    assert_eq!(first, spans_uncapped(&text, range.clone()));
+    let first = highlighter.spans(&text, near.clone());
+    assert_eq!(first, spans_uncapped(&text, near.clone()));
     let parsed = highlighter.blocks_parsed();
-    // Typing at the very end: nothing the range reads is different, and
-    // only the broken block's parse is made again.
     let end = text.len();
     text.insert(end - 2, 'x');
-    assert_eq!(highlighter.spans(&text, range.clone()), first);
-    assert_eq!(highlighter.blocks_parsed(), parsed + 1);
-    // The cache holds the blocks before it, not the rest of the note.
+    assert_eq!(highlighter.spans(&text, near.clone()), first);
+    assert_eq!(highlighter.blocks_parsed(), parsed);
+    // The cache holds the cut parse, not the rest of the note.
+    assert!(highlighter.bytes < text.len() / 2, "{}", highlighter.bytes);
+
+    // A small range far into it: the parse is read for the range and not
+    // kept, so each keystroke makes it again (once), and gets the colors
+    // the parse to the end of the note gives.
+    let from = text.find("Paragraph 150 ").unwrap();
+    let far = from..from + 60;
+    let mut highlighter = Highlighter::new();
+    let expected = spans_uncapped(&text, far.clone());
+    assert_eq!(highlighter.spans(&text, far.clone()), expected);
+    let parsed = highlighter.blocks_parsed();
+    for _ in 0..3 {
+        // Typed at the end of the parse's reach, after the range.
+        let end = text.len();
+        text.insert(end - 2, 'y');
+        assert_eq!(highlighter.spans(&text, far.clone()), expected);
+    }
+    assert_eq!(highlighter.blocks_parsed(), parsed + 3);
     assert!(highlighter.bytes < text.len() / 2, "{}", highlighter.bytes);
 }
 

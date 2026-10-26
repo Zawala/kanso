@@ -266,14 +266,16 @@ fn normalize(text: &str, range: Range<usize>) -> Range<usize> {
 ///
 /// - it stops at the end of the block that holds the end of `range` and of
 ///   the block after that (the text beyond is not read at all), and
-/// - only what touches `range` is captured and parsed again (inline text,
-///   fenced code), though the block grammar parses all of it.
+/// - when `range` is less than half of that parse, only what touches it is
+///   captured and parsed again (inline text, fenced code), though the block
+///   grammar parses all of it; a bigger part is highlighted whole and kept
+///   in the cache, as the whole note's would be.
 ///
 /// So a note with an error in it costs a range the text from the error to
 /// the range's end, parsed once for the grammar and no more, and not the
 /// rest of the note. The spans inside `range` are those of the parse to the
-/// end of the note (tested, `spans_uncapped`); nothing is kept of this parse
-/// (what follows an error changes with every key typed after it).
+/// end of the note (tested, `spans_uncapped`). Nothing is kept of the small
+/// parts (what follows an error changes with every key typed after it).
 ///
 /// The blocks before the range are checked for an error, which is far less
 /// work than highlighting them.
@@ -314,11 +316,11 @@ fn assemble(text: &str, range: Range<usize>, blocks: &mut impl Blocks, capped: b
                 text.len()
             };
             let tail = &text[cut.start..limit];
-            let spans = if capped {
-                // What is wanted of it is the range: the rest of the parse
-                // is read for nothing.
-                let window = range.start.max(cut.start) - cut.start..range.end - cut.start;
-                blocks.spans_within(tail, at_start, window)
+            let wanted = range.start.max(cut.start) - cut.start..range.end - cut.start;
+            // A small part of a long parse is read for the range alone; one
+            // that is most of it is kept whole, to be read again.
+            let spans = if capped && wanted.len() * 2 <= tail.len() {
+                blocks.spans_within(tail, at_start, wanted)
             } else {
                 blocks.spans(tail, at_start).to_vec()
             };
