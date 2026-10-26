@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 async-channel.workspace = true
+kanso-collab.workspace = true
 kanso-core.workspace = true
 # The highlighter (`highlight`, with the grammars for fenced code) is the
 # phones' editor colors.

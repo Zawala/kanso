@@ -4660,6 +4660,7 @@ dependencies = [
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "jni",
+ "kanso-collab",
  "kanso-core",
  "kanso-engine",
  "kanso-mobile",

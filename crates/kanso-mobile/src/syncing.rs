@@ -153,6 +153,41 @@ impl SyncHandle {
         })
     }
 
+    /// The app is in front (`true`) or not. In front: sync once now, again
+    /// [`kanso_engine::sync::AFTER_EDIT`] after a local edit and every
+    /// interval after that (the desktop's default), unless a problem holds
+    /// automatic syncs back, and sync shared notes after each account sync
+    /// that worked. Behind: the timers stop, a sync this schedule started is
+    /// cancelled (what it did is kept) and every live note's room closes.
+    /// Signed out, nothing runs. One sync runs at a time.
+    pub fn set_foreground(&self, foreground: bool) {
+        let _ = guard(|| {
+            self.inner.auto.set_foreground(&self.inner, foreground);
+            if !foreground {
+                crate::sharing::SharedNotes {
+                    inner: self.inner.clone(),
+                }
+                .close_all_live();
+            }
+            Ok(())
+        });
+    }
+
+    /// [`SyncHandle::set_foreground`]'s delays, shortened: a test can't wait
+    /// for the real ones.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_schedule_for_test(
+        &self,
+        after_edit: std::time::Duration,
+        interval: std::time::Duration,
+    ) {
+        let millis = |d: std::time::Duration| i64::try_from(d.as_millis()).unwrap_or(i64::MAX);
+        self.inner.auto.set_timing(crate::schedule::Timing {
+            after_edit_ms: millis(after_edit),
+            interval_ms: millis(interval),
+        });
+    }
+
     /// Syncs now: pulls what other devices wrote and pushes what was written
     /// here. If a sync is already running, says so (`queued`) and returns.
     pub fn sync_now(&self) -> Result<SyncReportRow, KansoError> {

@@ -69,8 +69,10 @@ mod model;
 mod notes;
 pub mod passkey_bridge;
 mod renderer;
+mod schedule;
 pub mod secrets;
 mod sharing;
+mod sharing_model;
 mod stream;
 mod syncing;
 mod theme_tokens;
@@ -86,6 +88,7 @@ pub use locks::LockSession;
 pub use model::*;
 pub use renderer::Renderer;
 pub use sharing::SharedNotes;
+pub use sharing_model::*;
 pub use stream::Sink;
 pub use syncing::SyncHandle;
 
