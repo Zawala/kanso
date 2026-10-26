@@ -11,6 +11,11 @@ import android.content.Context
  * process whether the app opened for a screen or for a background job.
  * Calling it again does nothing.
  *
+ * [captureInbox] saves the drops that the share activity (or another app)
+ * left in the library's `inbox/` folder as notes in the Inbox. It needs no
+ * Flutter engine, so the share activity calls it without opening the app. It
+ * throws `UnsatisfiedLinkError` when the library in use predates it.
+ *
  * Shrinking keeps this class and its method name (`proguard-rules.pro`): the
  * library finds it by name.
  */
@@ -20,4 +25,14 @@ object KansoNative {
 
     @JvmStatic
     external fun init(context: Context)
+
+    /**
+     * Saves every finished drop in [inboxPath] into the library at
+     * [libraryPath] (its `library.db`) and returns the result as JSON,
+     * `{"notes": [...], "problems": [...], "kept": 0}` (`mobile/docs/capture.md`).
+     * Returns `null` when a path isn't usable. Blocks; call it off the main
+     * thread.
+     */
+    @JvmStatic
+    external fun captureInbox(libraryPath: String, inboxPath: String): String?
 }

@@ -5,6 +5,7 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 /**
@@ -70,6 +71,11 @@ android {
         versionName = flutter.versionName
     }
 
+    // The JVM unit tests run with TestNG (see the dependencies below).
+    testOptions {
+        unitTests.all { it.useTestNG() }
+    }
+
     buildTypes {
         release {
             // Shrinking removes what it can't see is used; the rules keep
@@ -97,6 +103,15 @@ dependencies {
     // The Rust crate rustls-platform-verifier has a Kotlin part; its version
     // comes from Cargo.lock (above).
     implementation("org.rustls:rustls-platform-verifier")
+    // The home-screen widget. Jetpack Glance, Apache-2.0.
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+
+    // JVM unit tests for the drop writer, run with TestNG (Apache-2.0) and
+    // kotlin.test's assertions (Apache-2.0); neither is part of the app.
+    testImplementation("org.testng:testng:7.10.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-testng:2.3.20")
+    // org.json for the JVM (the platform's stubs do nothing in unit tests); Apache-2.0.
+    testImplementation("com.vaadin.external.google:android-json:0.0.20131108.vaadin1")
 }
 
 flutter {
