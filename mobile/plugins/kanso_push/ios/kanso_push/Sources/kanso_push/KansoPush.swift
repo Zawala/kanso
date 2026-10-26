@@ -16,4 +16,23 @@ public enum KansoPush {
     /// ``wakeLimit`` seconds if the app has not. Left nil, a push is
     /// answered with `.noData`.
     public static var onWake: ((_ done: @escaping (UIBackgroundFetchResult) -> Void) -> Void)?
+
+    /// Answers one silent push: the app delegate's
+    /// `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)`
+    /// calls this, so it works with no Flutter engine running. Calls
+    /// ``onWake``, and `completion` exactly once, within ``wakeLimit``.
+    public static func receive(_ completion: @escaping (UIBackgroundFetchResult) -> Void) {
+        guard let wake = onWake else {
+            completion(.noData)
+            return
+        }
+        let answer = OnceAnswer(completion)
+        // Whatever the app does, the OS is answered in time.
+        DispatchQueue.main.asyncAfter(deadline: .now() + wakeLimit) {
+            answer.send(.failed)
+        }
+        wake { result in
+            answer.send(result)
+        }
+    }
 }

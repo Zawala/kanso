@@ -5,9 +5,11 @@
 import Flutter
 import UIKit
 
-/// Asks the OS for the APNs token and passes it to Dart, and answers silent
-/// pushes by calling ``KansoPush/onWake``. No notification permission is
-/// asked: a silent push shows nothing, so it needs none.
+/// Asks the OS for the APNs token and passes it to Dart. Silent pushes are
+/// not received here but by the app delegate, through ``KansoPush/receive(_:)``:
+/// a push may launch the app in the background before any Flutter engine,
+/// and so before this plugin, exists. No notification permission is asked:
+/// a silent push shows nothing, so it needs none.
 public final class KansoPushPlugin: NSObject, FlutterPlugin, KansoPushHostApi {
     private var flutterApi: KansoPushFlutterApi?
 
@@ -58,30 +60,10 @@ public final class KansoPushPlugin: NSObject, FlutterPlugin, KansoPushHostApi {
         // with anything that identifies the phone.
         NSLog("Kanso: the OS did not issue a push token (%ld).", (error as NSError).code)
     }
-
-    public func application(
-        _ application: UIApplication,
-        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
-        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
-    ) -> Bool {
-        guard let wake = KansoPush.onWake else {
-            completionHandler(.noData)
-            return true
-        }
-        let answer = OnceAnswer(completionHandler)
-        // Whatever the app does, the OS is answered in time.
-        DispatchQueue.main.asyncAfter(deadline: .now() + KansoPush.wakeLimit) {
-            answer.send(.failed)
-        }
-        wake { result in
-            answer.send(result)
-        }
-        return true
-    }
 }
 
 /// A completion handler that runs at most once, from any thread.
-private final class OnceAnswer: @unchecked Sendable {
+final class OnceAnswer: @unchecked Sendable {
     private let lock = NSLock()
     private var handler: ((UIBackgroundFetchResult) -> Void)?
 
