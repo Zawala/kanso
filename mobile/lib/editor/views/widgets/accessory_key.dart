@@ -53,11 +53,14 @@ class AccessoryKey extends StatelessWidget {
         child: Center(
           child: mark != null
               ? KansoIcon(mark, color: tint)
-              : Text(
-                  glyph!,
-                  style: context.typography.body.copyWith(
-                    color: tint,
-                    fontWeight: FontWeight.w700,
+              // The key's label says what it does; its glyph is not a word.
+              : ExcludeSemantics(
+                  child: Text(
+                    glyph!,
+                    style: context.typography.body.copyWith(
+                      color: tint,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
         ),
