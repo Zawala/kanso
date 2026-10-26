@@ -112,7 +112,8 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   };
   return (
     <div className="group relative">
-      <pre>
+      {/* Room above the code for the language label, so it never sits on the first line. */}
+      <pre className={lang ? "pt-[2.1em]" : undefined}>
         <code>
           {tokenize(code, lang).map((token, i) => (
             <span key={i} className={scopeClass(token.scope)}>
