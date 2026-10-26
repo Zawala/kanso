@@ -2,9 +2,11 @@
 //! certificates can be checked, and a panic on demand to prove panics come
 //! back as errors on a device.
 
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::Secrets;
+use crate::backup;
 use crate::boundary::guard;
 use crate::errors::KansoError;
 use crate::secrets;
@@ -15,6 +17,14 @@ const PROBE_ITEM: &str = "diagnostic-probe";
 /// The library's version, the workspace's.
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
+}
+
+/// Whether the library folder `folder` is kept out of the device's backups:
+/// `Some(true)` once a library has been opened in it on iOS (or on a Mac, for
+/// tests), `None` where the platform has no such flag (Android keeps the app
+/// out of backups in its manifest).
+pub fn backup_excluded(folder: &Path) -> Option<bool> {
+    backup::is_excluded(folder)
 }
 
 /// Panics with `message` inside the boundary: the result is

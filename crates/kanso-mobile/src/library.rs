@@ -12,6 +12,7 @@ use kanso_engine::sync::SyncState;
 use kanso_store::Store;
 use kanso_sync::{Backend, HttpBackend, KdfParams};
 
+use crate::backup;
 use crate::boundary::{guard, held};
 use crate::errors::KansoError;
 use crate::locks::LockSession;
@@ -191,6 +192,12 @@ fn open_inner(
     if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
         std::fs::create_dir_all(dir).map_err(|err| KansoError::storage(err.to_string()))?;
     }
+    // On every open, so whatever opens the library keeps it out of backups.
+    let folder = path
+        .parent()
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    backup::exclude(folder).map_err(KansoError::storage)?;
     let key = registry_key(path).map_err(|err| KansoError::storage(err.to_string()))?;
     let mut open = held(&OPEN);
     if let Some(inner) = open.get(&key).and_then(Weak::upgrade) {

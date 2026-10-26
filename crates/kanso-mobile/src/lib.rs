@@ -41,6 +41,7 @@
 //! store ([`secrets`]), never handed to the shell.
 
 pub mod background;
+mod backup;
 pub mod boundary;
 mod builtin_themes;
 pub mod diagnostics;
