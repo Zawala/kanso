@@ -65,10 +65,59 @@ opens its library at `kanso/library.db` in the application support folder
 ## Check
 
 ```sh
-dart format --output=none --set-exit-if-changed lib test
+dart format --output=none --set-exit-if-changed lib test integration_test test_driver
 flutter analyze
 flutter test
 ```
+
+## Integration tests and the scrolling check
+
+`integration_test/` runs the app on a simulator or an emulator, and
+`AppEnvironment.integration` (what `bootstrap` takes there) opens a library in
+a new temporary folder, never the person's. `facade_test.dart` calls every
+function of the bridge with the platform's own secret store; the three flows
+use the app as a person does, on a library that `helpers/seed_library.dart`
+fills through the app's repositories (two notebooks, notes with `#todo`, a
+pinned note, a locked one):
+
+| Flow | What it does |
+| --- | --- |
+| `browse_flow_test.dart` | All Notes under Pinned and Today; the library and a notebook's notes; a note opened and closed; a swipe pins; two notes chosen and moved; a note trashed and the Trash count; the locked note shows its title and its lock, and its text is nowhere |
+| `search_flow_test.dart` | Type a word and see what matched highlighted; narrow to titles; open a hit |
+| `open_flow_test.dart` | `kanso://open/note/…`, `…/notebook/…` and `…/search?q=…` as the platform hands them over; a note that is not there; a locked note |
+
+```sh
+flutter test integration_test/browse_flow_test.dart -d <simulator or emulator>
+```
+
+CI runs them on an iPhone simulator and an Android 10 emulator. The Android job
+then runs `scripts/mobile-backup-check.sh`, which asks the installed package
+(`dumpsys package`) and fails if its flags list `ALLOW_BACKUP`.
+
+`scroll_performance_test.dart` flings the note list of 2,000 notes in 8
+notebooks up and down and records every frame's build and raster time
+(`FrameTiming`) with the display's refresh rate. `lib/core/utils/frame_report.dart`
+turns them into the numbers: the 50th, 90th and 99th percentile of each thread
+and how many frames took longer than one refresh interval (8.33 ms at 120 Hz).
+In debug mode, on a simulator or emulator at 60 Hz, it only checks that the
+report was made. In **profile mode**, which is what a shipped app runs in, it
+holds the numbers to a limit: p99 build and p99 raster under the interval, and
+at most 1% of frames over it. Run it on the device, with `flutter drive`
+(`test_driver/perf_driver.dart` prints the report and writes
+`build/scroll_performance.json`):
+
+```sh
+flutter drive --profile \
+  --driver=test_driver/perf_driver.dart \
+  --target=integration_test/scroll_performance_test.dart \
+  -d <device>
+```
+
+On a 120 Hz phone (ProMotion), add `--dart-define=KANSO_MIN_REFRESH_RATE=119`:
+the run then also fails if the display ran slower, which would otherwise pass
+at the looser 60 Hz interval. A simulator or emulator cannot measure 120 Hz;
+the numbers are for a device. The iPhone's `Info.plist` has
+`CADisableMinimumFrameDurationOnPhone`, which lets Flutter draw at 120 Hz.
 
 ## The app shell
 

@@ -139,7 +139,7 @@ jobs:
             echo "::error::Localisations are out of date. Run flutter gen-l10n and commit the result."
             exit 1
           fi
-      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: dart format --output=none --set-exit-if-changed lib test integration_test test_driver
       - run: flutter analyze
       - run: flutter test
       # A failing golden leaves its comparison images in a failures folder.
@@ -266,6 +266,10 @@ jobs:
       - run: flutter test integration_test/browse_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
       - run: flutter test integration_test/search_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
       - run: flutter test integration_test/open_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
+      # Scrolling 2,000 notes. A simulator draws at 60 Hz in debug mode, so
+      # this only proves the frame report is made; the limits apply in
+      # profile mode, on a device (see mobile/README.md).
+      - run: flutter test integration_test/scroll_performance_test.dart -d "$KANSO_IOS_SIM_UDID"
 
   # The integration tests in an Android 10 (API 29) emulator. On Linux, not
   # a Mac: the Apple-silicon runners can't run an emulator (no nested
@@ -320,5 +324,6 @@ jobs:
             flutter test integration_test/browse_flow_test.dart -d emulator-5554
             flutter test integration_test/search_flow_test.dart -d emulator-5554
             flutter test integration_test/open_flow_test.dart -d emulator-5554
+            flutter test integration_test/scroll_performance_test.dart -d emulator-5554
             adb -s emulator-5554 install -r build/app/outputs/flutter-apk/app-debug.apk
             ../scripts/mobile-backup-check.sh emulator-5554

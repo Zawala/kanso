@@ -122,3 +122,44 @@ Future<SeededLibrary> seedLibrary() async {
     privateJournal: privateJournal,
   );
 }
+
+/// Fills the library with [notes] notes in [notebooks] notebooks, for
+/// measuring a large library: each note has a title and a few lines of
+/// text, as a person's would.
+Future<void> seedManyNotes({int notes = 2000, int notebooks = 8}) async {
+  final library = getIt<LibraryRepository>();
+  final books = <String>[];
+  for (var i = 0; i < notebooks; i++) {
+    final book = await library.createNotebook('Notebook ${i + 1}');
+    books.add(
+      book.fold(
+        (error) => throw StateError('Seeding the library failed: $error'),
+        (row) => row.id,
+      ),
+    );
+  }
+  // A few at a time: the core writes one note at a time anyway.
+  const batch = 25;
+  for (var from = 0; from < notes; from += batch) {
+    final to = from + batch < notes ? from + batch : notes;
+    final made = await Future.wait(<Future<Either<ApplicationError, Saved>>>[
+      for (var i = from; i < to; i++)
+        library.create(
+          NewNote(
+            notebookId: books[i % books.length],
+            title: 'Note ${(i + 1).toString().padLeft(4, '0')}',
+            body:
+                '# Note ${i + 1}\n\nThe ${i + 1}th note of the library, '
+                'with a line or two of text so its row has something to '
+                'show.\n\n- one thing\n- another #todo\n',
+          ),
+        ),
+    ]);
+    for (final result in made) {
+      result.fold(
+        (error) => throw StateError('Seeding the library failed: $error'),
+        (_) {},
+      );
+    }
+  }
+}
