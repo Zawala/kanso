@@ -131,6 +131,7 @@ Every dependency is MIT, BSD or Apache licensed.
 | Package | Used for | Licence |
 | --- | --- | --- |
 | `bloc` | BLoC state machines | MIT |
+| `go_router` | Routes, deep links and the back button (BSD-3-Clause, flutter.dev) | BSD-3-Clause |
 | `bloc_concurrency` | `sequential` and `restartable` event transformers | MIT |
 | `flutter_bloc` | Widgets for BLoCs | MIT |
 | `freezed_annotation` | Annotations for generated models, events and states | MIT |

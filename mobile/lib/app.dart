@@ -4,25 +4,27 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import 'core/configs/kanso_theme.dart';
 import 'core/state/appearance/appearance_bloc.dart';
 import 'core/utils/context_extensions.dart';
 import 'core/utils/kanso_scroll_behavior.dart';
-import 'design/views/pages/design_gallery_page.dart';
 import 'gen/l10n/app_localizations.dart';
 
-/// The Kanso app: themes, language and the first page, which for now is the
-/// gallery of the design proposal. The themes are the ones chosen, drawn
-/// from the theme files' tokens.
+/// The Kanso app: the themes chosen (drawn from the theme files' tokens),
+/// the language and the routes.
 class App extends StatelessWidget {
-  const App({super.key});
+  const App({required this.router, super.key});
+
+  /// The routes of the app (`KansoRouter.config`).
+  final GoRouter router;
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AppearanceBloc, AppearanceState>(
       builder: (context, state) {
-        return MaterialApp(
+        return MaterialApp.router(
           debugShowCheckedModeBanner: false,
           onGenerateTitle: (context) => context.l10n.appName,
           theme: KansoTheme.build(
@@ -39,7 +41,7 @@ class App extends StatelessWidget {
           scrollBehavior: const KansoScrollBehavior(),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: const DesignGalleryPage(),
+          routerConfig: router,
         );
       },
     );

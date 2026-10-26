@@ -18,10 +18,12 @@ import 'package:glados/glados.dart'
         ListAnys,
         StringAnys;
 import 'package:kanso/core/bridge/api/types.dart';
+import 'package:kanso/core/models/data/browse_location.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/preferences.dart';
+import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
 
 /// Property tests use this configuration so a failure in CI reproduces
@@ -159,5 +161,77 @@ extension KansoThemeSelectionAny on Any {
       descending: descending,
       backupNoticeSeen: seen,
     ),
+  );
+}
+
+/// Characters an id or a search may hold that an address must escape: a
+/// colon, a slash, a space, a percent sign, a plus, an ampersand, an equals
+/// sign, a question mark, and non-ASCII letters.
+const List<String> _idCharacters = <String>[
+  'a',
+  'Z',
+  '7',
+  ':',
+  '/',
+  ' ',
+  '%',
+  '+',
+  '&',
+  '=',
+  '?',
+  '#',
+  '\u00e9',
+  '\u6f22',
+];
+
+extension KansoLocationAny on Any {
+  /// A note, notebook or tag id: never empty.
+  Generator<String> get entityId => combine2(
+    choose(_idCharacters),
+    listWithLengthInRange<String>(0, 6, choose(_idCharacters)),
+    (String first, List<String> rest) => first + rest.join(),
+  );
+
+  /// Any place of the library.
+  Generator<ListPlace> get listPlace => combine3(
+    intInRange(0, 6),
+    entityId,
+    entityId,
+    (int kind, String a, String b) => switch (kind) {
+      0 => const ListPlace.all(),
+      1 => const ListPlace.pinned(),
+      2 => const ListPlace.recent(),
+      3 => const ListPlace.trash(),
+      4 => ListPlace.notebook(id: a),
+      _ => ListPlace.tag(id: b),
+    },
+  );
+
+  /// Any place or search, with or without a note open.
+  Generator<BrowseLocation> get browseLocation => combine6(
+    this.bool,
+    listPlace,
+    listWithLengthInRange<String>(0, 6, choose(_idCharacters)),
+    choose(SearchScopeKind.values),
+    entityId,
+    this.bool,
+    (
+      bool search,
+      ListPlace place,
+      List<String> query,
+      SearchScopeKind scope,
+      String id,
+      bool noteOpen,
+    ) {
+      final noteId = noteOpen ? id : null;
+      return search
+          ? BrowseLocation.search(
+              query: query.join(),
+              scope: scope,
+              notebookId: scope == SearchScopeKind.notebook ? id : null,
+              noteId: noteId,
+            )
+          : BrowseLocation.place(place, noteId: noteId);
+    },
   );
 }

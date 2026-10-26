@@ -1131,6 +1131,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Try again'**
   String get coreCheckRetry;
+
+  /// A search page's title.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get searchTitle;
+
+  /// The library row that opens the gallery of the design proposal; in development builds only.
+  ///
+  /// In en, this message translates to:
+  /// **'Design gallery'**
+  String get libraryDesignGallery;
 }
 
 class _AppLocalizationsDelegate

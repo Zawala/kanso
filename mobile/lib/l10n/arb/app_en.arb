@@ -721,5 +721,13 @@
   "coreCheckRetry": "Try again",
   "@coreCheckRetry": {
     "description": "What the core check's error card button does."
+  },
+  "searchTitle": "Search",
+  "@searchTitle": {
+    "description": "A search page's title."
+  },
+  "libraryDesignGallery": "Design gallery",
+  "@libraryDesignGallery": {
+    "description": "The library row that opens the gallery of the design proposal; in development builds only."
   }
 }

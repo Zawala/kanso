@@ -17,7 +17,9 @@ import 'core/bridge/api/library.dart' as _i455;
 import 'core/bridge/api/locks.dart' as _i983;
 import 'core/bridge/api/renderer.dart' as _i832;
 import 'core/bridge/api/sync.dart' as _i591;
+import 'core/configs/app_module.dart' as _i216;
 import 'core/configs/core_module.dart' as _i418;
+import 'core/models/data/design_gallery_access.dart' as _i289;
 import 'core/models/data/library_folder.dart' as _i72;
 import 'core/models/repos/abs/diagnostics_repository.dart' as _i984;
 import 'core/models/repos/abs/library_repository.dart' as _i38;
@@ -31,6 +33,7 @@ import 'core/models/repos/impl/rust_library_repository.dart' as _i152;
 import 'core/models/repos/impl/rust_renderer_repository.dart' as _i820;
 import 'core/models/repos/impl/rust_session_repository.dart' as _i899;
 import 'core/models/repos/impl/rust_sync_repository.dart' as _i564;
+import 'core/router/kanso_router.dart' as _i388;
 import 'core/state/appearance/appearance_bloc.dart' as _i551;
 import 'core_check/state/core_check/core_check_bloc.dart' as _i226;
 
@@ -46,6 +49,7 @@ extension GetItInjectableX on _i174.GetIt {
   }) async {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
     final coreModule = _$CoreModule();
+    final appModule = _$AppModule();
     gh.lazySingleton<_i984.DiagnosticsRepository>(
       () => _i1062.RustDiagnosticsRepository(),
     );
@@ -54,6 +58,14 @@ extension GetItInjectableX on _i174.GetIt {
       registerFor: {_development, _production},
       preResolve: true,
     );
+    gh.singleton<_i289.DesignGalleryAccess>(
+      () => appModule.closedGallery,
+      registerFor: {_production, _integration},
+    );
+    gh.singleton<_i289.DesignGalleryAccess>(
+      () => appModule.developmentGallery,
+      registerFor: {_development},
+    );
     await gh.singletonAsync<_i72.LibraryFolder>(
       () => coreModule.temporaryLibraryFolder(),
       registerFor: {_integration},
@@ -61,6 +73,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i384.PreferencesRepository>(
       () => _i207.FilePreferencesRepository(gh<_i72.LibraryFolder>()),
+    );
+    gh.singleton<_i388.KansoRouter>(
+      () => _i388.KansoRouter(gh<_i289.DesignGalleryAccess>()),
     );
     await gh.singletonAsync<_i455.KansoLibrary>(
       () => coreModule.library(gh<_i72.LibraryFolder>()),
@@ -104,3 +119,5 @@ extension GetItInjectableX on _i174.GetIt {
 }
 
 class _$CoreModule extends _i418.CoreModule {}
+
+class _$AppModule extends _i216.AppModule {}

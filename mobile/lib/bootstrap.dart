@@ -8,6 +8,7 @@ import 'app.dart';
 import 'core/bridge/frb_generated.dart';
 import 'core/configs/app_environment.dart';
 import 'core/models/data/appearance_status.dart';
+import 'core/router/kanso_router.dart';
 import 'core/state/appearance/appearance_bloc.dart';
 import 'core/utils/license_registration.dart';
 import 'injection.dart';
@@ -28,5 +29,10 @@ Future<void> bootstrap(AppEnvironment environment) async {
   await appearance.stream.firstWhere(
     (state) => state.status != AppearanceStatus.loading,
   );
-  runApp(AppProviders(appearance: appearance, child: const App()));
+  runApp(
+    AppProviders(
+      appearance: appearance,
+      child: App(router: getIt<KansoRouter>().config),
+    ),
+  );
 }

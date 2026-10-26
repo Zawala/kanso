@@ -564,4 +564,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get coreCheckRetry => 'Try again';
+
+  @override
+  String get searchTitle => 'Search';
+
+  @override
+  String get libraryDesignGallery => 'Design gallery';
 }
