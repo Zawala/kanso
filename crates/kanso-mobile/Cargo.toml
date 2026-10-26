@@ -55,3 +55,13 @@ kanso-mobile = { path = ".", features = ["test-support"] }
 kanso-engine = { workspace = true, features = ["test-support"] }
 proptest.workspace = true
 tempfile.workspace = true
+# `examples/e2e_peer.rs`: the other device in the end-to-end flows, which
+# shares notes and picks an identity for itself.
+kanso-collab.workspace = true
+getrandom.workspace = true
+
+# The command-line peer for the phone's end-to-end flows (scripts/mobile-sync-e2e.sh).
+# Its argument and server checks have unit tests, which `cargo test` runs.
+[[example]]
+name = "e2e_peer"
+test = true
