@@ -51,7 +51,10 @@ File _builtLibrary() {
   final found = <File>[
     if (hooks.existsSync())
       for (final entity in hooks.listSync(recursive: true))
-        if (entity is File && entity.uri.pathSegments.last == name) entity,
+        if (entity is File &&
+            entity.uri.pathSegments.last == name &&
+            !_isPhoneBuild(entity))
+          entity,
   ]..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
   if (found.isEmpty) {
     throw StateError(
@@ -61,3 +64,9 @@ File _builtLibrary() {
   }
   return found.first;
 }
+
+/// Whether [file] was built for a phone or its simulator (an app build puts
+/// those beside the computer's), which this computer can't load.
+bool _isPhoneBuild(File file) => file.uri.pathSegments.any(
+  (segment) => segment.contains('-ios') || segment.contains('-android'),
+);
