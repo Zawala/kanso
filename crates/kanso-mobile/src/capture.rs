@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use kanso_core::dates::{Date, DateTime};
 use kanso_core::model::MAX_ATTACHMENT_SIZE;
 use kanso_engine::attach::too_large_file;
 use kanso_engine::capture::{
@@ -31,7 +32,7 @@ use serde_json::Value;
 use crate::boundary::guard;
 use crate::errors::KansoError;
 use crate::library::Library;
-use crate::model::DropsSaved;
+use crate::model::{CaptureOutcome, DropsSaved, LocalTime, Share};
 use crate::{Backend, Secrets};
 
 /// The `drop.json` version this reads.
@@ -55,6 +56,90 @@ impl Library {
     pub fn save_drops(&self, inbox: &Path) -> Result<DropsSaved, KansoError> {
         guard(|| save_drops_at(&self.inner.store, inbox, SystemTime::now()))
     }
+
+    /// Saves something shared from inside the app (photos, the camera, a
+    /// PDF) as a note in the Inbox, with its images and PDFs attached, and
+    /// returns the note's ID and what was left out. It is saved under a new
+    /// random drop ID, so each call makes a note.
+    ///
+    /// A locked Inbox refuses ([`KansoError::Locked`]) and nothing is
+    /// written. A share with nothing Kanso can save is
+    /// [`KansoError::Invalid`], saying why.
+    pub fn capture(&self, share: Share) -> Result<CaptureOutcome, KansoError> {
+        guard(|| capture_at(&self.inner.store, share, &new_drop_id()))
+    }
+
+    /// Today's daily note, made in the Journal (from its daily template
+    /// when there is one) if it isn't there, and its ID. `now` is the
+    /// phone's local date and time.
+    ///
+    /// In a locked Journal the note is made without text from any locked
+    /// template: nothing of a locked note is copied out.
+    pub fn today_note(&self, now: LocalTime) -> Result<String, KansoError> {
+        guard(|| {
+            let now = date_time(now)?;
+            Ok(kanso_engine::daily::today(&self.inner.store, now)?.id)
+        })
+    }
+}
+
+/// [`Library::capture`] with the drop ID given.
+fn capture_at(store: &Store, share: Share, drop_id: &str) -> Result<CaptureOutcome, KansoError> {
+    let shared = Shared {
+        subject: share.subject,
+        text: share.text,
+        url: share.url,
+        files: share
+            .files
+            .into_iter()
+            .map(|file| SharedFile {
+                name: file.name,
+                content_type: file.content_type,
+                bytes: file.bytes,
+            })
+            .collect(),
+    };
+    match save_shared(store, &shared, drop_id, Origin::Ui) {
+        Ok(captured) => Ok(CaptureOutcome {
+            note_id: captured.id,
+            problems: captured.problems,
+        }),
+        Err(CaptureError::Locked) => Err(KansoError::Locked),
+        Err(CaptureError::Empty(skipped)) => {
+            let mut message = String::from("There was nothing Kanso could save.");
+            for problem in skipped {
+                message.push(' ');
+                message.push_str(&problem);
+            }
+            Err(KansoError::invalid(message))
+        }
+        Err(CaptureError::BadId) => Err(KansoError::Internal {
+            message: "the share's ID was not valid".into(),
+        }),
+        Err(CaptureError::Store(err)) => Err(err.into()),
+    }
+}
+
+/// 32 random lowercase hex characters: a drop's ID.
+fn new_drop_id() -> String {
+    (0..32)
+        .map(|_| char::from_digit(fastrand::u32(0..16), 16).unwrap_or('0'))
+        .collect()
+}
+
+/// The engine's local date and time for `time`, when it is a real one.
+fn date_time(time: LocalTime) -> Result<DateTime, KansoError> {
+    let date = Date::new(time.year, time.month, time.day)
+        .ok_or_else(|| KansoError::invalid("That day isn't on the calendar."))?;
+    if time.hour > 23 || time.minute > 59 || time.second > 59 {
+        return Err(KansoError::invalid("That time of day isn't on the clock."));
+    }
+    Ok(DateTime {
+        date,
+        hour: time.hour,
+        minute: time.minute,
+        second: time.second,
+    })
 }
 
 /// [`Library::save_drops`] for the library whose database is `library`,

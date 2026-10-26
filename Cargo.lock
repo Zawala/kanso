@@ -4660,6 +4660,7 @@ dependencies = [
  "async-channel",
  "core-foundation 0.10.1",
  "core-foundation-sys",
+ "fastrand",
  "jni",
  "kanso-core",
  "kanso-engine",
