@@ -67,6 +67,7 @@ mod locks;
 mod matching;
 mod model;
 mod notes;
+pub mod passkey_bridge;
 mod renderer;
 pub mod secrets;
 mod sharing;
