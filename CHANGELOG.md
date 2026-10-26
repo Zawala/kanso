@@ -23,6 +23,7 @@ heading compares the release with the one before.
 - **engine:** Lock sessions, account flows and sync scheduling move into the new UI-free `kanso-engine` crate, shared with the coming mobile app; the desktop behaves as before (#48 step 1)
 - **engine:** Wiki-link and tag autocomplete, link copying, daily notes and templates, due dates and reminders, the Markdown edits and the theme format move into `kanso-engine`, which also gets a Markdown and code highlighter of its own, checked against the desktop editor's, with Enter continuing a list item and UTF-16 offsets for the mobile editor; the desktop behaves as before, except that Tab no longer fails on lines selected down to the start of the line below a list (#48 step 2)
 - **engine:** The store, renderer, shared notes, importers, sync client and AI client build for iOS and Android and pass their tests on the iOS Simulator and an Android emulator, with a `mobile` release profile that is small and unwinds on a panic; phones check servers' certificates with the system's store (the new `kanso-tls` crate), and the desktop behaves as before (#48 step 3)
+- **mobile:** Release engineering for the iPhone, iPad and Android apps: one version from `Cargo.toml`, a signed IPA to TestFlight and a signed bundle to Play internal testing from the `v*` tag (every step waits for its secret), Shorebird patches made only from CI and signed, the export compliance answer, the apps' privacy manifest, and the store listing text (docs/RELEASING-MOBILE.md) (#48 step 13)
 
 ### Fixed
 

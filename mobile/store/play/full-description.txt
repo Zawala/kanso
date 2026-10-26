@@ -1,0 +1,31 @@
+Kanso is a quiet place for everything you write down.
+
+Your notes are Markdown, and they live on your phone. Open the app and write: nothing to sign in to, nothing to set up. When you want them on your other devices, turn on sync. Each note is sealed on the device before it leaves, so the server holds only ciphertext and a few counts, never anything it could read.
+
+WRITE
+• A Markdown editor that stays out of the way. Headings, lists, tasks and code are styled as you type, and lists carry on when you press Enter.
+• A bar above the keyboard for the marks you reach for most: headings, lists, tasks, bold, links, wiki-links, indent and undo.
+• Preview any note as a finished page, with math and diagrams drawn in your theme.
+• Use your keyboard's voice typing, autocorrect and spell check as you do everywhere else.
+
+FIND
+• Notebooks, nested tags, pinned notes and recent notes in one library.
+• Search that shows where each word matched, in titles and in text.
+• Link notes with [[wiki-links]] and see what links back.
+
+KEEP SOME THINGS SHUT
+• Lock a note with a password. Its text is sealed on the device, and opens with your fingerprint or face, or the password.
+• Locked notes close again when you leave the app, and the recent-apps screen shows a cover, not your words. Screenshots are blocked on locked notes.
+
+SYNC, ONLY IF YOU WANT IT
+• End-to-end encrypted sync with your Mac, Windows and Linux computers, and your other phones and tablets.
+• New devices are approved from one you already trust, or with your recovery key.
+• Sign in with a username and password, a passkey, or Google, GitHub or Apple.
+• Notes are kept out of Google backups and device-to-device transfers on purpose: a backup is one more place your notes would live.
+
+ONE LOOK, EVERYWHERE
+• The same design on Android, iPhone and iPad, with Kanso's own themes, light and dark.
+• Phones and tablets, with three panes on a big screen and the desktop's shortcuts on a keyboard.
+• Add a note from anywhere with the share sheet, and open the right note from a widget.
+
+Kanso is free, open-source software. There are no ads, no trackers and no analytics. The source is at github.com/iamngoni/kanso.
