@@ -28,6 +28,7 @@ heading compares the release with the one before.
 
 - **accounts:** Approving a new device from another one works without restarting Kanso first, and cancelling the sign-in cancels that request
 - **app:** Kanso is listed in Finder's and Explorer's Open With for Markdown and text files, and opens a file from there, from a double-click once chosen, or from `kanso file.md`, as a note that is shown and selected
+- **themes:** Code is easier to read in Kanso Dark and Kanso Light: functions, types, properties, attributes, keywords, strings and numbers each get their own colour, and operators and punctuation a quiet one, all at 4.5:1 or better on the editor and the code block background
 
 ## [0.8.4](https://github.com/iamngoni/kanso/compare/v0.8.3...v0.8.4) - 2026-10-22
 
