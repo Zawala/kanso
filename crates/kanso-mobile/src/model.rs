@@ -449,6 +449,34 @@ pub struct ThemeTokens {
     pub palette: PaletteDto,
 }
 
+/// A built-in theme: who made it and how it is drawn.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BuiltinTheme {
+    /// The theme file's name without `.json`: `nord`, `github-light`.
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub license: String,
+    pub source: Option<String>,
+    pub dark: bool,
+    /// The theme fitted as one theme for the interface, the editor and the
+    /// preview (the desktop's own panes).
+    pub tokens: ThemeTokens,
+}
+
+/// A run of a note's source in a theme's colors. Text between runs, and any
+/// attribute a run leaves `None`, is drawn in the theme's plain text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StyledRun {
+    /// `[start, end)` in UTF-16 units of the text.
+    pub range: Range16,
+    /// `0xRRGGBB`.
+    pub color: Option<u32>,
+    pub italic: Option<bool>,
+    /// 100 to 900.
+    pub weight: Option<u16>,
+}
+
 /// Which diagram language a source is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiagramKind {

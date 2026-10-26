@@ -13,9 +13,12 @@ use kanso_engine::text::{byte_to_utf16, utf16_to_byte};
 use kanso_render::{Failure, Job, Kind, Outcome, Palette, Rgb, html, render_blocking};
 
 use crate::boundary::guard;
+use crate::builtin_themes;
 use crate::errors::KansoError;
 use crate::library::{Inner, Library};
-use crate::model::{DiagramKind, PaletteDto, Range16, SpanRow, SvgRow, ThemeTokens};
+use crate::model::{
+    BuiltinTheme, DiagramKind, PaletteDto, Range16, SpanRow, StyledRun, SvgRow, ThemeTokens,
+};
 use crate::theme_tokens;
 
 /// Drawing for one library; the associated functions need no library.
@@ -80,6 +83,53 @@ impl Renderer {
     /// syntax styles and the preview palette.
     pub fn theme_tokens(theme_json: String) -> Result<ThemeTokens, KansoError> {
         guard(|| theme_tokens::fit(&theme_json))
+    }
+
+    /// The built-in themes, in the order of the desktop's Themes page (Kanso's
+    /// light and dark first), each fitted as one theme for the interface, the
+    /// editor and the preview, as the desktop draws it.
+    pub fn builtin_themes() -> Result<Vec<BuiltinTheme>, KansoError> {
+        guard(builtin_themes::all)
+    }
+
+    /// The built-in theme `id` (`nord`, `github-light`), fitted; fitted once
+    /// and kept. [`KansoError::NotFound`] for an ID that isn't one.
+    pub fn builtin_theme_tokens(id: String) -> Result<ThemeTokens, KansoError> {
+        guard(|| builtin_themes::get(&id).map(|theme| theme.tokens.clone()))
+    }
+
+    /// The runs of `text` between `start` and `end` (UTF-16 units) that the
+    /// built-in theme `theme_id` styles: the Markdown highlighter's runs with
+    /// each one's tokens folded, outermost first, into a color, a slant and a
+    /// weight (a later token wins, and what it leaves unset shows what is
+    /// under it). Text between runs, and runs the theme gives no style, are
+    /// plain and left out.
+    pub fn styled_runs(
+        text: String,
+        start: u32,
+        end: u32,
+        theme_id: String,
+    ) -> Result<Vec<StyledRun>, KansoError> {
+        guard(|| {
+            let theme = builtin_themes::get(&theme_id)?;
+            let from = utf16_to_byte(&text, start as usize);
+            let to = utf16_to_byte(&text, end as usize).max(from);
+            Ok(highlight::spans(&text, from..to)
+                .into_iter()
+                .filter_map(|span| {
+                    let style = kanso_engine::theme::style(&span.tokens, &theme.fitted.syntax);
+                    (!style.is_empty()).then(|| StyledRun {
+                        range: Range16 {
+                            start: byte_to_utf16(&text, span.range.start) as u32,
+                            end: byte_to_utf16(&text, span.range.end) as u32,
+                        },
+                        color: style.color.map(|color| color.0),
+                        italic: style.italic,
+                        weight: style.weight,
+                    })
+                })
+                .collect())
+        })
     }
 
     /// TeX math as an SVG in `palette`'s colors: `display` sets it on its own

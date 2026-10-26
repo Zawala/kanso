@@ -22,7 +22,9 @@
 //! - [`SyncHandle`] (`library.sync()`) signs in to a server, syncs and
 //!   reports its status.
 //! - [`Renderer`] (`library.renderer()`) draws a note's preview, highlights
-//!   source, fits a theme and draws math and diagrams.
+//!   source, fits a theme (the built-in ones are in, as the desktop has
+//!   them, and source can be colored in any of them) and draws math and
+//!   diagrams.
 //! - [`background`] is the sync that runs with no app: the code behind the
 //!   C entry `kanso_background_sync` that `mobile/rust` exports.
 //! - [`diagnostics`] has the version, the TLS check and the panic probe.
@@ -40,6 +42,7 @@
 
 pub mod background;
 pub mod boundary;
+mod builtin_themes;
 pub mod diagnostics;
 mod errors;
 mod library;

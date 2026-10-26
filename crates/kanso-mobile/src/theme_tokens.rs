@@ -11,10 +11,21 @@ use crate::model::{ColorRow, PaletteDto, SyntaxStyleRow, ThemeTokens};
 pub fn fit(theme_json: &str) -> Result<ThemeTokens, KansoError> {
     let file = ThemeFile::parse(theme_json)
         .map_err(|err| KansoError::invalid(format!("The theme {err}.")))?;
+    Ok(fit_file(&file).0)
+}
+
+/// A parsed theme fitted as one theme for the interface, the editor's syntax
+/// and the preview: the rows the shell reads, and the fitted syntax styles
+/// themselves.
+pub fn fit_file(file: &ThemeFile) -> (ThemeTokens, Tokens) {
     let resolved = file.resolve();
     let tokens = Tokens::fit(&resolved, &resolved, &resolved);
-    Ok(ThemeTokens {
-        palette: palette(&tokens),
+    (rows(&tokens), tokens)
+}
+
+fn rows(tokens: &Tokens) -> ThemeTokens {
+    ThemeTokens {
+        palette: palette(tokens),
         ui: ui_colors(&tokens.ui),
         caret: tokens.caret.0,
         selection: tokens.selection.rgb.0,
@@ -29,9 +40,9 @@ pub fn fit(theme_json: &str) -> Result<ThemeTokens, KansoError> {
                 weight: style.weight,
             })
             .collect(),
-        name: tokens.name,
+        name: tokens.name.clone(),
         dark: tokens.dark,
-    })
+    }
 }
 
 /// The colors the preview and drawings are made in.
