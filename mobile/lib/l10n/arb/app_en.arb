@@ -828,5 +828,17 @@
   "backupNoticeOk": "OK",
   "@backupNoticeOk": {
     "description": "Dismisses the notice about device backups."
+  },
+  "dailyNoteLoading": "Opening today’s note",
+  "@dailyNoteLoading": {
+    "description": "Shown while today's daily note is found or made."
+  },
+  "dailyNoteFailedTitle": "Today’s note didn’t open",
+  "@dailyNoteFailedTitle": {
+    "description": "The title of the card shown when today's daily note could not be opened."
+  },
+  "dailyNoteFailedMessage": "Something went wrong opening today’s note on this phone. Try again.",
+  "@dailyNoteFailedMessage": {
+    "description": "The message of the card shown when today's daily note could not be opened."
   }
 }

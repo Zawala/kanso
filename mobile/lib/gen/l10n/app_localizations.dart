@@ -1245,6 +1245,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OK'**
   String get backupNoticeOk;
+
+  /// Shown while today's daily note is found or made.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening today’s note'**
+  String get dailyNoteLoading;
+
+  /// The title of the card shown when today's daily note could not be opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Today’s note didn’t open'**
+  String get dailyNoteFailedTitle;
+
+  /// The message of the card shown when today's daily note could not be opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong opening today’s note on this phone. Try again.'**
+  String get dailyNoteFailedMessage;
 }
 
 class _AppLocalizationsDelegate

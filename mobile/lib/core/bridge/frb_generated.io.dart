@@ -144,6 +144,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   ListQuery dco_decode_box_autoadd_list_query(dynamic raw);
 
   @protected
+  LocalTime dco_decode_box_autoadd_local_time(dynamic raw);
+
+  @protected
   NewNote dco_decode_box_autoadd_new_note(dynamic raw);
 
   @protected
@@ -159,6 +162,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   SearchScope dco_decode_box_autoadd_search_scope(dynamic raw);
 
   @protected
+  Share dco_decode_box_autoadd_share(dynamic raw);
+
+  @protected
   SyncProblemKind dco_decode_box_autoadd_sync_problem_kind(dynamic raw);
 
   @protected
@@ -171,6 +177,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   BuiltinTheme dco_decode_builtin_theme(dynamic raw);
 
   @protected
+  CaptureOutcome dco_decode_capture_outcome(dynamic raw);
+
+  @protected
   ColorRow dco_decode_color_row(dynamic raw);
 
   @protected
@@ -178,6 +187,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DiagramKind dco_decode_diagram_kind(dynamic raw);
+
+  @protected
+  DropsSaved dco_decode_drops_saved(dynamic raw);
 
   @protected
   double dco_decode_f_32(dynamic raw);
@@ -240,6 +252,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   ListShape dco_decode_list_shape(dynamic raw);
 
   @protected
+  List<ShareFile> dco_decode_list_share_file(dynamic raw);
+
+  @protected
   List<SpanRow> dco_decode_list_span_row(dynamic raw);
 
   @protected
@@ -253,6 +268,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<TagRow> dco_decode_list_tag_row(dynamic raw);
+
+  @protected
+  LocalTime dco_decode_local_time(dynamic raw);
 
   @protected
   LockEvent dco_decode_lock_event(dynamic raw);
@@ -328,6 +346,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   ServerInfo dco_decode_server_info(dynamic raw);
+
+  @protected
+  Share dco_decode_share(dynamic raw);
+
+  @protected
+  ShareFile dco_decode_share_file(dynamic raw);
 
   @protected
   SortKey dco_decode_sort_key(dynamic raw);
@@ -492,6 +516,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   ListQuery sse_decode_box_autoadd_list_query(SseDeserializer deserializer);
 
   @protected
+  LocalTime sse_decode_box_autoadd_local_time(SseDeserializer deserializer);
+
+  @protected
   NewNote sse_decode_box_autoadd_new_note(SseDeserializer deserializer);
 
   @protected
@@ -509,6 +536,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   SearchScope sse_decode_box_autoadd_search_scope(SseDeserializer deserializer);
 
   @protected
+  Share sse_decode_box_autoadd_share(SseDeserializer deserializer);
+
+  @protected
   SyncProblemKind sse_decode_box_autoadd_sync_problem_kind(
     SseDeserializer deserializer,
   );
@@ -523,6 +553,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   BuiltinTheme sse_decode_builtin_theme(SseDeserializer deserializer);
 
   @protected
+  CaptureOutcome sse_decode_capture_outcome(SseDeserializer deserializer);
+
+  @protected
   ColorRow sse_decode_color_row(SseDeserializer deserializer);
 
   @protected
@@ -530,6 +563,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DiagramKind sse_decode_diagram_kind(SseDeserializer deserializer);
+
+  @protected
+  DropsSaved sse_decode_drops_saved(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_32(SseDeserializer deserializer);
@@ -596,6 +632,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   ListShape sse_decode_list_shape(SseDeserializer deserializer);
 
   @protected
+  List<ShareFile> sse_decode_list_share_file(SseDeserializer deserializer);
+
+  @protected
   List<SpanRow> sse_decode_list_span_row(SseDeserializer deserializer);
 
   @protected
@@ -611,6 +650,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<TagRow> sse_decode_list_tag_row(SseDeserializer deserializer);
+
+  @protected
+  LocalTime sse_decode_local_time(SseDeserializer deserializer);
 
   @protected
   LockEvent sse_decode_lock_event(SseDeserializer deserializer);
@@ -690,6 +732,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   ServerInfo sse_decode_server_info(SseDeserializer deserializer);
+
+  @protected
+  Share sse_decode_share(SseDeserializer deserializer);
+
+  @protected
+  ShareFile sse_decode_share_file(SseDeserializer deserializer);
 
   @protected
   SortKey sse_decode_sort_key(SseDeserializer deserializer);
@@ -875,6 +923,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_local_time(
+    LocalTime self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_new_note(NewNote self, SseSerializer serializer);
 
   @protected
@@ -902,6 +956,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_share(Share self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_sync_problem_kind(
     SyncProblemKind self,
     SseSerializer serializer,
@@ -917,6 +974,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_builtin_theme(BuiltinTheme self, SseSerializer serializer);
 
   @protected
+  void sse_encode_capture_outcome(
+    CaptureOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_color_row(ColorRow self, SseSerializer serializer);
 
   @protected
@@ -924,6 +987,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_diagram_kind(DiagramKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_drops_saved(DropsSaved self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_32(double self, SseSerializer serializer);
@@ -1001,6 +1067,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_list_shape(ListShape self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_share_file(
+    List<ShareFile> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_span_row(List<SpanRow> self, SseSerializer serializer);
 
   @protected
@@ -1020,6 +1092,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_list_tag_row(List<TagRow> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_local_time(LocalTime self, SseSerializer serializer);
 
   @protected
   void sse_encode_lock_event(LockEvent self, SseSerializer serializer);
@@ -1101,6 +1176,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_server_info(ServerInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_share(Share self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_share_file(ShareFile self, SseSerializer serializer);
 
   @protected
   void sse_encode_sort_key(SortKey self, SseSerializer serializer);

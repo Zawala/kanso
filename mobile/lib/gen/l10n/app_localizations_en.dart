@@ -654,4 +654,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get backupNoticeOk => 'OK';
+
+  @override
+  String get dailyNoteLoading => 'Opening today’s note';
+
+  @override
+  String get dailyNoteFailedTitle => 'Today’s note didn’t open';
+
+  @override
+  String get dailyNoteFailedMessage =>
+      'Something went wrong opening today’s note on this phone. Try again.';
 }

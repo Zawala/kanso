@@ -5,8 +5,9 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    Hit, KansoError, Library, LibraryOverview, ListQuery, NewNote, NoteChange, NoteList, NoteView,
-    NotebookRow, Property, Saved, SearchScope, Table, TagRow,
+    CaptureOutcome, DropsSaved, Hit, KansoError, Library, LibraryOverview, ListQuery, LocalTime,
+    NewNote, NoteChange, NoteList, NoteView, NotebookRow, Property, Saved, SearchScope, Share,
+    Table, TagRow,
 };
 
 use super::locks::KansoLocks;
@@ -82,6 +83,24 @@ impl KansoLibrary {
 
     pub fn query_view(&self, source: String, self_id: Option<String>) -> Result<Table, KansoError> {
         self.0.query_view(&source, self_id)
+    }
+
+    /// Saves every finished shared item waiting in the `inbox` folder as a
+    /// note in the Inbox and removes the folders saved (see
+    /// `mobile/docs/capture.md`).
+    pub fn save_drops(&self, inbox: String) -> Result<DropsSaved, KansoError> {
+        self.0.save_drops(std::path::Path::new(&inbox))
+    }
+
+    /// Saves something shared from inside the app as a note in the Inbox.
+    pub fn capture(&self, share: Share) -> Result<CaptureOutcome, KansoError> {
+        self.0.capture(share)
+    }
+
+    /// The ID of today's daily note at the phone's local time `now`, made
+    /// if it isn't there.
+    pub fn today_note(&self, now: LocalTime) -> Result<String, KansoError> {
+        self.0.today_note(now)
     }
 
     /// The IDs of what changed, in batches, until Dart stops listening.

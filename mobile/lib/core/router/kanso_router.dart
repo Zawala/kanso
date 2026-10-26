@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../capture/views/pages/daily_note_page.dart';
 import '../../design/views/pages/design_gallery_page.dart';
 import '../../note/views/pages/note_page.dart';
 import '../../note/views/widgets/no_note_selected_pane.dart';
@@ -34,6 +35,7 @@ import 'layout_class_notifier.dart';
 ///   opens over what the person was doing and closes back to it, with
 ///   Theme, Fonts and Licences sliding inside it. It is a sheet on a tablet
 ///   and a page on a phone.
+/// * `/daily` finds or makes today's note and goes to it in All Notes.
 /// * `kanso://open/…` links and the short forms (`/note/:id`,
 ///   `/notebook/:id`) land on the addresses above; an address that is
 ///   nothing goes to All Notes.
@@ -84,6 +86,13 @@ class KansoRouter {
         GoRoute(
           path: '${KansoRoutes.notebookById}/:notebookId',
           redirect: (context, state) => redirectLocation(state.uri),
+        ),
+        GoRoute(
+          path: KansoRoutes.daily,
+          pageBuilder: (context, state) => CupertinoPage<void>(
+            key: state.pageKey,
+            child: const DailyNotePage(),
+          ),
         ),
         ShellRoute(
           navigatorKey: _browseKey,

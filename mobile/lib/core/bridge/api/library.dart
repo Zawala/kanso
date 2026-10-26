@@ -12,6 +12,9 @@ import 'types.dart';
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
 abstract class KansoLibrary implements RustOpaqueInterface {
+  /// Saves something shared from inside the app as a note in the Inbox.
+  Future<CaptureOutcome> capture({required Share share});
+
   Future<int> change({required List<String> ids, required NoteChange change});
 
   /// The IDs of what changed, in batches, until Dart stops listening.
@@ -47,6 +50,11 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required String body,
   });
 
+  /// Saves every finished shared item waiting in the `inbox` folder as a
+  /// note in the Inbox and removes the folders saved (see
+  /// `mobile/docs/capture.md`).
+  Future<DropsSaved> saveDrops({required String inbox});
+
   Future<List<Hit>> search({
     required String text,
     required SearchScope scope,
@@ -56,6 +64,10 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   KansoSync syncing();
 
   Future<List<TagRow>> tags();
+
+  /// The ID of today's daily note at the phone's local time `now`, made
+  /// if it isn't there.
+  Future<String> todayNote({required LocalTime now});
 
   Future<void> trash({required String id});
 }

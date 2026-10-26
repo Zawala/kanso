@@ -9,11 +9,12 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview, ListPlace,
-    ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow,
-    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved,
-    SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
+    BuiltinTheme, CaptureOutcome, ColorRow, DateField, DiagramKind, DropsSaved, Hit, KansoError,
+    LibraryOverview, ListPlace, ListQuery, ListShape, LocalTime, LockEvent, LockReason, LockState,
+    NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto,
+    Property, PropertyKind, Range16, Saved, SearchScope, ServerInfo, Share, ShareFile, SortKey,
+    SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind, SyncReportRow, SyncStatus,
+    SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
 };
 
 #[frb(mirror(KansoError))]
@@ -365,4 +366,42 @@ pub struct _SvgRow {
     pub width: f32,
     pub height: f32,
     pub baseline: Option<f32>,
+}
+
+#[frb(mirror(DropsSaved))]
+pub struct _DropsSaved {
+    pub notes: Vec<String>,
+    pub problems: Vec<String>,
+    pub kept: u32,
+}
+
+#[frb(mirror(LocalTime))]
+pub struct _LocalTime {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
+    pub hour: u32,
+    pub minute: u32,
+    pub second: u32,
+}
+
+#[frb(mirror(Share))]
+pub struct _Share {
+    pub subject: Option<String>,
+    pub text: Option<String>,
+    pub url: Option<String>,
+    pub files: Vec<ShareFile>,
+}
+
+#[frb(mirror(ShareFile))]
+pub struct _ShareFile {
+    pub name: String,
+    pub content_type: Option<String>,
+    pub bytes: Vec<u8>,
+}
+
+#[frb(mirror(CaptureOutcome))]
+pub struct _CaptureOutcome {
+    pub note_id: String,
+    pub problems: Vec<String>,
 }

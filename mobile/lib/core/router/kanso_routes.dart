@@ -35,6 +35,10 @@ abstract final class KansoRoutes {
   /// [notebooks].
   static const String notebookById = '/notebook';
 
+  /// Today's daily note, made if it isn't there: `kanso://open/daily`. It
+  /// opens the note in All Notes.
+  static const String daily = '/daily';
+
   /// Settings, a sheet on a tablet and a page on a phone.
   static const String settings = '/settings';
   static const String settingsTheme = '/settings/theme';
