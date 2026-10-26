@@ -101,7 +101,9 @@ void main() {
         'Typing report: $words words, ${report.keystrokes} keystrokes, '
         '${report.frames.frames} frames at ${report.frames.refreshRate} Hz; '
         'keystroke to frame p50/p95/p99 ${report.latencyP50}/'
-        '${report.latencyP95}/${report.latencyP99} ms; problems: $problems',
+        '${report.latencyP95}/${report.latencyP99} ms; fresh highlight '
+        'p50/p95 ${report.freshRunsP50}/${report.freshRunsP95} ms '
+        '(${report.freshRunsTimed} timed); problems: $problems',
       );
 
       // The report is made in every mode.

@@ -122,6 +122,127 @@ and that size matters.
 **Not measured: no device.** The gate stays open (owner decision: ship with
 the Android gate recorded as open).
 
+## Highlight latency (2026-10-26)
+
+**These are host and simulator numbers, not the gate.** The gate is the
+iPhone 17 Pro in profile mode, which has not been run since this change. The
+host is the Mac (Apple silicon, release build of the Rust core); the simulator
+is an iPhone 18 Pro in **debug** mode (profile is not available on a
+simulator), so its Dart is far slower than a phone's and only the shape of the
+change means anything.
+
+The problem: on the phone, whole-note editing at 5,000 words had a fresh
+highlight (a keystroke to its new colours) of p50 338 ms and p95 1,657 ms,
+against a limit of p95 at most 100 ms.
+
+### Where the time went
+
+Two things, both in Kanso's code, neither in Flutter's layout. The first is
+the large one.
+
+1. **Colours for a text a few keys old were thrown away.** The controller
+   asked Rust for colours once at a time, and showed them only if the text
+   had not changed since. A call into Rust and back takes longer than a key at
+   thirty a second (a burst), so during a burst no colours were shown at all
+   until the typing paused: the delay grew with the length of the burst. Run
+   on the simulator at 5,000 words (window mode, debug), the same script gave a
+   fresh highlight p50 of 44 ms and p95 of **756 ms**, with the tail made of
+   exactly those bursts. The same happened to the colours of the text outside
+   the window, which were thrown away and asked for again after 300 ms for as
+   long as there was typing.
+2. **A syntax error made every request parse from the error to the end of the
+   note.** `highlight::assemble` highlights a note block by block until a
+   block has an error, then that block and all after it as one parse, which
+   no longer matches anything in the cache once a key is typed after the
+   error. For a note with the error three quarters of the way down (the
+   fixture's broken table), a request for the 8,192-unit window at the caret
+   took the whole parse of the rest: 23 ms at 50,000 words on the host
+   (about 3 to 4 times that on a phone). The hashing of the blocks before the
+   range, which the plan feared, is small: a request for a window before the
+   error takes 1.4 ms at 50,000 words, and that is the cost of cutting and
+   hashing the note.
+
+The number of runs sent over the bridge is not the problem: a window request
+sends 380 to 800 runs, against 2,400 to 24,000 for the whole note. The
+controller already asked for the window's range only, one request at a time,
+at most once a frame, so superseded requests were never queued.
+
+### The fix
+
+- **Dart.** `EditLog` keeps the changes made since colours were asked for; a
+  batch for an older text is moved along them (`shiftRuns`, as the colours on
+  screen already were) and shown, and keystrokes up to its version count as
+  fresh. Only a window that moved or a text that came from outside (the log is
+  reset) leaves a batch behind. Colours for the text outside the window are
+  taken whatever the text in the window has done since. `shiftRuns` also had a
+  bug that this exposed: a change over the edge of two runs gave the new text to
+  both, leaving runs that overlapped. The new text is now in one run.
+- **Rust.** The parse after an error stops at the end of the block that holds
+  the end of the requested range and the one after it (the plan's cap), and,
+  when the range is less than half of that parse, only what touches the range is
+  captured and parsed again (inline text, fenced code); the block grammar still
+  parses the text from the error to the range. A range that is most of its
+  parse is highlighted whole and cached, as before.
+
+The incremental-equals-full property is limited to the requested range, as
+the plan said: the spans inside the range equal those of the parse to the end of
+the note (`spans_uncapped`, property H6, 3,000 cases with errors of three
+shapes); the spans of a whole-note request are unchanged (H4).
+
+What remains is the grammar's parse from the error to the caret, which grows
+with the distance between them (10.6 ms at 50,000 words with the error a
+quarter of the note behind the caret). Reusing the old tree
+(`Tree::edit`) would remove it; it is not built, because its result for broken
+text is not guaranteed to equal a fresh parse and the host numbers are inside the
+limit with room to spare. Look at it again if the phone says otherwise.
+
+### Host (Rust, release), time of `styled_runs` after a keystroke, p50 in ms
+
+`crates/kanso-mobile/tests/highlight_latency.rs`, run with
+`cargo test -p kanso-mobile --release --test highlight_latency -- --ignored --nocapture`.
+Generated notes with the Dart fixture's broken table three quarters of the
+way down; 24 keystrokes at each place, the window is 8,192 units around the
+caret. "Before" is commit 69118e2.
+
+| Words | Request | Caret | Before | After |
+| --- | --- | --- | --- | --- |
+| 5,000 | window | end, after the error | 2.5 | 2.5 |
+| 5,000 | window | 90%, after the error | 2.7 | 2.7 |
+| 5,000 | window | 40%, before the error | 0.6 | 0.6 |
+| 20,000 | window | end | 9.4 | 4.9 |
+| 20,000 | window | 90% | 9.6 | 5.1 |
+| 20,000 | window | 40% | 0.8 | 0.8 |
+| 50,000 | window | end | 23.5 | 10.6 |
+| 50,000 | window | 90% | 23.4 | 9.1 |
+| 50,000 | window | 40% | 1.4 | 1.4 |
+| 50,000 | whole note | end | 38.7 | 38.7 |
+| 50,000 | whole note | 40% | 16.5 | 16.1 |
+
+The first request of a session (cold) takes 5 to 41 ms for a window (5.2 ms at
+5,000 words, 41 ms at 50,000 with the caret after the error) and 14 to 147 ms for the whole
+note. The whole-note request is not used while typing in window mode.
+At 5,000 words the host figure is 2.5 ms against the phone's 338 ms: the
+phone's delay was not the Rust call, which is the finding above.
+
+### Simulator (iPhone 18 Pro, iOS 27.0, debug, 60 Hz), quick script, window mode
+
+`flutter test integration_test/editor_typing_performance_test.dart -d <simulator>
+--dart-define=KANSO_TYPING_WORDS=<n>` (167 keystrokes). Indicative only.
+
+| Words | Fresh highlight p50 / p95, before (ms) | Fresh highlight p50 / p95, after (ms) |
+| --- | --- | --- |
+| 5,000 | 44 / 756 | 33 / 54 |
+| 50,000 | 71 / 920 | 46 / 68 |
+
+Keystroke to frame is not changed by this (20 ms p50, 35 to 40 ms p95 in
+debug mode in every run).
+
+### What is still needed
+
+The iPhone 17 Pro in profile mode at 5,000, 20,000 and 50,000 words, with the
+full script, for the real fresh-highlight figure against the 100 ms limit. The
+device gate is not passed by anything here.
+
 ## Memory and Flutter's undo history
 
 `EditableText` keeps a copy of the whole text in an unbounded undo stack every
@@ -144,8 +265,10 @@ confirmed** for 50k words in either mode.
    on the phone, against a limit of 100 ms at p95). That is Kanso's code, or the
    core's, not Flutter's layout: the time between a change and its new colours
    includes the coalescing to one request per frame and the call into Rust.
-   The escape-hatch table says to fix this within step 6; it needs a profile
-   (the timeline of a clean run) first.
+   The escape-hatch table says to fix this within step 6. It was fixed there
+   (see "Highlight latency"): the time was in Kanso's code, in colours that
+   were thrown away while typing and in the parse after a syntax error. Not yet
+   measured on the phone.
 
 ## Decision
 
