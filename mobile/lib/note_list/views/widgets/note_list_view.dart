@@ -12,10 +12,12 @@ import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/browse_location.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/state/navigation_history/navigation_history_bloc.dart';
+import '../../../core/state/sync_status/sync_status_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/day_grouping.dart';
 import '../../../core/utils/list_labels.dart';
 import '../../../core/views/widgets/kanso_divider.dart';
+import '../../../core/views/widgets/kanso_refresh_control.dart';
 import '../../../core/views/widgets/kanso_section_header.dart';
 import '../../../core/views/widgets/kanso_swipe_host.dart';
 import '../../models/data/note_list_entry.dart';
@@ -49,6 +51,11 @@ class NoteListView extends StatelessWidget {
     final byCreated = state.shape?.date == DateField.created;
     final entries = state.entries;
     final bloc = context.read<NoteListBloc>();
+    // Only an account has anything to pull: a phone that is signed out
+    // just bounces.
+    final signedIn = context.select<SyncStatusBloc, bool>(
+      (sync) => sync.state.signedIn,
+    );
     // Rows keep what they hold (a swipe in progress) by what they are, not
     // by where they are, so a note that moves takes it along.
     Object keyOf(NoteListEntry entry) => switch (entry) {
@@ -60,7 +67,9 @@ class NoteListView extends StatelessWidget {
     };
     return KansoSwipeHost(
       child: CustomScrollView(
+        physics: signedIn ? const AlwaysScrollableScrollPhysics() : null,
         slivers: <Widget>[
+          if (signedIn) KansoRefreshControl(onRefresh: () => syncNow(context)),
           SliverPadding(
             padding: EdgeInsets.only(
               top: KansoSpacing.xxs,
@@ -110,6 +119,13 @@ class NoteListView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Asks for a sync, and waits for it to end.
+  Future<void> syncNow(BuildContext context) {
+    final sync = context.read<SyncStatusBloc>()
+      ..add(const SyncStatusEvent.syncRequested());
+    return sync.stream.firstWhere((state) => !state.syncing);
   }
 
   /// Opens the note [id] in the place being listed, and tells the history.

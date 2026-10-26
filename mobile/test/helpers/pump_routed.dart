@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kanso/core/configs/kanso_theme.dart';
+import 'package:kanso/core/utils/kanso_scroll_behavior.dart';
 import 'package:kanso/gen/l10n/app_localizations.dart';
 
 /// Pumps [child] as the page at `/start` of a router that has the app's
@@ -60,6 +61,7 @@ Future<GoRouter> pumpRouted(
           : ThemeMode.light,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      scrollBehavior: const KansoScrollBehavior(),
       routerConfig: router,
     ),
   );

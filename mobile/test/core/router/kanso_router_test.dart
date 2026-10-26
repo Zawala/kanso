@@ -19,6 +19,7 @@ import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
+import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 import 'package:kanso/note/views/pages/note_page.dart';
 import 'package:kanso/note_list/views/pages/note_list_page.dart';
@@ -62,6 +63,7 @@ Future<GoRouter> _pump(
         BlocProvider<AppearanceBloc>.value(value: bloc),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
         BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
+        BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
       ],
       child: App(router: kansoRouter),
     ),

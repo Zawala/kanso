@@ -13,11 +13,13 @@ import 'package:kanso/core/models/data/library_index_status.dart';
 import 'package:kanso/core/models/repos/abs/haptics_repository.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
+import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/note_list/models/data/note_list_status.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 
 import 'close_bloc_later.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_sync_repository.dart';
 import 'library_fixtures.dart';
 import 'seeded_appearance_bloc.dart';
 
@@ -40,16 +42,27 @@ class RecordingHaptics implements HapticsRepository {
 /// The BLoCs the browsing screens read, over the mock library: the shared
 /// ones, and a list of a place when a test makes one.
 class BrowseBlocs {
-  BrowseBlocs._(this.library, this.index, this.history);
+  BrowseBlocs._(
+    this.library,
+    this.index,
+    this.history,
+    this.sync,
+    this.syncRepository,
+  );
 
   /// The mock library (see [FixtureLibraryRepository]).
   final FixtureLibraryRepository library;
   final LibraryIndexBloc index;
   final NavigationHistoryBloc history;
+  final SyncStatusBloc sync;
+  final FixtureSyncRepository syncRepository;
   final RecordingHaptics haptics = RecordingHaptics();
 
   /// Makes them, with the library read, and closes them when the test ends.
-  static Future<BrowseBlocs> start([FixtureLibraryRepository? library]) async {
+  static Future<BrowseBlocs> start([
+    FixtureLibraryRepository? library,
+    FixtureSyncRepository? syncRepository,
+  ]) async {
     final fixture = library ?? FixtureLibraryRepository();
     addTearDown(() => unawaited(fixture.close()));
     final index = LibraryIndexBloc(fixture)
@@ -57,10 +70,16 @@ class BrowseBlocs {
     final history = NavigationHistoryBloc(fixture);
     closeBlocLater(index);
     closeBlocLater(history);
+    final account = syncRepository ?? FixtureSyncRepository();
+    final sync = SyncStatusBloc(account)..add(const SyncStatusEvent.started());
+    closeBlocLater(sync);
     await index.stream.firstWhere(
       (state) => state.status != LibraryIndexStatus.loading,
     );
-    return BrowseBlocs._(fixture, index, history);
+    if (sync.state.status == null) {
+      await sync.stream.firstWhere((state) => state.status != null);
+    }
+    return BrowseBlocs._(fixture, index, history, sync, account);
   }
 
   /// A list of [place], read; or only made when [read] is false, so that it
@@ -90,6 +109,7 @@ class BrowseBlocs {
       providers: <BlocProvider<dynamic>>[
         BlocProvider<LibraryIndexBloc>.value(value: index),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
+        BlocProvider<SyncStatusBloc>.value(value: sync),
         if (list != null) BlocProvider<NoteListBloc>.value(value: list),
       ],
       child: child,

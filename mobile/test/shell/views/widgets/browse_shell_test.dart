@@ -12,13 +12,13 @@ import 'package:kanso/app.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/configs/kanso_layout.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
-import 'package:kanso/core/models/data/library_index_status.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
+import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_drawer_scope.dart';
 import 'package:kanso/core/views/widgets/kanso_sheet.dart';
 import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
@@ -29,9 +29,7 @@ import 'package:kanso/search/views/pages/search_page.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
 import 'package:kanso/shell/views/widgets/library_navigation.dart';
 
-import '../../../helpers/close_bloc_later.dart';
-import '../../../helpers/fixture_library_repository.dart';
-import '../../../helpers/mock_repositories.dart';
+import '../../../helpers/browse_blocs.dart';
 import '../../../helpers/register_page_blocs.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 
@@ -48,17 +46,8 @@ Future<GoRouter> _pump(
 }) async {
   final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
-  final library = FixtureLibraryRepository();
-  addTearDown(() => unawaited(library.close()));
-  registerPageBlocs(library);
-  final history = NavigationHistoryBloc(MockLibraryRepository());
-  addTearDown(history.close);
-  final index = LibraryIndexBloc(library)
-    ..add(const LibraryIndexEvent.started());
-  closeBlocLater(index);
-  await index.stream.firstWhere(
-    (state) => state.status != LibraryIndexStatus.loading,
-  );
+  final blocs = await BrowseBlocs.start();
+  registerPageBlocs(blocs.library);
   tester.view
     ..physicalSize = size
     ..devicePixelRatio = 1;
@@ -77,8 +66,9 @@ Future<GoRouter> _pump(
     MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<AppearanceBloc>.value(value: bloc),
-        BlocProvider<NavigationHistoryBloc>.value(value: history),
-        BlocProvider<LibraryIndexBloc>.value(value: index),
+        BlocProvider<NavigationHistoryBloc>.value(value: blocs.history),
+        BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
+        BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
       ],
       child: App(router: kansoRouter),
     ),
