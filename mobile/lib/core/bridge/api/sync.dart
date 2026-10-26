@@ -16,6 +16,22 @@ abstract class KansoSync implements RustOpaqueInterface {
   static Future<String> defaultServer() =>
       KansoCore.instance.api.crateApiSyncKansoSyncDefaultServer();
 
+  Future<bool> pushEnabled();
+
+  /// Registers (or removes) the remembered token to match the settings;
+  /// the retry after a failed registration.
+  Future<void> refreshPush();
+
+  Future<void> setPushEnabled({required bool enabled});
+
+  /// Hands over the token the OS issued for this phone; it is registered
+  /// with the server when signed in and pushes are on.
+  Future<void> setPushToken({
+    required PushPlatformKind platform,
+    required String token,
+    required PushEnvironmentKind environment,
+  });
+
   Future<SyncStatus> signInPassword({
     required String server,
     required String username,

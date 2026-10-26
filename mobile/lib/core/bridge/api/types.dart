@@ -614,6 +614,10 @@ enum PropertyKind {
   raw,
 }
 
+enum PushEnvironmentKind { production, development }
+
+enum PushPlatformKind { apns, fcm }
+
 class Range16 {
   final int start;
   final int end;

@@ -74,7 +74,7 @@ class KansoCore
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 759027719;
+  int get rustContentHash => -1627640088;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -244,6 +244,22 @@ abstract class KansoCoreApi extends BaseApi {
   });
 
   Future<String> crateApiSyncKansoSyncDefaultServer();
+
+  Future<bool> crateApiSyncKansoSyncPushEnabled({required KansoSync that});
+
+  Future<void> crateApiSyncKansoSyncRefreshPush({required KansoSync that});
+
+  Future<void> crateApiSyncKansoSyncSetPushEnabled({
+    required KansoSync that,
+    required bool enabled,
+  });
+
+  Future<void> crateApiSyncKansoSyncSetPushToken({
+    required KansoSync that,
+    required PushPlatformKind platform,
+    required String token,
+    required PushEnvironmentKind environment,
+  });
 
   Future<SyncStatus> crateApiSyncKansoSyncSignInPassword({
     required KansoSync that,
@@ -1596,6 +1612,154 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  Future<bool> crateApiSyncKansoSyncPushEnabled({required KansoSync that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 36,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSyncKansoSyncPushEnabledConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncKansoSyncPushEnabledConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoSync_push_enabled",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiSyncKansoSyncRefreshPush({required KansoSync that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 37,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSyncKansoSyncRefreshPushConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncKansoSyncRefreshPushConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoSync_refresh_push",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiSyncKansoSyncSetPushEnabled({
+    required KansoSync that,
+    required bool enabled,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
+            that,
+            serializer,
+          );
+          sse_encode_bool(enabled, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 38,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSyncKansoSyncSetPushEnabledConstMeta,
+        argValues: [that, enabled],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncKansoSyncSetPushEnabledConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoSync_set_push_enabled",
+        argNames: ["that", "enabled"],
+      );
+
+  @override
+  Future<void> crateApiSyncKansoSyncSetPushToken({
+    required KansoSync that,
+    required PushPlatformKind platform,
+    required String token,
+    required PushEnvironmentKind environment,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
+            that,
+            serializer,
+          );
+          sse_encode_push_platform_kind(platform, serializer);
+          sse_encode_String(token, serializer);
+          sse_encode_push_environment_kind(environment, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 39,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSyncKansoSyncSetPushTokenConstMeta,
+        argValues: [that, platform, token, environment],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncKansoSyncSetPushTokenConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoSync_set_push_token",
+        argNames: ["that", "platform", "token", "environment"],
+      );
+
+  @override
   Future<SyncStatus> crateApiSyncKansoSyncSignInPassword({
     required KansoSync that,
     required String server,
@@ -1618,7 +1782,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1652,7 +1816,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1686,7 +1850,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 42,
             port: port_,
           );
         },
@@ -1725,7 +1889,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 39,
+              funcId: 43,
               port: port_,
             );
           },
@@ -1763,7 +1927,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 44,
             port: port_,
           );
         },
@@ -1794,7 +1958,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 45,
             port: port_,
           );
         },
@@ -1825,7 +1989,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 46,
             port: port_,
           );
         },
@@ -1855,7 +2019,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 47,
             port: port_,
           );
         },
@@ -1885,7 +2049,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 44,
+            funcId: 48,
             port: port_,
           );
         },
@@ -1915,7 +2079,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 45,
+            funcId: 49,
             port: port_,
           );
         },
@@ -2703,6 +2867,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   PropertyKind dco_decode_property_kind(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return PropertyKind.values[raw as int];
+  }
+
+  @protected
+  PushEnvironmentKind dco_decode_push_environment_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return PushEnvironmentKind.values[raw as int];
+  }
+
+  @protected
+  PushPlatformKind dco_decode_push_platform_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return PushPlatformKind.values[raw as int];
   }
 
   @protected
@@ -3916,6 +4092,22 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PushEnvironmentKind sse_decode_push_environment_kind(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return PushEnvironmentKind.values[inner];
+  }
+
+  @protected
+  PushPlatformKind sse_decode_push_platform_kind(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return PushPlatformKind.values[inner];
+  }
+
+  @protected
   Range16 sse_decode_range_16(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_start = sse_decode_u_32(deserializer);
@@ -5020,6 +5212,24 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_push_environment_kind(
+    PushEnvironmentKind self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_push_platform_kind(
+    PushPlatformKind self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
   void sse_encode_range_16(Range16 self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_32(self.start, serializer);
@@ -5421,6 +5631,30 @@ class KansoSyncImpl extends RustOpaque implements KansoSync {
       .instance
       .api
       .crateApiSyncKansoSyncCheckServer(that: this, url: url);
+
+  Future<bool> pushEnabled() =>
+      KansoCore.instance.api.crateApiSyncKansoSyncPushEnabled(that: this);
+
+  /// Registers (or removes) the remembered token to match the settings;
+  /// the retry after a failed registration.
+  Future<void> refreshPush() =>
+      KansoCore.instance.api.crateApiSyncKansoSyncRefreshPush(that: this);
+
+  Future<void> setPushEnabled({required bool enabled}) => KansoCore.instance.api
+      .crateApiSyncKansoSyncSetPushEnabled(that: this, enabled: enabled);
+
+  /// Hands over the token the OS issued for this phone; it is registered
+  /// with the server when signed in and pushes are on.
+  Future<void> setPushToken({
+    required PushPlatformKind platform,
+    required String token,
+    required PushEnvironmentKind environment,
+  }) => KansoCore.instance.api.crateApiSyncKansoSyncSetPushToken(
+    that: this,
+    platform: platform,
+    token: token,
+    environment: environment,
+  );
 
   Future<SyncStatus> signInPassword({
     required String server,

@@ -83,6 +83,9 @@ impl SyncHandle {
     /// this phone `device_name` to the account's other devices, and binds
     /// this library to the account.
     ///
+    /// Once bound, registers the phone's push token if it has one
+    /// ([`SyncHandle::refresh_push`]).
+    ///
     /// A library that already holds notes of its own, and isn't this
     /// account's, is not bound: Kanso can't ask yet whether to add them or
     /// replace them, so it refuses with [`KansoError::Invalid`], and the
@@ -132,6 +135,9 @@ impl SyncHandle {
                 }
             }
             *held(&self.inner.sync_state) = SyncState::Off;
+            // Wakes for this phone: best effort, a failure never fails a
+            // sign-in. Every other way of signing in calls this too.
+            self.refresh_push_quietly();
             self.notify();
             self.current_status()
         })
@@ -147,6 +153,9 @@ impl SyncHandle {
                     .sign_out(&session)
                     .map_err(|err| account_error(&err, ErrorContext::Account))?;
             }
+            // The server dropped its copy of the push token with the session;
+            // the OS token stays for the next sign-in.
+            let _ = self.forget_push_registration();
             *held(&self.inner.sync_state) = SyncState::Off;
             self.notify();
             Ok(())

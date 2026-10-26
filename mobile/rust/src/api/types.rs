@@ -11,9 +11,10 @@ use flutter_rust_bridge::frb;
 pub use kanso_mobile::{
     BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview, ListPlace,
     ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow,
-    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved,
-    SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
+    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, PushEnvironmentKind,
+    PushPlatformKind, Range16, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow,
+    SyncPhase, SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow,
+    ThemeTokens,
 };
 
 #[frb(mirror(KansoError))]
@@ -241,6 +242,18 @@ pub enum _SyncPhase {
     Syncing,
     Synced,
     Failed,
+}
+
+#[frb(mirror(PushPlatformKind))]
+pub enum _PushPlatformKind {
+    Apns,
+    Fcm,
+}
+
+#[frb(mirror(PushEnvironmentKind))]
+pub enum _PushEnvironmentKind {
+    Production,
+    Development,
 }
 
 #[frb(mirror(SyncProblemKind))]

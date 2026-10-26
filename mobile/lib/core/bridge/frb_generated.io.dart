@@ -318,6 +318,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PropertyKind dco_decode_property_kind(dynamic raw);
 
   @protected
+  PushEnvironmentKind dco_decode_push_environment_kind(dynamic raw);
+
+  @protected
+  PushPlatformKind dco_decode_push_platform_kind(dynamic raw);
+
+  @protected
   Range16 dco_decode_range_16(dynamic raw);
 
   @protected
@@ -678,6 +684,14 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PropertyKind sse_decode_property_kind(SseDeserializer deserializer);
+
+  @protected
+  PushEnvironmentKind sse_decode_push_environment_kind(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PushPlatformKind sse_decode_push_platform_kind(SseDeserializer deserializer);
 
   @protected
   Range16 sse_decode_range_16(SseDeserializer deserializer);
@@ -1089,6 +1103,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_property_kind(PropertyKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_push_environment_kind(
+    PushEnvironmentKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_push_platform_kind(
+    PushPlatformKind self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_range_16(Range16 self, SseSerializer serializer);
