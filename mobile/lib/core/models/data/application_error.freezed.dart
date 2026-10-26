@@ -86,14 +86,20 @@ extension ApplicationErrorPatterns on ApplicationError {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( UnexpectedError value)?  unexpected,TResult Function( NotFoundError value)?  notFound,TResult Function( LockedError value)?  locked,TResult Function( StorageError value)?  storage,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( UnexpectedError value)?  unexpected,TResult Function( NotFoundError value)?  notFound,TResult Function( LockedError value)?  locked,TResult Function( StorageError value)?  storage,TResult Function( ConflictError value)?  conflict,TResult Function( InvalidError value)?  invalid,TResult Function( NetworkError value)?  network,TResult Function( SignedOutError value)?  signedOut,TResult Function( AuthError value)?  auth,TResult Function( InternalError value)?  internal,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case UnexpectedError() when unexpected != null:
 return unexpected(_that);case NotFoundError() when notFound != null:
 return notFound(_that);case LockedError() when locked != null:
 return locked(_that);case StorageError() when storage != null:
-return storage(_that);case _:
+return storage(_that);case ConflictError() when conflict != null:
+return conflict(_that);case InvalidError() when invalid != null:
+return invalid(_that);case NetworkError() when network != null:
+return network(_that);case SignedOutError() when signedOut != null:
+return signedOut(_that);case AuthError() when auth != null:
+return auth(_that);case InternalError() when internal != null:
+return internal(_that);case _:
   return orElse();
 
 }
@@ -111,14 +117,20 @@ return storage(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( UnexpectedError value)  unexpected,required TResult Function( NotFoundError value)  notFound,required TResult Function( LockedError value)  locked,required TResult Function( StorageError value)  storage,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( UnexpectedError value)  unexpected,required TResult Function( NotFoundError value)  notFound,required TResult Function( LockedError value)  locked,required TResult Function( StorageError value)  storage,required TResult Function( ConflictError value)  conflict,required TResult Function( InvalidError value)  invalid,required TResult Function( NetworkError value)  network,required TResult Function( SignedOutError value)  signedOut,required TResult Function( AuthError value)  auth,required TResult Function( InternalError value)  internal,}){
 final _that = this;
 switch (_that) {
 case UnexpectedError():
 return unexpected(_that);case NotFoundError():
 return notFound(_that);case LockedError():
 return locked(_that);case StorageError():
-return storage(_that);}
+return storage(_that);case ConflictError():
+return conflict(_that);case InvalidError():
+return invalid(_that);case NetworkError():
+return network(_that);case SignedOutError():
+return signedOut(_that);case AuthError():
+return auth(_that);case InternalError():
+return internal(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -132,14 +144,20 @@ return storage(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( UnexpectedError value)?  unexpected,TResult? Function( NotFoundError value)?  notFound,TResult? Function( LockedError value)?  locked,TResult? Function( StorageError value)?  storage,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( UnexpectedError value)?  unexpected,TResult? Function( NotFoundError value)?  notFound,TResult? Function( LockedError value)?  locked,TResult? Function( StorageError value)?  storage,TResult? Function( ConflictError value)?  conflict,TResult? Function( InvalidError value)?  invalid,TResult? Function( NetworkError value)?  network,TResult? Function( SignedOutError value)?  signedOut,TResult? Function( AuthError value)?  auth,TResult? Function( InternalError value)?  internal,}){
 final _that = this;
 switch (_that) {
 case UnexpectedError() when unexpected != null:
 return unexpected(_that);case NotFoundError() when notFound != null:
 return notFound(_that);case LockedError() when locked != null:
 return locked(_that);case StorageError() when storage != null:
-return storage(_that);case _:
+return storage(_that);case ConflictError() when conflict != null:
+return conflict(_that);case InvalidError() when invalid != null:
+return invalid(_that);case NetworkError() when network != null:
+return network(_that);case SignedOutError() when signedOut != null:
+return signedOut(_that);case AuthError() when auth != null:
+return auth(_that);case InternalError() when internal != null:
+return internal(_that);case _:
   return null;
 
 }
@@ -156,13 +174,19 @@ return storage(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String message)?  unexpected,TResult Function( String message)?  notFound,TResult Function( String message)?  locked,TResult Function( String message)?  storage,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String message)?  unexpected,TResult Function( String message)?  notFound,TResult Function( String message)?  locked,TResult Function( String message)?  storage,TResult Function( String message,  String currentRev)?  conflict,TResult Function( String message)?  invalid,TResult Function( String message)?  network,TResult Function( String message)?  signedOut,TResult Function( String message)?  auth,TResult Function( String message)?  internal,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case UnexpectedError() when unexpected != null:
 return unexpected(_that.message);case NotFoundError() when notFound != null:
 return notFound(_that.message);case LockedError() when locked != null:
 return locked(_that.message);case StorageError() when storage != null:
-return storage(_that.message);case _:
+return storage(_that.message);case ConflictError() when conflict != null:
+return conflict(_that.message,_that.currentRev);case InvalidError() when invalid != null:
+return invalid(_that.message);case NetworkError() when network != null:
+return network(_that.message);case SignedOutError() when signedOut != null:
+return signedOut(_that.message);case AuthError() when auth != null:
+return auth(_that.message);case InternalError() when internal != null:
+return internal(_that.message);case _:
   return orElse();
 
 }
@@ -180,13 +204,19 @@ return storage(_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String message)  unexpected,required TResult Function( String message)  notFound,required TResult Function( String message)  locked,required TResult Function( String message)  storage,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String message)  unexpected,required TResult Function( String message)  notFound,required TResult Function( String message)  locked,required TResult Function( String message)  storage,required TResult Function( String message,  String currentRev)  conflict,required TResult Function( String message)  invalid,required TResult Function( String message)  network,required TResult Function( String message)  signedOut,required TResult Function( String message)  auth,required TResult Function( String message)  internal,}) {final _that = this;
 switch (_that) {
 case UnexpectedError():
 return unexpected(_that.message);case NotFoundError():
 return notFound(_that.message);case LockedError():
 return locked(_that.message);case StorageError():
-return storage(_that.message);}
+return storage(_that.message);case ConflictError():
+return conflict(_that.message,_that.currentRev);case InvalidError():
+return invalid(_that.message);case NetworkError():
+return network(_that.message);case SignedOutError():
+return signedOut(_that.message);case AuthError():
+return auth(_that.message);case InternalError():
+return internal(_that.message);}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -200,13 +230,19 @@ return storage(_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String message)?  unexpected,TResult? Function( String message)?  notFound,TResult? Function( String message)?  locked,TResult? Function( String message)?  storage,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String message)?  unexpected,TResult? Function( String message)?  notFound,TResult? Function( String message)?  locked,TResult? Function( String message)?  storage,TResult? Function( String message,  String currentRev)?  conflict,TResult? Function( String message)?  invalid,TResult? Function( String message)?  network,TResult? Function( String message)?  signedOut,TResult? Function( String message)?  auth,TResult? Function( String message)?  internal,}) {final _that = this;
 switch (_that) {
 case UnexpectedError() when unexpected != null:
 return unexpected(_that.message);case NotFoundError() when notFound != null:
 return notFound(_that.message);case LockedError() when locked != null:
 return locked(_that.message);case StorageError() when storage != null:
-return storage(_that.message);case _:
+return storage(_that.message);case ConflictError() when conflict != null:
+return conflict(_that.message,_that.currentRev);case InvalidError() when invalid != null:
+return invalid(_that.message);case NetworkError() when network != null:
+return network(_that.message);case SignedOutError() when signedOut != null:
+return signedOut(_that.message);case AuthError() when auth != null:
+return auth(_that.message);case InternalError() when internal != null:
+return internal(_that.message);case _:
   return null;
 
 }
@@ -470,6 +506,404 @@ class _$StorageErrorCopyWithImpl<$Res>
 /// with the given fields replaced by the non-null parameter values.
 @override @pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
   return _then(StorageError(
+message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ConflictError implements ApplicationError {
+  const ConflictError({required this.message, this.currentRev = ''});
+  
+
+@override final  String message;
+@JsonKey() final  String currentRev;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ConflictErrorCopyWith<ConflictError> get copyWith => _$ConflictErrorCopyWithImpl<ConflictError>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ConflictError&&(identical(other.message, message) || other.message == message)&&(identical(other.currentRev, currentRev) || other.currentRev == currentRev));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,message,currentRev);
+
+@override
+String toString() {
+  return 'ApplicationError.conflict(message: $message, currentRev: $currentRev)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ConflictErrorCopyWith<$Res> implements $ApplicationErrorCopyWith<$Res> {
+  factory $ConflictErrorCopyWith(ConflictError value, $Res Function(ConflictError) _then) = _$ConflictErrorCopyWithImpl;
+@override @useResult
+$Res call({
+ String message, String currentRev
+});
+
+
+
+
+}
+/// @nodoc
+class _$ConflictErrorCopyWithImpl<$Res>
+    implements $ConflictErrorCopyWith<$Res> {
+  _$ConflictErrorCopyWithImpl(this._self, this._then);
+
+  final ConflictError _self;
+  final $Res Function(ConflictError) _then;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? message = null,Object? currentRev = null,}) {
+  return _then(ConflictError(
+message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,currentRev: null == currentRev ? _self.currentRev : currentRev // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class InvalidError implements ApplicationError {
+  const InvalidError({required this.message});
+  
+
+@override final  String message;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$InvalidErrorCopyWith<InvalidError> get copyWith => _$InvalidErrorCopyWithImpl<InvalidError>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is InvalidError&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,message);
+
+@override
+String toString() {
+  return 'ApplicationError.invalid(message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $InvalidErrorCopyWith<$Res> implements $ApplicationErrorCopyWith<$Res> {
+  factory $InvalidErrorCopyWith(InvalidError value, $Res Function(InvalidError) _then) = _$InvalidErrorCopyWithImpl;
+@override @useResult
+$Res call({
+ String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$InvalidErrorCopyWithImpl<$Res>
+    implements $InvalidErrorCopyWith<$Res> {
+  _$InvalidErrorCopyWithImpl(this._self, this._then);
+
+  final InvalidError _self;
+  final $Res Function(InvalidError) _then;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
+  return _then(InvalidError(
+message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NetworkError implements ApplicationError {
+  const NetworkError({required this.message});
+  
+
+@override final  String message;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NetworkErrorCopyWith<NetworkError> get copyWith => _$NetworkErrorCopyWithImpl<NetworkError>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NetworkError&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,message);
+
+@override
+String toString() {
+  return 'ApplicationError.network(message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NetworkErrorCopyWith<$Res> implements $ApplicationErrorCopyWith<$Res> {
+  factory $NetworkErrorCopyWith(NetworkError value, $Res Function(NetworkError) _then) = _$NetworkErrorCopyWithImpl;
+@override @useResult
+$Res call({
+ String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$NetworkErrorCopyWithImpl<$Res>
+    implements $NetworkErrorCopyWith<$Res> {
+  _$NetworkErrorCopyWithImpl(this._self, this._then);
+
+  final NetworkError _self;
+  final $Res Function(NetworkError) _then;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
+  return _then(NetworkError(
+message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class SignedOutError implements ApplicationError {
+  const SignedOutError({required this.message});
+  
+
+@override final  String message;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SignedOutErrorCopyWith<SignedOutError> get copyWith => _$SignedOutErrorCopyWithImpl<SignedOutError>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SignedOutError&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,message);
+
+@override
+String toString() {
+  return 'ApplicationError.signedOut(message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SignedOutErrorCopyWith<$Res> implements $ApplicationErrorCopyWith<$Res> {
+  factory $SignedOutErrorCopyWith(SignedOutError value, $Res Function(SignedOutError) _then) = _$SignedOutErrorCopyWithImpl;
+@override @useResult
+$Res call({
+ String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$SignedOutErrorCopyWithImpl<$Res>
+    implements $SignedOutErrorCopyWith<$Res> {
+  _$SignedOutErrorCopyWithImpl(this._self, this._then);
+
+  final SignedOutError _self;
+  final $Res Function(SignedOutError) _then;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
+  return _then(SignedOutError(
+message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AuthError implements ApplicationError {
+  const AuthError({required this.message});
+  
+
+@override final  String message;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AuthErrorCopyWith<AuthError> get copyWith => _$AuthErrorCopyWithImpl<AuthError>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AuthError&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,message);
+
+@override
+String toString() {
+  return 'ApplicationError.auth(message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AuthErrorCopyWith<$Res> implements $ApplicationErrorCopyWith<$Res> {
+  factory $AuthErrorCopyWith(AuthError value, $Res Function(AuthError) _then) = _$AuthErrorCopyWithImpl;
+@override @useResult
+$Res call({
+ String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$AuthErrorCopyWithImpl<$Res>
+    implements $AuthErrorCopyWith<$Res> {
+  _$AuthErrorCopyWithImpl(this._self, this._then);
+
+  final AuthError _self;
+  final $Res Function(AuthError) _then;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
+  return _then(AuthError(
+message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class InternalError implements ApplicationError {
+  const InternalError({required this.message});
+  
+
+@override final  String message;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$InternalErrorCopyWith<InternalError> get copyWith => _$InternalErrorCopyWithImpl<InternalError>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is InternalError&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,message);
+
+@override
+String toString() {
+  return 'ApplicationError.internal(message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $InternalErrorCopyWith<$Res> implements $ApplicationErrorCopyWith<$Res> {
+  factory $InternalErrorCopyWith(InternalError value, $Res Function(InternalError) _then) = _$InternalErrorCopyWithImpl;
+@override @useResult
+$Res call({
+ String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$InternalErrorCopyWithImpl<$Res>
+    implements $InternalErrorCopyWith<$Res> {
+  _$InternalErrorCopyWithImpl(this._self, this._then);
+
+  final InternalError _self;
+  final $Res Function(InternalError) _then;
+
+/// Create a copy of ApplicationError
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
+  return _then(InternalError(
 message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
 as String,
   ));

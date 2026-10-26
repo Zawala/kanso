@@ -3,19 +3,17 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
-import 'dart:async';
-import 'dart:convert';
-import 'dart:ffi' as ffi;
-
-import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
-
 import 'api/diagnostics.dart';
 import 'api/library.dart';
 import 'api/locks.dart';
 import 'api/renderer.dart';
 import 'api/sync.dart';
 import 'api/types.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:ffi' as ffi;
 import 'frb_generated.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
 
 abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   KansoCoreApiImplPlatform({
@@ -997,16 +995,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 // Section: wire_class
 
 class KansoCoreWire implements BaseWire {
-  /// The symbols are looked up in [dynamicLibrary].
-  KansoCoreWire(ffi.DynamicLibrary dynamicLibrary)
-    : _lookup = dynamicLibrary.lookup;
-
   factory KansoCoreWire.fromExternalLibrary(ExternalLibrary lib) =>
       KansoCoreWire(lib.ffiDynamicLibrary);
 
   /// Holds the symbol lookup function.
   final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
   _lookup;
+
+  /// The symbols are looked up in [dynamicLibrary].
+  KansoCoreWire(ffi.DynamicLibrary dynamicLibrary)
+    : _lookup = dynamicLibrary.lookup;
 
   void
   rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(

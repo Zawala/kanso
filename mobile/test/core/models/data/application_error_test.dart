@@ -27,6 +27,12 @@ void main() {
         NotFoundError() => 'notFound',
         LockedError() => 'locked',
         StorageError() => 'storage',
+        ConflictError() => 'conflict',
+        InvalidError() => 'invalid',
+        NetworkError() => 'network',
+        SignedOutError() => 'signedOut',
+        AuthError() => 'auth',
+        InternalError() => 'internal',
       };
       expect(
         describe(const ApplicationError.locked(message: 'x')),

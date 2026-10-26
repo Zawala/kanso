@@ -3,11 +3,15 @@
 The Flutter app of [Kanso](../README.md), tracked in
 [#48](https://github.com/iamngoni/kanso/issues/48). This folder holds the
 scaffold: the design system (colours, type, icons, spacing, motion), the
-shared appearance state, the test and golden-image tooling, and CI. The
-screens come in later steps.
+shared appearance state, the test and golden-image tooling, and CI, and the
+Rust core behind a bridge (`rust/`, `lib/core/bridge/`). The screens come in
+later steps.
 
 - Flutter 3.44.8 (stable), Dart 3.12, strict analysis.
 - iOS and iPadOS 17 or later; Android 10 (API 29) or later; phones and tablets.
+- The Rust toolchain (rustup; the versions are pinned in `rust/rust-toolchain.toml`)
+  and, for Android, the NDK Flutter uses: the library is built by
+  `hook/build.dart` during `flutter run`, `build` and `test`.
 - Bundle id `app.kanso.Kanso` on iOS, application id `app.kanso.kanso` on
   Android.
 
@@ -30,6 +34,29 @@ Generated code (`*.freezed.dart`, `*.g.dart`, `injection.config.dart` and the
 localisation classes in `lib/gen/l10n/`) is committed. CI regenerates it and
 fails if the result differs, so run the two generators and commit after
 changing a Freezed class, an injectable class or an ARB file.
+
+## The Rust core
+
+The notes, locked notes, sync and drawing are `crates/kanso-mobile`, the same
+core the desktop app is built on. `rust/` wraps it for Dart with
+[flutter_rust_bridge](https://github.com/fzyzcjy/flutter_rust_bridge) (2.13.0,
+pinned): `rust/src/api/` is what Dart sees, and the generated Dart is
+`lib/core/bridge/` (committed). After changing `rust/src/api/`:
+
+```sh
+cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked
+flutter_rust_bridge_codegen generate   # from this folder
+dart run build_runner build            # Freezed for the generated enums
+```
+
+`hook/build.dart` builds the library as a native asset, with the phones'
+profile (`[profile.mobile]` in the root `Cargo.toml`) and the compilers of
+`../scripts/mobile/env.sh`. `flutter test` runs it too; tests that call the
+core open the library it built (`test/helpers/core_library.dart`). The app
+opens its library at `kanso/library.db` in the application support folder
+(`lib/core/configs/core_module.dart`); the background sync opens the same file.
+The home page lists a "Rust core" row that opens `lib/core_check/`, real calls
+to the library.
 
 ## Check
 
@@ -109,6 +136,12 @@ Every dependency is MIT, BSD or Apache licensed.
 | `flutter_svg` | Draws the Lucide icons | MIT |
 | `intl` | Localisation (ARB) support | BSD-3-Clause |
 | `flutter_localizations` | Flutter's own localisation delegates (Flutter SDK) | BSD-3-Clause |
+| `flutter_rust_bridge` | Calls the Rust core (2.13.0, pinned) | MIT |
+| `flutter_rust_bridge_hooks` | Builds the Rust core as a native asset (2.13.0, pinned); brings `native_toolchain_rust` (MIT) and `hooks` (BSD-3-Clause) | MIT |
+| `code_assets` | The build hook reads the target platform | BSD-3-Clause |
+| `path` | The build hook's file paths | BSD-3-Clause |
+| `dartz` | `Either` for repository results | MIT |
+| `path_provider` | The folder the library lives in | BSD-3-Clause |
 
 Development only:
 
@@ -122,6 +155,7 @@ Development only:
 | `bloc_test` | BLoC tests | MIT |
 | `mocktail` | Mocks | MIT |
 | `glados` | Property-based tests | MIT |
+| `integration_test` | Tests on a simulator or an emulator (Flutter SDK) | BSD-3-Clause |
 
 Bundled files:
 

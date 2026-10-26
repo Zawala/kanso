@@ -43,7 +43,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -43249255;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1217283631;
 
 // Section: executor
 
@@ -131,7 +131,7 @@ fn wire__crate__api__library__KansoLibrary_create_impl(
             let api_that = <RustOpaqueMoi<
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>,
             >>::sse_decode(&mut deserializer);
-            let api_new = <crate::api::types::NewNote>::sse_decode(&mut deserializer);
+            let api_note = <crate::api::types::NewNote>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, crate::api::types::KansoError>((move || {
@@ -150,7 +150,7 @@ fn wire__crate__api__library__KansoLibrary_create_impl(
                     }
                     let api_that_guard = api_that_guard.unwrap();
                     let output_ok =
-                        crate::api::library::KansoLibrary::create(&*api_that_guard, api_new)?;
+                        crate::api::library::KansoLibrary::create(&*api_that_guard, api_note)?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -654,14 +654,14 @@ fn wire__crate__api__library__KansoLibrary_search_impl(
         },
     )
 }
-fn wire__crate__api__library__KansoLibrary_sync_impl(
+fn wire__crate__api__library__KansoLibrary_syncing_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "KansoLibrary_sync",
+            debug_name: "KansoLibrary_syncing",
             port: None,
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
         },
@@ -695,7 +695,7 @@ fn wire__crate__api__library__KansoLibrary_sync_impl(
                 }
                 let api_that_guard = api_that_guard.unwrap();
                 let output_ok =
-                    Ok::<_, ()>(crate::api::library::KansoLibrary::sync(&*api_that_guard))?;
+                    Ok::<_, ()>(crate::api::library::KansoLibrary::syncing(&*api_that_guard))?;
                 std::result::Result::Ok(output_ok)
             })())
         },
@@ -3120,7 +3120,7 @@ fn pde_ffi_dispatcher_sync_impl(
     match func_id {
         3 => wire__crate__api__library__KansoLibrary_locks_impl(ptr, rust_vec_len, data_len),
         10 => wire__crate__api__library__KansoLibrary_renderer_impl(ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__library__KansoLibrary_sync_impl(ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__library__KansoLibrary_syncing_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

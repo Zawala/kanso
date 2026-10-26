@@ -39,6 +39,7 @@ void main() {
   group('DesignGalleryPage', () {
     testWidgets('lists every phone and tablet screen', (tester) async {
       await _pump(tester);
+      expect(find.text('Rust core'), findsOneWidget);
       expect(find.text('Phone'), findsOneWidget);
       expect(find.text('Tablet'), findsOneWidget);
       expect(find.text('Library'), findsOneWidget);

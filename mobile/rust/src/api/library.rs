@@ -34,8 +34,8 @@ impl KansoLibrary {
         self.0.save(&id, &base_rev, body)
     }
 
-    pub fn create(&self, new: NewNote) -> Result<Saved, KansoError> {
-        self.0.create(new)
+    pub fn create(&self, note: NewNote) -> Result<Saved, KansoError> {
+        self.0.create(note)
     }
 
     pub fn trash(&self, id: String) -> Result<(), KansoError> {
@@ -73,7 +73,7 @@ impl KansoLibrary {
     }
 
     #[frb(sync)]
-    pub fn sync(&self) -> KansoSync {
+    pub fn syncing(&self) -> KansoSync {
         KansoSync::new(self.0.sync())
     }
 

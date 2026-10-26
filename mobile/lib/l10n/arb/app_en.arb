@@ -640,5 +640,86 @@
   "screenEmptyNotebook": "Empty notebook",
   "@screenEmptyNotebook": {
     "description": "The name of a mock screen."
+  },
+  "designGalleryCoreTitle": "Library on this phone",
+  "@designGalleryCoreTitle": {
+    "description": "The gallery section that opens the core check."
+  },
+  "designGalleryCoreCheck": "Rust core",
+  "@designGalleryCoreCheck": {
+    "description": "The gallery row that opens the core check page."
+  },
+  "coreCheckTitle": "Rust core",
+  "@coreCheckTitle": {
+    "description": "The title of the core check page."
+  },
+  "coreCheckLoading": "Opening the library…",
+  "@coreCheckLoading": {
+    "description": "Says the library is being opened."
+  },
+  "coreCheckLibrary": "Library",
+  "@coreCheckLibrary": {
+    "description": "The label above the core check's facts."
+  },
+  "coreCheckVersion": "Version",
+  "@coreCheckVersion": {
+    "description": "The core check row that shows the library's version."
+  },
+  "coreCheckCertificates": "Certificates",
+  "@coreCheckCertificates": {
+    "description": "The core check row that says whether the library can check a server's certificate."
+  },
+  "coreCheckCertificatesReady": "Ready",
+  "@coreCheckCertificatesReady": {
+    "description": "The library can check certificates."
+  },
+  "coreCheckCertificatesNotReady": "Not ready",
+  "@coreCheckCertificatesNotReady": {
+    "description": "The library can't check certificates yet."
+  },
+  "coreCheckNotes": "Notes",
+  "@coreCheckNotes": {
+    "description": "The core check row that shows how many notes the library holds."
+  },
+  "coreCheckLastChange": "Last change",
+  "@coreCheckLastChange": {
+    "description": "The core check row that shows the last change the library reported."
+  },
+  "coreCheckNoChange": "None yet",
+  "@coreCheckNoChange": {
+    "description": "No change has been reported yet."
+  },
+  "coreCheckChanged": "{count, plural, =1{1 note changed} other{{count} notes changed}}",
+  "@coreCheckChanged": {
+    "description": "How many notes the last reported change touched.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "coreCheckNewNote": "New note",
+  "@coreCheckNewNote": {
+    "description": "What the core check's button does: makes a note."
+  },
+  "coreCheckLatest": "Latest notes",
+  "@coreCheckLatest": {
+    "description": "The label above the newest notes in the core check."
+  },
+  "coreCheckActionFailed": "That didn't work. Try again.",
+  "@coreCheckActionFailed": {
+    "description": "Says the last action in the core check failed."
+  },
+  "coreCheckFailedTitle": "The library didn't open",
+  "@coreCheckFailedTitle": {
+    "description": "The title of the core check's error card."
+  },
+  "coreCheckFailedMessage": "Something went wrong reading the notes on this phone. Try again.",
+  "@coreCheckFailedMessage": {
+    "description": "Says what happened, and what to do."
+  },
+  "coreCheckRetry": "Try again",
+  "@coreCheckRetry": {
+    "description": "What the core check's error card button does."
   }
 }

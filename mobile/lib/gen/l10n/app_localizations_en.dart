@@ -498,4 +498,70 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get screenEmptyNotebook => 'Empty notebook';
+
+  @override
+  String get designGalleryCoreTitle => 'Library on this phone';
+
+  @override
+  String get designGalleryCoreCheck => 'Rust core';
+
+  @override
+  String get coreCheckTitle => 'Rust core';
+
+  @override
+  String get coreCheckLoading => 'Opening the library…';
+
+  @override
+  String get coreCheckLibrary => 'Library';
+
+  @override
+  String get coreCheckVersion => 'Version';
+
+  @override
+  String get coreCheckCertificates => 'Certificates';
+
+  @override
+  String get coreCheckCertificatesReady => 'Ready';
+
+  @override
+  String get coreCheckCertificatesNotReady => 'Not ready';
+
+  @override
+  String get coreCheckNotes => 'Notes';
+
+  @override
+  String get coreCheckLastChange => 'Last change';
+
+  @override
+  String get coreCheckNoChange => 'None yet';
+
+  @override
+  String coreCheckChanged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count notes changed',
+      one: '1 note changed',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get coreCheckNewNote => 'New note';
+
+  @override
+  String get coreCheckLatest => 'Latest notes';
+
+  @override
+  String get coreCheckActionFailed => 'That didn\'t work. Try again.';
+
+  @override
+  String get coreCheckFailedTitle => 'The library didn\'t open';
+
+  @override
+  String get coreCheckFailedMessage =>
+      'Something went wrong reading the notes on this phone. Try again.';
+
+  @override
+  String get coreCheckRetry => 'Try again';
 }

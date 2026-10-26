@@ -11,7 +11,9 @@ import 'injection.config.dart';
 /// (providers, bootstrap), never inside business logic.
 final GetIt getIt = GetIt.instance;
 
+/// Registers everything. The library is opened here, so `KansoCore.init`
+/// must have run first.
 @InjectableInit(preferRelativeImports: true)
-void configureDependencies(String environment) {
-  getIt.init(environment: environment);
+Future<void> configureDependencies(String environment) async {
+  await getIt.init(environment: environment);
 }

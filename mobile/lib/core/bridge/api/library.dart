@@ -3,10 +3,9 @@
 
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
-import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
-
 import '../frb_generated.dart';
 import 'locks.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'renderer.dart';
 import 'sync.dart';
 import 'types.dart';
@@ -16,7 +15,7 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// The IDs of what changed, in batches, until Dart stops listening.
   Stream<List<String>> changes();
 
-  Future<Saved> create({required NewNote new_});
+  Future<Saved> create({required NewNote note});
 
   KansoLocks locks();
 
@@ -44,7 +43,7 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<List<Hit>> search({required String text, required int limit});
 
-  KansoSync sync_();
+  KansoSync syncing();
 
   Future<List<TagRow>> tags();
 

@@ -14,7 +14,9 @@ import 'package:glados/glados.dart'
         Generator,
         GeneratorUtils,
         IntAnys,
-        ListAnys;
+        ListAnys,
+        StringAnys;
+import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
@@ -83,4 +85,23 @@ extension KansoMarkdownAny on Any {
       choose(_markdownAlphabet),
     ).map((chars) => chars.join());
   }
+}
+
+extension KansoErrorAny on Any {
+  /// Any error the Rust library can fail with, with any message.
+  Generator<KansoError> get kansoError => combine2(
+    intInRange(0, 9),
+    nonEmptyLetterOrDigits,
+    (int kind, String text) => switch (kind) {
+      0 => const KansoError.notFound(),
+      1 => const KansoError.locked(),
+      2 => KansoError.conflict(currentRev: text),
+      3 => KansoError.invalid(message: text),
+      4 => KansoError.storage(message: text),
+      5 => KansoError.network(message: text),
+      6 => const KansoError.signedOut(),
+      7 => KansoError.auth(message: text),
+      _ => KansoError.internal(message: text),
+    },
+  );
 }

@@ -15,6 +15,7 @@ import '../../../core/views/widgets/kanso_segment.dart';
 import '../../../core/views/widgets/kanso_segmented.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
+import '../../../core_check/views/pages/core_check_page.dart';
 import '../../models/data/design_layout.dart';
 import '../../models/data/design_screen.dart';
 import '../../utils/page_for_screen.dart';
@@ -81,6 +82,23 @@ class DesignGalleryPage extends StatelessWidget {
                       ],
                     );
                   },
+                ),
+                const SizedBox(height: KansoSpacing.lg),
+                KansoGroupedSection(
+                  title: l10n.designGalleryCoreTitle,
+                  children: <Widget>[
+                    KansoSettingsRow(
+                      label: l10n.designGalleryCoreCheck,
+                      chevron: true,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const CoreCheckPage(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
                 for (final layout in DesignLayout.values) ...<Widget>[
                   const SizedBox(height: KansoSpacing.lg),

@@ -3,11 +3,9 @@
 
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
+import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
-
-import '../frb_generated.dart';
-
 part 'types.freezed.dart';
 
 class ColorRow {
@@ -120,9 +118,9 @@ class NewNote {
   final String body;
 
   const NewNote({
+    this.notebookId,
     required this.title,
     required this.body,
-    this.notebookId,
   });
 
   @override
@@ -149,14 +147,14 @@ class NoteQuery {
   final bool descending;
 
   const NoteQuery({
+    this.notebookId,
+    this.tagId,
+    this.status,
     required this.trash,
     required this.limit,
     required this.skip,
     required this.sort,
     required this.descending,
-    this.notebookId,
-    this.tagId,
-    this.status,
   });
 
   @override
@@ -269,6 +267,7 @@ class NoteView {
     required this.id,
     required this.rev,
     required this.title,
+    this.body,
     required this.lock,
     required this.notebookId,
     required this.tags,
@@ -276,7 +275,6 @@ class NoteView {
     required this.pinned,
     required this.createdMs,
     required this.updatedMs,
-    this.body,
   });
 
   @override
@@ -323,9 +321,9 @@ class NotebookRow {
   const NotebookRow({
     required this.id,
     required this.name,
+    this.parentId,
     required this.count,
     required this.locked,
-    this.parentId,
     this.icon,
     this.color,
   });
@@ -378,11 +376,11 @@ class PaletteDto {
     required this.accent,
     required this.border,
     required this.surface,
+    this.heading,
     required this.quote,
     required this.taskDone,
-    required this.inlineCodeBackground,
-    this.heading,
     this.codeText,
+    required this.inlineCodeBackground,
     this.inlineCodeText,
     this.tableHeaderBackground,
   });
@@ -646,10 +644,10 @@ class SyncStatus {
 
   const SyncStatus({
     required this.phase,
-    required this.conflicts,
     this.username,
     this.server,
     this.lastSyncedMs,
+    required this.conflicts,
     this.problem,
   });
 
