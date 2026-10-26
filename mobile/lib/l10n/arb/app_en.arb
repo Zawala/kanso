@@ -299,10 +299,6 @@
   "@appearanceDark": {
     "description": "Always dark."
   },
-  "screenNoteEdit": "Note, edit",
-  "@screenNoteEdit": {
-    "description": "The name of a mock screen."
-  },
   "screenError": "Error card",
   "@screenError": {
     "description": "The name of a mock screen."

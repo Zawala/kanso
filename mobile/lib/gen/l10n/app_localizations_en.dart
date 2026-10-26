@@ -242,9 +242,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appearanceDark => 'Dark';
 
   @override
-  String get screenNoteEdit => 'Note, edit';
-
-  @override
   String get screenError => 'Error card';
 
   @override

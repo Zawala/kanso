@@ -523,12 +523,6 @@ abstract class AppLocalizations {
   /// The name of a mock screen.
   ///
   /// In en, this message translates to:
-  /// **'Note, edit'**
-  String get screenNoteEdit;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
   /// **'Error card'**
   String get screenError;
 
