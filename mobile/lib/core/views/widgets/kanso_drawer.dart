@@ -9,6 +9,7 @@ import '../../configs/kanso_shadows.dart';
 import 'kanso_divider.dart';
 import 'kanso_drawer_controller.dart';
 import 'kanso_drawer_scope.dart';
+import 'kanso_plain_text.dart';
 import 'kanso_scrim.dart';
 
 /// A panel that slides in over the start edge of [child], with a veil over
@@ -160,7 +161,9 @@ class KansoDrawerState extends State<KansoDrawer>
                         ),
                         child: Row(
                           children: <Widget>[
-                            Expanded(child: widget.drawer),
+                            Expanded(
+                              child: KansoPlainText(child: widget.drawer),
+                            ),
                             const KansoDivider(vertical: true),
                           ],
                         ),

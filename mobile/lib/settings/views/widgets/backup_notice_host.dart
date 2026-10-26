@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/configs/kanso_spacing.dart';
+import '../../../core/views/widgets/kanso_plain_text.dart';
 import '../../../core/views/widgets/kanso_scrim.dart';
 import '../../state/backup_notice/backup_notice_bloc.dart';
 import 'backup_notice_card.dart';
@@ -30,12 +31,16 @@ class BackupNoticeHost extends StatelessWidget {
                 child: AbsorbPointer(child: KansoScrim()),
               ),
               Positioned.fill(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(KansoSpacing.lg),
-                    child: BackupNoticeCard(
-                      onOk: () => context.read<BackupNoticeBloc>().add(
-                        const BackupNoticeEvent.dismissed(),
+                // Above the app's navigator there is no page to give the
+                // text its style, so the card sets plain text itself.
+                child: KansoPlainText(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(KansoSpacing.lg),
+                      child: BackupNoticeCard(
+                        onOk: () => context.read<BackupNoticeBloc>().add(
+                          const BackupNoticeEvent.dismissed(),
+                        ),
                       ),
                     ),
                   ),

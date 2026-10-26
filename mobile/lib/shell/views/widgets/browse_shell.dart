@@ -9,6 +9,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/models/data/browse_location.dart';
 import '../../../core/models/data/layout_class.dart';
+import '../../../core/views/widgets/kanso_plain_text.dart';
 import '../../state/library_pane/library_pane_bloc.dart';
 import 'kanso_shortcuts.dart';
 import 'library_drawer_host.dart';
@@ -56,75 +57,78 @@ class BrowseShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return NavigationHistoryListener(
       location: location,
-      child: ValueListenableBuilder<LayoutClass>(
-        valueListenable: layout,
-        child: child,
-        builder: (context, layoutClass, child) {
-          final width = MediaQuery.sizeOf(context).width;
-          final listOnly = location?.noteId == null;
-          Widget drawerAround(
-            LayoutClass shown,
-            Widget content,
-            double drawer,
-          ) {
-            return LibraryDrawerHost(
-              location: location,
-              designGallery: designGallery,
-              width: drawer,
-              edgeDragEnabled: shown != LayoutClass.single || listOnly,
-              child: KansoShortcuts(
-                layout: layoutClass,
+      // The panes beside the pages are not in a page's Scaffold.
+      child: KansoPlainText(
+        child: ValueListenableBuilder<LayoutClass>(
+          valueListenable: layout,
+          child: child,
+          builder: (context, layoutClass, child) {
+            final width = MediaQuery.sizeOf(context).width;
+            final listOnly = location?.noteId == null;
+            Widget drawerAround(
+              LayoutClass shown,
+              Widget content,
+              double drawer,
+            ) {
+              return LibraryDrawerHost(
                 location: location,
-                child: content,
-              ),
-            );
-          }
+                designGallery: designGallery,
+                width: drawer,
+                edgeDragEnabled: shown != LayoutClass.single || listOnly,
+                child: KansoShortcuts(
+                  layout: layoutClass,
+                  location: location,
+                  child: content,
+                ),
+              );
+            }
 
-          return switch (layoutClass) {
-            LayoutClass.single => drawerAround(
-              LayoutClass.single,
-              child!,
-              width * KansoSizes.drawerFraction,
-            ),
-            LayoutClass.double => drawerAround(
-              LayoutClass.double,
-              ListNoteLayout(
-                list: ListSlot(location: location),
-                note: child!,
+            return switch (layoutClass) {
+              LayoutClass.single => drawerAround(
+                LayoutClass.single,
+                child!,
+                width * KansoSizes.drawerFraction,
               ),
-              KansoSizes.libraryPane,
-            ),
-            // The library pane can be hidden: then it is the drawer of the
-            // two panes left.
-            LayoutClass.triple =>
-              BlocBuilder<LibraryPaneBloc, LibraryPaneState>(
-                builder: (context, pane) {
-                  if (!pane.visible) {
-                    return drawerAround(
-                      LayoutClass.triple,
-                      ListNoteLayout(
+              LayoutClass.double => drawerAround(
+                LayoutClass.double,
+                ListNoteLayout(
+                  list: ListSlot(location: location),
+                  note: child!,
+                ),
+                KansoSizes.libraryPane,
+              ),
+              // The library pane can be hidden: then it is the drawer of the
+              // two panes left.
+              LayoutClass.triple =>
+                BlocBuilder<LibraryPaneBloc, LibraryPaneState>(
+                  builder: (context, pane) {
+                    if (!pane.visible) {
+                      return drawerAround(
+                        LayoutClass.triple,
+                        ListNoteLayout(
+                          list: ListSlot(location: location),
+                          note: child!,
+                        ),
+                        KansoSizes.libraryPane,
+                      );
+                    }
+                    return KansoShortcuts(
+                      layout: layoutClass,
+                      location: location,
+                      child: TabletLayout(
+                        library: LibraryNavigation(
+                          location: location,
+                          designGallery: designGallery,
+                        ),
                         list: ListSlot(location: location),
                         note: child!,
                       ),
-                      KansoSizes.libraryPane,
                     );
-                  }
-                  return KansoShortcuts(
-                    layout: layoutClass,
-                    location: location,
-                    child: TabletLayout(
-                      library: LibraryNavigation(
-                        location: location,
-                        designGallery: designGallery,
-                      ),
-                      list: ListSlot(location: location),
-                      note: child!,
-                    ),
-                  );
-                },
-              ),
-          };
-        },
+                  },
+                ),
+            };
+          },
+        ),
       ),
     );
   }
