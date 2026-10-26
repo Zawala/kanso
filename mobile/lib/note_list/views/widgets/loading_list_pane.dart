@@ -12,7 +12,10 @@ import 'skeleton_note_row.dart';
 /// The list of notes while it loads: rows made of still bars where notes
 /// will appear.
 class LoadingListPane extends StatelessWidget {
-  const LoadingListPane({super.key});
+  const LoadingListPane({this.semanticLabel, super.key});
+
+  /// What a screen reader says while it shows; "Loading notes" when null.
+  final String? semanticLabel;
 
   /// How wide each skeleton row's title is, as a share of the row; it
   /// repeats down the list.
@@ -27,7 +30,7 @@ class LoadingListPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: context.l10n.noteListLoading,
+      label: semanticLabel ?? context.l10n.noteListLoading,
       container: true,
       child: ListView(
         physics: const NeverScrollableScrollPhysics(),

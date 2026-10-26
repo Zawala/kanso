@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart' show addTearDown;
 import 'package:kanso/injection.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
+import 'package:kanso/search/state/search/search_bloc.dart';
 
 import 'browse_blocs.dart';
 import 'fixture_library_repository.dart';
@@ -34,5 +35,9 @@ void registerPageBlocs(
   getIt.registerFactory<NoteBloc>(
     () => NoteBloc(library, renderer ?? FixtureRendererRepository()),
   );
+  if (getIt.isRegistered<SearchBloc>()) {
+    getIt.unregister<SearchBloc>();
+  }
+  getIt.registerFactory<SearchBloc>(() => SearchBloc(library));
   addTearDown(() => unawaited(getIt.reset()));
 }

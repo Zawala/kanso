@@ -4,9 +4,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/configs/kanso_colors.dart';
 import 'package:kanso/core/configs/kanso_effects.dart';
-import 'package:kanso/design/views/widgets/highlighted_text.dart';
+import 'package:kanso/search/views/widgets/highlighted_text.dart';
 
 import '../../../helpers/pump.dart';
 
@@ -29,7 +30,10 @@ void main() {
         tester,
         const HighlightedText(
           'Sync and sync again',
-          query: 'sync',
+          ranges: <Range16>[
+            Range16(start: 0, end: 4),
+            Range16(start: 9, end: 13),
+          ],
           style: TextStyle(fontSize: 14),
         ),
       );
@@ -52,7 +56,7 @@ void main() {
         tester,
         const HighlightedText(
           'sync',
-          query: 'sync',
+          ranges: <Range16>[Range16(start: 0, end: 4)],
           style: TextStyle(fontSize: 14),
         ),
         brightness: Brightness.dark,
@@ -67,7 +71,7 @@ void main() {
         tester,
         const HighlightedText(
           'Nothing to see',
-          query: 'sync',
+          ranges: <Range16>[],
           style: TextStyle(fontSize: 14),
         ),
       );
@@ -82,7 +86,7 @@ void main() {
         tester,
         const HighlightedText(
           'Syncing',
-          query: 'sync',
+          ranges: <Range16>[Range16(start: 0, end: 4)],
           style: TextStyle(fontSize: 14),
         ),
       );

@@ -48,6 +48,9 @@ class FixtureLibraryRepository implements LibraryRepository {
   /// When set, `list` waits for it: a list that is still loading.
   Completer<void>? listGate;
 
+  /// When set, `search` waits for it: a search that is still running.
+  Completer<void>? searchGate;
+
   final List<ListQuery> listQueries = <ListQuery>[];
   final List<(List<String>, NoteChange)> changesMade =
       <(List<String>, NoteChange)>[];
@@ -102,6 +105,7 @@ class FixtureLibraryRepository implements LibraryRepository {
     int limit = 50,
   }) async {
     searches.add((text, scope));
+    await searchGate?.future;
     return searchResult;
   }
 

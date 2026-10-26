@@ -22,12 +22,17 @@ class ListSlot extends StatelessWidget {
         place: place,
         openNoteId: noteId,
       ),
-      SearchLocation(:final query, :final scope, :final notebookId) =>
+      SearchLocation(
+        :final query,
+        :final scope,
+        :final notebookId,
+        :final noteId,
+      ) =>
         SearchPage(
           query: query,
           scope: scope,
           notebookId: notebookId,
-          inPane: true,
+          openNoteId: noteId,
         ),
       null => const SizedBox.shrink(),
     };

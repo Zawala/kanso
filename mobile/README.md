@@ -186,6 +186,7 @@ Every dependency is MIT, BSD or Apache licensed.
 | `bloc` | BLoC state machines | MIT |
 | `go_router` | Routes, deep links and the back button | BSD-3-Clause |
 | `bloc_concurrency` | `sequential` and `restartable` event transformers | MIT |
+| `clock` | The time screens read ("Today", a row's hour), which tests fix | Apache-2.0 |
 | `flutter_bloc` | Widgets for BLoCs | MIT |
 | `freezed_annotation` | Annotations for generated models, events and states | MIT |
 | `json_annotation` | Annotations for generated JSON conversion | BSD-3-Clause |

@@ -140,7 +140,6 @@ void main() {
       await _pump(tester, _landscape, at: '/search?q=tea');
       final search = tester.widget<SearchPage>(find.byType(SearchPage));
       expect(search.query, 'tea');
-      expect(search.inPane, isTrue);
       expect(find.byType(NoNoteSelectedPane), findsOneWidget);
     });
 

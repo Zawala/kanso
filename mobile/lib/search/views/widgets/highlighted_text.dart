@@ -4,12 +4,14 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_effects.dart';
 import '../../../core/utils/context_extensions.dart';
-import '../../../core/utils/search_match_spans.dart';
+import '../../../core/utils/range_spans.dart';
 
-/// [text] with the words of [query] on a softly rounded wash of the accent
-/// colour, as a search result shows what it matched.
+/// [text] with the places in [ranges] on a softly rounded wash of the accent
+/// colour, as a search result shows what it matched. [ranges] are what the
+/// library reported for the text, in UTF-16 units.
 ///
 /// The wash is the accent at low opacity, so it reads on a light theme and
 /// on a dark one, and its corners are rounded: a matched word sits in a
@@ -17,14 +19,14 @@ import '../../../core/utils/search_match_spans.dart';
 class HighlightedText extends StatelessWidget {
   const HighlightedText(
     this.text, {
-    required this.query,
+    required this.ranges,
     required this.style,
     this.maxLines,
     super.key,
   });
 
   final String text;
-  final String query;
+  final List<Range16> ranges;
   final TextStyle style;
   final int? maxLines;
 
@@ -38,7 +40,7 @@ class HighlightedText extends StatelessWidget {
       TextSpan(
         style: style,
         children: <InlineSpan>[
-          for (final span in searchMatchSpans(text, query))
+          for (final span in rangeSpans(text, ranges))
             if (span.matched)
               WidgetSpan(
                 alignment: PlaceholderAlignment.baseline,

@@ -956,5 +956,54 @@
   "lockedMessageSealed": "Its text stays sealed. Only its title can be shown here.",
   "@lockedMessageSealed": {
     "description": "What the card of a locked note says about its text."
+  },
+  "menuCut": "Cut",
+  "@menuCut": {
+    "description": "The button of a text field's menu that cuts the selected text."
+  },
+  "menuCopy": "Copy",
+  "@menuCopy": {
+    "description": "The button of a text field's menu that copies the selected text."
+  },
+  "menuPaste": "Paste",
+  "@menuPaste": {
+    "description": "The button of a text field's menu that pastes what was copied."
+  },
+  "menuSelectAll": "Select All",
+  "@menuSelectAll": {
+    "description": "The button of a text field's menu that selects all of its text."
+  },
+  "searchIdleTitle": "Search your notes",
+  "@searchIdleTitle": {
+    "description": "The title shown under an empty search."
+  },
+  "searchIdleMessage": "Find words in titles and text, or a tag.",
+  "@searchIdleMessage": {
+    "description": "What an empty search says it finds."
+  },
+  "searchNoResultsTitle": "No notes match",
+  "@searchNoResultsTitle": {
+    "description": "The title shown when a search finds nothing."
+  },
+  "searchNoResultsMessage": "Nothing matched “{query}”. Try fewer or different words.",
+  "@searchNoResultsMessage": {
+    "description": "What a search that finds nothing says.",
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "searchFailedTitle": "The search didn't run",
+  "@searchFailedTitle": {
+    "description": "The title of the card shown when a search failed."
+  },
+  "searchFailedMessage": "Something went wrong searching the notes on this phone. Try again.",
+  "@searchFailedMessage": {
+    "description": "The message of the card shown when a search failed."
+  },
+  "searchLoading": "Searching",
+  "@searchLoading": {
+    "description": "What a screen reader says while the notes are searched."
   }
 }

@@ -10,6 +10,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart' show addTearDown;
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/library_index_status.dart';
+import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/models/repos/abs/haptics_repository.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
@@ -18,6 +19,8 @@ import 'package:kanso/note/models/data/note_screen_status.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/models/data/note_list_status.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
+import 'package:kanso/search/models/data/search_status.dart';
+import 'package:kanso/search/state/search/search_bloc.dart';
 
 import 'close_bloc_later.dart';
 import 'fixture_library_repository.dart';
@@ -125,8 +128,35 @@ class BrowseBlocs {
     return bloc;
   }
 
-  /// [child] with these BLoCs above it, and [list] and [note] if given.
-  Widget provide(Widget child, {NoteListBloc? list, NoteBloc? note}) {
+  /// A search, started with [query] in [scope]; and, unless [wait] is false,
+  /// run.
+  Future<SearchBloc> searchOf(
+    String query, {
+    SearchScopeKind scope = SearchScopeKind.all,
+    String? notebookId,
+    bool wait = true,
+  }) async {
+    final bloc = SearchBloc(library);
+    closeBlocLater(bloc);
+    bloc.add(SearchEvent.started(query, scope, notebookId));
+    if (wait) {
+      await bloc.stream.firstWhere(
+        (state) =>
+            state.status != SearchStatus.searching &&
+            (!state.hasQuery || state.status != SearchStatus.idle),
+      );
+    }
+    return bloc;
+  }
+
+  /// [child] with these BLoCs above it, and [list], [note] and [search] if
+  /// given.
+  Widget provide(
+    Widget child, {
+    NoteListBloc? list,
+    NoteBloc? note,
+    SearchBloc? search,
+  }) {
     return MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<LibraryIndexBloc>.value(value: index),
@@ -134,6 +164,7 @@ class BrowseBlocs {
         BlocProvider<SyncStatusBloc>.value(value: sync),
         if (list != null) BlocProvider<NoteListBloc>.value(value: list),
         if (note != null) BlocProvider<NoteBloc>.value(value: note),
+        if (search != null) BlocProvider<SearchBloc>.value(value: search),
       ],
       child: child,
     );

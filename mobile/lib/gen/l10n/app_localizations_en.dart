@@ -751,4 +751,40 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get lockedMessageSealed =>
       'Its text stays sealed. Only its title can be shown here.';
+
+  @override
+  String get menuCut => 'Cut';
+
+  @override
+  String get menuCopy => 'Copy';
+
+  @override
+  String get menuPaste => 'Paste';
+
+  @override
+  String get menuSelectAll => 'Select All';
+
+  @override
+  String get searchIdleTitle => 'Search your notes';
+
+  @override
+  String get searchIdleMessage => 'Find words in titles and text, or a tag.';
+
+  @override
+  String get searchNoResultsTitle => 'No notes match';
+
+  @override
+  String searchNoResultsMessage(String query) {
+    return 'Nothing matched “$query”. Try fewer or different words.';
+  }
+
+  @override
+  String get searchFailedTitle => 'The search didn\'t run';
+
+  @override
+  String get searchFailedMessage =>
+      'Something went wrong searching the notes on this phone. Try again.';
+
+  @override
+  String get searchLoading => 'Searching';
 }

@@ -3,19 +3,24 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/models/data/search_scope_kind.dart';
 import '../../../core/utils/context_extensions.dart';
-import '../../../shell/views/widgets/shell_back_button.dart';
-import '../../../shell/views/widgets/shell_page.dart';
+import '../../../injection.dart';
+import '../../state/search/search_bloc.dart';
+import '../widgets/search_pane.dart';
+import '../widgets/search_sync.dart';
 
 /// A search: the words, where to look, and the notebook it was opened from.
+/// The words, scope and notebook are the address's to start from; what is
+/// typed after is the search's own.
 class SearchPage extends StatelessWidget {
   const SearchPage({
     this.query = '',
     this.scope = SearchScopeKind.all,
     this.notebookId,
-    this.inPane = false,
+    this.openNoteId,
     super.key,
   });
 
@@ -23,16 +28,25 @@ class SearchPage extends StatelessWidget {
   final SearchScopeKind scope;
   final String? notebookId;
 
-  /// Whether it is the list pane of a wide window rather than a page of its
-  /// own, with nowhere to go back to.
-  final bool inPane;
+  /// The note open beside the results, in a window with room for both.
+  final String? openNoteId;
 
   @override
   Widget build(BuildContext context) {
-    return ShellPage(
-      title: context.l10n.searchTitle,
-      leading: inPane ? null : const ShellBackButton(),
-      backgroundColor: context.colors.list,
+    return BlocProvider<SearchBloc>(
+      create: (_) =>
+          getIt<SearchBloc>()
+            ..add(SearchEvent.started(query, scope, notebookId)),
+      child: SearchSync(
+        query: query,
+        scope: scope,
+        notebookId: notebookId,
+        child: Scaffold(
+          resizeToAvoidBottomInset: false,
+          backgroundColor: context.colors.list,
+          body: SearchPane(initialQuery: query, openNoteId: openNoteId),
+        ),
+      ),
     );
   }
 }

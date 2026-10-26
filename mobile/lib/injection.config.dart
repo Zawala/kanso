@@ -44,6 +44,7 @@ import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
 import 'core_check/state/core_check/core_check_bloc.dart' as _i226;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
+import 'search/state/search/search_bloc.dart' as _i696;
 
 const String _development = 'development';
 const String _production = 'production';
@@ -122,6 +123,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i272.NavigationHistoryBloc>(
       () => _i272.NavigationHistoryBloc(gh<_i38.LibraryRepository>()),
+    );
+    gh.factory<_i696.SearchBloc>(
+      () => _i696.SearchBloc(gh<_i38.LibraryRepository>()),
     );
     gh.factory<_i226.CoreCheckBloc>(
       () => _i226.CoreCheckBloc(

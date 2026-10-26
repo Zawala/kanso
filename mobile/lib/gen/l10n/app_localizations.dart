@@ -1461,6 +1461,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Its text stays sealed. Only its title can be shown here.'**
   String get lockedMessageSealed;
+
+  /// The button of a text field's menu that cuts the selected text.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut'**
+  String get menuCut;
+
+  /// The button of a text field's menu that copies the selected text.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get menuCopy;
+
+  /// The button of a text field's menu that pastes what was copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste'**
+  String get menuPaste;
+
+  /// The button of a text field's menu that selects all of its text.
+  ///
+  /// In en, this message translates to:
+  /// **'Select All'**
+  String get menuSelectAll;
+
+  /// The title shown under an empty search.
+  ///
+  /// In en, this message translates to:
+  /// **'Search your notes'**
+  String get searchIdleTitle;
+
+  /// What an empty search says it finds.
+  ///
+  /// In en, this message translates to:
+  /// **'Find words in titles and text, or a tag.'**
+  String get searchIdleMessage;
+
+  /// The title shown when a search finds nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes match'**
+  String get searchNoResultsTitle;
+
+  /// What a search that finds nothing says.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing matched “{query}”. Try fewer or different words.'**
+  String searchNoResultsMessage(String query);
+
+  /// The title of the card shown when a search failed.
+  ///
+  /// In en, this message translates to:
+  /// **'The search didn\'t run'**
+  String get searchFailedTitle;
+
+  /// The message of the card shown when a search failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong searching the notes on this phone. Try again.'**
+  String get searchFailedMessage;
+
+  /// What a screen reader says while the notes are searched.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching'**
+  String get searchLoading;
 }
 
 class _AppLocalizationsDelegate

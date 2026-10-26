@@ -10,8 +10,9 @@ import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_divider.dart';
+import '../../../search/views/widgets/highlighted_text.dart';
 import '../../models/data/mock_completion.dart';
-import 'highlighted_text.dart';
+import '../../utils/query_ranges.dart';
 
 /// The notes offered while a `[[` link is typed: each one's title, with
 /// what was typed highlighted, and its notebook. The first is the one
@@ -52,7 +53,7 @@ class WikiCompletionPopup extends StatelessWidget {
                   Expanded(
                     child: HighlightedText(
                       completions[i].title,
-                      query: typed,
+                      ranges: queryRanges(completions[i].title, typed),
                       style: typography.body,
                       maxLines: 1,
                     ),
