@@ -540,6 +540,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get menuSelectAll => 'Select All';
 
   @override
+  String get menuDelete => 'Delete';
+
+  @override
   String get searchIdleTitle => 'Search your notes';
 
   @override

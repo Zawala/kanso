@@ -4,12 +4,8 @@
 
 import 'package:flutter/material.dart';
 
-import '../../configs/kanso_radii.dart';
-import '../../configs/kanso_shadows.dart';
-import '../../configs/kanso_spacing.dart';
 import '../../utils/context_extensions.dart';
-import 'kanso_divider.dart';
-import 'kanso_pressable.dart';
+import 'kanso_text_menu_toolbar.dart';
 
 /// The menu over selected or tapped text in a field: Cut, Copy, Paste and
 /// Select All, in the buttons the field offers for what is selected, drawn
@@ -18,19 +14,22 @@ import 'kanso_pressable.dart';
 /// It is made for `EditableText.contextMenuBuilder`: it sits above the
 /// selection, or below it where there is no room above.
 class KansoTextContextMenu extends StatelessWidget {
-  const KansoTextContextMenu({required this.state, super.key});
+  const KansoTextContextMenu({
+    required this.state,
+    this.extra = const <(String, VoidCallback)>[],
+    super.key,
+  });
 
   final EditableTextState state;
 
-  /// The most the menu is wide, in points.
-  static const double maxWidth = 320;
+  /// Buttons of the screen's own, before the field's (Open link).
+  final List<(String, VoidCallback)> extra;
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final colors = context.colors;
-    final anchors = state.contextMenuAnchors;
     final buttons = <(String, VoidCallback)>[
+      ...extra,
       for (final item in state.contextMenuButtonItems)
         if (item.onPressed != null)
           if (switch (item.type) {
@@ -46,53 +45,9 @@ class KansoTextContextMenu extends StatelessWidget {
     if (buttons.isEmpty) {
       return const SizedBox.shrink();
     }
-    return Padding(
-      padding: EdgeInsets.all(MediaQuery.paddingOf(context).top),
-      child: CustomSingleChildLayout(
-        delegate: TextSelectionToolbarLayoutDelegate(
-          anchorAbove: anchors.primaryAnchor - const Offset(0, KansoSpacing.xs),
-          anchorBelow:
-              (anchors.secondaryAnchor ?? anchors.primaryAnchor) +
-              const Offset(0, KansoSpacing.xs),
-        ),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: maxWidth),
-          decoration: BoxDecoration(
-            color: colors.elevated,
-            borderRadius: KansoRadii.mediumBorder,
-            border: Border.all(color: colors.divider),
-            boxShadow: KansoShadows.floating(Theme.brightnessOf(context)),
-          ),
-          child: ClipRRect(
-            borderRadius: KansoRadii.mediumBorder,
-            child: IntrinsicHeight(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  for (var i = 0; i < buttons.length; i++) ...<Widget>[
-                    if (i > 0) const KansoDivider(vertical: true),
-                    KansoPressable(
-                      onTap: () {
-                        buttons[i].$2();
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: KansoSpacing.md,
-                          vertical: KansoSpacing.sm,
-                        ),
-                        child: Text(
-                          buttons[i].$1,
-                          style: context.typography.body,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+    return KansoTextMenuToolbar(
+      anchors: state.contextMenuAnchors,
+      buttons: buttons,
     );
   }
 }

@@ -679,6 +679,10 @@
   "@menuSelectAll": {
     "description": "The button of a text field's menu that selects all of its text."
   },
+  "menuDelete": "Delete",
+  "@menuDelete": {
+    "description": "The button of the spelling menu that deletes the misspelled word."
+  },
   "searchIdleTitle": "Search your notes",
   "@searchIdleTitle": {
     "description": "The title shown under an empty search."

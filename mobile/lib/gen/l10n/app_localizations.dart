@@ -1060,6 +1060,12 @@ abstract class AppLocalizations {
   /// **'Select All'**
   String get menuSelectAll;
 
+  /// The button of the spelling menu that deletes the misspelled word.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get menuDelete;
+
   /// The title shown under an empty search.
   ///
   /// In en, this message translates to:

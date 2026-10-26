@@ -4,8 +4,8 @@
 
 import 'package:flutter/material.dart';
 
-import '../../../core/bridge/api/types.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/run_style.dart';
 import '../../models/data/source_line.dart';
 
 /// A note's Markdown as the editor will show it, read-only: its text in the
@@ -46,7 +46,11 @@ class NoteSourceText extends StatelessWidget {
           spans.add(
             TextSpan(
               text: text.substring(run.range.start, run.range.end),
-              style: styleOf(run),
+              style: runStyle(
+                color: run.color,
+                italic: run.italic,
+                weight: run.weight,
+              ),
             ),
           );
           cursor = run.range.end;
@@ -56,18 +60,6 @@ class NoteSourceText extends StatelessWidget {
         }
         return Text.rich(TextSpan(style: base, children: spans));
       },
-    );
-  }
-
-  /// The style a run asks for: only what it names, over the plain text.
-  static TextStyle styleOf(StyledRun run) {
-    final weight = run.weight;
-    return TextStyle(
-      color: run.color == null ? null : Color(0xFF000000 | run.color!),
-      fontStyle: run.italic ?? false ? FontStyle.italic : null,
-      fontWeight: weight == null
-          ? null
-          : FontWeight.values[((weight / 100).round() - 1).clamp(0, 8)],
     );
   }
 }
