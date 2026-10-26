@@ -262,14 +262,14 @@ impl SyncHandle {
         .map_err(KansoError::from)
     }
 
-    fn current_status(&self) -> Result<SyncStatus, KansoError> {
+    pub(crate) fn current_status(&self) -> Result<SyncStatus, KansoError> {
         let session = self.load_session()?;
         let state = held(&self.inner.sync_state).clone();
         Ok(status_of(session.as_ref(), &state))
     }
 
     /// Tells the status listeners where sync stands.
-    fn notify(&self) {
+    pub(crate) fn notify(&self) {
         if self.inner.status_listeners.is_empty() {
             return;
         }
@@ -280,14 +280,14 @@ impl SyncHandle {
 
     /// Stops the sync that is running and keeps a new one from starting until
     /// the guard goes.
-    fn stop_sync(&self) -> MutexGuard<'_, ()> {
+    pub(crate) fn stop_sync(&self) -> MutexGuard<'_, ()> {
         if let Some(cancel) = held(&self.inner.sync_cancel).as_ref() {
             cancel.store(true, Ordering::SeqCst);
         }
         held(&self.inner.sync_gate)
     }
 
-    fn flow(&self, device_name: &str) -> Flow {
+    pub(crate) fn flow(&self, device_name: &str) -> Flow {
         let backups = self
             .inner
             .path

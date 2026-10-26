@@ -25,6 +25,17 @@
 //!   source, fits a theme (the built-in ones are in, as the desktop has
 //!   them, and source can be colored in any of them) and draws math and
 //!   diagrams.
+//! - [`AccountHandle`] (`library.account()`) signs in and up with every
+//!   way the server offers (password, passkey, Apple, Google, GitHub),
+//!   opens a locked account with the password, another device or the
+//!   recovery key, and asks the binding question.
+//!   [`AccountSettings`] (`library.account_settings()`) is the account's
+//!   page, and [`Approvals`] (`library.approvals()`) the requests of other
+//!   devices this phone may approve.
+//! - [`SharedNotes`] (`library.shared()`) shares notes with other accounts
+//!   and keeps an open shared note live.
+//! - [`Gallery`] (`library.gallery()`) lists and installs the gallery's
+//!   themes.
 //! - [`background`] is the sync that runs with no app: the code behind the
 //!   C entry `kanso_background_sync` that `mobile/rust` exports.
 //! - [`diagnostics`] has the version, the TLS check and the panic probe.
@@ -40,12 +51,17 @@
 //! Secrets (the session, the data key) are kept by Rust in the platform's
 //! store ([`secrets`]), never handed to the shell.
 
+mod account;
+mod account_model;
+mod account_settings;
+mod approvals;
 pub mod background;
 mod backup;
 pub mod boundary;
 mod builtin_themes;
 pub mod diagnostics;
 mod errors;
+mod gallery;
 mod library;
 mod locks;
 mod matching;
@@ -53,15 +69,22 @@ mod model;
 mod notes;
 mod renderer;
 pub mod secrets;
+mod sharing;
 mod stream;
 mod syncing;
 mod theme_tokens;
 
+pub use account::AccountHandle;
+pub use account_model::*;
+pub use account_settings::AccountSettings;
+pub use approvals::Approvals;
 pub use errors::KansoError;
+pub use gallery::Gallery;
 pub use library::Library;
 pub use locks::LockSession;
 pub use model::*;
 pub use renderer::Renderer;
+pub use sharing::SharedNotes;
 pub use stream::Sink;
 pub use syncing::SyncHandle;
 

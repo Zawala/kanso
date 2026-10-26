@@ -12,13 +12,18 @@ use kanso_engine::sync::SyncState;
 use kanso_store::Store;
 use kanso_sync::{Backend, HttpBackend, KdfParams};
 
+use crate::account::AccountHandle;
+use crate::account_settings::AccountSettings;
+use crate::approvals::Approvals;
 use crate::backup;
 use crate::boundary::{guard, held};
 use crate::errors::KansoError;
+use crate::gallery::Gallery;
 use crate::locks::LockSession;
 use crate::model::{LockEvent, SyncStatus};
 use crate::renderer::Renderer;
 use crate::secrets;
+use crate::sharing::SharedNotes;
 use crate::stream::Listeners;
 use crate::syncing::SyncHandle;
 use crate::{Secrets, boundary};
@@ -118,6 +123,41 @@ impl Library {
     /// Sign-in and sync.
     pub fn sync(&self) -> SyncHandle {
         SyncHandle {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Signing in and up, and opening a locked account.
+    pub fn account(&self) -> AccountHandle {
+        AccountHandle {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// The signed-in account's page.
+    pub fn account_settings(&self) -> AccountSettings {
+        AccountSettings {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Requests from other devices this phone may approve.
+    pub fn approvals(&self) -> Approvals {
+        Approvals {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Shared notes.
+    pub fn shared(&self) -> SharedNotes {
+        SharedNotes {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// The theme gallery.
+    pub fn gallery(&self) -> Gallery {
+        Gallery {
             inner: self.inner.clone(),
         }
     }
