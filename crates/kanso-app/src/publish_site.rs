@@ -183,7 +183,7 @@ impl PublishSiteView {
             return;
         }
         let palette = crate::export_html::print_palette(crate::preview_rich::palette(cx));
-        let style = crate::export_style::PageStyle::from_cx(cx);
+        let style = crate::export_style::PageStyle::for_palette(cx, &palette);
         let now = Clock::now_ms(cx);
         let expires_at = self.expiry.at(now);
         let store = self.store.clone();

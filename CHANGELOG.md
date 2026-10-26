@@ -26,6 +26,7 @@ heading compares the release with the one before.
 
 ### Fixed
 
+- **export:** Published notes and exported pages keep their code readable when Kanso uses a dark theme: a light page takes the code colors of your light theme (Kanso Light's if it can't be found), where it had pale colors meant for a dark background
 - **accounts:** Approving a new device from another one works without restarting Kanso first, and cancelling the sign-in cancels that request
 - **app:** Kanso is listed in Finder's and Explorer's Open With for Markdown and text files, and opens a file from there, from a double-click once chosen, or from `kanso file.md`, as a note that is shown and selected
 - **themes:** Code is easier to read in Kanso Dark and Kanso Light: functions, types, properties, attributes, keywords, strings and numbers each get their own colour, and operators and punctuation a quiet one, all at 4.5:1 or better on the editor and the code block background

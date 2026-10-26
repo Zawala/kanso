@@ -447,6 +447,31 @@ pub fn apply(window: Option<&mut Window>, cx: &mut App) {
     cx.refresh_windows();
 }
 
+/// The colors `theme`'s code is drawn in, as `apply` builds them when the
+/// theme is the UI, syntax and preview theme at once.
+pub fn code_colors(theme: &ThemeEntry) -> Option<Arc<HighlightTheme>> {
+    let tokens = Tokens::fit(&theme.resolved, &theme.resolved, &theme.resolved);
+    preview_code::build(&theme.resolved, &tokens.code)
+}
+
+/// The code colors of the person's light theme, for a light page while a
+/// dark theme is active. Kanso Light's when that theme can't be found or
+/// isn't light.
+pub fn light_code(cx: &App) -> Option<Arc<HighlightTheme>> {
+    let configured = cx
+        .try_global::<Themes>()
+        .and_then(|themes| themes.get(&settings(cx).light).cloned())
+        .filter(|theme| !theme.dark());
+    let theme = configured.unwrap_or_else(|| {
+        builtins()
+            .iter()
+            .find(|theme| theme.name() == KANSO_LIGHT)
+            .unwrap_or(&builtins()[0])
+            .clone()
+    });
+    code_colors(&theme)
+}
+
 /// The preview's colors in use; Kanso's own before a theme is applied.
 pub fn preview_colors(cx: &App) -> PreviewColors {
     match cx.try_global::<ActiveTheme>() {
