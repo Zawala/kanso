@@ -26,6 +26,7 @@ import {
 	untilMidnight,
 } from "./http";
 import { accountKey, count } from "./limits";
+import { wakeAccount } from "./push";
 import {
 	DEFAULT_CHANGES_LIMIT,
 	DOC_ROW_COST,
@@ -205,6 +206,7 @@ export const push = withSession(async (request, env, now, session) => {
 	}
 
 	await dropDeletedFiles(env, session, docs, results);
+	if (results.some((r) => r.status === "ok")) await wakeAccount(env, session.accountId, session.deviceId, now);
 	return json({ results });
 });
 

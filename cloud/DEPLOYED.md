@@ -31,6 +31,13 @@ on the `AccountRoom` Durable Object), with the step-7 vars and the `GOOGLE_CLIEN
 bookmark from just before the migrations is
 `00000b40-00000000-0000510f-b10566111c0634a2bf7087e3b325f71d`.
 
+Since 2026-10-26 it runs push notifications (issue #48 step 8b): migration `0011_push` (push
+columns on `sessions`, the clearing trigger) and the `AccountRoom` push alarm, with the
+`APNS_TOPIC` var, deployed as Worker version `d5825e9b-6f8f-446e-89c4-b3eaeb657983`. Until the
+`APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID` and `FCM_SERVICE_ACCOUNT` secrets are set, it stores
+devices' tokens and sends nothing. The D1 Time Travel bookmark from just before the migration is
+`00000dc9-00000000-00005110-7106e37824a26e2b3a16d4b6b2588907`.
+
 ## Restoring D1
 
 Only with `npm run -s admin -- restore <time | bookmark>`, run first without `--confirm` to see
