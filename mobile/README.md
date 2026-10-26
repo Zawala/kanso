@@ -3,9 +3,10 @@
 The Flutter app of [Kanso](../README.md), tracked in
 [#48](https://github.com/iamngoni/kanso/issues/48). This folder holds the
 scaffold: the design system (colours, type, icons, spacing, motion), the
-shared appearance state, the test and golden-image tooling, and CI, and the
-Rust core behind a bridge (`rust/`, `lib/core/bridge/`). The screens come in
-later steps.
+shared appearance state, the app shell (routes, links, one to three panes,
+preferences), the test and golden-image tooling, and CI, and the Rust core
+behind a bridge (`rust/`, `lib/core/bridge/`). The screens come in later
+steps.
 
 - Flutter 3.44.8 (stable), Dart 3.12, strict analysis.
 - iOS and iPadOS 17 or later; Android 10 (API 29) or later; phones and tablets.
@@ -58,8 +59,8 @@ profile (`[profile.mobile]` in the root `Cargo.toml`) and the compilers of
 core open the library it built (`test/helpers/core_library.dart`). The app
 opens its library at `kanso/library.db` in the application support folder
 (`lib/core/configs/core_module.dart`); the background sync opens the same file.
-The home page lists a "Rust core" row that opens `lib/core_check/`, real calls
-to the library.
+`preferences.json` sits beside it (see below). The design gallery lists a
+"Rust core" row that opens `lib/core_check/`, real calls to the library.
 
 ## Check
 
@@ -69,16 +70,68 @@ flutter analyze
 flutter test
 ```
 
+## The app shell
+
+**Routes** (`lib/core/router/`, go_router). `/` goes to `/notes`; the places
+are `/notes`, `/pinned`, `/recent`, `/trash`, `/notebooks/:notebookId` and
+`/tags/:tagId`; each of them and `/search?q=&scope=&in=` takes `/note/:noteId`
+for a note opened from it. Ids are written with `Uri.encodeComponent` (note ids
+contain `:`). `/settings` has `/settings/theme`, `/settings/fonts?at=size` and
+`/settings/licences` inside it, and `/design` is the gallery of the design
+proposal, in the development environment only (a row in its library). Places
+and searches are `BrowseLocation` (`core/models/data/browse_location.dart`),
+which writes and reads these addresses.
+
+**Links.** `kanso://open/note/<id>`, `kanso://open/notebook/<id>` and
+`kanso://open/search?q=…` open that (`core/router/deep_links.dart`; the scheme
+is registered in `ios/Runner/Info.plist` and `AndroidManifest.xml`). The router
+matches paths and ignores the scheme and host, so the redirect there turns a
+link into an address of the app. Try one on a simulator:
+`xcrun simctl openurl booted "kanso://open/notebook/<id>"`.
+
+**Panes** (`core/configs/kanso_layout.dart`). One pane on a phone or a narrow
+window, two when a tablet's window is 740 wide or more, three from 1020: the
+note pane keeps at least 400. `BrowseShell` lays the panes out; in one the
+library is a drawer (`KansoDrawer`: a button, a drag from the start edge on the
+list, and the system's back close it). The window's size reaches the router
+through `LayoutClassNotifier`, so the pages are built again for the new layout
+and the open note stays open. Settings is a sheet on a tablet and a page on a
+phone, whatever the width of the window.
+
+**Preferences** live in `kanso/preferences.json` in the library folder, so they
+stay on the phone and out of backups: the themes (`ThemeSelection`), fonts,
+text size, list sort and notices seen. A save writes a temporary file and
+renames it over the old one, one change at a time. A missing or unreadable file
+is the defaults; a value the file has and this version does not know is that
+value's default. `bootstrap` reads the saved themes before the first frame.
+
+**Themes** come from the Rust core, which has the same theme files as the
+desktop compiled in: `RendererRepository.builtinThemeTokens` gives the tokens
+and `paletteFromTokens` turns them into a `KansoPalette` (the interface colours,
+the syntax colours and styles, the preview's colours). `KansoPalette.kansoLight`
+and `kansoDark` are the two Kanso themes written out, for the first frame and
+for tests. `test/core/configs/theme_parity_test.dart` checks every theme's
+palette against `crates/kanso-app/src/themes.golden.json`, which records what
+the desktop draws.
+
+**Backups.** The library is kept out of device backups on iOS by the core
+(`kCFURLIsExcludedFromBackupKey`, set whenever it is opened) and on Android by
+`android:allowBackup="false"` and two rule files in `res/xml/` that exclude
+every domain from backups and from device transfers (Android 12 and later also
+need `dataExtractionRules`). `test/platform/backup_exclusion_test.dart` reads
+the manifest and both files.
+
 ## Design proposal
 
-Until the real screens are built, the app opens on a gallery of static mock
-screens (`lib/design/`) for the owner to review: the library, note list (and
+The app opens on All Notes. The mock screens (`lib/design/`) that are not built
+yet are in a gallery for the owner to review, reached from the library in the
+development environment: the library, note list (and
 its loading and empty states), note (preview and edit), search, settings,
 fonts, theme picker, a locked note and an error card, for a phone and for a
 tablet in landscape, with a light, dark or system switch. The mock data is
 fixed (`lib/design/models/data/mock_data.dart`). The Fonts screen is live:
 choosing a font or a text size there restyles every note in the running app
-(`AppearanceBloc`; nothing is saved yet). The
+(`AppearanceBloc`, saved in the preferences). The
 components the screens are made of (`lib/core/views/widgets/`) are the ones
 the real app will use. The images in `test/design/views/pages/goldens/` are
 the proposal as pictures.
@@ -122,7 +175,7 @@ casts, inference and raw types).
 Colours are not chosen here. `lib/core/configs/kanso_colors.dart` holds the
 tokens of Kanso's own theme files, and `test/core/configs/kanso_colors_test.dart`
 reads `../themes/kanso-dark.json` and `kanso-light.json` so the app and the
-files cannot drift apart.
+files cannot drift apart; every other theme is drawn from the core's tokens.
 
 ## Dependencies
 
@@ -131,7 +184,7 @@ Every dependency is MIT, BSD or Apache licensed.
 | Package | Used for | Licence |
 | --- | --- | --- |
 | `bloc` | BLoC state machines | MIT |
-| `go_router` | Routes, deep links and the back button (BSD-3-Clause, flutter.dev) | BSD-3-Clause |
+| `go_router` | Routes, deep links and the back button | BSD-3-Clause |
 | `bloc_concurrency` | `sequential` and `restartable` event transformers | MIT |
 | `flutter_bloc` | Widgets for BLoCs | MIT |
 | `freezed_annotation` | Annotations for generated models, events and states | MIT |
@@ -161,6 +214,7 @@ Development only:
 | `json_serializable` | Generates JSON conversion | BSD-3-Clause |
 | `injectable_generator` | Generates the GetIt registrations | MIT |
 | `very_good_analysis` | Lint rules | MIT |
+| `xml` | Reads the Android backup rules in a test | MIT |
 | `bloc_test` | BLoC tests | MIT |
 | `mocktail` | Mocks | MIT |
 | `glados` | Property-based tests | MIT |

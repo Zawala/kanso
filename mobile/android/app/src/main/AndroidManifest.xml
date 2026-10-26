@@ -1,8 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The notes stay on this phone: no cloud backup, no device transfer.
+         allowBackup covers the older versions, fullBackupContent Android
+         6 to 11 and dataExtractionRules Android 12 and later (allowBackup
+         alone does not stop a transfer to another phone there). -->
     <application
         android:label="Kanso"
         android:name=".KansoApplication"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"
