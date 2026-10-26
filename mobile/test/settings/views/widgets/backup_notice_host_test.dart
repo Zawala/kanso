@@ -48,7 +48,7 @@ void main() {
       addTearDown(taps.dispose);
       await _pump(tester, taps: taps);
       expect(find.byType(BackupNoticeCard), findsOneWidget);
-      expect(find.text('Notes stay on this phone'), findsOneWidget);
+      expect(find.text('Notes stay on this device'), findsOneWidget);
       expect(find.textContaining('device backups'), findsOneWidget);
       expect(find.text('OK'), findsOneWidget);
     });

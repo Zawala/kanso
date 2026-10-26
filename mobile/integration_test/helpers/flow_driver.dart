@@ -16,10 +16,10 @@ import 'package:kanso/shell/views/widgets/library_navigation.dart';
 Future<void> startApp(WidgetTester tester) async {
   await bootstrap(AppEnvironment.integration);
   await tester.pumpAndSettle();
-  await pumpUntil(tester, find.text('Notes stay on this phone'));
+  await pumpUntil(tester, find.text('Notes stay on this device'));
   await tester.tap(find.text('OK'));
   await tester.pumpAndSettle();
-  expect(find.text('Notes stay on this phone'), findsNothing);
+  expect(find.text('Notes stay on this device'), findsNothing);
 }
 
 /// Pumps until [finder] finds something, for up to [timeout].

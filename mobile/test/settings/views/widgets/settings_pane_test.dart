@@ -177,7 +177,7 @@ void main() {
       await _pump(tester);
       expect(
         find.text(
-          'The notes on this phone aren’t included in device '
+          'The notes on this device aren’t included in device '
           'backups.',
         ),
         findsOneWidget,

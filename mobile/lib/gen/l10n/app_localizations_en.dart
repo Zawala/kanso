@@ -208,7 +208,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get errorSignedOutMessage =>
-      'Your session on this phone ended. Sign in again to keep syncing; your notes stay here.';
+      'Your session on this device ended. Sign in again to keep syncing; your notes stay here.';
 
   @override
   String get errorSignInAgain => 'Sign in again';
@@ -357,7 +357,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get libraryFailedMessage =>
-      'Something went wrong reading the notebooks and tags on this phone. Try again.';
+      'Something went wrong reading the notebooks and tags on this device. Try again.';
 
   @override
   String get libraryNoNotebooks => 'No notebooks yet';
@@ -382,7 +382,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noteListFailedMessage =>
-      'Something went wrong reading the notes on this phone. Try again.';
+      'Something went wrong reading the notes on this device. Try again.';
 
   @override
   String get emptyAllTitle => 'No notes yet';
@@ -514,14 +514,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noteNotFoundMessage =>
-      'It may have been deleted, or it hasn\'t reached this phone yet.';
+      'It may have been deleted, or it hasn\'t reached this device yet.';
 
   @override
   String get noteFailedTitle => 'This note didn\'t load';
 
   @override
   String get noteFailedMessage =>
-      'Something went wrong reading the note on this phone. Try again.';
+      'Something went wrong reading the note on this device. Try again.';
 
   @override
   String get lockedMessageSealed =>
@@ -558,7 +558,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get searchFailedMessage =>
-      'Something went wrong searching the notes on this phone. Try again.';
+      'Something went wrong searching the notes on this device. Try again.';
 
   @override
   String get searchLoading => 'Searching';
@@ -588,7 +588,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsSyncBackupFooter =>
-      'The notes on this phone aren’t included in device backups.';
+      'The notes on this device aren’t included in device backups.';
 
   @override
   String settingsVersionValue(String version, String build) {
@@ -646,11 +646,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themesLoading => 'Loading themes';
 
   @override
-  String get backupNoticeTitle => 'Notes stay on this phone';
+  String get backupNoticeTitle => 'Notes stay on this device';
 
   @override
   String get backupNoticeMessage =>
-      'The notes on this phone aren’t included in device backups, so losing or resetting the phone takes them with it.';
+      'The notes on this device aren’t included in device backups, so losing or resetting the device takes them with it.';
 
   @override
   String get backupNoticeOk => 'OK';

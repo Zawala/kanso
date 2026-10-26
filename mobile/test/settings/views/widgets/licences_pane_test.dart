@@ -8,7 +8,9 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/models/data/application_error.dart';
+import 'package:kanso/core/configs/kanso_sizes.dart';
 import 'package:kanso/core/models/data/licence_package.dart';
+import 'package:kanso/core/views/widgets/kanso_top_bar.dart';
 import 'package:kanso/settings/state/licences/licences_bloc.dart';
 import 'package:kanso/settings/views/widgets/licences_pane.dart';
 import 'package:mocktail/mocktail.dart';
@@ -98,6 +100,25 @@ void main() {
       await tester.pump();
       verify(repository.licences).called(2);
       expect(find.text('alpha'), findsOneWidget);
+    });
+
+    testWidgets('starts under the bar, whatever the status bar takes', (
+      tester,
+    ) async {
+      const inset = FakeViewPadding(top: 59, bottom: 34);
+      tester.view
+        ..padding = inset
+        ..viewPadding = inset;
+      await _pump(
+        tester,
+        () async => const Right<ApplicationError, List<LicencePackage>>(
+          _packages,
+        ),
+      );
+      final bar = tester.getBottomLeft(find.byType(KansoTopBar)).dy;
+      final first = tester.getTopLeft(find.text('alpha')).dy;
+      // A row is one touch target tall, with the card's gap above it.
+      expect(first - bar, lessThan(KansoSizes.touchTarget));
     });
 
     testWidgets('says so when there are none', (tester) async {
