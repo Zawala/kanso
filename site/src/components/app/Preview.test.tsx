@@ -4,7 +4,7 @@
  * wiki-links call onOpenWiki, code blocks copy through the clipboard, and
  * tables, quotes, lists, tags, dates, kbd and links render as their elements.
  */
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Inlines, Preview } from "./Preview";
 import { inline } from "../../lib/markdown";
@@ -171,5 +171,24 @@ describe("Preview code blocks", () => {
     vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
     setup(source);
     expect(() => fireEvent.click(screen.getByRole("button", { name: "Copy the sh" }))).not.toThrow();
+  });
+});
+
+describe("Preview code colours", () => {
+  it("renders a known language's tokens as coloured spans and keeps the text whole", async () => {
+    const code = 'fn main() {\n    let s = "hi"; // greet\n}';
+    const { container } = setup("```rust\n" + code + "\n```");
+    await waitFor(() => expect(container.querySelector("code .tok-keyword")).not.toBeNull());
+    const el = container.querySelector("code") as HTMLElement;
+    expect(el.textContent).toBe(code);
+    expect(within(el).getByText("fn")).toHaveClass("tok-keyword");
+    expect(within(el).getByText('"hi"')).toHaveClass("tok-string");
+    expect(within(el).getByText("// greet")).toHaveClass("tok-comment");
+  });
+
+  it("leaves an unknown language uncoloured", () => {
+    const { container } = setup("```klingon\nfn main() {}\n```");
+    expect(container.querySelector("code [class^='tok-']")).toBeNull();
+    expect(container.querySelector("code")).toHaveTextContent("fn main() {}");
   });
 });
