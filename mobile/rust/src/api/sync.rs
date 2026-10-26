@@ -44,6 +44,11 @@ impl KansoSync {
         self.0.sign_out()
     }
 
+    /// The app is in front (`true`) or not.
+    pub fn set_foreground(&self, foreground: bool) {
+        self.0.set_foreground(foreground);
+    }
+
     pub fn sync_now(&self) -> Result<SyncReportRow, KansoError> {
         self.0.sync_now()
     }

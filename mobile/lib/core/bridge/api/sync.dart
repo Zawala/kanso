@@ -16,6 +16,9 @@ abstract class KansoSync implements RustOpaqueInterface {
   static Future<String> defaultServer() =>
       KansoCore.instance.api.crateApiSyncKansoSyncDefaultServer();
 
+  /// The app is in front (`true`) or not.
+  Future<void> setForeground({required bool foreground});
+
   Future<SyncStatus> signInPassword({
     required String server,
     required String username,

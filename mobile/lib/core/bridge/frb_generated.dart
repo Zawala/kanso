@@ -3,10 +3,15 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'api/account.dart';
+import 'api/account_settings.dart';
+import 'api/approvals.dart';
 import 'api/diagnostics.dart';
+import 'api/gallery.dart';
 import 'api/library.dart';
 import 'api/locks.dart';
 import 'api/renderer.dart';
+import 'api/shared.dart';
 import 'api/sync.dart';
 import 'api/types.dart';
 import 'dart:async';
@@ -74,7 +79,7 @@ class KansoCore
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 759027719;
+  int get rustContentHash => 1485276510;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -86,6 +91,235 @@ class KansoCore
 }
 
 abstract class KansoCoreApi extends BaseApi {
+  Future<AccountDetails> crateApiAccountSettingsKansoAccountSettingsAddPasskey({
+    required KansoAccountSettings that,
+    required String currentPassword,
+  });
+
+  Future<RecoveryKeyText>
+  crateApiAccountSettingsKansoAccountSettingsChangePassword({
+    required KansoAccountSettings that,
+    required String current,
+    required String newPassword,
+  });
+
+  Future<void> crateApiAccountSettingsKansoAccountSettingsDeleteAccount({
+    required KansoAccountSettings that,
+    required String password,
+    required String typedUsername,
+  });
+
+  Future<AccountDetails> crateApiAccountSettingsKansoAccountSettingsDetails({
+    required KansoAccountSettings that,
+  });
+
+  Stream<ProviderEvent>
+  crateApiAccountSettingsKansoAccountSettingsLinkProvider({
+    required KansoAccountSettings that,
+    required ProviderKind provider,
+    required String currentPassword,
+  });
+
+  Future<RecoveryKeyText>
+  crateApiAccountSettingsKansoAccountSettingsNewRecoveryKey({
+    required KansoAccountSettings that,
+    required String currentPassword,
+  });
+
+  Future<RecoveryKeyText?>
+  crateApiAccountSettingsKansoAccountSettingsPendingRecoveryKey({
+    required KansoAccountSettings that,
+  });
+
+  Future<AccountDetails>
+  crateApiAccountSettingsKansoAccountSettingsRemovePasskey({
+    required KansoAccountSettings that,
+    required String id,
+    required String currentPassword,
+  });
+
+  Future<AccountDetails>
+  crateApiAccountSettingsKansoAccountSettingsRevokeDevice({
+    required KansoAccountSettings that,
+    required String deviceId,
+  });
+
+  Future<void> crateApiAccountSettingsKansoAccountSettingsSignOut({
+    required KansoAccountSettings that,
+  });
+
+  Future<AccountDetails>
+  crateApiAccountSettingsKansoAccountSettingsUnlinkProvider({
+    required KansoAccountSettings that,
+    required ProviderKind provider,
+    required String currentPassword,
+  });
+
+  Future<AccountState> crateApiAccountKansoAccountAnswerBinding({
+    required KansoAccount that,
+    BindingAnswer? answer,
+  });
+
+  Future<void> crateApiAccountKansoAccountCancelApproval({
+    required KansoAccount that,
+  });
+
+  Future<AccountState> crateApiAccountKansoAccountCancelLocked({
+    required KansoAccount that,
+  });
+
+  Future<void> crateApiAccountKansoAccountCancelProvider({
+    required KansoAccount that,
+  });
+
+  Future<SignedUp> crateApiAccountKansoAccountFinishProviderSignUp({
+    required KansoAccount that,
+    required String username,
+  });
+
+  Future<void> crateApiAccountKansoAccountPasskeyFailed({
+    required KansoAccount that,
+    required int ticket,
+    required PasskeyFailure failure,
+  });
+
+  Stream<PasskeyRequest> crateApiAccountKansoAccountPasskeyRequests({
+    required KansoAccount that,
+  });
+
+  Future<AccountState> crateApiAccountKansoAccountPasskeySignIn({
+    required KansoAccount that,
+    required String server,
+    required String deviceName,
+  });
+
+  Future<SignedUp> crateApiAccountKansoAccountPasskeySignUp({
+    required KansoAccount that,
+    required String server,
+    required String username,
+    required String deviceName,
+  });
+
+  Future<RecoveryKeyText?> crateApiAccountKansoAccountPendingRecoveryKey({
+    required KansoAccount that,
+  });
+
+  Future<void> crateApiAccountKansoAccountProviderPageEnded({
+    required KansoAccount that,
+    String? callbackUrl,
+  });
+
+  Future<SignedUp> crateApiAccountKansoAccountRecover({
+    required KansoAccount that,
+    required String server,
+    required String username,
+    required String recoveryKey,
+    required String newPassword,
+    required String deviceName,
+  });
+
+  Future<void> crateApiAccountKansoAccountRecoveryKeySaved({
+    required KansoAccount that,
+  });
+
+  Stream<ApprovalWait> crateApiAccountKansoAccountRequestApproval({
+    required KansoAccount that,
+    required String deviceName,
+  });
+
+  Future<ServerMethods> crateApiAccountKansoAccountServerMethods({
+    required KansoAccount that,
+    required String server,
+  });
+
+  Future<AccountState> crateApiAccountKansoAccountSignInPassword({
+    required KansoAccount that,
+    required String server,
+    required String username,
+    required String password,
+    required String deviceName,
+  });
+
+  Future<SignedUp> crateApiAccountKansoAccountSignUpPassword({
+    required KansoAccount that,
+    required String server,
+    required String username,
+    required String password,
+    required String deviceName,
+  });
+
+  Stream<ProviderEvent> crateApiAccountKansoAccountStartProvider({
+    required KansoAccount that,
+    required String server,
+    required ProviderKind provider,
+    required String deviceName,
+  });
+
+  Future<AccountState> crateApiAccountKansoAccountState({
+    required KansoAccount that,
+  });
+
+  Stream<AccountState> crateApiAccountKansoAccountStateStream({
+    required KansoAccount that,
+  });
+
+  Future<AccountState> crateApiAccountKansoAccountUnlockWithPassword({
+    required KansoAccount that,
+    required String password,
+  });
+
+  Future<List<ApprovalPrompt>> crateApiApprovalsKansoApprovalsApprove({
+    required KansoApprovals that,
+    required String id,
+  });
+
+  Future<List<ApprovalPrompt>> crateApiApprovalsKansoApprovalsDecline({
+    required KansoApprovals that,
+    required String id,
+  });
+
+  Future<List<ApprovalPrompt>> crateApiApprovalsKansoApprovalsRefresh({
+    required KansoApprovals that,
+  });
+
+  Stream<List<ApprovalPrompt>> crateApiApprovalsKansoApprovalsWatch({
+    required KansoApprovals that,
+  });
+
+  Future<List<GalleryItem>> crateApiGalleryKansoGalleryIndex({
+    required KansoGallery that,
+    required bool refresh,
+  });
+
+  Future<List<GalleryItem>> crateApiGalleryKansoGalleryInstall({
+    required KansoGallery that,
+    required String id,
+  });
+
+  Future<ThemeTokens> crateApiGalleryKansoGalleryInstalledThemeTokens({
+    required KansoGallery that,
+    required String id,
+  });
+
+  Future<List<BuiltinTheme>> crateApiGalleryKansoGalleryInstalledThemes({
+    required KansoGallery that,
+  });
+
+  Future<List<GalleryItem>> crateApiGalleryKansoGalleryUninstall({
+    required KansoGallery that,
+    required String id,
+  });
+
+  KansoAccount crateApiLibraryKansoLibraryAccount({required KansoLibrary that});
+
+  KansoAccountSettings crateApiLibraryKansoLibraryAccountSettings({
+    required KansoLibrary that,
+  });
+
+  KansoApprovals crateApiLibraryKansoLibraryApprovals({
+    required KansoLibrary that,
+  });
+
   Future<int> crateApiLibraryKansoLibraryChange({
     required KansoLibrary that,
     required List<String> ids,
@@ -106,6 +340,8 @@ abstract class KansoCoreApi extends BaseApi {
     required String name,
     String? parentId,
   });
+
+  KansoGallery crateApiLibraryKansoLibraryGallery({required KansoLibrary that});
 
   Future<NoteList> crateApiLibraryKansoLibraryList({
     required KansoLibrary that,
@@ -157,6 +393,8 @@ abstract class KansoCoreApi extends BaseApi {
     required SearchScope scope,
     required int limit,
   });
+
+  KansoShared crateApiLibraryKansoLibraryShared({required KansoLibrary that});
 
   KansoSync crateApiLibraryKansoLibrarySyncing({required KansoLibrary that});
 
@@ -238,12 +476,141 @@ abstract class KansoCoreApi extends BaseApi {
     required String themeJson,
   });
 
+  Future<String> crateApiSharedKansoSharedAccept({
+    required KansoShared that,
+    required String shareId,
+  });
+
+  Future<PersonRow> crateApiSharedKansoSharedAcceptNewKey({
+    required KansoShared that,
+    required String username,
+    required String fingerprint,
+  });
+
+  Future<ShareInfo> crateApiSharedKansoSharedApproveRequest({
+    required KansoShared that,
+    required String noteId,
+    required String accountId,
+  });
+
+  Future<void> crateApiSharedKansoSharedCanShare({
+    required KansoShared that,
+    required String noteId,
+  });
+
+  Future<ShareInfo> crateApiSharedKansoSharedCancelLink({
+    required KansoShared that,
+    required String noteId,
+    required String linkId,
+  });
+
+  Future<void> crateApiSharedKansoSharedCloseLive({
+    required KansoShared that,
+    required String noteId,
+  });
+
+  Future<String> crateApiSharedKansoSharedCreateLink({
+    required KansoShared that,
+    required String noteId,
+    required ShareRole role,
+    required int days,
+  });
+
+  Future<void> crateApiSharedKansoSharedDecline({
+    required KansoShared that,
+    required String shareId,
+  });
+
+  Future<ShareInfo> crateApiSharedKansoSharedDeclineRequest({
+    required KansoShared that,
+    required String noteId,
+    required String accountId,
+  });
+
+  Stream<SharedEvent> crateApiSharedKansoSharedEvents({
+    required KansoShared that,
+  });
+
+  Future<ShareInfo?> crateApiSharedKansoSharedInfo({
+    required KansoShared that,
+    required String noteId,
+  });
+
+  Future<List<InvitationRow>> crateApiSharedKansoSharedInvitations({
+    required KansoShared that,
+  });
+
+  Future<ShareInfo> crateApiSharedKansoSharedInvite({
+    required KansoShared that,
+    required String noteId,
+    required String username,
+    required ShareRole role,
+  });
+
+  Future<JoinRow> crateApiSharedKansoSharedJoin({
+    required KansoShared that,
+    required String link,
+  });
+
+  Future<void> crateApiSharedKansoSharedLeave({
+    required KansoShared that,
+    required String noteId,
+  });
+
+  Future<PersonLookup> crateApiSharedKansoSharedLookupPerson({
+    required KansoShared that,
+    required String username,
+  });
+
+  Future<void> crateApiSharedKansoSharedOpenLive({
+    required KansoShared that,
+    required String noteId,
+  });
+
+  Future<ShareInfo> crateApiSharedKansoSharedRemove({
+    required KansoShared that,
+    required String noteId,
+    required String accountId,
+  });
+
+  Future<ShareInfo> crateApiSharedKansoSharedSetRole({
+    required KansoShared that,
+    required String noteId,
+    required String accountId,
+    required ShareRole role,
+  });
+
+  Future<ShareInfo> crateApiSharedKansoSharedShare({
+    required KansoShared that,
+    required String noteId,
+    required List<(String, ShareRole)> invites,
+  });
+
+  Future<void> crateApiSharedKansoSharedStop({
+    required KansoShared that,
+    required String noteId,
+  });
+
+  Future<SharedEvent> crateApiSharedKansoSharedSyncShared({
+    required KansoShared that,
+  });
+
+  Future<void> crateApiSharedKansoSharedVerifyPerson({
+    required KansoShared that,
+    required String accountId,
+  });
+
   Future<ServerInfo> crateApiSyncKansoSyncCheckServer({
     required KansoSync that,
     required String url,
   });
 
   Future<String> crateApiSyncKansoSyncDefaultServer();
+
+  Future<void> crateApiSyncKansoSyncSetForeground({
+    required KansoSync that,
+    required bool foreground,
+  });
 
   Future<SyncStatus> crateApiSyncKansoSyncSignInPassword({
     required KansoSync that,
@@ -274,6 +641,40 @@ abstract class KansoCoreApi extends BaseApi {
   Future<String> crateApiDiagnosticsVersion();
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoAccount;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoAccount;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_KansoAccountPtr;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoAccountSettings;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoAccountSettings;
+
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_KansoAccountSettingsPtr;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoApprovals;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoApprovals;
+
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_KansoApprovalsPtr;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoGallery;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoGallery;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_KansoGalleryPtr;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_KansoLibrary;
 
   RustArcDecrementStrongCountFnType
@@ -299,6 +700,14 @@ abstract class KansoCoreApi extends BaseApi {
   get rust_arc_decrement_strong_count_KansoRendererPtr;
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoShared;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoShared;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_KansoSharedPtr;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_KansoSync;
 
   RustArcDecrementStrongCountFnType
@@ -315,6 +724,1745 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     required super.generalizedFrbRustBinding,
     required super.portManager,
   });
+
+  @override
+  Future<AccountDetails> crateApiAccountSettingsKansoAccountSettingsAddPasskey({
+    required KansoAccountSettings that,
+    required String currentPassword,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+            that,
+            serializer,
+          );
+          sse_encode_String(currentPassword, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_details,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta:
+            kCrateApiAccountSettingsKansoAccountSettingsAddPasskeyConstMeta,
+        argValues: [that, currentPassword],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsAddPasskeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_add_passkey",
+        argNames: ["that", "currentPassword"],
+      );
+
+  @override
+  Future<RecoveryKeyText>
+  crateApiAccountSettingsKansoAccountSettingsChangePassword({
+    required KansoAccountSettings that,
+    required String current,
+    required String newPassword,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+            that,
+            serializer,
+          );
+          sse_encode_String(current, serializer);
+          sse_encode_String(newPassword, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_recovery_key_text,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta:
+            kCrateApiAccountSettingsKansoAccountSettingsChangePasswordConstMeta,
+        argValues: [that, current, newPassword],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsChangePasswordConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_change_password",
+        argNames: ["that", "current", "newPassword"],
+      );
+
+  @override
+  Future<void> crateApiAccountSettingsKansoAccountSettingsDeleteAccount({
+    required KansoAccountSettings that,
+    required String password,
+    required String typedUsername,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+            that,
+            serializer,
+          );
+          sse_encode_String(password, serializer);
+          sse_encode_String(typedUsername, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta:
+            kCrateApiAccountSettingsKansoAccountSettingsDeleteAccountConstMeta,
+        argValues: [that, password, typedUsername],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsDeleteAccountConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_delete_account",
+        argNames: ["that", "password", "typedUsername"],
+      );
+
+  @override
+  Future<AccountDetails> crateApiAccountSettingsKansoAccountSettingsDetails({
+    required KansoAccountSettings that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_details,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountSettingsKansoAccountSettingsDetailsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsDetailsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_details",
+        argNames: ["that"],
+      );
+
+  @override
+  Stream<ProviderEvent>
+  crateApiAccountSettingsKansoAccountSettingsLinkProvider({
+    required KansoAccountSettings that,
+    required ProviderKind provider,
+    required String currentPassword,
+  }) {
+    final sink = RustStreamSink<ProviderEvent>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+              that,
+              serializer,
+            );
+            sse_encode_provider_kind(provider, serializer);
+            sse_encode_String(currentPassword, serializer);
+            sse_encode_StreamSink_provider_event_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 5,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta:
+              kCrateApiAccountSettingsKansoAccountSettingsLinkProviderConstMeta,
+          argValues: [that, provider, currentPassword, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsLinkProviderConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_link_provider",
+        argNames: ["that", "provider", "currentPassword", "sink"],
+      );
+
+  @override
+  Future<RecoveryKeyText>
+  crateApiAccountSettingsKansoAccountSettingsNewRecoveryKey({
+    required KansoAccountSettings that,
+    required String currentPassword,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+            that,
+            serializer,
+          );
+          sse_encode_String(currentPassword, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_recovery_key_text,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta:
+            kCrateApiAccountSettingsKansoAccountSettingsNewRecoveryKeyConstMeta,
+        argValues: [that, currentPassword],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsNewRecoveryKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_new_recovery_key",
+        argNames: ["that", "currentPassword"],
+      );
+
+  @override
+  Future<RecoveryKeyText?>
+  crateApiAccountSettingsKansoAccountSettingsPendingRecoveryKey({
+    required KansoAccountSettings that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_recovery_key_text,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta:
+            kCrateApiAccountSettingsKansoAccountSettingsPendingRecoveryKeyConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsPendingRecoveryKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_pending_recovery_key",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<AccountDetails>
+  crateApiAccountSettingsKansoAccountSettingsRemovePasskey({
+    required KansoAccountSettings that,
+    required String id,
+    required String currentPassword,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          sse_encode_String(currentPassword, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_details,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta:
+            kCrateApiAccountSettingsKansoAccountSettingsRemovePasskeyConstMeta,
+        argValues: [that, id, currentPassword],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsRemovePasskeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_remove_passkey",
+        argNames: ["that", "id", "currentPassword"],
+      );
+
+  @override
+  Future<AccountDetails>
+  crateApiAccountSettingsKansoAccountSettingsRevokeDevice({
+    required KansoAccountSettings that,
+    required String deviceId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+            that,
+            serializer,
+          );
+          sse_encode_String(deviceId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_details,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta:
+            kCrateApiAccountSettingsKansoAccountSettingsRevokeDeviceConstMeta,
+        argValues: [that, deviceId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsRevokeDeviceConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_revoke_device",
+        argNames: ["that", "deviceId"],
+      );
+
+  @override
+  Future<void> crateApiAccountSettingsKansoAccountSettingsSignOut({
+    required KansoAccountSettings that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountSettingsKansoAccountSettingsSignOutConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsSignOutConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_sign_out",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<AccountDetails>
+  crateApiAccountSettingsKansoAccountSettingsUnlinkProvider({
+    required KansoAccountSettings that,
+    required ProviderKind provider,
+    required String currentPassword,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+            that,
+            serializer,
+          );
+          sse_encode_provider_kind(provider, serializer);
+          sse_encode_String(currentPassword, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_details,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta:
+            kCrateApiAccountSettingsKansoAccountSettingsUnlinkProviderConstMeta,
+        argValues: [that, provider, currentPassword],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiAccountSettingsKansoAccountSettingsUnlinkProviderConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccountSettings_unlink_provider",
+        argNames: ["that", "provider", "currentPassword"],
+      );
+
+  @override
+  Future<AccountState> crateApiAccountKansoAccountAnswerBinding({
+    required KansoAccount that,
+    BindingAnswer? answer,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_opt_box_autoadd_binding_answer(answer, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_state,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountAnswerBindingConstMeta,
+        argValues: [that, answer],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountAnswerBindingConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_answer_binding",
+        argNames: ["that", "answer"],
+      );
+
+  @override
+  Future<void> crateApiAccountKansoAccountCancelApproval({
+    required KansoAccount that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 13,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiAccountKansoAccountCancelApprovalConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountCancelApprovalConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_cancel_approval",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<AccountState> crateApiAccountKansoAccountCancelLocked({
+    required KansoAccount that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 14,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_state,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountCancelLockedConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountCancelLockedConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_cancel_locked",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiAccountKansoAccountCancelProvider({
+    required KansoAccount that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiAccountKansoAccountCancelProviderConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountCancelProviderConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_cancel_provider",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<SignedUp> crateApiAccountKansoAccountFinishProviderSignUp({
+    required KansoAccount that,
+    required String username,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_String(username, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 16,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_signed_up,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountFinishProviderSignUpConstMeta,
+        argValues: [that, username],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountFinishProviderSignUpConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_finish_provider_sign_up",
+        argNames: ["that", "username"],
+      );
+
+  @override
+  Future<void> crateApiAccountKansoAccountPasskeyFailed({
+    required KansoAccount that,
+    required int ticket,
+    required PasskeyFailure failure,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_CastedPrimitive_u_64(ticket, serializer);
+          sse_encode_passkey_failure(failure, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiAccountKansoAccountPasskeyFailedConstMeta,
+        argValues: [that, ticket, failure],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountPasskeyFailedConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_passkey_failed",
+        argNames: ["that", "ticket", "failure"],
+      );
+
+  @override
+  Stream<PasskeyRequest> crateApiAccountKansoAccountPasskeyRequests({
+    required KansoAccount that,
+  }) {
+    final sink = RustStreamSink<PasskeyRequest>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+              that,
+              serializer,
+            );
+            sse_encode_StreamSink_passkey_request_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 18,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiAccountKansoAccountPasskeyRequestsConstMeta,
+          argValues: [that, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountPasskeyRequestsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_passkey_requests",
+        argNames: ["that", "sink"],
+      );
+
+  @override
+  Future<AccountState> crateApiAccountKansoAccountPasskeySignIn({
+    required KansoAccount that,
+    required String server,
+    required String deviceName,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_String(server, serializer);
+          sse_encode_String(deviceName, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_state,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountPasskeySignInConstMeta,
+        argValues: [that, server, deviceName],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountPasskeySignInConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_passkey_sign_in",
+        argNames: ["that", "server", "deviceName"],
+      );
+
+  @override
+  Future<SignedUp> crateApiAccountKansoAccountPasskeySignUp({
+    required KansoAccount that,
+    required String server,
+    required String username,
+    required String deviceName,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_String(server, serializer);
+          sse_encode_String(username, serializer);
+          sse_encode_String(deviceName, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_signed_up,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountPasskeySignUpConstMeta,
+        argValues: [that, server, username, deviceName],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountPasskeySignUpConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_passkey_sign_up",
+        argNames: ["that", "server", "username", "deviceName"],
+      );
+
+  @override
+  Future<RecoveryKeyText?> crateApiAccountKansoAccountPendingRecoveryKey({
+    required KansoAccount that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 21,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_recovery_key_text,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountPendingRecoveryKeyConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountPendingRecoveryKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_pending_recovery_key",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiAccountKansoAccountProviderPageEnded({
+    required KansoAccount that,
+    String? callbackUrl,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_opt_String(callbackUrl, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 22,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiAccountKansoAccountProviderPageEndedConstMeta,
+        argValues: [that, callbackUrl],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountProviderPageEndedConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_provider_page_ended",
+        argNames: ["that", "callbackUrl"],
+      );
+
+  @override
+  Future<SignedUp> crateApiAccountKansoAccountRecover({
+    required KansoAccount that,
+    required String server,
+    required String username,
+    required String recoveryKey,
+    required String newPassword,
+    required String deviceName,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_String(server, serializer);
+          sse_encode_String(username, serializer);
+          sse_encode_String(recoveryKey, serializer);
+          sse_encode_String(newPassword, serializer);
+          sse_encode_String(deviceName, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 23,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_signed_up,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountRecoverConstMeta,
+        argValues: [
+          that,
+          server,
+          username,
+          recoveryKey,
+          newPassword,
+          deviceName,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountRecoverConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_recover",
+        argNames: [
+          "that",
+          "server",
+          "username",
+          "recoveryKey",
+          "newPassword",
+          "deviceName",
+        ],
+      );
+
+  @override
+  Future<void> crateApiAccountKansoAccountRecoveryKeySaved({
+    required KansoAccount that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 24,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountRecoveryKeySavedConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountRecoveryKeySavedConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_recovery_key_saved",
+        argNames: ["that"],
+      );
+
+  @override
+  Stream<ApprovalWait> crateApiAccountKansoAccountRequestApproval({
+    required KansoAccount that,
+    required String deviceName,
+  }) {
+    final sink = RustStreamSink<ApprovalWait>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+              that,
+              serializer,
+            );
+            sse_encode_String(deviceName, serializer);
+            sse_encode_StreamSink_approval_wait_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 25,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiAccountKansoAccountRequestApprovalConstMeta,
+          argValues: [that, deviceName, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountRequestApprovalConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_request_approval",
+        argNames: ["that", "deviceName", "sink"],
+      );
+
+  @override
+  Future<ServerMethods> crateApiAccountKansoAccountServerMethods({
+    required KansoAccount that,
+    required String server,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_String(server, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 26,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_server_methods,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountServerMethodsConstMeta,
+        argValues: [that, server],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountServerMethodsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_server_methods",
+        argNames: ["that", "server"],
+      );
+
+  @override
+  Future<AccountState> crateApiAccountKansoAccountSignInPassword({
+    required KansoAccount that,
+    required String server,
+    required String username,
+    required String password,
+    required String deviceName,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_String(server, serializer);
+          sse_encode_String(username, serializer);
+          sse_encode_String(password, serializer);
+          sse_encode_String(deviceName, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 27,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_state,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountSignInPasswordConstMeta,
+        argValues: [that, server, username, password, deviceName],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountSignInPasswordConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_sign_in_password",
+        argNames: ["that", "server", "username", "password", "deviceName"],
+      );
+
+  @override
+  Future<SignedUp> crateApiAccountKansoAccountSignUpPassword({
+    required KansoAccount that,
+    required String server,
+    required String username,
+    required String password,
+    required String deviceName,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_String(server, serializer);
+          sse_encode_String(username, serializer);
+          sse_encode_String(password, serializer);
+          sse_encode_String(deviceName, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 28,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_signed_up,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountSignUpPasswordConstMeta,
+        argValues: [that, server, username, password, deviceName],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountSignUpPasswordConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_sign_up_password",
+        argNames: ["that", "server", "username", "password", "deviceName"],
+      );
+
+  @override
+  Stream<ProviderEvent> crateApiAccountKansoAccountStartProvider({
+    required KansoAccount that,
+    required String server,
+    required ProviderKind provider,
+    required String deviceName,
+  }) {
+    final sink = RustStreamSink<ProviderEvent>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+              that,
+              serializer,
+            );
+            sse_encode_String(server, serializer);
+            sse_encode_provider_kind(provider, serializer);
+            sse_encode_String(deviceName, serializer);
+            sse_encode_StreamSink_provider_event_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 29,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiAccountKansoAccountStartProviderConstMeta,
+          argValues: [that, server, provider, deviceName, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountStartProviderConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_start_provider",
+        argNames: ["that", "server", "provider", "deviceName", "sink"],
+      );
+
+  @override
+  Future<AccountState> crateApiAccountKansoAccountState({
+    required KansoAccount that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 30,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_state,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountStateConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountStateConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_state",
+        argNames: ["that"],
+      );
+
+  @override
+  Stream<AccountState> crateApiAccountKansoAccountStateStream({
+    required KansoAccount that,
+  }) {
+    final sink = RustStreamSink<AccountState>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+              that,
+              serializer,
+            );
+            sse_encode_StreamSink_account_state_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 31,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiAccountKansoAccountStateStreamConstMeta,
+          argValues: [that, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountStateStreamConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_state_stream",
+        argNames: ["that", "sink"],
+      );
+
+  @override
+  Future<AccountState> crateApiAccountKansoAccountUnlockWithPassword({
+    required KansoAccount that,
+    required String password,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+            that,
+            serializer,
+          );
+          sse_encode_String(password, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 32,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_state,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiAccountKansoAccountUnlockWithPasswordConstMeta,
+        argValues: [that, password],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAccountKansoAccountUnlockWithPasswordConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoAccount_unlock_with_password",
+        argNames: ["that", "password"],
+      );
+
+  @override
+  Future<List<ApprovalPrompt>> crateApiApprovalsKansoApprovalsApprove({
+    required KansoApprovals that,
+    required String id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 33,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_approval_prompt,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiApprovalsKansoApprovalsApproveConstMeta,
+        argValues: [that, id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApprovalsKansoApprovalsApproveConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoApprovals_approve",
+        argNames: ["that", "id"],
+      );
+
+  @override
+  Future<List<ApprovalPrompt>> crateApiApprovalsKansoApprovalsDecline({
+    required KansoApprovals that,
+    required String id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 34,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_approval_prompt,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiApprovalsKansoApprovalsDeclineConstMeta,
+        argValues: [that, id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApprovalsKansoApprovalsDeclineConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoApprovals_decline",
+        argNames: ["that", "id"],
+      );
+
+  @override
+  Future<List<ApprovalPrompt>> crateApiApprovalsKansoApprovalsRefresh({
+    required KansoApprovals that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 35,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_approval_prompt,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiApprovalsKansoApprovalsRefreshConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApprovalsKansoApprovalsRefreshConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoApprovals_refresh",
+        argNames: ["that"],
+      );
+
+  @override
+  Stream<List<ApprovalPrompt>> crateApiApprovalsKansoApprovalsWatch({
+    required KansoApprovals that,
+  }) {
+    final sink = RustStreamSink<List<ApprovalPrompt>>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+              that,
+              serializer,
+            );
+            sse_encode_StreamSink_list_approval_prompt_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 36,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiApprovalsKansoApprovalsWatchConstMeta,
+          argValues: [that, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiApprovalsKansoApprovalsWatchConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoApprovals_watch",
+        argNames: ["that", "sink"],
+      );
+
+  @override
+  Future<List<GalleryItem>> crateApiGalleryKansoGalleryIndex({
+    required KansoGallery that,
+    required bool refresh,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+            that,
+            serializer,
+          );
+          sse_encode_bool(refresh, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 37,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_gallery_item,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiGalleryKansoGalleryIndexConstMeta,
+        argValues: [that, refresh],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGalleryKansoGalleryIndexConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoGallery_index",
+        argNames: ["that", "refresh"],
+      );
+
+  @override
+  Future<List<GalleryItem>> crateApiGalleryKansoGalleryInstall({
+    required KansoGallery that,
+    required String id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 38,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_gallery_item,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiGalleryKansoGalleryInstallConstMeta,
+        argValues: [that, id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGalleryKansoGalleryInstallConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoGallery_install",
+        argNames: ["that", "id"],
+      );
+
+  @override
+  Future<ThemeTokens> crateApiGalleryKansoGalleryInstalledThemeTokens({
+    required KansoGallery that,
+    required String id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 39,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_theme_tokens,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiGalleryKansoGalleryInstalledThemeTokensConstMeta,
+        argValues: [that, id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGalleryKansoGalleryInstalledThemeTokensConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoGallery_installed_theme_tokens",
+        argNames: ["that", "id"],
+      );
+
+  @override
+  Future<List<BuiltinTheme>> crateApiGalleryKansoGalleryInstalledThemes({
+    required KansoGallery that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 40,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_builtin_theme,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiGalleryKansoGalleryInstalledThemesConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGalleryKansoGalleryInstalledThemesConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoGallery_installed_themes",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<List<GalleryItem>> crateApiGalleryKansoGalleryUninstall({
+    required KansoGallery that,
+    required String id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 41,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_gallery_item,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiGalleryKansoGalleryUninstallConstMeta,
+        argValues: [that, id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGalleryKansoGalleryUninstallConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoGallery_uninstall",
+        argNames: ["that", "id"],
+      );
+
+  @override
+  KansoAccount crateApiLibraryKansoLibraryAccount({
+    required KansoLibrary that,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 42)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLibraryKansoLibraryAccountConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryKansoLibraryAccountConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLibrary_account",
+        argNames: ["that"],
+      );
+
+  @override
+  KansoAccountSettings crateApiLibraryKansoLibraryAccountSettings({
+    required KansoLibrary that,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 43)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLibraryKansoLibraryAccountSettingsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryKansoLibraryAccountSettingsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLibrary_account_settings",
+        argNames: ["that"],
+      );
+
+  @override
+  KansoApprovals crateApiLibraryKansoLibraryApprovals({
+    required KansoLibrary that,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 44)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLibraryKansoLibraryApprovalsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryKansoLibraryApprovalsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLibrary_approvals",
+        argNames: ["that"],
+      );
 
   @override
   Future<int> crateApiLibraryKansoLibraryChange({
@@ -335,7 +2483,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 45,
             port: port_,
           );
         },
@@ -374,7 +2522,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 2,
+              funcId: 46,
               port: port_,
             );
           },
@@ -414,7 +2562,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 47,
             port: port_,
           );
         },
@@ -454,7 +2602,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 48,
             port: port_,
           );
         },
@@ -476,6 +2624,38 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  KansoGallery crateApiLibraryKansoLibraryGallery({
+    required KansoLibrary that,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 49)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLibraryKansoLibraryGalleryConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryKansoLibraryGalleryConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLibrary_gallery",
+        argNames: ["that"],
+      );
+
+  @override
   Future<NoteList> crateApiLibraryKansoLibraryList({
     required KansoLibrary that,
     required ListQuery query,
@@ -492,7 +2672,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 50,
             port: port_,
           );
         },
@@ -523,7 +2703,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 51)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -560,7 +2740,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 52,
             port: port_,
           );
         },
@@ -596,7 +2776,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 53,
             port: port_,
           );
         },
@@ -627,7 +2807,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 54,
             port: port_,
           );
         },
@@ -664,7 +2844,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 55,
             port: port_,
           );
         },
@@ -702,7 +2882,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 56,
             port: port_,
           );
         },
@@ -742,7 +2922,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 57,
             port: port_,
           );
         },
@@ -775,7 +2955,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 58)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -816,7 +2996,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 59,
             port: port_,
           );
         },
@@ -858,7 +3038,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 60,
             port: port_,
           );
         },
@@ -880,6 +3060,36 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  KansoShared crateApiLibraryKansoLibraryShared({required KansoLibrary that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 61)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLibraryKansoLibrarySharedConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryKansoLibrarySharedConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLibrary_shared",
+        argNames: ["that"],
+      );
+
+  @override
   KansoSync crateApiLibraryKansoLibrarySyncing({required KansoLibrary that}) {
     return handler.executeSync(
       SyncTask(
@@ -889,7 +3099,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 62)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -924,7 +3134,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 63,
             port: port_,
           );
         },
@@ -962,7 +3172,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 64,
             port: port_,
           );
         },
@@ -1000,7 +3210,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 65,
             port: port_,
           );
         },
@@ -1034,7 +3244,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 66,
             port: port_,
           );
         },
@@ -1068,7 +3278,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 67,
             port: port_,
           );
         },
@@ -1107,7 +3317,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 22,
+              funcId: 68,
               port: port_,
             );
           },
@@ -1149,7 +3359,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 69,
             port: port_,
           );
         },
@@ -1187,7 +3397,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 70,
             port: port_,
           );
         },
@@ -1220,7 +3430,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 71,
             port: port_,
           );
         },
@@ -1250,7 +3460,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 72,
             port: port_,
           );
         },
@@ -1287,7 +3497,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 73,
             port: port_,
           );
         },
@@ -1324,7 +3534,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 74,
             port: port_,
           );
         },
@@ -1361,7 +3571,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 75,
             port: port_,
           );
         },
@@ -1401,7 +3611,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 76,
             port: port_,
           );
         },
@@ -1434,7 +3644,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 77,
             port: port_,
           );
         },
@@ -1473,7 +3683,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 78,
             port: port_,
           );
         },
@@ -1506,7 +3716,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 79,
             port: port_,
           );
         },
@@ -1528,6 +3738,903 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  Future<String> crateApiSharedKansoSharedAccept({
+    required KansoShared that,
+    required String shareId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(shareId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 80,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedAcceptConstMeta,
+        argValues: [that, shareId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedAcceptConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_accept",
+        argNames: ["that", "shareId"],
+      );
+
+  @override
+  Future<PersonRow> crateApiSharedKansoSharedAcceptNewKey({
+    required KansoShared that,
+    required String username,
+    required String fingerprint,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(username, serializer);
+          sse_encode_String(fingerprint, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 81,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_person_row,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedAcceptNewKeyConstMeta,
+        argValues: [that, username, fingerprint],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedAcceptNewKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_accept_new_key",
+        argNames: ["that", "username", "fingerprint"],
+      );
+
+  @override
+  Future<ShareInfo> crateApiSharedKansoSharedApproveRequest({
+    required KansoShared that,
+    required String noteId,
+    required String accountId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          sse_encode_String(accountId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 82,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_share_info,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedApproveRequestConstMeta,
+        argValues: [that, noteId, accountId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedApproveRequestConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_approve_request",
+        argNames: ["that", "noteId", "accountId"],
+      );
+
+  @override
+  Future<void> crateApiSharedKansoSharedCanShare({
+    required KansoShared that,
+    required String noteId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 83,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedCanShareConstMeta,
+        argValues: [that, noteId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedCanShareConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_can_share",
+        argNames: ["that", "noteId"],
+      );
+
+  @override
+  Future<ShareInfo> crateApiSharedKansoSharedCancelLink({
+    required KansoShared that,
+    required String noteId,
+    required String linkId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          sse_encode_String(linkId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 84,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_share_info,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedCancelLinkConstMeta,
+        argValues: [that, noteId, linkId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedCancelLinkConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_cancel_link",
+        argNames: ["that", "noteId", "linkId"],
+      );
+
+  @override
+  Future<void> crateApiSharedKansoSharedCloseLive({
+    required KansoShared that,
+    required String noteId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 85,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSharedKansoSharedCloseLiveConstMeta,
+        argValues: [that, noteId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedCloseLiveConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_close_live",
+        argNames: ["that", "noteId"],
+      );
+
+  @override
+  Future<String> crateApiSharedKansoSharedCreateLink({
+    required KansoShared that,
+    required String noteId,
+    required ShareRole role,
+    required int days,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          sse_encode_share_role(role, serializer);
+          sse_encode_u_32(days, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 86,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedCreateLinkConstMeta,
+        argValues: [that, noteId, role, days],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedCreateLinkConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_create_link",
+        argNames: ["that", "noteId", "role", "days"],
+      );
+
+  @override
+  Future<void> crateApiSharedKansoSharedDecline({
+    required KansoShared that,
+    required String shareId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(shareId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 87,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedDeclineConstMeta,
+        argValues: [that, shareId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedDeclineConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_decline",
+        argNames: ["that", "shareId"],
+      );
+
+  @override
+  Future<ShareInfo> crateApiSharedKansoSharedDeclineRequest({
+    required KansoShared that,
+    required String noteId,
+    required String accountId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          sse_encode_String(accountId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 88,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_share_info,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedDeclineRequestConstMeta,
+        argValues: [that, noteId, accountId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedDeclineRequestConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_decline_request",
+        argNames: ["that", "noteId", "accountId"],
+      );
+
+  @override
+  Stream<SharedEvent> crateApiSharedKansoSharedEvents({
+    required KansoShared that,
+  }) {
+    final sink = RustStreamSink<SharedEvent>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+              that,
+              serializer,
+            );
+            sse_encode_StreamSink_shared_event_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 89,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiSharedKansoSharedEventsConstMeta,
+          argValues: [that, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedEventsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_events",
+        argNames: ["that", "sink"],
+      );
+
+  @override
+  Future<ShareInfo?> crateApiSharedKansoSharedInfo({
+    required KansoShared that,
+    required String noteId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 90,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_share_info,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedInfoConstMeta,
+        argValues: [that, noteId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedInfoConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_info",
+        argNames: ["that", "noteId"],
+      );
+
+  @override
+  Future<List<InvitationRow>> crateApiSharedKansoSharedInvitations({
+    required KansoShared that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 91,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_invitation_row,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedInvitationsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedInvitationsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_invitations",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<ShareInfo> crateApiSharedKansoSharedInvite({
+    required KansoShared that,
+    required String noteId,
+    required String username,
+    required ShareRole role,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          sse_encode_String(username, serializer);
+          sse_encode_share_role(role, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 92,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_share_info,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedInviteConstMeta,
+        argValues: [that, noteId, username, role],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedInviteConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_invite",
+        argNames: ["that", "noteId", "username", "role"],
+      );
+
+  @override
+  Future<JoinRow> crateApiSharedKansoSharedJoin({
+    required KansoShared that,
+    required String link,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(link, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 93,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_join_row,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedJoinConstMeta,
+        argValues: [that, link],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedJoinConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_join",
+        argNames: ["that", "link"],
+      );
+
+  @override
+  Future<void> crateApiSharedKansoSharedLeave({
+    required KansoShared that,
+    required String noteId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 94,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedLeaveConstMeta,
+        argValues: [that, noteId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedLeaveConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_leave",
+        argNames: ["that", "noteId"],
+      );
+
+  @override
+  Future<PersonLookup> crateApiSharedKansoSharedLookupPerson({
+    required KansoShared that,
+    required String username,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(username, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 95,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_person_lookup,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedLookupPersonConstMeta,
+        argValues: [that, username],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedLookupPersonConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_lookup_person",
+        argNames: ["that", "username"],
+      );
+
+  @override
+  Future<void> crateApiSharedKansoSharedOpenLive({
+    required KansoShared that,
+    required String noteId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 96,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedOpenLiveConstMeta,
+        argValues: [that, noteId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedOpenLiveConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_open_live",
+        argNames: ["that", "noteId"],
+      );
+
+  @override
+  Future<ShareInfo> crateApiSharedKansoSharedRemove({
+    required KansoShared that,
+    required String noteId,
+    required String accountId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          sse_encode_String(accountId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 97,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_share_info,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedRemoveConstMeta,
+        argValues: [that, noteId, accountId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedRemoveConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_remove",
+        argNames: ["that", "noteId", "accountId"],
+      );
+
+  @override
+  Future<ShareInfo> crateApiSharedKansoSharedSetRole({
+    required KansoShared that,
+    required String noteId,
+    required String accountId,
+    required ShareRole role,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          sse_encode_String(accountId, serializer);
+          sse_encode_share_role(role, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 98,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_share_info,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedSetRoleConstMeta,
+        argValues: [that, noteId, accountId, role],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedSetRoleConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_set_role",
+        argNames: ["that", "noteId", "accountId", "role"],
+      );
+
+  @override
+  Future<ShareInfo> crateApiSharedKansoSharedShare({
+    required KansoShared that,
+    required String noteId,
+    required List<(String, ShareRole)> invites,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          sse_encode_list_record_string_share_role(invites, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 99,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_share_info,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedShareConstMeta,
+        argValues: [that, noteId, invites],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedShareConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_share",
+        argNames: ["that", "noteId", "invites"],
+      );
+
+  @override
+  Future<void> crateApiSharedKansoSharedStop({
+    required KansoShared that,
+    required String noteId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(noteId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 100,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedStopConstMeta,
+        argValues: [that, noteId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedStopConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_stop",
+        argNames: ["that", "noteId"],
+      );
+
+  @override
+  Future<SharedEvent> crateApiSharedKansoSharedSyncShared({
+    required KansoShared that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 101,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_shared_event,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedSyncSharedConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedSyncSharedConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_sync_shared",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiSharedKansoSharedVerifyPerson({
+    required KansoShared that,
+    required String accountId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+            that,
+            serializer,
+          );
+          sse_encode_String(accountId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 102,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiSharedKansoSharedVerifyPersonConstMeta,
+        argValues: [that, accountId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSharedKansoSharedVerifyPersonConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoShared_verify_person",
+        argNames: ["that", "accountId"],
+      );
+
+  @override
   Future<ServerInfo> crateApiSyncKansoSyncCheckServer({
     required KansoSync that,
     required String url,
@@ -1544,7 +4651,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 103,
             port: port_,
           );
         },
@@ -1574,7 +4681,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 104,
             port: port_,
           );
         },
@@ -1593,6 +4700,44 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       const TaskConstMeta(
         debugName: "KansoSync_default_server",
         argNames: [],
+      );
+
+  @override
+  Future<void> crateApiSyncKansoSyncSetForeground({
+    required KansoSync that,
+    required bool foreground,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
+            that,
+            serializer,
+          );
+          sse_encode_bool(foreground, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 105,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSyncKansoSyncSetForegroundConstMeta,
+        argValues: [that, foreground],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncKansoSyncSetForegroundConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoSync_set_foreground",
+        argNames: ["that", "foreground"],
       );
 
   @override
@@ -1618,7 +4763,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 106,
             port: port_,
           );
         },
@@ -1652,7 +4797,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 107,
             port: port_,
           );
         },
@@ -1686,7 +4831,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 108,
             port: port_,
           );
         },
@@ -1725,7 +4870,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 39,
+              funcId: 109,
               port: port_,
             );
           },
@@ -1763,7 +4908,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 110,
             port: port_,
           );
         },
@@ -1794,7 +4939,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 111,
             port: port_,
           );
         },
@@ -1825,7 +4970,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 112,
             port: port_,
           );
         },
@@ -1855,7 +5000,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 113,
             port: port_,
           );
         },
@@ -1885,7 +5030,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 44,
+            funcId: 114,
             port: port_,
           );
         },
@@ -1915,7 +5060,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 45,
+            funcId: 115,
             port: port_,
           );
         },
@@ -1934,6 +5079,38 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     debugName: "version",
     argNames: [],
   );
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoAccount => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoAccount => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoAccountSettings => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoAccountSettings => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoApprovals => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoApprovals => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoGallery => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoGallery => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery;
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_KansoLibrary => wire
@@ -1960,6 +5137,14 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoRenderer;
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoShared => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoShared => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_KansoSync => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync;
 
@@ -1971,6 +5156,42 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return AnyhowException(raw as String);
+  }
+
+  @protected
+  KansoAccount
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoAccountImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoAccountSettings
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoAccountSettingsImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoApprovals
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoApprovalsImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoGallery
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoGalleryImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -2001,12 +5222,57 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  KansoShared
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoSharedImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
   KansoSync
   dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return KansoSyncImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoAccount
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoAccountImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoAccountSettings
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoAccountSettingsImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoApprovals
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoApprovalsImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoGallery
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoGalleryImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -2037,6 +5303,15 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  KansoShared
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoSharedImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
   KansoSync
   dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
     dynamic raw,
@@ -2051,6 +5326,50 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     throw UnimplementedError(
       'Not implemented in this codec, please use the other one',
     );
+  }
+
+  @protected
+  int dco_decode_CastedPrimitive_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError(
+      'Not implemented in this codec, please use the other one',
+    );
+  }
+
+  @protected
+  KansoAccount
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoAccountImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoAccountSettings
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoAccountSettingsImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoApprovals
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoApprovalsImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoGallery
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoGalleryImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -2081,12 +5400,37 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  KansoShared
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoSharedImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
   KansoSync
   dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return KansoSyncImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  RustStreamSink<AccountState> dco_decode_StreamSink_account_state_Sse(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  RustStreamSink<ApprovalWait> dco_decode_StreamSink_approval_wait_Sse(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
   }
 
   @protected
@@ -2098,7 +5442,38 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  RustStreamSink<List<ApprovalPrompt>>
+  dco_decode_StreamSink_list_approval_prompt_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
   RustStreamSink<LockEvent> dco_decode_StreamSink_lock_event_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  RustStreamSink<PasskeyRequest> dco_decode_StreamSink_passkey_request_Sse(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  RustStreamSink<ProviderEvent> dco_decode_StreamSink_provider_event_Sse(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  RustStreamSink<SharedEvent> dco_decode_StreamSink_shared_event_Sse(
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
@@ -2118,9 +5493,147 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  AccountDetails dco_decode_account_details(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return AccountDetails(
+      username: dco_decode_String(arr[0]),
+      server: dco_decode_String(arr[1]),
+      devices: dco_decode_list_device_row(arr[2]),
+      storageLine: dco_decode_opt_String(arr[3]),
+      hasPassword: dco_decode_bool(arr[4]),
+      providers: dco_decode_list_linked_provider_row(arr[5]),
+      passkeys: dco_decode_list_passkey_row(arr[6]),
+      recoveryKeyUnsaved: dco_decode_bool(arr[7]),
+    );
+  }
+
+  @protected
+  AccountState dco_decode_account_state(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return AccountState_SignedOut();
+      case 1:
+        return AccountState_SignedIn(
+          username: dco_decode_String(raw[1]),
+          server: dco_decode_String(raw[2]),
+        );
+      case 2:
+        return AccountState_Locked(
+          dco_decode_box_autoadd_locked_info(raw[1]),
+        );
+      case 3:
+        return AccountState_Question(
+          dco_decode_box_autoadd_binding_question(raw[1]),
+        );
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  ApprovalPhase dco_decode_approval_phase(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return ApprovalPhase_Requesting();
+      case 1:
+        return ApprovalPhase_Waiting();
+      case 2:
+        return ApprovalPhase_Compare();
+      case 3:
+        return ApprovalPhase_Unlocking();
+      case 4:
+        return ApprovalPhase_Approved();
+      case 5:
+        return ApprovalPhase_NoDevices();
+      case 6:
+        return ApprovalPhase_Cancelled();
+      case 7:
+        return ApprovalPhase_Expired();
+      case 8:
+        return ApprovalPhase_Failed(
+          message: dco_decode_String(raw[1]),
+        );
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  ApprovalPrompt dco_decode_approval_prompt(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return ApprovalPrompt(
+      id: dco_decode_String(arr[0]),
+      deviceName: dco_decode_opt_String(arr[1]),
+      askedAtMs: dco_decode_CastedPrimitive_i_64(arr[2]),
+      expiresAtMs: dco_decode_CastedPrimitive_i_64(arr[3]),
+      code: dco_decode_opt_String(arr[4]),
+      state: dco_decode_prompt_state(arr[5]),
+    );
+  }
+
+  @protected
+  ApprovalWait dco_decode_approval_wait(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return ApprovalWait(
+      phase: dco_decode_approval_phase(arr[0]),
+      code: dco_decode_opt_String(arr[1]),
+      otherDevices: dco_decode_u_32(arr[2]),
+      offerRecovery: dco_decode_bool(arr[3]),
+    );
+  }
+
+  @protected
+  BindingAnswer dco_decode_binding_answer(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return BindingAnswer.values[raw as int];
+  }
+
+  @protected
+  BindingQuestion dco_decode_binding_question(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return BindingQuestion(
+      title: dco_decode_String(arr[0]),
+      body: dco_decode_String(arr[1]),
+      answers: dco_decode_list_binding_answer(arr[2]),
+    );
+  }
+
+  @protected
   bool dco_decode_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as bool;
+  }
+
+  @protected
+  AccountState dco_decode_box_autoadd_account_state(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_account_state(raw);
+  }
+
+  @protected
+  BindingAnswer dco_decode_box_autoadd_binding_answer(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_binding_answer(raw);
+  }
+
+  @protected
+  BindingQuestion dco_decode_box_autoadd_binding_question(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_binding_question(raw);
   }
 
   @protected
@@ -2136,9 +5649,21 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  GalleryColors dco_decode_box_autoadd_gallery_colors(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_gallery_colors(raw);
+  }
+
+  @protected
   ListQuery dco_decode_box_autoadd_list_query(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_list_query(raw);
+  }
+
+  @protected
+  LockedInfo dco_decode_box_autoadd_locked_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_locked_info(raw);
   }
 
   @protected
@@ -2166,9 +5691,27 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PersonRow dco_decode_box_autoadd_person_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_person_row(raw);
+  }
+
+  @protected
+  RecoveryKeyText dco_decode_box_autoadd_recovery_key_text(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_recovery_key_text(raw);
+  }
+
+  @protected
   SearchScope dco_decode_box_autoadd_search_scope(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_search_scope(raw);
+  }
+
+  @protected
+  ShareInfo dco_decode_box_autoadd_share_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_share_info(raw);
   }
 
   @protected
@@ -2225,6 +5768,20 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  DeviceRow dco_decode_device_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return DeviceRow(
+      id: dco_decode_String(arr[0]),
+      title: dco_decode_String(arr[1]),
+      thisDevice: dco_decode_bool(arr[2]),
+      lastSeenMs: dco_decode_opt_CastedPrimitive_i_64(arr[3]),
+    );
+  }
+
+  @protected
   DiagramKind dco_decode_diagram_kind(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return DiagramKind.values[raw as int];
@@ -2234,6 +5791,56 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   double dco_decode_f_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as double;
+  }
+
+  @protected
+  GalleryColors dco_decode_gallery_colors(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return GalleryColors(
+      editor: dco_decode_u_32(arr[0]),
+      text: dco_decode_u_32(arr[1]),
+      accent: dco_decode_u_32(arr[2]),
+      sidebar: dco_decode_u_32(arr[3]),
+      list: dco_decode_u_32(arr[4]),
+    );
+  }
+
+  @protected
+  GalleryItem dco_decode_gallery_item(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 19)
+      throw Exception('unexpected arr length: expect 19 but see ${arr.length}');
+    return GalleryItem(
+      id: dco_decode_String(arr[0]),
+      name: dco_decode_String(arr[1]),
+      kind: dco_decode_gallery_kind(arr[2]),
+      author: dco_decode_String(arr[3]),
+      official: dco_decode_bool(arr[4]),
+      version: dco_decode_String(arr[5]),
+      installs: dco_decode_CastedPrimitive_u_64(arr[6]),
+      updatedMs: dco_decode_CastedPrimitive_i_64(arr[7]),
+      source: dco_decode_opt_String(arr[8]),
+      dark: dco_decode_bool(arr[9]),
+      headline: dco_decode_opt_box_autoadd_gallery_colors(arr[10]),
+      installed: dco_decode_bool(arr[11]),
+      updateAvailable: dco_decode_bool(arr[12]),
+      runsHere: dco_decode_bool(arr[13]),
+      description: dco_decode_String(arr[14]),
+      license: dco_decode_String(arr[15]),
+      family: dco_decode_opt_String(arr[16]),
+      edited: dco_decode_bool(arr[17]),
+      disabled: dco_decode_bool(arr[18]),
+    );
+  }
+
+  @protected
+  GalleryKind dco_decode_gallery_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return GalleryKind.values[raw as int];
   }
 
   @protected
@@ -2259,6 +5866,34 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   PlatformInt64 dco_decode_i_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeI64(raw);
+  }
+
+  @protected
+  InvitationRow dco_decode_invitation_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return InvitationRow(
+      shareId: dco_decode_String(arr[0]),
+      title: dco_decode_opt_String(arr[1]),
+      from: dco_decode_String(arr[2]),
+      role: dco_decode_share_role(arr[3]),
+      atMs: dco_decode_CastedPrimitive_i_64(arr[4]),
+    );
+  }
+
+  @protected
+  JoinRow dco_decode_join_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return JoinRow(
+      shareId: dco_decode_String(arr[0]),
+      owner: dco_decode_String(arr[1]),
+      role: dco_decode_share_role(arr[2]),
+    );
   }
 
   @protected
@@ -2315,9 +5950,33 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  LinkedProviderRow dco_decode_linked_provider_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return LinkedProviderRow(
+      provider: dco_decode_provider_kind(arr[0]),
+      linked: dco_decode_bool(arr[1]),
+    );
+  }
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_String).toList();
+  }
+
+  @protected
+  List<ApprovalPrompt> dco_decode_list_approval_prompt(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_approval_prompt).toList();
+  }
+
+  @protected
+  List<BindingAnswer> dco_decode_list_binding_answer(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_binding_answer).toList();
   }
 
   @protected
@@ -2333,15 +5992,45 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<DeviceRow> dco_decode_list_device_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_device_row).toList();
+  }
+
+  @protected
+  List<GalleryItem> dco_decode_list_gallery_item(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_gallery_item).toList();
+  }
+
+  @protected
   List<Hit> dco_decode_list_hit(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_hit).toList();
   }
 
   @protected
+  List<InvitationRow> dco_decode_list_invitation_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_invitation_row).toList();
+  }
+
+  @protected
+  List<LinkedProviderRow> dco_decode_list_linked_provider_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_linked_provider_row).toList();
+  }
+
+  @protected
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_list_prim_u_8_strict).toList();
+  }
+
+  @protected
+  List<MemberRow> dco_decode_list_member_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_member_row).toList();
   }
 
   @protected
@@ -2360,6 +6049,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   List<String?> dco_decode_list_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_opt_String).toList();
+  }
+
+  @protected
+  List<PasskeyRow> dco_decode_list_passkey_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_passkey_row).toList();
   }
 
   @protected
@@ -2400,6 +6095,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<ProviderKind> dco_decode_list_provider_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_provider_kind).toList();
+  }
+
+  @protected
   ListQuery dco_decode_list_query(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2421,6 +6122,16 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<(String, ShareRole)> dco_decode_list_record_string_share_role(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>)
+        .map(dco_decode_record_string_share_role)
+        .toList();
+  }
+
+  @protected
   ListShape dco_decode_list_shape(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2432,6 +6143,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       date: dco_decode_date_field(arr[2]),
       groupPinned: dco_decode_bool(arr[3]),
     );
+  }
+
+  @protected
+  List<ShareLinkRow> dco_decode_list_share_link_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_share_link_row).toList();
   }
 
   @protected
@@ -2500,6 +6217,39 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       default:
         throw Exception("unreachable");
     }
+  }
+
+  @protected
+  LockedInfo dco_decode_locked_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return LockedInfo(
+      username: dco_decode_String(arr[0]),
+      server: dco_decode_String(arr[1]),
+      hasPassword: dco_decode_bool(arr[2]),
+      approvalPending: dco_decode_bool(arr[3]),
+    );
+  }
+
+  @protected
+  MemberRow dco_decode_member_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return MemberRow(
+      accountId: dco_decode_String(arr[0]),
+      username: dco_decode_String(arr[1]),
+      role: dco_decode_share_role(arr[2]),
+      me: dco_decode_bool(arr[3]),
+      fingerprint: dco_decode_String(arr[4]),
+      keyChanged: dco_decode_bool(arr[5]),
+      invited: dco_decode_bool(arr[6]),
+      left: dco_decode_bool(arr[7]),
+      verified: dco_decode_bool(arr[8]),
+    );
   }
 
   @protected
@@ -2626,6 +6376,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  BindingAnswer? dco_decode_opt_box_autoadd_binding_answer(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_binding_answer(raw);
+  }
+
+  @protected
   bool? dco_decode_opt_box_autoadd_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_bool(raw);
@@ -2638,9 +6394,33 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  GalleryColors? dco_decode_opt_box_autoadd_gallery_colors(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_gallery_colors(raw);
+  }
+
+  @protected
   NotebookRole? dco_decode_opt_box_autoadd_notebook_role(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_notebook_role(raw);
+  }
+
+  @protected
+  PersonRow? dco_decode_opt_box_autoadd_person_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_person_row(raw);
+  }
+
+  @protected
+  RecoveryKeyText? dco_decode_opt_box_autoadd_recovery_key_text(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_recovery_key_text(raw);
+  }
+
+  @protected
+  ShareInfo? dco_decode_opt_box_autoadd_share_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_share_info(raw);
   }
 
   @protected
@@ -2686,6 +6466,84 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PasskeyFailure dco_decode_passkey_failure(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return PasskeyFailure.values[raw as int];
+  }
+
+  @protected
+  PasskeyRequest dco_decode_passkey_request(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return PasskeyRequest(
+      ticket: dco_decode_CastedPrimitive_u_64(arr[0]),
+      kind: dco_decode_passkey_request_kind(arr[1]),
+      optionsJson: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
+  PasskeyRequestKind dco_decode_passkey_request_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return PasskeyRequestKind.values[raw as int];
+  }
+
+  @protected
+  PasskeyRow dco_decode_passkey_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return PasskeyRow(
+      id: dco_decode_String(arr[0]),
+      label: dco_decode_String(arr[1]),
+      addedMs: dco_decode_CastedPrimitive_i_64(arr[2]),
+      lastUsedMs: dco_decode_opt_CastedPrimitive_i_64(arr[3]),
+      canUnlock: dco_decode_bool(arr[4]),
+    );
+  }
+
+  @protected
+  PersonLookup dco_decode_person_lookup(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return PersonLookup_Found(
+          dco_decode_box_autoadd_person_row(raw[1]),
+        );
+      case 1:
+        return PersonLookup_Changed(
+          pinned: dco_decode_opt_box_autoadd_person_row(raw[1]),
+          offered: dco_decode_box_autoadd_person_row(raw[2]),
+        );
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  PersonRow dco_decode_person_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return PersonRow(
+      accountId: dco_decode_String(arr[0]),
+      username: dco_decode_String(arr[1]),
+      fingerprint: dco_decode_String(arr[2]),
+      verified: dco_decode_bool(arr[3]),
+    );
+  }
+
+  @protected
+  PromptState dco_decode_prompt_state(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return PromptState.values[raw as int];
+  }
+
+  @protected
   Property dco_decode_property(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2706,6 +6564,47 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  ProviderEvent dco_decode_provider_event(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return ProviderEvent_OpenPage(
+          url: dco_decode_String(raw[1]),
+          callbackScheme: dco_decode_opt_String(raw[2]),
+        );
+      case 1:
+        return ProviderEvent_ShowCode(
+          userCode: dco_decode_String(raw[1]),
+          verificationUri: dco_decode_String(raw[2]),
+        );
+      case 2:
+        return ProviderEvent_ClosePage();
+      case 3:
+        return ProviderEvent_NeedsUsername(
+          suggested: dco_decode_String(raw[1]),
+        );
+      case 4:
+        return ProviderEvent_Finished(
+          dco_decode_box_autoadd_account_state(raw[1]),
+        );
+      case 5:
+        return ProviderEvent_Failed(
+          message: dco_decode_String(raw[1]),
+        );
+      case 6:
+        return ProviderEvent_Cancelled();
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  ProviderKind dco_decode_provider_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ProviderKind.values[raw as int];
+  }
+
+  @protected
   Range16 dco_decode_range_16(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2714,6 +6613,30 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     return Range16(
       start: dco_decode_u_32(arr[0]),
       end: dco_decode_u_32(arr[1]),
+    );
+  }
+
+  @protected
+  (String, ShareRole) dco_decode_record_string_share_role(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2) {
+      throw Exception('Expected 2 elements, got ${arr.length}');
+    }
+    return (
+      dco_decode_String(arr[0]),
+      dco_decode_share_role(arr[1]),
+    );
+  }
+
+  @protected
+  RecoveryKeyText dco_decode_recovery_key_text(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 1)
+      throw Exception('unexpected arr length: expect 1 but see ${arr.length}');
+    return RecoveryKeyText(
+      key: dco_decode_String(arr[0]),
     );
   }
 
@@ -2756,6 +6679,80 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       throw Exception('unexpected arr length: expect 1 but see ${arr.length}');
     return ServerInfo(
       signupsOpen: dco_decode_bool(arr[0]),
+    );
+  }
+
+  @protected
+  ServerMethods dco_decode_server_methods(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return ServerMethods(
+      signupsOpen: dco_decode_bool(arr[0]),
+      password: dco_decode_bool(arr[1]),
+      passkeys: dco_decode_bool(arr[2]),
+      providers: dco_decode_list_provider_kind(arr[3]),
+    );
+  }
+
+  @protected
+  ShareInfo dco_decode_share_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return ShareInfo(
+      shareId: dco_decode_String(arr[0]),
+      noteId: dco_decode_String(arr[1]),
+      myRole: dco_decode_share_role(arr[2]),
+      owner: dco_decode_String(arr[3]),
+      members: dco_decode_list_member_row(arr[4]),
+      links: dco_decode_list_share_link_row(arr[5]),
+      requests: dco_decode_list_member_row(arr[6]),
+    );
+  }
+
+  @protected
+  ShareLinkRow dco_decode_share_link_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return ShareLinkRow(
+      id: dco_decode_String(arr[0]),
+      role: dco_decode_share_role(arr[1]),
+      expiresMs: dco_decode_CastedPrimitive_i_64(arr[2]),
+    );
+  }
+
+  @protected
+  ShareRole dco_decode_share_role(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ShareRole.values[raw as int];
+  }
+
+  @protected
+  SharedEvent dco_decode_shared_event(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return SharedEvent(
+      noteIds: dco_decode_list_String(arr[0]),
+      invitations: dco_decode_u_32(arr[1]),
+    );
+  }
+
+  @protected
+  SignedUp dco_decode_signed_up(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return SignedUp(
+      state: dco_decode_account_state(arr[0]),
+      recoveryKey: dco_decode_recovery_key_text(arr[1]),
     );
   }
 
@@ -2932,6 +6929,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  BigInt dco_decode_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeU64(raw);
+  }
+
+  @protected
   int dco_decode_u_8(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -2954,6 +6957,54 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_String(deserializer);
     return AnyhowException(inner);
+  }
+
+  @protected
+  KansoAccount
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoAccountImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoAccountSettings
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoAccountSettingsImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoApprovals
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoApprovalsImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoGallery
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoGalleryImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
   }
 
   @protected
@@ -2993,12 +7044,72 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  KansoShared
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoSharedImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   KansoSync
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return KansoSyncImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoAccount
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoAccountImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoAccountSettings
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoAccountSettingsImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoApprovals
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoApprovalsImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoGallery
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoGalleryImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -3041,6 +7152,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  KansoShared
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoSharedImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   KansoSync
   sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
     SseDeserializer deserializer,
@@ -3057,6 +7180,61 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_64(deserializer);
     return inner.toInt();
+  }
+
+  @protected
+  int sse_decode_CastedPrimitive_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_u_64(deserializer);
+    return inner.toInt();
+  }
+
+  @protected
+  KansoAccount
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoAccountImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoAccountSettings
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoAccountSettingsImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoApprovals
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoApprovalsImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoGallery
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoGalleryImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
   }
 
   @protected
@@ -3096,6 +7274,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  KansoShared
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoSharedImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   KansoSync
   sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
     SseDeserializer deserializer,
@@ -3108,6 +7298,22 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  RustStreamSink<AccountState> sse_decode_StreamSink_account_state_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  RustStreamSink<ApprovalWait> sse_decode_StreamSink_approval_wait_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   RustStreamSink<List<String>> sse_decode_StreamSink_list_String_Sse(
     SseDeserializer deserializer,
   ) {
@@ -3116,7 +7322,38 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  RustStreamSink<List<ApprovalPrompt>>
+  sse_decode_StreamSink_list_approval_prompt_Sse(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   RustStreamSink<LockEvent> sse_decode_StreamSink_lock_event_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  RustStreamSink<PasskeyRequest> sse_decode_StreamSink_passkey_request_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  RustStreamSink<ProviderEvent> sse_decode_StreamSink_provider_event_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  RustStreamSink<SharedEvent> sse_decode_StreamSink_shared_event_Sse(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -3139,9 +7376,166 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  AccountDetails sse_decode_account_details(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_username = sse_decode_String(deserializer);
+    var var_server = sse_decode_String(deserializer);
+    var var_devices = sse_decode_list_device_row(deserializer);
+    var var_storageLine = sse_decode_opt_String(deserializer);
+    var var_hasPassword = sse_decode_bool(deserializer);
+    var var_providers = sse_decode_list_linked_provider_row(deserializer);
+    var var_passkeys = sse_decode_list_passkey_row(deserializer);
+    var var_recoveryKeyUnsaved = sse_decode_bool(deserializer);
+    return AccountDetails(
+      username: var_username,
+      server: var_server,
+      devices: var_devices,
+      storageLine: var_storageLine,
+      hasPassword: var_hasPassword,
+      providers: var_providers,
+      passkeys: var_passkeys,
+      recoveryKeyUnsaved: var_recoveryKeyUnsaved,
+    );
+  }
+
+  @protected
+  AccountState sse_decode_account_state(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        return AccountState_SignedOut();
+      case 1:
+        var var_username = sse_decode_String(deserializer);
+        var var_server = sse_decode_String(deserializer);
+        return AccountState_SignedIn(
+          username: var_username,
+          server: var_server,
+        );
+      case 2:
+        var var_field0 = sse_decode_box_autoadd_locked_info(deserializer);
+        return AccountState_Locked(var_field0);
+      case 3:
+        var var_field0 = sse_decode_box_autoadd_binding_question(deserializer);
+        return AccountState_Question(var_field0);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  ApprovalPhase sse_decode_approval_phase(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        return ApprovalPhase_Requesting();
+      case 1:
+        return ApprovalPhase_Waiting();
+      case 2:
+        return ApprovalPhase_Compare();
+      case 3:
+        return ApprovalPhase_Unlocking();
+      case 4:
+        return ApprovalPhase_Approved();
+      case 5:
+        return ApprovalPhase_NoDevices();
+      case 6:
+        return ApprovalPhase_Cancelled();
+      case 7:
+        return ApprovalPhase_Expired();
+      case 8:
+        var var_message = sse_decode_String(deserializer);
+        return ApprovalPhase_Failed(message: var_message);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  ApprovalPrompt sse_decode_approval_prompt(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_deviceName = sse_decode_opt_String(deserializer);
+    var var_askedAtMs = sse_decode_CastedPrimitive_i_64(deserializer);
+    var var_expiresAtMs = sse_decode_CastedPrimitive_i_64(deserializer);
+    var var_code = sse_decode_opt_String(deserializer);
+    var var_state = sse_decode_prompt_state(deserializer);
+    return ApprovalPrompt(
+      id: var_id,
+      deviceName: var_deviceName,
+      askedAtMs: var_askedAtMs,
+      expiresAtMs: var_expiresAtMs,
+      code: var_code,
+      state: var_state,
+    );
+  }
+
+  @protected
+  ApprovalWait sse_decode_approval_wait(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_phase = sse_decode_approval_phase(deserializer);
+    var var_code = sse_decode_opt_String(deserializer);
+    var var_otherDevices = sse_decode_u_32(deserializer);
+    var var_offerRecovery = sse_decode_bool(deserializer);
+    return ApprovalWait(
+      phase: var_phase,
+      code: var_code,
+      otherDevices: var_otherDevices,
+      offerRecovery: var_offerRecovery,
+    );
+  }
+
+  @protected
+  BindingAnswer sse_decode_binding_answer(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return BindingAnswer.values[inner];
+  }
+
+  @protected
+  BindingQuestion sse_decode_binding_question(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_title = sse_decode_String(deserializer);
+    var var_body = sse_decode_String(deserializer);
+    var var_answers = sse_decode_list_binding_answer(deserializer);
+    return BindingQuestion(
+      title: var_title,
+      body: var_body,
+      answers: var_answers,
+    );
+  }
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
+  AccountState sse_decode_box_autoadd_account_state(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_account_state(deserializer));
+  }
+
+  @protected
+  BindingAnswer sse_decode_box_autoadd_binding_answer(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_binding_answer(deserializer));
+  }
+
+  @protected
+  BindingQuestion sse_decode_box_autoadd_binding_question(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_binding_question(deserializer));
   }
 
   @protected
@@ -3157,9 +7551,23 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  GalleryColors sse_decode_box_autoadd_gallery_colors(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_gallery_colors(deserializer));
+  }
+
+  @protected
   ListQuery sse_decode_box_autoadd_list_query(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_list_query(deserializer));
+  }
+
+  @protected
+  LockedInfo sse_decode_box_autoadd_locked_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_locked_info(deserializer));
   }
 
   @protected
@@ -3189,11 +7597,31 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PersonRow sse_decode_box_autoadd_person_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_person_row(deserializer));
+  }
+
+  @protected
+  RecoveryKeyText sse_decode_box_autoadd_recovery_key_text(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_recovery_key_text(deserializer));
+  }
+
+  @protected
   SearchScope sse_decode_box_autoadd_search_scope(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_search_scope(deserializer));
+  }
+
+  @protected
+  ShareInfo sse_decode_box_autoadd_share_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_share_info(deserializer));
   }
 
   @protected
@@ -3253,6 +7681,21 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  DeviceRow sse_decode_device_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_title = sse_decode_String(deserializer);
+    var var_thisDevice = sse_decode_bool(deserializer);
+    var var_lastSeenMs = sse_decode_opt_CastedPrimitive_i_64(deserializer);
+    return DeviceRow(
+      id: var_id,
+      title: var_title,
+      thisDevice: var_thisDevice,
+      lastSeenMs: var_lastSeenMs,
+    );
+  }
+
+  @protected
   DiagramKind sse_decode_diagram_kind(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
@@ -3263,6 +7706,75 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   double sse_decode_f_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getFloat32();
+  }
+
+  @protected
+  GalleryColors sse_decode_gallery_colors(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_editor = sse_decode_u_32(deserializer);
+    var var_text = sse_decode_u_32(deserializer);
+    var var_accent = sse_decode_u_32(deserializer);
+    var var_sidebar = sse_decode_u_32(deserializer);
+    var var_list = sse_decode_u_32(deserializer);
+    return GalleryColors(
+      editor: var_editor,
+      text: var_text,
+      accent: var_accent,
+      sidebar: var_sidebar,
+      list: var_list,
+    );
+  }
+
+  @protected
+  GalleryItem sse_decode_gallery_item(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_kind = sse_decode_gallery_kind(deserializer);
+    var var_author = sse_decode_String(deserializer);
+    var var_official = sse_decode_bool(deserializer);
+    var var_version = sse_decode_String(deserializer);
+    var var_installs = sse_decode_CastedPrimitive_u_64(deserializer);
+    var var_updatedMs = sse_decode_CastedPrimitive_i_64(deserializer);
+    var var_source = sse_decode_opt_String(deserializer);
+    var var_dark = sse_decode_bool(deserializer);
+    var var_headline = sse_decode_opt_box_autoadd_gallery_colors(deserializer);
+    var var_installed = sse_decode_bool(deserializer);
+    var var_updateAvailable = sse_decode_bool(deserializer);
+    var var_runsHere = sse_decode_bool(deserializer);
+    var var_description = sse_decode_String(deserializer);
+    var var_license = sse_decode_String(deserializer);
+    var var_family = sse_decode_opt_String(deserializer);
+    var var_edited = sse_decode_bool(deserializer);
+    var var_disabled = sse_decode_bool(deserializer);
+    return GalleryItem(
+      id: var_id,
+      name: var_name,
+      kind: var_kind,
+      author: var_author,
+      official: var_official,
+      version: var_version,
+      installs: var_installs,
+      updatedMs: var_updatedMs,
+      source: var_source,
+      dark: var_dark,
+      headline: var_headline,
+      installed: var_installed,
+      updateAvailable: var_updateAvailable,
+      runsHere: var_runsHere,
+      description: var_description,
+      license: var_license,
+      family: var_family,
+      edited: var_edited,
+      disabled: var_disabled,
+    );
+  }
+
+  @protected
+  GalleryKind sse_decode_gallery_kind(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return GalleryKind.values[inner];
   }
 
   @protected
@@ -3288,6 +7800,32 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getPlatformInt64();
+  }
+
+  @protected
+  InvitationRow sse_decode_invitation_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_shareId = sse_decode_String(deserializer);
+    var var_title = sse_decode_opt_String(deserializer);
+    var var_from = sse_decode_String(deserializer);
+    var var_role = sse_decode_share_role(deserializer);
+    var var_atMs = sse_decode_CastedPrimitive_i_64(deserializer);
+    return InvitationRow(
+      shareId: var_shareId,
+      title: var_title,
+      from: var_from,
+      role: var_role,
+      atMs: var_atMs,
+    );
+  }
+
+  @protected
+  JoinRow sse_decode_join_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_shareId = sse_decode_String(deserializer);
+    var var_owner = sse_decode_String(deserializer);
+    var var_role = sse_decode_share_role(deserializer);
+    return JoinRow(shareId: var_shareId, owner: var_owner, role: var_role);
   }
 
   @protected
@@ -3341,6 +7879,16 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  LinkedProviderRow sse_decode_linked_provider_row(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_provider = sse_decode_provider_kind(deserializer);
+    var var_linked = sse_decode_bool(deserializer);
+    return LinkedProviderRow(provider: var_provider, linked: var_linked);
+  }
+
+  @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3348,6 +7896,34 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     var ans_ = <String>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<ApprovalPrompt> sse_decode_list_approval_prompt(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <ApprovalPrompt>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_approval_prompt(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<BindingAnswer> sse_decode_list_binding_answer(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <BindingAnswer>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_binding_answer(deserializer));
     }
     return ans_;
   }
@@ -3379,6 +7955,30 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<DeviceRow> sse_decode_list_device_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <DeviceRow>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_device_row(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<GalleryItem> sse_decode_list_gallery_item(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <GalleryItem>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_gallery_item(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<Hit> sse_decode_list_hit(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3386,6 +7986,34 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     var ans_ = <Hit>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_hit(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<InvitationRow> sse_decode_list_invitation_row(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <InvitationRow>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_invitation_row(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<LinkedProviderRow> sse_decode_list_linked_provider_row(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <LinkedProviderRow>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_linked_provider_row(deserializer));
     }
     return ans_;
   }
@@ -3400,6 +8028,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     var ans_ = <Uint8List>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_list_prim_u_8_strict(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<MemberRow> sse_decode_list_member_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <MemberRow>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_member_row(deserializer));
     }
     return ans_;
   }
@@ -3436,6 +8076,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     var ans_ = <String?>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_opt_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PasskeyRow> sse_decode_list_passkey_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PasskeyRow>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_passkey_row(deserializer));
     }
     return ans_;
   }
@@ -3485,6 +8137,20 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<ProviderKind> sse_decode_list_provider_kind(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <ProviderKind>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_provider_kind(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   ListQuery sse_decode_list_query(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_place = sse_decode_list_place(deserializer);
@@ -3514,6 +8180,20 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<(String, ShareRole)> sse_decode_list_record_string_share_role(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <(String, ShareRole)>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_record_string_share_role(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   ListShape sse_decode_list_shape(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_sort = sse_decode_sort_key(deserializer);
@@ -3526,6 +8206,20 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       date: var_date,
       groupPinned: var_groupPinned,
     );
+  }
+
+  @protected
+  List<ShareLinkRow> sse_decode_list_share_link_row(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <ShareLinkRow>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_share_link_row(deserializer));
+    }
+    return ans_;
   }
 
   @protected
@@ -3629,6 +8323,46 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       default:
         throw UnimplementedError('');
     }
+  }
+
+  @protected
+  LockedInfo sse_decode_locked_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_username = sse_decode_String(deserializer);
+    var var_server = sse_decode_String(deserializer);
+    var var_hasPassword = sse_decode_bool(deserializer);
+    var var_approvalPending = sse_decode_bool(deserializer);
+    return LockedInfo(
+      username: var_username,
+      server: var_server,
+      hasPassword: var_hasPassword,
+      approvalPending: var_approvalPending,
+    );
+  }
+
+  @protected
+  MemberRow sse_decode_member_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_accountId = sse_decode_String(deserializer);
+    var var_username = sse_decode_String(deserializer);
+    var var_role = sse_decode_share_role(deserializer);
+    var var_me = sse_decode_bool(deserializer);
+    var var_fingerprint = sse_decode_String(deserializer);
+    var var_keyChanged = sse_decode_bool(deserializer);
+    var var_invited = sse_decode_bool(deserializer);
+    var var_left = sse_decode_bool(deserializer);
+    var var_verified = sse_decode_bool(deserializer);
+    return MemberRow(
+      accountId: var_accountId,
+      username: var_username,
+      role: var_role,
+      me: var_me,
+      fingerprint: var_fingerprint,
+      keyChanged: var_keyChanged,
+      invited: var_invited,
+      left: var_left,
+      verified: var_verified,
+    );
   }
 
   @protected
@@ -3787,6 +8521,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  BindingAnswer? sse_decode_opt_box_autoadd_binding_answer(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_binding_answer(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3809,6 +8556,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  GalleryColors? sse_decode_opt_box_autoadd_gallery_colors(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_gallery_colors(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   NotebookRole? sse_decode_opt_box_autoadd_notebook_role(
     SseDeserializer deserializer,
   ) {
@@ -3816,6 +8576,45 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_notebook_role(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  PersonRow? sse_decode_opt_box_autoadd_person_row(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_person_row(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  RecoveryKeyText? sse_decode_opt_box_autoadd_recovery_key_text(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_recovery_key_text(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  ShareInfo? sse_decode_opt_box_autoadd_share_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_share_info(deserializer));
     } else {
       return null;
     }
@@ -3894,6 +8693,92 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PasskeyFailure sse_decode_passkey_failure(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return PasskeyFailure.values[inner];
+  }
+
+  @protected
+  PasskeyRequest sse_decode_passkey_request(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_ticket = sse_decode_CastedPrimitive_u_64(deserializer);
+    var var_kind = sse_decode_passkey_request_kind(deserializer);
+    var var_optionsJson = sse_decode_String(deserializer);
+    return PasskeyRequest(
+      ticket: var_ticket,
+      kind: var_kind,
+      optionsJson: var_optionsJson,
+    );
+  }
+
+  @protected
+  PasskeyRequestKind sse_decode_passkey_request_kind(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return PasskeyRequestKind.values[inner];
+  }
+
+  @protected
+  PasskeyRow sse_decode_passkey_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_label = sse_decode_String(deserializer);
+    var var_addedMs = sse_decode_CastedPrimitive_i_64(deserializer);
+    var var_lastUsedMs = sse_decode_opt_CastedPrimitive_i_64(deserializer);
+    var var_canUnlock = sse_decode_bool(deserializer);
+    return PasskeyRow(
+      id: var_id,
+      label: var_label,
+      addedMs: var_addedMs,
+      lastUsedMs: var_lastUsedMs,
+      canUnlock: var_canUnlock,
+    );
+  }
+
+  @protected
+  PersonLookup sse_decode_person_lookup(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_field0 = sse_decode_box_autoadd_person_row(deserializer);
+        return PersonLookup_Found(var_field0);
+      case 1:
+        var var_pinned = sse_decode_opt_box_autoadd_person_row(deserializer);
+        var var_offered = sse_decode_box_autoadd_person_row(deserializer);
+        return PersonLookup_Changed(pinned: var_pinned, offered: var_offered);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  PersonRow sse_decode_person_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_accountId = sse_decode_String(deserializer);
+    var var_username = sse_decode_String(deserializer);
+    var var_fingerprint = sse_decode_String(deserializer);
+    var var_verified = sse_decode_bool(deserializer);
+    return PersonRow(
+      accountId: var_accountId,
+      username: var_username,
+      fingerprint: var_fingerprint,
+      verified: var_verified,
+    );
+  }
+
+  @protected
+  PromptState sse_decode_prompt_state(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return PromptState.values[inner];
+  }
+
+  @protected
   Property sse_decode_property(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_key = sse_decode_String(deserializer);
@@ -3916,11 +8801,73 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  ProviderEvent sse_decode_provider_event(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_url = sse_decode_String(deserializer);
+        var var_callbackScheme = sse_decode_opt_String(deserializer);
+        return ProviderEvent_OpenPage(
+          url: var_url,
+          callbackScheme: var_callbackScheme,
+        );
+      case 1:
+        var var_userCode = sse_decode_String(deserializer);
+        var var_verificationUri = sse_decode_String(deserializer);
+        return ProviderEvent_ShowCode(
+          userCode: var_userCode,
+          verificationUri: var_verificationUri,
+        );
+      case 2:
+        return ProviderEvent_ClosePage();
+      case 3:
+        var var_suggested = sse_decode_String(deserializer);
+        return ProviderEvent_NeedsUsername(suggested: var_suggested);
+      case 4:
+        var var_field0 = sse_decode_box_autoadd_account_state(deserializer);
+        return ProviderEvent_Finished(var_field0);
+      case 5:
+        var var_message = sse_decode_String(deserializer);
+        return ProviderEvent_Failed(message: var_message);
+      case 6:
+        return ProviderEvent_Cancelled();
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  ProviderKind sse_decode_provider_kind(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return ProviderKind.values[inner];
+  }
+
+  @protected
   Range16 sse_decode_range_16(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_start = sse_decode_u_32(deserializer);
     var var_end = sse_decode_u_32(deserializer);
     return Range16(start: var_start, end: var_end);
+  }
+
+  @protected
+  (String, ShareRole) sse_decode_record_string_share_role(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_field0 = sse_decode_String(deserializer);
+    var var_field1 = sse_decode_share_role(deserializer);
+    return (var_field0, var_field1);
+  }
+
+  @protected
+  RecoveryKeyText sse_decode_recovery_key_text(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_key = sse_decode_String(deserializer);
+    return RecoveryKeyText(key: var_key);
   }
 
   @protected
@@ -3956,6 +8903,74 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_signupsOpen = sse_decode_bool(deserializer);
     return ServerInfo(signupsOpen: var_signupsOpen);
+  }
+
+  @protected
+  ServerMethods sse_decode_server_methods(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_signupsOpen = sse_decode_bool(deserializer);
+    var var_password = sse_decode_bool(deserializer);
+    var var_passkeys = sse_decode_bool(deserializer);
+    var var_providers = sse_decode_list_provider_kind(deserializer);
+    return ServerMethods(
+      signupsOpen: var_signupsOpen,
+      password: var_password,
+      passkeys: var_passkeys,
+      providers: var_providers,
+    );
+  }
+
+  @protected
+  ShareInfo sse_decode_share_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_shareId = sse_decode_String(deserializer);
+    var var_noteId = sse_decode_String(deserializer);
+    var var_myRole = sse_decode_share_role(deserializer);
+    var var_owner = sse_decode_String(deserializer);
+    var var_members = sse_decode_list_member_row(deserializer);
+    var var_links = sse_decode_list_share_link_row(deserializer);
+    var var_requests = sse_decode_list_member_row(deserializer);
+    return ShareInfo(
+      shareId: var_shareId,
+      noteId: var_noteId,
+      myRole: var_myRole,
+      owner: var_owner,
+      members: var_members,
+      links: var_links,
+      requests: var_requests,
+    );
+  }
+
+  @protected
+  ShareLinkRow sse_decode_share_link_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_role = sse_decode_share_role(deserializer);
+    var var_expiresMs = sse_decode_CastedPrimitive_i_64(deserializer);
+    return ShareLinkRow(id: var_id, role: var_role, expiresMs: var_expiresMs);
+  }
+
+  @protected
+  ShareRole sse_decode_share_role(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return ShareRole.values[inner];
+  }
+
+  @protected
+  SharedEvent sse_decode_shared_event(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_noteIds = sse_decode_list_String(deserializer);
+    var var_invitations = sse_decode_u_32(deserializer);
+    return SharedEvent(noteIds: var_noteIds, invitations: var_invitations);
+  }
+
+  @protected
+  SignedUp sse_decode_signed_up(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_state = sse_decode_account_state(deserializer);
+    var var_recoveryKey = sse_decode_recovery_key_text(deserializer);
+    return SignedUp(state: var_state, recoveryKey: var_recoveryKey);
   }
 
   @protected
@@ -4138,6 +9153,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getBigUint64();
+  }
+
+  @protected
   int sse_decode_u_8(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8();
@@ -4161,6 +9182,58 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+    KansoAccount self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoAccountImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+    KansoAccountSettings self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoAccountSettingsImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+    KansoApprovals self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoApprovalsImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+    KansoGallery self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoGalleryImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
   }
 
   @protected
@@ -4204,6 +9277,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+    KansoShared self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoSharedImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
     KansoSync self,
     SseSerializer serializer,
@@ -4211,6 +9297,58 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as KansoSyncImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+    KansoAccount self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoAccountImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+    KansoAccountSettings self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoAccountSettingsImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+    KansoApprovals self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoApprovalsImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+    KansoGallery self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoGalleryImpl).frbInternalSseEncode(move: false),
       serializer,
     );
   }
@@ -4256,6 +9394,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
 
   @protected
   void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+    KansoShared self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoSharedImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
     KansoSync self,
     SseSerializer serializer,
@@ -4271,6 +9422,64 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   void sse_encode_CastedPrimitive_i_64(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_64(sseEncodeCastedPrimitiveI64(self), serializer);
+  }
+
+  @protected
+  void sse_encode_CastedPrimitive_u_64(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(sseEncodeCastedPrimitiveU64(self), serializer);
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccount(
+    KansoAccount self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoAccountImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoAccountSettings(
+    KansoAccountSettings self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoAccountSettingsImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoApprovals(
+    KansoApprovals self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoApprovalsImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoGallery(
+    KansoGallery self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoGalleryImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
   }
 
   @protected
@@ -4314,6 +9523,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
 
   @protected
   void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoShared(
+    KansoShared self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoSharedImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoSync(
     KansoSync self,
     SseSerializer serializer,
@@ -4321,6 +9543,40 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as KansoSyncImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_StreamSink_account_state_Sse(
+    RustStreamSink<AccountState> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_account_state,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_StreamSink_approval_wait_Sse(
+    RustStreamSink<ApprovalWait> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_approval_wait,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
       serializer,
     );
   }
@@ -4343,6 +9599,23 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_StreamSink_list_approval_prompt_Sse(
+    RustStreamSink<List<ApprovalPrompt>> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_approval_prompt,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
   void sse_encode_StreamSink_lock_event_Sse(
     RustStreamSink<LockEvent> self,
     SseSerializer serializer,
@@ -4352,6 +9625,57 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       self.setupAndSerialize(
         codec: SseCodec(
           decodeSuccessData: sse_decode_lock_event,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_StreamSink_passkey_request_Sse(
+    RustStreamSink<PasskeyRequest> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_passkey_request,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_StreamSink_provider_event_Sse(
+    RustStreamSink<ProviderEvent> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_provider_event,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_StreamSink_shared_event_Sse(
+    RustStreamSink<SharedEvent> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_shared_event,
           decodeErrorData: sse_decode_AnyhowException,
         ),
       ),
@@ -4383,9 +9707,140 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_account_details(
+    AccountDetails self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.username, serializer);
+    sse_encode_String(self.server, serializer);
+    sse_encode_list_device_row(self.devices, serializer);
+    sse_encode_opt_String(self.storageLine, serializer);
+    sse_encode_bool(self.hasPassword, serializer);
+    sse_encode_list_linked_provider_row(self.providers, serializer);
+    sse_encode_list_passkey_row(self.passkeys, serializer);
+    sse_encode_bool(self.recoveryKeyUnsaved, serializer);
+  }
+
+  @protected
+  void sse_encode_account_state(AccountState self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case AccountState_SignedOut():
+        sse_encode_i_32(0, serializer);
+      case AccountState_SignedIn(
+        username: final username,
+        server: final server,
+      ):
+        sse_encode_i_32(1, serializer);
+        sse_encode_String(username, serializer);
+        sse_encode_String(server, serializer);
+      case AccountState_Locked(field0: final field0):
+        sse_encode_i_32(2, serializer);
+        sse_encode_box_autoadd_locked_info(field0, serializer);
+      case AccountState_Question(field0: final field0):
+        sse_encode_i_32(3, serializer);
+        sse_encode_box_autoadd_binding_question(field0, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_approval_phase(ApprovalPhase self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case ApprovalPhase_Requesting():
+        sse_encode_i_32(0, serializer);
+      case ApprovalPhase_Waiting():
+        sse_encode_i_32(1, serializer);
+      case ApprovalPhase_Compare():
+        sse_encode_i_32(2, serializer);
+      case ApprovalPhase_Unlocking():
+        sse_encode_i_32(3, serializer);
+      case ApprovalPhase_Approved():
+        sse_encode_i_32(4, serializer);
+      case ApprovalPhase_NoDevices():
+        sse_encode_i_32(5, serializer);
+      case ApprovalPhase_Cancelled():
+        sse_encode_i_32(6, serializer);
+      case ApprovalPhase_Expired():
+        sse_encode_i_32(7, serializer);
+      case ApprovalPhase_Failed(message: final message):
+        sse_encode_i_32(8, serializer);
+        sse_encode_String(message, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_approval_prompt(
+    ApprovalPrompt self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_opt_String(self.deviceName, serializer);
+    sse_encode_CastedPrimitive_i_64(self.askedAtMs, serializer);
+    sse_encode_CastedPrimitive_i_64(self.expiresAtMs, serializer);
+    sse_encode_opt_String(self.code, serializer);
+    sse_encode_prompt_state(self.state, serializer);
+  }
+
+  @protected
+  void sse_encode_approval_wait(ApprovalWait self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_approval_phase(self.phase, serializer);
+    sse_encode_opt_String(self.code, serializer);
+    sse_encode_u_32(self.otherDevices, serializer);
+    sse_encode_bool(self.offerRecovery, serializer);
+  }
+
+  @protected
+  void sse_encode_binding_answer(BindingAnswer self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_binding_question(
+    BindingQuestion self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.title, serializer);
+    sse_encode_String(self.body, serializer);
+    sse_encode_list_binding_answer(self.answers, serializer);
+  }
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_account_state(
+    AccountState self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_account_state(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_binding_answer(
+    BindingAnswer self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_binding_answer(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_binding_question(
+    BindingQuestion self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_binding_question(self, serializer);
   }
 
   @protected
@@ -4401,12 +9856,30 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_box_autoadd_gallery_colors(
+    GalleryColors self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_gallery_colors(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_list_query(
     ListQuery self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_query(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_locked_info(
+    LockedInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_locked_info(self, serializer);
   }
 
   @protected
@@ -4443,12 +9916,39 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_box_autoadd_person_row(
+    PersonRow self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_person_row(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_recovery_key_text(
+    RecoveryKeyText self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_recovery_key_text(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_search_scope(
     SearchScope self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_search_scope(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_share_info(
+    ShareInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_share_info(self, serializer);
   }
 
   @protected
@@ -4498,6 +9998,15 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_device_row(DeviceRow self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.title, serializer);
+    sse_encode_bool(self.thisDevice, serializer);
+    sse_encode_opt_CastedPrimitive_i_64(self.lastSeenMs, serializer);
+  }
+
+  @protected
   void sse_encode_diagram_kind(DiagramKind self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
@@ -4507,6 +10016,46 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   void sse_encode_f_32(double self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putFloat32(self);
+  }
+
+  @protected
+  void sse_encode_gallery_colors(GalleryColors self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.editor, serializer);
+    sse_encode_u_32(self.text, serializer);
+    sse_encode_u_32(self.accent, serializer);
+    sse_encode_u_32(self.sidebar, serializer);
+    sse_encode_u_32(self.list, serializer);
+  }
+
+  @protected
+  void sse_encode_gallery_item(GalleryItem self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_gallery_kind(self.kind, serializer);
+    sse_encode_String(self.author, serializer);
+    sse_encode_bool(self.official, serializer);
+    sse_encode_String(self.version, serializer);
+    sse_encode_CastedPrimitive_u_64(self.installs, serializer);
+    sse_encode_CastedPrimitive_i_64(self.updatedMs, serializer);
+    sse_encode_opt_String(self.source, serializer);
+    sse_encode_bool(self.dark, serializer);
+    sse_encode_opt_box_autoadd_gallery_colors(self.headline, serializer);
+    sse_encode_bool(self.installed, serializer);
+    sse_encode_bool(self.updateAvailable, serializer);
+    sse_encode_bool(self.runsHere, serializer);
+    sse_encode_String(self.description, serializer);
+    sse_encode_String(self.license, serializer);
+    sse_encode_opt_String(self.family, serializer);
+    sse_encode_bool(self.edited, serializer);
+    sse_encode_bool(self.disabled, serializer);
+  }
+
+  @protected
+  void sse_encode_gallery_kind(GalleryKind self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
   }
 
   @protected
@@ -4527,6 +10076,24 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putPlatformInt64(self);
+  }
+
+  @protected
+  void sse_encode_invitation_row(InvitationRow self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.shareId, serializer);
+    sse_encode_opt_String(self.title, serializer);
+    sse_encode_String(self.from, serializer);
+    sse_encode_share_role(self.role, serializer);
+    sse_encode_CastedPrimitive_i_64(self.atMs, serializer);
+  }
+
+  @protected
+  void sse_encode_join_row(JoinRow self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.shareId, serializer);
+    sse_encode_String(self.owner, serializer);
+    sse_encode_share_role(self.role, serializer);
   }
 
   @protected
@@ -4573,11 +10140,45 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_linked_provider_row(
+    LinkedProviderRow self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_provider_kind(self.provider, serializer);
+    sse_encode_bool(self.linked, serializer);
+  }
+
+  @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_String(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_approval_prompt(
+    List<ApprovalPrompt> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_approval_prompt(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_binding_answer(
+    List<BindingAnswer> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_binding_answer(item, serializer);
     }
   }
 
@@ -4606,11 +10207,59 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_list_device_row(
+    List<DeviceRow> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_device_row(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_gallery_item(
+    List<GalleryItem> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_gallery_item(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_hit(List<Hit> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_hit(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_invitation_row(
+    List<InvitationRow> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_invitation_row(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_linked_provider_row(
+    List<LinkedProviderRow> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_linked_provider_row(item, serializer);
     }
   }
 
@@ -4623,6 +10272,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_list_prim_u_8_strict(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_member_row(
+    List<MemberRow> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_member_row(item, serializer);
     }
   }
 
@@ -4656,6 +10317,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_opt_String(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_passkey_row(
+    List<PasskeyRow> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_passkey_row(item, serializer);
     }
   }
 
@@ -4700,6 +10373,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_list_provider_kind(
+    List<ProviderKind> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_provider_kind(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_query(ListQuery self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_place(self.place, serializer);
@@ -4719,12 +10404,36 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_list_record_string_share_role(
+    List<(String, ShareRole)> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_record_string_share_role(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_shape(ListShape self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_sort_key(self.sort, serializer);
     sse_encode_bool(self.byDate, serializer);
     sse_encode_date_field(self.date, serializer);
     sse_encode_bool(self.groupPinned, serializer);
+  }
+
+  @protected
+  void sse_encode_list_share_link_row(
+    List<ShareLinkRow> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_share_link_row(item, serializer);
+    }
   }
 
   @protected
@@ -4811,6 +10520,29 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
         sse_encode_i_32(2, serializer);
         sse_encode_opt_String(reason, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_locked_info(LockedInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.username, serializer);
+    sse_encode_String(self.server, serializer);
+    sse_encode_bool(self.hasPassword, serializer);
+    sse_encode_bool(self.approvalPending, serializer);
+  }
+
+  @protected
+  void sse_encode_member_row(MemberRow self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.accountId, serializer);
+    sse_encode_String(self.username, serializer);
+    sse_encode_share_role(self.role, serializer);
+    sse_encode_bool(self.me, serializer);
+    sse_encode_String(self.fingerprint, serializer);
+    sse_encode_bool(self.keyChanged, serializer);
+    sse_encode_bool(self.invited, serializer);
+    sse_encode_bool(self.left, serializer);
+    sse_encode_bool(self.verified, serializer);
   }
 
   @protected
@@ -4920,6 +10652,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_binding_answer(
+    BindingAnswer? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_binding_answer(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -4940,6 +10685,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_gallery_colors(
+    GalleryColors? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_gallery_colors(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_notebook_role(
     NotebookRole? self,
     SseSerializer serializer,
@@ -4949,6 +10707,45 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_notebook_role(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_person_row(
+    PersonRow? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_person_row(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_recovery_key_text(
+    RecoveryKeyText? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_recovery_key_text(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_share_info(
+    ShareInfo? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_share_info(self, serializer);
     }
   }
 
@@ -5005,6 +10802,74 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_passkey_failure(
+    PasskeyFailure self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_passkey_request(
+    PasskeyRequest self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_CastedPrimitive_u_64(self.ticket, serializer);
+    sse_encode_passkey_request_kind(self.kind, serializer);
+    sse_encode_String(self.optionsJson, serializer);
+  }
+
+  @protected
+  void sse_encode_passkey_request_kind(
+    PasskeyRequestKind self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_passkey_row(PasskeyRow self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.label, serializer);
+    sse_encode_CastedPrimitive_i_64(self.addedMs, serializer);
+    sse_encode_opt_CastedPrimitive_i_64(self.lastUsedMs, serializer);
+    sse_encode_bool(self.canUnlock, serializer);
+  }
+
+  @protected
+  void sse_encode_person_lookup(PersonLookup self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case PersonLookup_Found(field0: final field0):
+        sse_encode_i_32(0, serializer);
+        sse_encode_box_autoadd_person_row(field0, serializer);
+      case PersonLookup_Changed(pinned: final pinned, offered: final offered):
+        sse_encode_i_32(1, serializer);
+        sse_encode_opt_box_autoadd_person_row(pinned, serializer);
+        sse_encode_box_autoadd_person_row(offered, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_person_row(PersonRow self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.accountId, serializer);
+    sse_encode_String(self.username, serializer);
+    sse_encode_String(self.fingerprint, serializer);
+    sse_encode_bool(self.verified, serializer);
+  }
+
+  @protected
+  void sse_encode_prompt_state(PromptState self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
   void sse_encode_property(Property self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.key, serializer);
@@ -5020,10 +10885,69 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_provider_event(ProviderEvent self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case ProviderEvent_OpenPage(
+        url: final url,
+        callbackScheme: final callbackScheme,
+      ):
+        sse_encode_i_32(0, serializer);
+        sse_encode_String(url, serializer);
+        sse_encode_opt_String(callbackScheme, serializer);
+      case ProviderEvent_ShowCode(
+        userCode: final userCode,
+        verificationUri: final verificationUri,
+      ):
+        sse_encode_i_32(1, serializer);
+        sse_encode_String(userCode, serializer);
+        sse_encode_String(verificationUri, serializer);
+      case ProviderEvent_ClosePage():
+        sse_encode_i_32(2, serializer);
+      case ProviderEvent_NeedsUsername(suggested: final suggested):
+        sse_encode_i_32(3, serializer);
+        sse_encode_String(suggested, serializer);
+      case ProviderEvent_Finished(field0: final field0):
+        sse_encode_i_32(4, serializer);
+        sse_encode_box_autoadd_account_state(field0, serializer);
+      case ProviderEvent_Failed(message: final message):
+        sse_encode_i_32(5, serializer);
+        sse_encode_String(message, serializer);
+      case ProviderEvent_Cancelled():
+        sse_encode_i_32(6, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_provider_kind(ProviderKind self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
   void sse_encode_range_16(Range16 self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_32(self.start, serializer);
     sse_encode_u_32(self.end, serializer);
+  }
+
+  @protected
+  void sse_encode_record_string_share_role(
+    (String, ShareRole) self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.$1, serializer);
+    sse_encode_share_role(self.$2, serializer);
+  }
+
+  @protected
+  void sse_encode_recovery_key_text(
+    RecoveryKeyText self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.key, serializer);
   }
 
   @protected
@@ -5053,6 +10977,55 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   void sse_encode_server_info(ServerInfo self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.signupsOpen, serializer);
+  }
+
+  @protected
+  void sse_encode_server_methods(ServerMethods self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.signupsOpen, serializer);
+    sse_encode_bool(self.password, serializer);
+    sse_encode_bool(self.passkeys, serializer);
+    sse_encode_list_provider_kind(self.providers, serializer);
+  }
+
+  @protected
+  void sse_encode_share_info(ShareInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.shareId, serializer);
+    sse_encode_String(self.noteId, serializer);
+    sse_encode_share_role(self.myRole, serializer);
+    sse_encode_String(self.owner, serializer);
+    sse_encode_list_member_row(self.members, serializer);
+    sse_encode_list_share_link_row(self.links, serializer);
+    sse_encode_list_member_row(self.requests, serializer);
+  }
+
+  @protected
+  void sse_encode_share_link_row(ShareLinkRow self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_share_role(self.role, serializer);
+    sse_encode_CastedPrimitive_i_64(self.expiresMs, serializer);
+  }
+
+  @protected
+  void sse_encode_share_role(ShareRole self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_shared_event(SharedEvent self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_String(self.noteIds, serializer);
+    sse_encode_u_32(self.invitations, serializer);
+  }
+
+  @protected
+  void sse_encode_signed_up(SignedUp self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_account_state(self.state, serializer);
+    sse_encode_recovery_key_text(self.recoveryKey, serializer);
   }
 
   @protected
@@ -5187,6 +11160,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putBigUint64(self);
+  }
+
+  @protected
   void sse_encode_u_8(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self);
@@ -5202,6 +11181,394 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putBigUint64(self);
   }
+}
+
+@sealed
+class KansoAccountImpl extends RustOpaque implements KansoAccount {
+  // Not to be used by end users
+  KansoAccountImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  KansoAccountImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        KansoCore.instance.api.rust_arc_increment_strong_count_KansoAccount,
+    rustArcDecrementStrongCount:
+        KansoCore.instance.api.rust_arc_decrement_strong_count_KansoAccount,
+    rustArcDecrementStrongCountPtr:
+        KansoCore.instance.api.rust_arc_decrement_strong_count_KansoAccountPtr,
+  );
+
+  Future<AccountState> answerBinding({BindingAnswer? answer}) => KansoCore
+      .instance
+      .api
+      .crateApiAccountKansoAccountAnswerBinding(that: this, answer: answer);
+
+  Future<void> cancelApproval() =>
+      KansoCore.instance.api.crateApiAccountKansoAccountCancelApproval(
+        that: this,
+      );
+
+  Future<AccountState> cancelLocked() =>
+      KansoCore.instance.api.crateApiAccountKansoAccountCancelLocked(
+        that: this,
+      );
+
+  Future<void> cancelProvider() =>
+      KansoCore.instance.api.crateApiAccountKansoAccountCancelProvider(
+        that: this,
+      );
+
+  Future<SignedUp> finishProviderSignUp({required String username}) =>
+      KansoCore.instance.api.crateApiAccountKansoAccountFinishProviderSignUp(
+        that: this,
+        username: username,
+      );
+
+  Future<void> passkeyFailed({
+    required int ticket,
+    required PasskeyFailure failure,
+  }) => KansoCore.instance.api.crateApiAccountKansoAccountPasskeyFailed(
+    that: this,
+    ticket: ticket,
+    failure: failure,
+  );
+
+  /// The passkey sheets the phone is asked to show, until Dart stops
+  /// listening.
+  Stream<PasskeyRequest> passkeyRequests() =>
+      KansoCore.instance.api.crateApiAccountKansoAccountPasskeyRequests(
+        that: this,
+      );
+
+  Future<AccountState> passkeySignIn({
+    required String server,
+    required String deviceName,
+  }) => KansoCore.instance.api.crateApiAccountKansoAccountPasskeySignIn(
+    that: this,
+    server: server,
+    deviceName: deviceName,
+  );
+
+  Future<SignedUp> passkeySignUp({
+    required String server,
+    required String username,
+    required String deviceName,
+  }) => KansoCore.instance.api.crateApiAccountKansoAccountPasskeySignUp(
+    that: this,
+    server: server,
+    username: username,
+    deviceName: deviceName,
+  );
+
+  Future<RecoveryKeyText?> pendingRecoveryKey() =>
+      KansoCore.instance.api.crateApiAccountKansoAccountPendingRecoveryKey(
+        that: this,
+      );
+
+  Future<void> providerPageEnded({String? callbackUrl}) =>
+      KansoCore.instance.api.crateApiAccountKansoAccountProviderPageEnded(
+        that: this,
+        callbackUrl: callbackUrl,
+      );
+
+  Future<SignedUp> recover({
+    required String server,
+    required String username,
+    required String recoveryKey,
+    required String newPassword,
+    required String deviceName,
+  }) => KansoCore.instance.api.crateApiAccountKansoAccountRecover(
+    that: this,
+    server: server,
+    username: username,
+    recoveryKey: recoveryKey,
+    newPassword: newPassword,
+    deviceName: deviceName,
+  );
+
+  Future<void> recoveryKeySaved() =>
+      KansoCore.instance.api.crateApiAccountKansoAccountRecoveryKeySaved(
+        that: this,
+      );
+
+  /// The wait for another device to approve this one, until it ends or Dart
+  /// stops listening.
+  Stream<ApprovalWait> requestApproval({required String deviceName}) =>
+      KansoCore.instance.api.crateApiAccountKansoAccountRequestApproval(
+        that: this,
+        deviceName: deviceName,
+      );
+
+  Future<ServerMethods> serverMethods({required String server}) => KansoCore
+      .instance
+      .api
+      .crateApiAccountKansoAccountServerMethods(that: this, server: server);
+
+  Future<AccountState> signInPassword({
+    required String server,
+    required String username,
+    required String password,
+    required String deviceName,
+  }) => KansoCore.instance.api.crateApiAccountKansoAccountSignInPassword(
+    that: this,
+    server: server,
+    username: username,
+    password: password,
+    deviceName: deviceName,
+  );
+
+  Future<SignedUp> signUpPassword({
+    required String server,
+    required String username,
+    required String password,
+    required String deviceName,
+  }) => KansoCore.instance.api.crateApiAccountKansoAccountSignUpPassword(
+    that: this,
+    server: server,
+    username: username,
+    password: password,
+    deviceName: deviceName,
+  );
+
+  /// The steps of a provider sign-in, until it ends or Dart stops listening.
+  Stream<ProviderEvent> startProvider({
+    required String server,
+    required ProviderKind provider,
+    required String deviceName,
+  }) => KansoCore.instance.api.crateApiAccountKansoAccountStartProvider(
+    that: this,
+    server: server,
+    provider: provider,
+    deviceName: deviceName,
+  );
+
+  Future<AccountState> state() =>
+      KansoCore.instance.api.crateApiAccountKansoAccountState(
+        that: this,
+      );
+
+  /// The state now and each time it changes, until Dart stops listening.
+  Stream<AccountState> stateStream() =>
+      KansoCore.instance.api.crateApiAccountKansoAccountStateStream(
+        that: this,
+      );
+
+  Future<AccountState> unlockWithPassword({required String password}) =>
+      KansoCore.instance.api.crateApiAccountKansoAccountUnlockWithPassword(
+        that: this,
+        password: password,
+      );
+}
+
+@sealed
+class KansoAccountSettingsImpl extends RustOpaque
+    implements KansoAccountSettings {
+  // Not to be used by end users
+  KansoAccountSettingsImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  KansoAccountSettingsImpl.frbInternalSseDecode(
+    BigInt ptr,
+    int externalSizeOnNative,
+  ) : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount: KansoCore
+        .instance
+        .api
+        .rust_arc_increment_strong_count_KansoAccountSettings,
+    rustArcDecrementStrongCount: KansoCore
+        .instance
+        .api
+        .rust_arc_decrement_strong_count_KansoAccountSettings,
+    rustArcDecrementStrongCountPtr: KansoCore
+        .instance
+        .api
+        .rust_arc_decrement_strong_count_KansoAccountSettingsPtr,
+  );
+
+  Future<AccountDetails> addPasskey({required String currentPassword}) =>
+      KansoCore.instance.api
+          .crateApiAccountSettingsKansoAccountSettingsAddPasskey(
+            that: this,
+            currentPassword: currentPassword,
+          );
+
+  Future<RecoveryKeyText> changePassword({
+    required String current,
+    required String newPassword,
+  }) => KansoCore.instance.api
+      .crateApiAccountSettingsKansoAccountSettingsChangePassword(
+        that: this,
+        current: current,
+        newPassword: newPassword,
+      );
+
+  Future<void> deleteAccount({
+    required String password,
+    required String typedUsername,
+  }) => KansoCore.instance.api
+      .crateApiAccountSettingsKansoAccountSettingsDeleteAccount(
+        that: this,
+        password: password,
+        typedUsername: typedUsername,
+      );
+
+  Future<AccountDetails> details() =>
+      KansoCore.instance.api.crateApiAccountSettingsKansoAccountSettingsDetails(
+        that: this,
+      );
+
+  /// The steps of linking a provider, until it ends or Dart stops
+  /// listening.
+  Stream<ProviderEvent> linkProvider({
+    required ProviderKind provider,
+    required String currentPassword,
+  }) => KansoCore.instance.api
+      .crateApiAccountSettingsKansoAccountSettingsLinkProvider(
+        that: this,
+        provider: provider,
+        currentPassword: currentPassword,
+      );
+
+  Future<RecoveryKeyText> newRecoveryKey({required String currentPassword}) =>
+      KansoCore.instance.api
+          .crateApiAccountSettingsKansoAccountSettingsNewRecoveryKey(
+            that: this,
+            currentPassword: currentPassword,
+          );
+
+  Future<RecoveryKeyText?> pendingRecoveryKey() => KansoCore.instance.api
+      .crateApiAccountSettingsKansoAccountSettingsPendingRecoveryKey(
+        that: this,
+      );
+
+  Future<AccountDetails> removePasskey({
+    required String id,
+    required String currentPassword,
+  }) => KansoCore.instance.api
+      .crateApiAccountSettingsKansoAccountSettingsRemovePasskey(
+        that: this,
+        id: id,
+        currentPassword: currentPassword,
+      );
+
+  Future<AccountDetails> revokeDevice({required String deviceId}) => KansoCore
+      .instance
+      .api
+      .crateApiAccountSettingsKansoAccountSettingsRevokeDevice(
+        that: this,
+        deviceId: deviceId,
+      );
+
+  Future<void> signOut() =>
+      KansoCore.instance.api.crateApiAccountSettingsKansoAccountSettingsSignOut(
+        that: this,
+      );
+
+  Future<AccountDetails> unlinkProvider({
+    required ProviderKind provider,
+    required String currentPassword,
+  }) => KansoCore.instance.api
+      .crateApiAccountSettingsKansoAccountSettingsUnlinkProvider(
+        that: this,
+        provider: provider,
+        currentPassword: currentPassword,
+      );
+}
+
+@sealed
+class KansoApprovalsImpl extends RustOpaque implements KansoApprovals {
+  // Not to be used by end users
+  KansoApprovalsImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  KansoApprovalsImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        KansoCore.instance.api.rust_arc_increment_strong_count_KansoApprovals,
+    rustArcDecrementStrongCount:
+        KansoCore.instance.api.rust_arc_decrement_strong_count_KansoApprovals,
+    rustArcDecrementStrongCountPtr: KansoCore
+        .instance
+        .api
+        .rust_arc_decrement_strong_count_KansoApprovalsPtr,
+  );
+
+  Future<List<ApprovalPrompt>> approve({required String id}) => KansoCore
+      .instance
+      .api
+      .crateApiApprovalsKansoApprovalsApprove(that: this, id: id);
+
+  Future<List<ApprovalPrompt>> decline({required String id}) => KansoCore
+      .instance
+      .api
+      .crateApiApprovalsKansoApprovalsDecline(that: this, id: id);
+
+  Future<List<ApprovalPrompt>> refresh() =>
+      KansoCore.instance.api.crateApiApprovalsKansoApprovalsRefresh(
+        that: this,
+      );
+
+  /// The requests waiting now and each time they change, until Dart stops
+  /// listening.
+  Stream<List<ApprovalPrompt>> watch() =>
+      KansoCore.instance.api.crateApiApprovalsKansoApprovalsWatch(
+        that: this,
+      );
+}
+
+@sealed
+class KansoGalleryImpl extends RustOpaque implements KansoGallery {
+  // Not to be used by end users
+  KansoGalleryImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  KansoGalleryImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        KansoCore.instance.api.rust_arc_increment_strong_count_KansoGallery,
+    rustArcDecrementStrongCount:
+        KansoCore.instance.api.rust_arc_decrement_strong_count_KansoGallery,
+    rustArcDecrementStrongCountPtr:
+        KansoCore.instance.api.rust_arc_decrement_strong_count_KansoGalleryPtr,
+  );
+
+  Future<List<GalleryItem>> index({required bool refresh}) => KansoCore
+      .instance
+      .api
+      .crateApiGalleryKansoGalleryIndex(that: this, refresh: refresh);
+
+  Future<List<GalleryItem>> install({required String id}) => KansoCore
+      .instance
+      .api
+      .crateApiGalleryKansoGalleryInstall(that: this, id: id);
+
+  Future<ThemeTokens> installedThemeTokens({required String id}) => KansoCore
+      .instance
+      .api
+      .crateApiGalleryKansoGalleryInstalledThemeTokens(that: this, id: id);
+
+  Future<List<BuiltinTheme>> installedThemes() =>
+      KansoCore.instance.api.crateApiGalleryKansoGalleryInstalledThemes(
+        that: this,
+      );
+
+  Future<List<GalleryItem>> uninstall({required String id}) => KansoCore
+      .instance
+      .api
+      .crateApiGalleryKansoGalleryUninstall(that: this, id: id);
 }
 
 @sealed
@@ -5222,6 +11589,21 @@ class KansoLibraryImpl extends RustOpaque implements KansoLibrary {
     rustArcDecrementStrongCountPtr:
         KansoCore.instance.api.rust_arc_decrement_strong_count_KansoLibraryPtr,
   );
+
+  KansoAccount account() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryAccount(
+        that: this,
+      );
+
+  KansoAccountSettings accountSettings() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryAccountSettings(
+        that: this,
+      );
+
+  KansoApprovals approvals() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryApprovals(
+        that: this,
+      );
 
   Future<int> change({required List<String> ids, required NoteChange change}) =>
       KansoCore.instance.api.crateApiLibraryKansoLibraryChange(
@@ -5247,6 +11629,11 @@ class KansoLibraryImpl extends RustOpaque implements KansoLibrary {
     name: name,
     parentId: parentId,
   );
+
+  KansoGallery gallery() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryGallery(
+        that: this,
+      );
 
   Future<NoteList> list({required ListQuery query}) => KansoCore.instance.api
       .crateApiLibraryKansoLibraryList(that: this, query: query);
@@ -5306,6 +11693,11 @@ class KansoLibraryImpl extends RustOpaque implements KansoLibrary {
     scope: scope,
     limit: limit,
   );
+
+  KansoShared shared() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryShared(
+        that: this,
+      );
 
   KansoSync syncing() =>
       KansoCore.instance.api.crateApiLibraryKansoLibrarySyncing(
@@ -5399,6 +11791,167 @@ class KansoRendererImpl extends RustOpaque implements KansoRenderer {
 }
 
 @sealed
+class KansoSharedImpl extends RustOpaque implements KansoShared {
+  // Not to be used by end users
+  KansoSharedImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  KansoSharedImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        KansoCore.instance.api.rust_arc_increment_strong_count_KansoShared,
+    rustArcDecrementStrongCount:
+        KansoCore.instance.api.rust_arc_decrement_strong_count_KansoShared,
+    rustArcDecrementStrongCountPtr:
+        KansoCore.instance.api.rust_arc_decrement_strong_count_KansoSharedPtr,
+  );
+
+  Future<String> accept({required String shareId}) => KansoCore.instance.api
+      .crateApiSharedKansoSharedAccept(that: this, shareId: shareId);
+
+  Future<PersonRow> acceptNewKey({
+    required String username,
+    required String fingerprint,
+  }) => KansoCore.instance.api.crateApiSharedKansoSharedAcceptNewKey(
+    that: this,
+    username: username,
+    fingerprint: fingerprint,
+  );
+
+  Future<ShareInfo> approveRequest({
+    required String noteId,
+    required String accountId,
+  }) => KansoCore.instance.api.crateApiSharedKansoSharedApproveRequest(
+    that: this,
+    noteId: noteId,
+    accountId: accountId,
+  );
+
+  Future<void> canShare({required String noteId}) => KansoCore.instance.api
+      .crateApiSharedKansoSharedCanShare(that: this, noteId: noteId);
+
+  Future<ShareInfo> cancelLink({
+    required String noteId,
+    required String linkId,
+  }) => KansoCore.instance.api.crateApiSharedKansoSharedCancelLink(
+    that: this,
+    noteId: noteId,
+    linkId: linkId,
+  );
+
+  Future<void> closeLive({required String noteId}) => KansoCore.instance.api
+      .crateApiSharedKansoSharedCloseLive(that: this, noteId: noteId);
+
+  Future<String> createLink({
+    required String noteId,
+    required ShareRole role,
+    required int days,
+  }) => KansoCore.instance.api.crateApiSharedKansoSharedCreateLink(
+    that: this,
+    noteId: noteId,
+    role: role,
+    days: days,
+  );
+
+  Future<void> decline({required String shareId}) => KansoCore.instance.api
+      .crateApiSharedKansoSharedDecline(that: this, shareId: shareId);
+
+  Future<ShareInfo> declineRequest({
+    required String noteId,
+    required String accountId,
+  }) => KansoCore.instance.api.crateApiSharedKansoSharedDeclineRequest(
+    that: this,
+    noteId: noteId,
+    accountId: accountId,
+  );
+
+  /// What a sync of shared notes found, each time, until Dart stops
+  /// listening.
+  Stream<SharedEvent> events() =>
+      KansoCore.instance.api.crateApiSharedKansoSharedEvents(
+        that: this,
+      );
+
+  Future<ShareInfo?> info({required String noteId}) => KansoCore.instance.api
+      .crateApiSharedKansoSharedInfo(that: this, noteId: noteId);
+
+  Future<List<InvitationRow>> invitations() =>
+      KansoCore.instance.api.crateApiSharedKansoSharedInvitations(
+        that: this,
+      );
+
+  Future<ShareInfo> invite({
+    required String noteId,
+    required String username,
+    required ShareRole role,
+  }) => KansoCore.instance.api.crateApiSharedKansoSharedInvite(
+    that: this,
+    noteId: noteId,
+    username: username,
+    role: role,
+  );
+
+  Future<JoinRow> join({required String link}) => KansoCore.instance.api
+      .crateApiSharedKansoSharedJoin(that: this, link: link);
+
+  Future<void> leave({required String noteId}) => KansoCore.instance.api
+      .crateApiSharedKansoSharedLeave(that: this, noteId: noteId);
+
+  Future<PersonLookup> lookupPerson({required String username}) => KansoCore
+      .instance
+      .api
+      .crateApiSharedKansoSharedLookupPerson(that: this, username: username);
+
+  Future<void> openLive({required String noteId}) => KansoCore.instance.api
+      .crateApiSharedKansoSharedOpenLive(that: this, noteId: noteId);
+
+  Future<ShareInfo> remove({
+    required String noteId,
+    required String accountId,
+  }) => KansoCore.instance.api.crateApiSharedKansoSharedRemove(
+    that: this,
+    noteId: noteId,
+    accountId: accountId,
+  );
+
+  Future<ShareInfo> setRole({
+    required String noteId,
+    required String accountId,
+    required ShareRole role,
+  }) => KansoCore.instance.api.crateApiSharedKansoSharedSetRole(
+    that: this,
+    noteId: noteId,
+    accountId: accountId,
+    role: role,
+  );
+
+  Future<ShareInfo> share({
+    required String noteId,
+    required List<(String, ShareRole)> invites,
+  }) => KansoCore.instance.api.crateApiSharedKansoSharedShare(
+    that: this,
+    noteId: noteId,
+    invites: invites,
+  );
+
+  Future<void> stop({required String noteId}) => KansoCore.instance.api
+      .crateApiSharedKansoSharedStop(that: this, noteId: noteId);
+
+  Future<SharedEvent> syncShared() =>
+      KansoCore.instance.api.crateApiSharedKansoSharedSyncShared(
+        that: this,
+      );
+
+  Future<void> verifyPerson({required String accountId}) => KansoCore
+      .instance
+      .api
+      .crateApiSharedKansoSharedVerifyPerson(that: this, accountId: accountId);
+}
+
+@sealed
 class KansoSyncImpl extends RustOpaque implements KansoSync {
   // Not to be used by end users
   KansoSyncImpl.frbInternalDcoDecode(List<dynamic> wire)
@@ -5421,6 +11974,12 @@ class KansoSyncImpl extends RustOpaque implements KansoSync {
       .instance
       .api
       .crateApiSyncKansoSyncCheckServer(that: this, url: url);
+
+  /// The app is in front (`true`) or not.
+  Future<void> setForeground({required bool foreground}) => KansoCore
+      .instance
+      .api
+      .crateApiSyncKansoSyncSetForeground(that: this, foreground: foreground);
 
   Future<SyncStatus> signInPassword({
     required String server,

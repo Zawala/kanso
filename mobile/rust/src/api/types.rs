@@ -9,11 +9,17 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview, ListPlace,
-    ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow,
-    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved,
-    SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
+    AccountDetails, AccountState, ApprovalPhase, ApprovalPrompt, ApprovalWait, BindingAnswer,
+    BindingQuestion, BuiltinTheme, ColorRow, DateField, DeviceRow, DiagramKind, GalleryColors,
+    GalleryItem, GalleryKind, Hit, InvitationRow, JoinRow, KansoError, LibraryOverview,
+    LinkedProviderRow, ListPlace, ListQuery, ListShape, LockEvent, LockReason, LockState,
+    LockedInfo, MemberRow, NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole,
+    NotebookRow, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind, PasskeyRow,
+    PersonLookup, PersonRow, PromptState, Property, PropertyKind, ProviderEvent, ProviderKind,
+    Range16, RecoveryKeyText, Saved, SearchScope, ServerInfo, ServerMethods, ShareInfo,
+    ShareLinkRow, ShareRole, SharedEvent, SignedUp, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase,
+    SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow,
+    ThemeTokens,
 };
 
 #[frb(mirror(KansoError))]
@@ -365,4 +371,290 @@ pub struct _SvgRow {
     pub width: f32,
     pub height: f32,
     pub baseline: Option<f32>,
+}
+
+#[frb(mirror(ProviderKind))]
+pub enum _ProviderKind {
+    Apple,
+    Google,
+    Github,
+}
+
+#[frb(mirror(ServerMethods))]
+pub struct _ServerMethods {
+    pub signups_open: bool,
+    pub password: bool,
+    pub passkeys: bool,
+    pub providers: Vec<ProviderKind>,
+}
+
+#[frb(mirror(AccountState))]
+pub enum _AccountState {
+    SignedOut,
+    SignedIn { username: String, server: String },
+    Locked(LockedInfo),
+    Question(BindingQuestion),
+}
+
+#[frb(mirror(LockedInfo))]
+pub struct _LockedInfo {
+    pub username: String,
+    pub server: String,
+    pub has_password: bool,
+    pub approval_pending: bool,
+}
+
+#[frb(mirror(BindingQuestion))]
+pub struct _BindingQuestion {
+    pub title: String,
+    pub body: String,
+    pub answers: Vec<BindingAnswer>,
+}
+
+#[frb(mirror(BindingAnswer))]
+pub enum _BindingAnswer {
+    Add,
+    Replace,
+}
+
+#[frb(mirror(RecoveryKeyText))]
+pub struct _RecoveryKeyText {
+    pub key: String,
+}
+
+#[frb(mirror(SignedUp))]
+pub struct _SignedUp {
+    pub state: AccountState,
+    pub recovery_key: RecoveryKeyText,
+}
+
+#[frb(mirror(ProviderEvent))]
+pub enum _ProviderEvent {
+    OpenPage {
+        url: String,
+        callback_scheme: Option<String>,
+    },
+    ShowCode {
+        user_code: String,
+        verification_uri: String,
+    },
+    ClosePage,
+    NeedsUsername {
+        suggested: String,
+    },
+    Finished(AccountState),
+    Failed {
+        message: String,
+    },
+    Cancelled,
+}
+
+#[frb(mirror(PasskeyRequestKind))]
+pub enum _PasskeyRequestKind {
+    Register,
+    Assert,
+}
+
+#[frb(mirror(PasskeyRequest))]
+pub struct _PasskeyRequest {
+    pub ticket: u64,
+    pub kind: PasskeyRequestKind,
+    pub options_json: String,
+}
+
+#[frb(mirror(PasskeyFailure))]
+pub enum _PasskeyFailure {
+    Cancelled,
+    Unavailable,
+    Failed,
+}
+
+#[frb(mirror(ApprovalWait))]
+pub struct _ApprovalWait {
+    pub phase: ApprovalPhase,
+    pub code: Option<String>,
+    pub other_devices: u32,
+    pub offer_recovery: bool,
+}
+
+#[frb(mirror(ApprovalPhase))]
+pub enum _ApprovalPhase {
+    Requesting,
+    Waiting,
+    Compare,
+    Unlocking,
+    Approved,
+    NoDevices,
+    Cancelled,
+    Expired,
+    Failed { message: String },
+}
+
+#[frb(mirror(DeviceRow))]
+pub struct _DeviceRow {
+    pub id: String,
+    pub title: String,
+    pub this_device: bool,
+    pub last_seen_ms: Option<i64>,
+}
+
+#[frb(mirror(LinkedProviderRow))]
+pub struct _LinkedProviderRow {
+    pub provider: ProviderKind,
+    pub linked: bool,
+}
+
+#[frb(mirror(PasskeyRow))]
+pub struct _PasskeyRow {
+    pub id: String,
+    pub label: String,
+    pub added_ms: i64,
+    pub last_used_ms: Option<i64>,
+    pub can_unlock: bool,
+}
+
+#[frb(mirror(AccountDetails))]
+pub struct _AccountDetails {
+    pub username: String,
+    pub server: String,
+    pub devices: Vec<DeviceRow>,
+    pub storage_line: Option<String>,
+    pub has_password: bool,
+    pub providers: Vec<LinkedProviderRow>,
+    pub passkeys: Vec<PasskeyRow>,
+    pub recovery_key_unsaved: bool,
+}
+
+#[frb(mirror(PromptState))]
+pub enum _PromptState {
+    New,
+    Challenged,
+    Ready,
+    Changed,
+}
+
+#[frb(mirror(ApprovalPrompt))]
+pub struct _ApprovalPrompt {
+    pub id: String,
+    pub device_name: Option<String>,
+    pub asked_at_ms: i64,
+    pub expires_at_ms: i64,
+    pub code: Option<String>,
+    pub state: PromptState,
+}
+
+#[frb(mirror(ShareRole))]
+pub enum _ShareRole {
+    Owner,
+    Editor,
+    Commenter,
+    Viewer,
+}
+
+#[frb(mirror(MemberRow))]
+pub struct _MemberRow {
+    pub account_id: String,
+    pub username: String,
+    pub role: ShareRole,
+    pub me: bool,
+    pub fingerprint: String,
+    pub key_changed: bool,
+    pub invited: bool,
+    pub left: bool,
+    pub verified: bool,
+}
+
+#[frb(mirror(ShareLinkRow))]
+pub struct _ShareLinkRow {
+    pub id: String,
+    pub role: ShareRole,
+    pub expires_ms: i64,
+}
+
+#[frb(mirror(ShareInfo))]
+pub struct _ShareInfo {
+    pub share_id: String,
+    pub note_id: String,
+    pub my_role: ShareRole,
+    pub owner: String,
+    pub members: Vec<MemberRow>,
+    pub links: Vec<ShareLinkRow>,
+    pub requests: Vec<MemberRow>,
+}
+
+#[frb(mirror(InvitationRow))]
+pub struct _InvitationRow {
+    pub share_id: String,
+    pub title: Option<String>,
+    pub from: String,
+    pub role: ShareRole,
+    pub at_ms: i64,
+}
+
+#[frb(mirror(SharedEvent))]
+pub struct _SharedEvent {
+    pub note_ids: Vec<String>,
+    pub invitations: u32,
+}
+
+#[frb(mirror(PersonRow))]
+pub struct _PersonRow {
+    pub account_id: String,
+    pub username: String,
+    pub fingerprint: String,
+    pub verified: bool,
+}
+
+#[frb(mirror(PersonLookup))]
+pub enum _PersonLookup {
+    Found(PersonRow),
+    Changed {
+        pinned: Option<PersonRow>,
+        offered: PersonRow,
+    },
+}
+
+#[frb(mirror(JoinRow))]
+pub struct _JoinRow {
+    pub share_id: String,
+    pub owner: String,
+    pub role: ShareRole,
+}
+
+#[frb(mirror(GalleryKind))]
+pub enum _GalleryKind {
+    ColorTheme,
+    IconTheme,
+}
+
+#[frb(mirror(GalleryColors))]
+pub struct _GalleryColors {
+    pub editor: u32,
+    pub text: u32,
+    pub accent: u32,
+    pub sidebar: u32,
+    pub list: u32,
+}
+
+#[frb(mirror(GalleryItem))]
+pub struct _GalleryItem {
+    pub id: String,
+    pub name: String,
+    pub kind: GalleryKind,
+    pub author: String,
+    pub official: bool,
+    pub version: String,
+    pub installs: u64,
+    pub updated_ms: i64,
+    pub source: Option<String>,
+    pub dark: bool,
+    pub headline: Option<GalleryColors>,
+    pub installed: bool,
+    pub update_available: bool,
+    pub runs_here: bool,
+    pub description: String,
+    pub license: String,
+    pub family: Option<String>,
+    pub edited: bool,
+    pub disabled: bool,
 }

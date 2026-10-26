@@ -54,6 +54,13 @@ void syncSuite(OpenLibrary open) {
       expect((await sync.status()).phase, SyncPhase.signedOut);
     });
 
+    test('the app can say it is in front or behind', () async {
+      final sync = (await open()).syncing();
+      await sync.setForeground(foreground: true);
+      await sync.setForeground(foreground: false);
+      expect((await sync.status()).phase, SyncPhase.signedOut);
+    });
+
     test('syncing while signed out says so, and signing out is fine', () async {
       final sync = (await open()).syncing();
       await expectLater(

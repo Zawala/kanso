@@ -12,10 +12,15 @@ import 'package:kanso/core/bridge/frb_generated.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../test/core/bridge/suites/account_settings_suite.dart';
+import '../test/core/bridge/suites/account_suite.dart';
+import '../test/core/bridge/suites/approvals_suite.dart';
 import '../test/core/bridge/suites/diagnostics_suite.dart';
+import '../test/core/bridge/suites/gallery_suite.dart';
 import '../test/core/bridge/suites/library_suite.dart';
 import '../test/core/bridge/suites/locks_suite.dart';
 import '../test/core/bridge/suites/renderer_suite.dart';
+import '../test/core/bridge/suites/shared_suite.dart';
 import '../test/core/bridge/suites/sync_suite.dart';
 
 /// Every call of the bridge, on a simulator or an emulator: the library the
@@ -43,6 +48,11 @@ void main() {
   syncSuite(openDeviceLibrary);
   rendererSuite(openDeviceLibrary);
   diagnosticsSuite(openDeviceLibrary);
+  accountSuite(openDeviceLibrary);
+  accountSettingsSuite(openDeviceLibrary);
+  approvalsSuite(openDeviceLibrary);
+  sharedSuite(openDeviceLibrary);
+  gallerySuite(openDeviceLibrary);
 
   group('the platform verifier', () {
     test(
