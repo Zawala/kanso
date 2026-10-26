@@ -2952,6 +2952,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  ListPlace dco_decode_box_autoadd_list_place(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_list_place(raw);
+  }
+
+  @protected
   ListQuery dco_decode_box_autoadd_list_query(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_list_query(raw);
@@ -3546,12 +3552,16 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   NewNote dco_decode_new_note(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
     return NewNote(
       notebookId: dco_decode_opt_String(arr[0]),
       title: dco_decode_String(arr[1]),
       body: dco_decode_String(arr[2]),
+      place: dco_decode_opt_box_autoadd_list_place(arr[3]),
+      preferredNotebookId: dco_decode_opt_String(arr[4]),
+      tags: dco_decode_list_String(arr[5]),
+      pinned: dco_decode_bool(arr[6]),
     );
   }
 
@@ -3693,6 +3703,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   LinkTarget? dco_decode_opt_box_autoadd_link_target(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_link_target(raw);
+  }
+
+  @protected
+  ListPlace? dco_decode_opt_box_autoadd_list_place(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_list_place(raw);
   }
 
   @protected
@@ -4382,6 +4398,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   LinkTarget sse_decode_box_autoadd_link_target(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_link_target(deserializer));
+  }
+
+  @protected
+  ListPlace sse_decode_box_autoadd_list_place(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_list_place(deserializer));
   }
 
   @protected
@@ -5105,10 +5127,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     var var_notebookId = sse_decode_opt_String(deserializer);
     var var_title = sse_decode_String(deserializer);
     var var_body = sse_decode_String(deserializer);
+    var var_place = sse_decode_opt_box_autoadd_list_place(deserializer);
+    var var_preferredNotebookId = sse_decode_opt_String(deserializer);
+    var var_tags = sse_decode_list_String(deserializer);
+    var var_pinned = sse_decode_bool(deserializer);
     return NewNote(
       notebookId: var_notebookId,
       title: var_title,
       body: var_body,
+      place: var_place,
+      preferredNotebookId: var_preferredNotebookId,
+      tags: var_tags,
+      pinned: var_pinned,
     );
   }
 
@@ -5310,6 +5340,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_link_target(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  ListPlace? sse_decode_opt_box_autoadd_list_place(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_list_place(deserializer));
     } else {
       return null;
     }
@@ -6104,6 +6147,15 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_box_autoadd_list_place(
+    ListPlace self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_place(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_list_query(
     ListQuery self,
     SseSerializer serializer,
@@ -6721,6 +6773,10 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_opt_String(self.notebookId, serializer);
     sse_encode_String(self.title, serializer);
     sse_encode_String(self.body, serializer);
+    sse_encode_opt_box_autoadd_list_place(self.place, serializer);
+    sse_encode_opt_String(self.preferredNotebookId, serializer);
+    sse_encode_list_String(self.tags, serializer);
+    sse_encode_bool(self.pinned, serializer);
   }
 
   @protected
@@ -6877,6 +6933,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_link_target(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_list_place(
+    ListPlace? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_list_place(self, serializer);
     }
   }
 

@@ -579,15 +579,30 @@ class NewNote {
   final String? notebookId;
   final String title;
   final String body;
+  final ListPlace? place;
+  final String? preferredNotebookId;
+  final List<String> tags;
+  final bool pinned;
 
   const NewNote({
     this.notebookId,
     required this.title,
     required this.body,
+    this.place,
+    this.preferredNotebookId,
+    this.tags = const [],
+    this.pinned = false,
   });
 
   @override
-  int get hashCode => notebookId.hashCode ^ title.hashCode ^ body.hashCode;
+  int get hashCode =>
+      notebookId.hashCode ^
+      title.hashCode ^
+      body.hashCode ^
+      place.hashCode ^
+      preferredNotebookId.hashCode ^
+      tags.hashCode ^
+      pinned.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -596,7 +611,11 @@ class NewNote {
           runtimeType == other.runtimeType &&
           notebookId == other.notebookId &&
           title == other.title &&
-          body == other.body;
+          body == other.body &&
+          place == other.place &&
+          preferredNotebookId == other.preferredNotebookId &&
+          tags == other.tags &&
+          pinned == other.pinned;
 }
 
 @freezed

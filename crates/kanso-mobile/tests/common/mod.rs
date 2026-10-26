@@ -94,6 +94,7 @@ pub fn note(library: &Library, title: &str, body: &str) -> String {
             notebook_id: None,
             title: title.to_owned(),
             body: body.to_owned(),
+            ..NewNote::default()
         })
         .unwrap()
         .id

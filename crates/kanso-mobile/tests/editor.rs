@@ -492,6 +492,7 @@ fn completion_offers_titles_and_tags_and_links_resolve() {
             notebook_id: Some(child.id.clone()),
             title: "Budget plan".into(),
             body: "SECRET words #budget".into(),
+            ..Default::default()
         })
         .unwrap()
         .id;

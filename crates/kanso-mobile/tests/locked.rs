@@ -509,6 +509,7 @@ proptest! {
                             notebook_id: None,
                             title: "Fresh".into(),
                             body: "fresh note".into(),
+                            ..Default::default()
                         })
                         .unwrap();
                     returned.push(format!("{saved:?}"));

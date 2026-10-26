@@ -3230,6 +3230,10 @@ const _: fn() = || {
         let _: Option<String> = NewNote.notebook_id;
         let _: String = NewNote.title;
         let _: String = NewNote.body;
+        let _: Option<crate::api::types::ListPlace> = NewNote.place;
+        let _: Option<String> = NewNote.preferred_notebook_id;
+        let _: Vec<String> = NewNote.tags;
+        let _: bool = NewNote.pinned;
     }
     match None::<crate::api::types::NoteChange>.unwrap() {
         crate::api::types::NoteChange::TogglePin => {}
@@ -4390,10 +4394,18 @@ impl SseDecode for crate::api::types::NewNote {
         let mut var_notebookId = <Option<String>>::sse_decode(deserializer);
         let mut var_title = <String>::sse_decode(deserializer);
         let mut var_body = <String>::sse_decode(deserializer);
+        let mut var_place = <Option<crate::api::types::ListPlace>>::sse_decode(deserializer);
+        let mut var_preferredNotebookId = <Option<String>>::sse_decode(deserializer);
+        let mut var_tags = <Vec<String>>::sse_decode(deserializer);
+        let mut var_pinned = <bool>::sse_decode(deserializer);
         return crate::api::types::NewNote {
             notebook_id: var_notebookId,
             title: var_title,
             body: var_body,
+            place: var_place,
+            preferred_notebook_id: var_preferredNotebookId,
+            tags: var_tags,
+            pinned: var_pinned,
         };
     }
 }
@@ -4608,6 +4620,17 @@ impl SseDecode for Option<crate::api::types::LinkTarget> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<crate::api::types::LinkTarget>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api::types::ListPlace> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::types::ListPlace>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -6087,6 +6110,10 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::NewNote> {
             self.0.notebook_id.into_into_dart().into_dart(),
             self.0.title.into_into_dart().into_dart(),
             self.0.body.into_into_dart().into_dart(),
+            self.0.place.into_into_dart().into_dart(),
+            self.0.preferred_notebook_id.into_into_dart().into_dart(),
+            self.0.tags.into_into_dart().into_dart(),
+            self.0.pinned.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -7621,6 +7648,10 @@ impl SseEncode for crate::api::types::NewNote {
         <Option<String>>::sse_encode(self.notebook_id, serializer);
         <String>::sse_encode(self.title, serializer);
         <String>::sse_encode(self.body, serializer);
+        <Option<crate::api::types::ListPlace>>::sse_encode(self.place, serializer);
+        <Option<String>>::sse_encode(self.preferred_notebook_id, serializer);
+        <Vec<String>>::sse_encode(self.tags, serializer);
+        <bool>::sse_encode(self.pinned, serializer);
     }
 }
 
@@ -7787,6 +7818,16 @@ impl SseEncode for Option<crate::api::types::LinkTarget> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <crate::api::types::LinkTarget>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::types::ListPlace> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::types::ListPlace>::sse_encode(value, serializer);
         }
     }
 }

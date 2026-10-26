@@ -152,6 +152,12 @@ pub struct _NewNote {
     pub notebook_id: Option<String>,
     pub title: String,
     pub body: String,
+    pub place: Option<ListPlace>,
+    pub preferred_notebook_id: Option<String>,
+    #[frb(default = "const []")]
+    pub tags: Vec<String>,
+    #[frb(default = false)]
+    pub pinned: bool,
 }
 
 #[frb(mirror(Saved))]

@@ -187,6 +187,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   LinkTarget dco_decode_box_autoadd_link_target(dynamic raw);
 
   @protected
+  ListPlace dco_decode_box_autoadd_list_place(dynamic raw);
+
+  @protected
   ListQuery dco_decode_box_autoadd_list_query(dynamic raw);
 
   @protected
@@ -401,6 +404,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   LinkTarget? dco_decode_opt_box_autoadd_link_target(dynamic raw);
+
+  @protected
+  ListPlace? dco_decode_opt_box_autoadd_list_place(dynamic raw);
 
   @protected
   NotebookRole? dco_decode_opt_box_autoadd_notebook_role(dynamic raw);
@@ -659,6 +665,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   LinkTarget sse_decode_box_autoadd_link_target(SseDeserializer deserializer);
 
   @protected
+  ListPlace sse_decode_box_autoadd_list_place(SseDeserializer deserializer);
+
+  @protected
   ListQuery sse_decode_box_autoadd_list_query(SseDeserializer deserializer);
 
   @protected
@@ -889,6 +898,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   LinkTarget? sse_decode_opt_box_autoadd_link_target(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ListPlace? sse_decode_opt_box_autoadd_list_place(
     SseDeserializer deserializer,
   );
 
@@ -1190,6 +1204,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_list_place(
+    ListPlace self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_list_query(
     ListQuery self,
     SseSerializer serializer,
@@ -1471,6 +1491,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_opt_box_autoadd_link_target(
     LinkTarget? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_list_place(
+    ListPlace? self,
     SseSerializer serializer,
   );
 

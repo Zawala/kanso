@@ -195,13 +195,30 @@ pub enum SortKey {
 }
 
 /// A new note.
+///
+/// Where it goes is decided in `kanso_engine::list::new_note_target`, which
+/// the desktop's New Note asks too: `notebook_id` if given, else the notebook
+/// `place` is, else `preferred_notebook_id` if that exists and isn't locked,
+/// else the first notebook (made if there is none).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NewNote {
-    /// The notebook it goes in; `None` is the first notebook (made if there
-    /// is none). A locked notebook takes it sealed, and needs the lock open.
+    /// The notebook it goes in, whatever else is given; it must exist
+    /// ([`KansoError::NotFound`]). A locked notebook takes it sealed, and
+    /// needs the lock open.
     pub notebook_id: Option<String>,
     pub title: String,
     pub body: String,
+    /// The list it is made from: a notebook's list is that notebook, a tag's
+    /// list tags the note, Pinned pins it. Trash and the rest leave it to the
+    /// preferred notebook.
+    pub place: Option<ListPlace>,
+    /// The notebook to use when `place` doesn't name one (the Default
+    /// notebook setting). Unknown and locked ones are ignored.
+    pub preferred_notebook_id: Option<String>,
+    /// Tags (their IDs) the note starts with, besides the place's.
+    pub tags: Vec<String>,
+    /// Pinned from the start (a list narrowed to pinned notes).
+    pub pinned: bool,
 }
 
 /// A write's result: the document and its new revision.
