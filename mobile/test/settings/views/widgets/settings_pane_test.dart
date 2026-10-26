@@ -16,30 +16,37 @@ import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/core/views/widgets/kanso_switch.dart';
+import 'package:kanso/push/state/push_setting/push_setting_bloc.dart';
+import 'package:kanso/push/views/widgets/push_setting_notice.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../../helpers/close_bloc_later.dart';
+import '../../../helpers/fixture_push_repository.dart';
 import '../../../helpers/fixture_sync_repository.dart';
 import '../../../helpers/mock_repositories.dart';
 import '../../../helpers/pump_routed.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 
 class _Settings {
-  _Settings(this.router, this.appearance, this.about, this.sync);
+  _Settings(this.router, this.appearance, this.about, this.sync, this.push);
 
   final GoRouter router;
   final AppearanceBloc appearance;
   final MockAboutRepository about;
   final SyncStatusBloc sync;
+  final FixturePushRepository push;
 }
 
 Future<_Settings> _pump(
   WidgetTester tester, {
   AppearanceState appearance = const AppearanceState(),
   SyncStatus status = signedOutStatus,
+  FixturePushRepository? push,
 }) async {
+  final pushRepository = push ?? FixturePushRepository();
   final about = MockAboutRepository();
   when(about.version).thenAnswer(
     (_) async => const Right<ApplicationError, AppVersion>(
@@ -52,7 +59,10 @@ Future<_Settings> _pump(
   final aboutBloc = AboutBloc(about)..add(const AboutEvent.started());
   final syncBloc = SyncStatusBloc(FixtureSyncRepository(current: status))
     ..add(const SyncStatusEvent.started());
+  final pushBloc = PushSettingBloc(pushRepository)
+    ..add(const PushSettingEvent.started());
   final appearanceBloc = SeededAppearanceBloc(appearance);
+  closeBlocLater(pushBloc);
   closeBlocLater(aboutBloc);
   closeBlocLater(syncBloc);
   closeBlocLater(appearanceBloc);
@@ -63,6 +73,7 @@ Future<_Settings> _pump(
         BlocProvider<AppearanceBloc>.value(value: appearanceBloc),
         BlocProvider<SyncStatusBloc>.value(value: syncBloc),
         BlocProvider<AboutBloc>.value(value: aboutBloc),
+        BlocProvider<PushSettingBloc>.value(value: pushBloc),
       ],
       child: const SettingsPane(),
     ),
@@ -70,7 +81,7 @@ Future<_Settings> _pump(
   );
   await tester.pump();
   await tester.pump();
-  return _Settings(router, appearanceBloc, about, syncBloc);
+  return _Settings(router, appearanceBloc, about, syncBloc, pushRepository);
 }
 
 void main() {
@@ -182,6 +193,103 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('the wake switch is under Sync once an account is signed in', (
+      tester,
+    ) async {
+      await _pump(tester, status: signedInStatus);
+      expect(
+        find.text('Wake this device when notes change elsewhere'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Apple or Google only learn that something'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the wake switch is on until it is turned off, and turning '
+        'it off is saved', (tester) async {
+      final screen = await _pump(tester, status: signedInStatus);
+      expect(screen.push.enabled, isTrue);
+      await tester.tap(
+        find.text('Wake this device when notes change elsewhere'),
+      );
+      await tester.pumpAndSettle();
+      expect(screen.push.enabled, isFalse);
+      await tester.tap(
+        find.text('Wake this device when notes change elsewhere'),
+      );
+      await tester.pumpAndSettle();
+      expect(screen.push.enabled, isTrue);
+    });
+
+    testWidgets('a wake switch that is off is shown off', (tester) async {
+      await _pump(
+        tester,
+        status: signedInStatus,
+        push: FixturePushRepository(enabled: false),
+      );
+      final switchWidget = tester.widget<KansoSwitch>(find.byType(KansoSwitch));
+      expect(switchWidget.value, isFalse);
+      expect(switchWidget.onChanged, isNotNull);
+    });
+
+    testWidgets('where push cannot work the switch is dimmed and says so', (
+      tester,
+    ) async {
+      final screen = await _pump(
+        tester,
+        status: signedInStatus,
+        push: FixturePushRepository(unavailable: 'No Firebase.'),
+      );
+      expect(
+        find.text(
+          'Not available on this device. Kanso syncs when you open it.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<KansoSwitch>(find.byType(KansoSwitch)).onChanged,
+        isNull,
+      );
+      await tester.tap(
+        find.text('Wake this device when notes change elsewhere'),
+      );
+      await tester.pumpAndSettle();
+      expect(screen.push.enabled, isTrue);
+      expect(
+        find.byType(PushSettingNotice),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a change that fails is put back and a notice says so', (
+      tester,
+    ) async {
+      final screen = await _pump(
+        tester,
+        status: signedInStatus,
+        push: FixturePushRepository()
+          ..failure = const ApplicationError.network(message: 'Offline.'),
+      );
+      await tester.tap(
+        find.text('Wake this device when notes change elsewhere'),
+      );
+      await tester.pumpAndSettle();
+      expect(screen.push.enabled, isTrue);
+      expect(
+        tester.widget<KansoSwitch>(find.byType(KansoSwitch)).value,
+        isTrue,
+      );
+      expect(
+        find.text('That couldn’t be changed. Try again in a moment.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PushSettingNotice), findsNothing);
     });
 
     testWidgets('the Version row shows the version and build', (tester) async {

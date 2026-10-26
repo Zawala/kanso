@@ -15,5 +15,14 @@ class KansoApplication : Application() {
         KansoSecrets.attach(this)
         System.loadLibrary(KansoNative.LIBRARY)
         KansoNative.init(this)
+        // A push (Firebase Messaging's data message, received by the
+        // `kanso_push` plugin's service in this process) calls
+        // `KansoPush.onWake`. Step 8's background sync is wired here by
+        // setting it, with `import app.kanso.kanso_push.KansoPush`, to enqueue
+        // the sync work:
+        //
+        //   KansoPush.onWake = { context -> SyncWorker.enqueueNow(context) }
+        //
+        // Until it is set a push does nothing.
     }
 }

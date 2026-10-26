@@ -46,3 +46,6 @@ app.*.map.json
 
 # Pictures for the store listings, made by scripts/mobile-store-screenshots.sh.
 /store/screenshots/
+
+# The Firebase configuration of the build (push on Android); see README.md.
+/android/app/google-services.json

@@ -19,16 +19,19 @@ import '../../../core/views/widgets/kanso_grouped_section.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
+import '../../../push/views/widgets/push_setting_notice_host.dart';
+import '../../../push/views/widgets/push_setting_row.dart';
 import '../../state/about/about_bloc.dart';
 
 /// Settings: a close button, a centred title and rows grouped in rounded
 /// sections, each with an icon, a label and its current value.
 ///
 /// Only what works is here: how the app looks (themes, fonts, text size),
-/// the state of sync with the note that the notes are not in device backups,
-/// and what the app is (its version, its website, its licences). It needs
-/// the app's `AppearanceBloc` and `SyncStatusBloc` and an [AboutBloc] above
-/// it.
+/// the state of sync with the note that the notes are not in device backups
+/// (and, once an account is signed in, the switch that lets the server wake
+/// this phone to sync), and what the app is (its version, its website, its
+/// licences). It needs the app's `AppearanceBloc` and `SyncStatusBloc` and
+/// an [AboutBloc] and a `PushSettingBloc` above it.
 class SettingsPane extends StatelessWidget {
   const SettingsPane({super.key});
 
@@ -40,129 +43,133 @@ class SettingsPane extends StatelessWidget {
     final colors = context.colors;
     final l10n = context.l10n;
     final bottom = MediaQuery.paddingOf(context).bottom;
-    return ColoredBox(
-      color: colors.app,
-      child: Column(
-        children: <Widget>[
-          KansoTopBar(
-            backgroundColor: colors.app,
-            bordered: false,
-            leading: KansoIconButton(
-              icon: KansoIcons.close,
-              semanticLabel: l10n.settingsClose,
-              onPressed: () => context.pop(),
-            ),
-            title: l10n.settingsTitle,
-          ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                KansoSpacing.md,
-                KansoSpacing.xs,
-                KansoSpacing.md,
-                bottom + KansoSpacing.lg,
+    return PushSettingNoticeHost(
+      child: ColoredBox(
+        color: colors.app,
+        child: Column(
+          children: <Widget>[
+            KansoTopBar(
+              backgroundColor: colors.app,
+              bordered: false,
+              leading: KansoIconButton(
+                icon: KansoIcons.close,
+                semanticLabel: l10n.settingsClose,
+                onPressed: () => context.pop(),
               ),
-              children: <Widget>[
-                BlocBuilder<AppearanceBloc, AppearanceState>(
-                  builder: (context, appearance) {
-                    final theme =
-                        appearance.selection.followSystem &&
-                            appearance.light.id != appearance.dark.id
-                        ? l10n.settingsThemeBoth(
-                            appearance.light.name,
-                            appearance.dark.name,
-                          )
-                        : appearance.light.name;
-                    return KansoGroupedSection(
-                      title: l10n.settingsAppearance,
-                      dividerIndent: iconInset,
-                      children: <Widget>[
-                        KansoSettingsRow(
-                          icon: KansoIcons.palette,
-                          label: l10n.settingsTheme,
-                          value: theme,
-                          chevron: true,
-                          onTap: () => context.push(KansoRoutes.settingsTheme),
-                        ),
-                        KansoSettingsRow(
-                          icon: KansoIcons.typeface,
-                          label: l10n.settingsFonts,
-                          value: l10n.fontsSummary(appearance.fonts),
-                          chevron: true,
-                          onTap: () => context.push(KansoRoutes.fonts()),
-                        ),
-                        KansoSettingsRow(
-                          icon: KansoIcons.textSize,
-                          label: l10n.settingsTextSize,
-                          value: l10n.textSizeName(appearance.textSize),
-                          chevron: true,
-                          onTap: () =>
-                              context.push(KansoRoutes.fonts(atSize: true)),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(height: KansoSpacing.lg),
-                BlocBuilder<SyncStatusBloc, SyncStatusState>(
-                  builder: (context, sync) {
-                    return KansoGroupedSection(
-                      title: l10n.settingsSync,
-                      footer: l10n.settingsSyncBackupFooter,
-                      dividerIndent: iconInset,
-                      children: <Widget>[
-                        KansoSettingsRow(
-                          icon: KansoIcons.cloud,
-                          label: l10n.settingsSyncStatus,
-                          value: l10n.syncStatusName(sync.status),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(height: KansoSpacing.lg),
-                BlocBuilder<AboutBloc, AboutState>(
-                  builder: (context, about) {
-                    final version = about.version;
-                    return KansoGroupedSection(
-                      title: l10n.settingsAbout,
-                      dividerIndent: iconInset,
-                      children: <Widget>[
-                        KansoSettingsRow(
-                          icon: KansoIcons.info,
-                          label: l10n.settingsVersion,
-                          value:
-                              version == null ||
-                                  about.status != LoadStatus.ready
-                              ? null
-                              : l10n.settingsVersionValue(
-                                  version.version,
-                                  version.build,
-                                ),
-                        ),
-                        KansoSettingsRow(
-                          icon: KansoIcons.globe,
-                          label: l10n.settingsWebsite,
-                          external: true,
-                          onTap: () => context.read<AboutBloc>().add(
-                            const AboutEvent.websiteOpened(),
-                          ),
-                        ),
-                        KansoSettingsRow(
-                          icon: KansoIcons.scale,
-                          label: l10n.settingsLicences,
-                          chevron: true,
-                          onTap: () =>
-                              context.push(KansoRoutes.settingsLicences),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
+              title: l10n.settingsTitle,
             ),
-          ),
-        ],
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                  KansoSpacing.md,
+                  KansoSpacing.xs,
+                  KansoSpacing.md,
+                  bottom + KansoSpacing.lg,
+                ),
+                children: <Widget>[
+                  BlocBuilder<AppearanceBloc, AppearanceState>(
+                    builder: (context, appearance) {
+                      final theme =
+                          appearance.selection.followSystem &&
+                              appearance.light.id != appearance.dark.id
+                          ? l10n.settingsThemeBoth(
+                              appearance.light.name,
+                              appearance.dark.name,
+                            )
+                          : appearance.light.name;
+                      return KansoGroupedSection(
+                        title: l10n.settingsAppearance,
+                        dividerIndent: iconInset,
+                        children: <Widget>[
+                          KansoSettingsRow(
+                            icon: KansoIcons.palette,
+                            label: l10n.settingsTheme,
+                            value: theme,
+                            chevron: true,
+                            onTap: () =>
+                                context.push(KansoRoutes.settingsTheme),
+                          ),
+                          KansoSettingsRow(
+                            icon: KansoIcons.typeface,
+                            label: l10n.settingsFonts,
+                            value: l10n.fontsSummary(appearance.fonts),
+                            chevron: true,
+                            onTap: () => context.push(KansoRoutes.fonts()),
+                          ),
+                          KansoSettingsRow(
+                            icon: KansoIcons.textSize,
+                            label: l10n.settingsTextSize,
+                            value: l10n.textSizeName(appearance.textSize),
+                            chevron: true,
+                            onTap: () =>
+                                context.push(KansoRoutes.fonts(atSize: true)),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: KansoSpacing.lg),
+                  BlocBuilder<SyncStatusBloc, SyncStatusState>(
+                    builder: (context, sync) {
+                      return KansoGroupedSection(
+                        title: l10n.settingsSync,
+                        footer: l10n.settingsSyncBackupFooter,
+                        dividerIndent: iconInset,
+                        children: <Widget>[
+                          KansoSettingsRow(
+                            icon: KansoIcons.cloud,
+                            label: l10n.settingsSyncStatus,
+                            value: l10n.syncStatusName(sync.status),
+                          ),
+                          if (sync.signedIn) const PushSettingRow(),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: KansoSpacing.lg),
+                  BlocBuilder<AboutBloc, AboutState>(
+                    builder: (context, about) {
+                      final version = about.version;
+                      return KansoGroupedSection(
+                        title: l10n.settingsAbout,
+                        dividerIndent: iconInset,
+                        children: <Widget>[
+                          KansoSettingsRow(
+                            icon: KansoIcons.info,
+                            label: l10n.settingsVersion,
+                            value:
+                                version == null ||
+                                    about.status != LoadStatus.ready
+                                ? null
+                                : l10n.settingsVersionValue(
+                                    version.version,
+                                    version.build,
+                                  ),
+                          ),
+                          KansoSettingsRow(
+                            icon: KansoIcons.globe,
+                            label: l10n.settingsWebsite,
+                            external: true,
+                            onTap: () => context.read<AboutBloc>().add(
+                              const AboutEvent.websiteOpened(),
+                            ),
+                          ),
+                          KansoSettingsRow(
+                            icon: KansoIcons.scale,
+                            label: l10n.settingsLicences,
+                            chevron: true,
+                            onTap: () =>
+                                context.push(KansoRoutes.settingsLicences),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

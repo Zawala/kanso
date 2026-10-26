@@ -12,6 +12,7 @@
 
 import 'package:get_it/get_it.dart' as _i174;
 import 'package:injectable/injectable.dart' as _i526;
+import 'package:kanso_push/kanso_push.dart' as _i901;
 
 import 'core/bridge/api/library.dart' as _i455;
 import 'core/bridge/api/locks.dart' as _i983;
@@ -48,6 +49,11 @@ import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
+import 'push/configs/push_module.dart' as _i78;
+import 'push/models/repos/abs/push_repository.dart' as _i937;
+import 'push/models/repos/impl/plugin_push_repository.dart' as _i506;
+import 'push/state/push_registration/push_registration_bloc.dart' as _i250;
+import 'push/state/push_setting/push_setting_bloc.dart' as _i584;
 import 'search/state/search/search_bloc.dart' as _i696;
 import 'settings/state/about/about_bloc.dart' as _i380;
 import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
@@ -66,10 +72,12 @@ extension GetItInjectableX on _i174.GetIt {
     _i526.EnvironmentFilter? environmentFilter,
   }) async {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
+    final pushModule = _$PushModule();
     final coreModule = _$CoreModule();
     final appModule = _$AppModule();
     gh.factory<_i612.LibraryPaneBloc>(() => _i612.LibraryPaneBloc());
     gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
+    gh.lazySingleton<_i901.KansoPushHostApi>(() => pushModule.hostApi());
     gh.lazySingleton<_i984.DiagnosticsRepository>(
       () => _i1062.RustDiagnosticsRepository(),
     );
@@ -134,6 +142,12 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i732.RendererRepository>(
       () => _i820.RustRendererRepository(gh<_i832.KansoRenderer>()),
     );
+    gh.lazySingleton<_i937.PushRepository>(
+      () => _i506.PluginPushRepository(
+        gh<_i901.KansoPushHostApi>(),
+        gh<_i591.KansoSync>(),
+      ),
+    );
     gh.factory<_i149.ThemePickerBloc>(
       () => _i149.ThemePickerBloc(gh<_i732.RendererRepository>()),
     );
@@ -145,6 +159,12 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i38.LibraryRepository>(
       () => _i152.RustLibraryRepository(gh<_i455.KansoLibrary>()),
+    );
+    gh.factory<_i250.PushRegistrationBloc>(
+      () => _i250.PushRegistrationBloc(gh<_i937.PushRepository>()),
+    );
+    gh.factory<_i584.PushSettingBloc>(
+      () => _i584.PushSettingBloc(gh<_i937.PushRepository>()),
     );
     gh.factory<_i861.LibraryIndexBloc>(
       () => _i861.LibraryIndexBloc(gh<_i38.LibraryRepository>()),
@@ -183,6 +203,8 @@ extension GetItInjectableX on _i174.GetIt {
     return this;
   }
 }
+
+class _$PushModule extends _i78.PushModule {}
 
 class _$CoreModule extends _i418.CoreModule {}
 

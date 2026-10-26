@@ -11,6 +11,8 @@ import 'core/state/list_navigation/list_navigation_bloc.dart';
 import 'core/state/navigation_history/navigation_history_bloc.dart';
 import 'core/state/sync_status/sync_status_bloc.dart';
 import 'injection.dart';
+import 'push/state/push_registration/push_registration_bloc.dart';
+import 'push/views/widgets/push_lifecycle_host.dart';
 import 'settings/state/backup_notice/backup_notice_bloc.dart';
 import 'shell/state/library_pane/library_pane_bloc.dart';
 
@@ -45,6 +47,12 @@ class AppProviders extends StatelessWidget {
           create: (_) =>
               getIt<BackupNoticeBloc>()..add(const BackupNoticeEvent.started()),
         ),
+        BlocProvider<PushRegistrationBloc>(
+          lazy: false,
+          create: (_) =>
+              getIt<PushRegistrationBloc>()
+                ..add(const PushRegistrationEvent.started()),
+        ),
         BlocProvider<ListNavigationBloc>(
           create: (_) => getIt<ListNavigationBloc>(),
         ),
@@ -55,7 +63,7 @@ class AppProviders extends StatelessWidget {
           create: (_) => getIt<NavigationHistoryBloc>(),
         ),
       ],
-      child: child,
+      child: PushLifecycleHost(child: child),
     );
   }
 }
