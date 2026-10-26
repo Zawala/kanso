@@ -869,4 +869,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get themesLoading => 'Loading themes';
+
+  @override
+  String get backupNoticeTitle => 'Notes stay on this phone';
+
+  @override
+  String get backupNoticeMessage =>
+      'The notes on this phone aren’t included in device backups, so losing or resetting the phone takes them with it.';
+
+  @override
+  String get backupNoticeOk => 'OK';
 }

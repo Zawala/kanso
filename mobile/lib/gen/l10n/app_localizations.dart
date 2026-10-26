@@ -1653,6 +1653,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Loading themes'**
   String get themesLoading;
+
+  /// The title of the card that says the notes are not in device backups.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes stay on this phone'**
+  String get backupNoticeTitle;
+
+  /// Says that device backups do not hold the notes.
+  ///
+  /// In en, this message translates to:
+  /// **'The notes on this phone aren’t included in device backups, so losing or resetting the phone takes them with it.'**
+  String get backupNoticeMessage;
+
+  /// Dismisses the notice about device backups.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get backupNoticeOk;
 }
 
 class _AppLocalizationsDelegate

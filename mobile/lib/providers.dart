@@ -10,6 +10,7 @@ import 'core/state/library_index/library_index_bloc.dart';
 import 'core/state/navigation_history/navigation_history_bloc.dart';
 import 'core/state/sync_status/sync_status_bloc.dart';
 import 'injection.dart';
+import 'settings/state/backup_notice/backup_notice_bloc.dart';
 
 /// The BLoCs the whole app shares, above the [child].
 ///
@@ -37,6 +38,10 @@ class AppProviders extends StatelessWidget {
         BlocProvider<SyncStatusBloc>(
           create: (_) =>
               getIt<SyncStatusBloc>()..add(const SyncStatusEvent.started()),
+        ),
+        BlocProvider<BackupNoticeBloc>(
+          create: (_) =>
+              getIt<BackupNoticeBloc>()..add(const BackupNoticeEvent.started()),
         ),
         BlocProvider<NavigationHistoryBloc>(
           create: (_) => getIt<NavigationHistoryBloc>(),

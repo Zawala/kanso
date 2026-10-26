@@ -8,6 +8,7 @@ import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/models/repos/abs/preferences_repository.dart';
 import 'package:kanso/core/models/repos/abs/renderer_repository.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockPreferencesRepository extends Mock implements PreferencesRepository {}
@@ -36,3 +37,8 @@ class SeededAppearanceBloc extends AppearanceBloc {
     emit(seed);
   }
 }
+
+/// A backup notice bloc that is not shown: it was not started, so it has
+/// not read the preferences, and nothing covers the app in a test.
+BackupNoticeBloc hiddenBackupNoticeBloc() =>
+    BackupNoticeBloc(ForgetfulPreferencesRepository());

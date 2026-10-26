@@ -1110,5 +1110,17 @@
   "themesLoading": "Loading themes",
   "@themesLoading": {
     "description": "Says to a screen reader that the themes are being read."
+  },
+  "backupNoticeTitle": "Notes stay on this phone",
+  "@backupNoticeTitle": {
+    "description": "The title of the card that says the notes are not in device backups."
+  },
+  "backupNoticeMessage": "The notes on this phone aren’t included in device backups, so losing or resetting the phone takes them with it.",
+  "@backupNoticeMessage": {
+    "description": "Says that device backups do not hold the notes."
+  },
+  "backupNoticeOk": "OK",
+  "@backupNoticeOk": {
+    "description": "Dismisses the notice about device backups."
   }
 }

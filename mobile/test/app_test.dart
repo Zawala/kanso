@@ -16,6 +16,7 @@ import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
+import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 
 import 'helpers/seeded_appearance_bloc.dart';
 
@@ -31,8 +32,11 @@ Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
     LayoutClassNotifier.starting(LayoutClass.single),
   )..config.go(KansoRoutes.design);
   await tester.pumpWidget(
-    BlocProvider<AppearanceBloc>.value(
-      value: bloc,
+    MultiBlocProvider(
+      providers: <BlocProvider<dynamic>>[
+        BlocProvider<AppearanceBloc>.value(value: bloc),
+        BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
+      ],
       child: App(router: router),
     ),
   );
