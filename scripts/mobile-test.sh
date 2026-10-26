@@ -115,7 +115,7 @@ export "CARGO_TARGET_${upper}_RUNNER=$runner"
 # facade (kanso-mobile) and the library the app loads (kanso-mobile-bridge),
 # one crate at a time so each one's counts are its own. kanso-sync and
 # kanso-ai are tested without their desktop features, as they are built.
-log="${KANSO_TEST_LOG:-$(mktemp -t kanso-mobile-test)}"
+log="${KANSO_TEST_LOG:-$(mktemp "${TMPDIR:-/tmp}/kanso-mobile-test.XXXXXX")}"
 : >"$log"
 failed=0
 run() {
