@@ -213,7 +213,7 @@ mod tests {
         Ok(new)
     }
 
-    const FORMATS: [Format; 18] = [
+    const FORMATS: [Format; 19] = [
         Format::Heading(1),
         Format::Heading(2),
         Format::Heading(3),
@@ -225,6 +225,7 @@ mod tests {
         Format::Task,
         Format::Quote,
         Format::Code,
+        Format::CodeBlock,
         Format::Bold,
         Format::Italic,
         Format::Strikethrough,

@@ -110,6 +110,13 @@ fn vim_key(keystroke: &Keystroke) -> Option<Key> {
 }
 
 impl NoteEditor {
+    /// Whether Vim is on and not in Insert mode, so the keys are Vim's.
+    pub(super) fn vim_holds_keys(&self) -> bool {
+        self.vim
+            .as_ref()
+            .is_some_and(|state| state.vim.mode() != Mode::Insert)
+    }
+
     /// Turns Vim keys on (in Normal mode) or off.
     // no-prop-test: sets up or drops the interceptor; the window tests
     // turn it on and off.

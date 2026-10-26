@@ -342,7 +342,16 @@ of ⌥.
 | ⇧⌘V | Paste as plain text |
 | ⇧⌘P | Pin or unpin |
 | ⌘S | Save now (notes also save on their own) |
+| ⌘B / ⌘I / ⇧⌘X | Bold / italic / strikethrough the selection; again takes it off. With nothing selected the markers go in and the caret between them |
+| ⌘E / ⌥⌘C | Inline code / code block |
+| ⇧⌘K | Link: the selection becomes the text and the address is selected |
+| ⌥⌘1 to ⌥⌘6 | Heading 1 to 6 on the line (again takes it off) |
+| ⌥⌘9 / ⌥⌘8 / ⌥⌘7 | Task / bulleted / numbered list on every selected line (again takes it off) |
+| ⇧⌘. | Quote the selected lines |
 | ⌘, | Settings, inside the window; Escape goes back to the notes |
+
+The formatting shortcuts work in the note's text, not in the title or a search box, and in Vim mode only
+in Insert mode. They are in Note › Format and in the toolbar's tooltips.
 
 ### Command line
 
