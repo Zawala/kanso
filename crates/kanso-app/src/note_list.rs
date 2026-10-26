@@ -17,6 +17,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{Field, NoteStatus, Query};
+use kanso_engine::list;
 use kanso_store::{NoteSummary, Sort};
 
 use crate::clock::Clock;
@@ -279,19 +280,13 @@ impl NoteList {
         // Recent is always newest first by edit time, whatever the sort, and
         // pinned notes stay among the days. A list of pinned notes only
         // groups by date too.
-        let recent = library.filter == Filter::Recent;
-        let group_pinned = !recent && library.filter != Filter::Pinned && !library.pinned_only;
-        let sort = if recent {
-            Sort::UpdatedAt
-        } else {
-            library.sort
-        };
+        let shape = list::shape(&library.filter, library.pinned_only, library.sort);
+        let (sort, group_pinned) = (shape.sort, shape.group_pinned);
         let key = (library.notes_version, sort, group_pinned);
         if self.layout.key == Some(key) {
             return;
         }
-        let by_date = matches!(sort, Sort::UpdatedAt | Sort::CreatedAt);
-        let created = sort == Sort::CreatedAt;
+        let created = shape.date == list::DateKey::Created;
         let grouped = group_rows(
             library.notes.iter().map(|note| RowKey {
                 pinned: group_pinned && note.pinned,
@@ -302,7 +297,7 @@ impl NoteList {
                 },
             }),
             |at| day_of(Clock::local_ms(cx, at)),
-            by_date,
+            shape.by_date,
         );
         self.layout = ListLayout {
             key: Some(key),
