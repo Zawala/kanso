@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.gradle.api.provider.ValueSource
 import org.gradle.api.provider.ValueSourceParameters
 
@@ -38,6 +39,21 @@ abstract class RustlsVersion : ValueSource<String, RustlsVersion.Params> {
     }
 }
 
+/**
+ * The upload key of the Play release, from android/key.properties (never
+ * committed: .gitignore lists it). CI writes the file from the release
+ * environment's secrets just before the build (docs/RELEASING-MOBILE.md); a
+ * checkout without one signs release builds with the debug key, so
+ * `flutter run --release` works for everyone.
+ */
+val uploadKeyFile = rootProject.file("key.properties")
+val uploadKey =
+    Properties().apply {
+        if (uploadKeyFile.exists()) {
+            uploadKeyFile.inputStream().use { load(it) }
+        }
+    }
+
 val rustlsPlatformVerifierVersion =
     providers.of(RustlsVersion::class.java) {
         // mobile/android/app -> the repository's Cargo.lock.
@@ -76,6 +92,22 @@ android {
         unitTests.all { it.useTestNG() }
     }
 
+    signingConfigs {
+        if (uploadKeyFile.exists()) {
+            create("upload") {
+                // A key.properties that is missing a line fails here, by name,
+                // rather than signing with the wrong key.
+                fun line(name: String) =
+                    uploadKey.getProperty(name)
+                        ?: error("${uploadKeyFile.path} has no $name")
+                keyAlias = line("keyAlias")
+                keyPassword = line("keyPassword")
+                storeFile = file(line("storeFile"))
+                storePassword = line("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             // Shrinking removes what it can't see is used; the rules keep
@@ -86,9 +118,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                signingConfigs.findByName("upload") ?: signingConfigs.getByName("debug")
         }
     }
 }

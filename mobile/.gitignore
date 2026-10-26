@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Pictures for the store listings, made by scripts/mobile-store-screenshots.sh.
+/store/screenshots/

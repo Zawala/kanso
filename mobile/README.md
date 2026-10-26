@@ -62,6 +62,13 @@ opens its library at `kanso/library.db` in the application support folder
 (`lib/core/configs/core_module.dart`); the background sync opens the same file.
 `preferences.json` sits beside it (see below).
 
+## Release
+
+The release builds, signing, TestFlight and Play uploads, Shorebird patches and the store
+text are in [docs/RELEASING-MOBILE.md](../docs/RELEASING-MOBILE.md) and `store/`. The version
+of a release comes from the root `Cargo.toml`, not from `pubspec.yaml`'s `version:`, which is
+only for local runs.
+
 ## Check
 
 ```sh

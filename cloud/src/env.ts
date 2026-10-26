@@ -49,4 +49,15 @@ export interface Env {
 	GOOGLE_CLIENT_SECRET?: string;
 	/** GitHub's OAuth App. GitHub uses the device flow only (an owner decision), which needs no client secret. */
 	GITHUB_CLIENT_ID?: string;
+	/**
+	 * Push notifications, APNs (token auth): the `.p8` key (PKCS#8 PEM; `wrangler secret put APNS_KEY_P8`), its
+	 * key ID and the team (both secrets or vars), and the app's bundle ID as the topic (a plain var). Without
+	 * all four, devices' APNs tokens are stored and no APNs push is sent.
+	 */
+	APNS_KEY_P8?: string;
+	APNS_KEY_ID?: string;
+	APNS_TEAM_ID?: string;
+	APNS_TOPIC?: string;
+	/** Push notifications, FCM (HTTP v1): the service account's JSON key; `wrangler secret put FCM_SERVICE_ACCOUNT`. Without it, Android tokens are stored and no FCM push is sent. */
+	FCM_SERVICE_ACCOUNT?: string;
 }

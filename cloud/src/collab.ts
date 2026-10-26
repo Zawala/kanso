@@ -31,6 +31,7 @@ import { badRequest, constraint, error, json, notFound, rateLimited, readBody, r
 import { identityOf, isB64 } from "./identity";
 import { BINDING_PERIOD_MS, accountKey, clientIp, count, ipGroup } from "./limits";
 import { DAY, base64url, fromBase64url, isAccountId, isObject, isSha256Hex, natParam, proof32 } from "./protocol";
+import { wakeShare } from "./push";
 import { type NoteRoom, ROOM_HEADERS, type RoomRefusal } from "./room";
 import { isShareId } from "./shares";
 import { PUBLIC_HEADERS } from "./viewer";
@@ -732,7 +733,9 @@ export function appendLog(shareId: string): Handler {
 		const header = checkEnvelope(bytes, ["u", "c"], s, session);
 		if (header instanceof Response) return header;
 		const result = await roomOf(env, shareId).append({ epoch: s.epoch, envelope: bytes, now });
-		return result.ok ? json({ seq: result.seq }) : roomRefusal(result);
+		if (!result.ok) return roomRefusal(result);
+		await wakeShare(env, shareId, session, now);
+		return json({ seq: result.seq });
 	});
 }
 
