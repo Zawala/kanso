@@ -255,7 +255,7 @@
   "@errorSignedOutTitle": {
     "description": "The title of the card shown when the session ended."
   },
-  "errorSignedOutMessage": "Your session on this phone ended. Sign in again to keep syncing; your notes stay here.",
+  "errorSignedOutMessage": "Your session on this device ended. Sign in again to keep syncing; your notes stay here.",
   "@errorSignedOutMessage": {
     "description": "Says what happened and that no notes are lost."
   },
@@ -448,7 +448,7 @@
   "@libraryFailedTitle": {
     "description": "The title of the card shown when the notebooks and tags could not be read."
   },
-  "libraryFailedMessage": "Something went wrong reading the notebooks and tags on this phone. Try again.",
+  "libraryFailedMessage": "Something went wrong reading the notebooks and tags on this device. Try again.",
   "@libraryFailedMessage": {
     "description": "The message of the card shown when the notebooks and tags could not be read."
   },
@@ -480,7 +480,7 @@
   "@noteListFailedTitle": {
     "description": "The title of the card shown when a list of notes could not be read."
   },
-  "noteListFailedMessage": "Something went wrong reading the notes on this phone. Try again.",
+  "noteListFailedMessage": "Something went wrong reading the notes on this device. Try again.",
   "@noteListFailedMessage": {
     "description": "The message of the card shown when a list of notes could not be read."
   },
@@ -647,7 +647,7 @@
   "@noteNotFoundTitle": {
     "description": "The title shown when a note that was asked for does not exist."
   },
-  "noteNotFoundMessage": "It may have been deleted, or it hasn't reached this phone yet.",
+  "noteNotFoundMessage": "It may have been deleted, or it hasn't reached this device yet.",
   "@noteNotFoundMessage": {
     "description": "What the screen of a note that is not there says."
   },
@@ -655,7 +655,7 @@
   "@noteFailedTitle": {
     "description": "The title of the card shown when a note could not be read."
   },
-  "noteFailedMessage": "Something went wrong reading the note on this phone. Try again.",
+  "noteFailedMessage": "Something went wrong reading the note on this device. Try again.",
   "@noteFailedMessage": {
     "description": "The message of the card shown when a note could not be read."
   },
@@ -704,7 +704,7 @@
   "@searchFailedTitle": {
     "description": "The title of the card shown when a search failed."
   },
-  "searchFailedMessage": "Something went wrong searching the notes on this phone. Try again.",
+  "searchFailedMessage": "Something went wrong searching the notes on this device. Try again.",
   "@searchFailedMessage": {
     "description": "The message of the card shown when a search failed."
   },
@@ -748,7 +748,7 @@
   "@settingsSyncAttention": {
     "description": "The state of sync when it could not finish."
   },
-  "settingsSyncBackupFooter": "The notes on this phone aren’t included in device backups.",
+  "settingsSyncBackupFooter": "The notes on this device aren’t included in device backups.",
   "@settingsSyncBackupFooter": {
     "description": "Says under Sync that device backups do not hold the notes."
   },
@@ -817,11 +817,11 @@
   "@themesLoading": {
     "description": "Says to a screen reader that the themes are being read."
   },
-  "backupNoticeTitle": "Notes stay on this phone",
+  "backupNoticeTitle": "Notes stay on this device",
   "@backupNoticeTitle": {
     "description": "The title of the card that says the notes are not in device backups."
   },
-  "backupNoticeMessage": "The notes on this phone aren’t included in device backups, so losing or resetting the phone takes them with it.",
+  "backupNoticeMessage": "The notes on this device aren’t included in device backups, so losing or resetting the device takes them with it.",
   "@backupNoticeMessage": {
     "description": "Says that device backups do not hold the notes."
   },

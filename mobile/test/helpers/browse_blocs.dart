@@ -86,9 +86,12 @@ class BrowseBlocs {
     final account = syncRepository ?? FixtureSyncRepository();
     final sync = SyncStatusBloc(account)..add(const SyncStatusEvent.started());
     closeBlocLater(sync);
-    await index.stream.firstWhere(
-      (state) => state.status != LibraryIndexStatus.loading,
-    );
+    // A library held back (see `notebooksGate`) is still loading.
+    if (fixture.notebooksGate == null) {
+      await index.stream.firstWhere(
+        (state) => state.status != LibraryIndexStatus.loading,
+      );
+    }
     if (sync.state.status == null) {
       await sync.stream.firstWhere((state) => state.status != null);
     }

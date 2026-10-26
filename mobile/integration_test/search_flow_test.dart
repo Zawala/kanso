@@ -31,10 +31,9 @@ void main() {
     final semantics = tester.ensureSemantics();
     await startApp(tester);
     await seedLibrary();
-    await pumpUntil(tester, find.text('Weekly review'));
+    await pumpUntil(tester, inList('Weekly review'));
 
-    await tester.tap(find.bySemanticsLabel('Search'));
-    await tester.pumpAndSettle();
+    await openSearch(tester);
     await tester.enterText(find.byType(KansoSearchInput), 'garden');
     await pumpUntil(tester, tile('Garden beds'));
 
