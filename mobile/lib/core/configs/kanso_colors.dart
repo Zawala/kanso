@@ -169,6 +169,56 @@ class KansoColors extends ThemeExtension<KansoColors> {
   /// The `danger` token.
   final Color danger;
 
+  /// Every colour, in the order of the fields: what equality and the hash
+  /// are made of.
+  List<Color> get values => <Color>[
+    app,
+    sidebar,
+    list,
+    editor,
+    elevated,
+    fill,
+    text,
+    textSecondary,
+    textMuted,
+    divider,
+    accent,
+    link,
+    rowActive,
+    rowHover,
+    sidebarActive,
+    sidebarHover,
+    hover,
+    selected,
+    activeLine,
+    button,
+    buttonText,
+    success,
+    warning,
+    danger,
+  ];
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    if (other is! KansoColors) {
+      return false;
+    }
+    final mine = values;
+    final theirs = other.values;
+    for (var i = 0; i < mine.length; i++) {
+      if (mine[i] != theirs[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(values);
+
   @override
   KansoColors copyWith({
     Color? app,
