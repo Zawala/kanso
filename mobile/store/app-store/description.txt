@@ -1,0 +1,31 @@
+Kanso is a quiet place for everything you write down.
+
+Your notes are Markdown, and they live on your phone. Open the app and write: nothing to sign in to, nothing to set up. When you want them on your other devices, turn on sync. Each note is sealed on the device before it leaves, so the server holds only ciphertext and a few counts, never anything it could read.
+
+WRITE
+- A Markdown editor that stays out of the way. Headings, lists, tasks and code are styled as you type, and lists carry on when you press Return.
+- A bar above the keyboard for the marks you reach for most: headings, lists, tasks, bold, links, wiki-links, indent and undo.
+- Preview any note as a finished page, with math and diagrams drawn in your theme.
+- Use your keyboard's dictation, autocorrect and spell check as you do everywhere else.
+
+FIND
+- Notebooks, nested tags, pinned notes and recent notes in one library.
+- Search that shows where each word matched, in titles and in text.
+- Link notes with [[wiki-links]] and see what links back.
+
+KEEP SOME THINGS SHUT
+- Lock a note with a password. Its text is sealed on the device, and opens with Face ID or Touch ID, or the password.
+- Locked notes close again when you leave the app, and the app switcher shows a cover, not your words.
+
+SYNC, ONLY IF YOU WANT IT
+- End-to-end encrypted sync with your Mac, Windows and Linux computers, and your other phones and tablets.
+- New devices are approved from one you already trust, or with your recovery key.
+- Sign in with a username and password, a passkey, or Apple, Google or GitHub.
+- Notes are kept out of iCloud and device backups on purpose: a backup is one more place your notes would live.
+
+ONE LOOK, EVERYWHERE
+- The same design on iPhone, iPad and Android, with Kanso's own themes, light and dark.
+- Three panes on iPad, and a hardware keyboard with the shortcuts you know from the desktop.
+- Add a note from anywhere with the share sheet, and open the right note from a widget.
+
+Kanso is free, open-source software. There are no ads, no trackers and no analytics. The source is at github.com/iamngoni/kanso.

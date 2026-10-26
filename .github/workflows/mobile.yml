@@ -89,6 +89,13 @@ jobs:
       # The settings that live in two places are the same in both.
       - name: Mobile profile and toolchain match
         run: ../scripts/mobile-parity.sh
+      # The release pipeline's inputs (docs/RELEASING-MOBILE.md): the version
+      # script, the store listing text and the plists the release reads.
+      - name: Release inputs
+        run: |
+          ../scripts/test-mobile-version.sh
+          ../scripts/mobile-store-check.sh
+          plutil -lint ios/ExportOptions.plist ios/Runner/PrivacyInfo.xcprivacy ios/Runner/Info.plist ios/Runner.xcodeproj/project.pbxproj
       # The bridge generator, built once per version.
       - name: Cache flutter_rust_bridge_codegen
         id: frb

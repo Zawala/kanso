@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Sync and the sync server check reach the network in release builds
+         too; the debug and profile manifests only add it for development. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- The notes stay on this phone: no cloud backup, no device transfer.
          allowBackup covers the older versions, fullBackupContent Android
          6 to 11 and dataExtractionRules Android 12 and later (allowBackup
