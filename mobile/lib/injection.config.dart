@@ -48,6 +48,9 @@ import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
 import 'editor/models/repos/abs/editor_repository.dart' as _i979;
 import 'editor/models/repos/impl/rust_editor_repository.dart' as _i606;
+import 'editor/state/editor/editor_bloc.dart' as _i964;
+import 'note/models/repos/abs/note_place_repository.dart' as _i930;
+import 'note/models/repos/impl/memory_note_place_repository.dart' as _i503;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 import 'search/state/search/search_bloc.dart' as _i696;
@@ -74,6 +77,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
     gh.lazySingleton<_i984.DiagnosticsRepository>(
       () => _i1062.RustDiagnosticsRepository(),
+    );
+    gh.lazySingleton<_i930.NotePlaceRepository>(
+      () => _i503.MemoryNotePlaceRepository(),
     );
     gh.lazySingleton<_i1056.HapticsRepository>(
       () => _i438.FlutterHapticsRepository(),
@@ -148,6 +154,13 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i38.LibraryRepository>(
       () => _i152.RustLibraryRepository(gh<_i455.KansoLibrary>()),
     );
+    gh.factory<_i618.NoteBloc>(
+      () => _i618.NoteBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i732.RendererRepository>(),
+        gh<_i930.NotePlaceRepository>(),
+      ),
+    );
     gh.lazySingleton<_i979.EditorRepository>(
       () => _i606.RustEditorRepository(gh<_i455.KansoLibrary>()),
     );
@@ -163,17 +176,14 @@ extension GetItInjectableX on _i174.GetIt {
     gh.factory<_i696.SearchBloc>(
       () => _i696.SearchBloc(gh<_i38.LibraryRepository>()),
     );
+    gh.factory<_i964.EditorBloc>(
+      () => _i964.EditorBloc(gh<_i979.EditorRepository>()),
+    );
     gh.factory<_i351.NoteListBloc>(
       () => _i351.NoteListBloc(
         gh<_i38.LibraryRepository>(),
         gh<_i384.PreferencesRepository>(),
         gh<_i1056.HapticsRepository>(),
-      ),
-    );
-    gh.factory<_i618.NoteBloc>(
-      () => _i618.NoteBloc(
-        gh<_i38.LibraryRepository>(),
-        gh<_i732.RendererRepository>(),
       ),
     );
     gh.lazySingleton<_i601.SyncRepository>(

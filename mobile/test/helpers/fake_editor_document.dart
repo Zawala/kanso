@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:dartz/dartz.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
+import 'package:kanso/core/utils/cancelable_stream.dart';
 import 'package:kanso/editor/models/repos/abs/editor_repository.dart';
 
 /// An [EditorDocument] with no core behind it: a text in memory, the calls
@@ -36,6 +37,17 @@ class FakeEditorDocument implements EditorDocument {
 
   /// What every call fails with while it is set.
   ApplicationError? failAll;
+
+  /// What the named calls (`flush`, `keepMine`, `useTheirs`, `close`,
+  /// `completion`, `setProperty`, `removeProperty`, `snapshot`) fail with.
+  final Map<String, ApplicationError> failures = <String, ApplicationError>{};
+
+  /// What the next completion is, once, for a test that changes it between
+  /// calls.
+  Future<Completion?> Function()? completionBuilder;
+
+  /// Whether `events()` was listened to, and still is.
+  bool get listening => events_.hasListener;
 
   /// The version the next batch of colours says it is for.
   int? batchVersion;
@@ -69,10 +81,16 @@ class FakeEditorDocument implements EditorDocument {
   Either<ApplicationError, T> failure<T>() =>
       Left<ApplicationError, T>(failAll!);
 
+  /// The failure of the call [name], if one is set.
+  Either<ApplicationError, T>? failed<T>(String name) {
+    final error = failures[name] ?? failAll;
+    return error == null ? null : Left<ApplicationError, T>(error);
+  }
+
   @override
   Future<Either<ApplicationError, EditorSnapshot>> snapshot() async {
     calls.add('snapshot');
-    return failAll != null ? failure() : Right(current);
+    return failed<EditorSnapshot>('snapshot') ?? Right(current);
   }
 
   @override
@@ -179,7 +197,11 @@ class FakeEditorDocument implements EditorDocument {
   @override
   Future<Either<ApplicationError, Completion?>> completion() async {
     calls.add('completion');
-    return failAll != null ? failure() : Right(offered);
+    final build = completionBuilder;
+    if (build != null) {
+      return Right(await build());
+    }
+    return failed<Completion?>('completion') ?? Right(offered);
   }
 
   @override
@@ -195,7 +217,7 @@ class FakeEditorDocument implements EditorDocument {
     int? index,
   }) async {
     calls.add('setProperty $index $key $value');
-    return failAll != null ? failure() : Right(properties);
+    return failed<List<Property>>('setProperty') ?? Right(properties);
   }
 
   @override
@@ -203,33 +225,33 @@ class FakeEditorDocument implements EditorDocument {
     int index,
   ) async {
     calls.add('removeProperty $index');
-    return failAll != null ? failure() : Right(properties);
+    return failed<List<Property>>('removeProperty') ?? Right(properties);
   }
 
   @override
   Future<Either<ApplicationError, SaveState>> flush() async {
     calls.add('flush');
-    return failAll != null ? failure() : Right(save);
+    return failed<SaveState>('flush') ?? Right(save);
   }
 
   @override
   Future<Either<ApplicationError, SaveState>> keepMine() async {
     calls.add('keepMine');
-    return failAll != null ? failure() : Right(save);
+    return failed<SaveState>('keepMine') ?? Right(save);
   }
 
   @override
   Future<Either<ApplicationError, EditorSnapshot>> useTheirs() async {
     calls.add('useTheirs');
-    return failAll != null ? failure() : Right(current);
+    return failed<EditorSnapshot>('useTheirs') ?? Right(current);
   }
 
   @override
   Future<Either<ApplicationError, SaveState>> close() async {
     calls.add('close');
-    return failAll != null ? failure() : Right(save);
+    return failed<SaveState>('close') ?? Right(save);
   }
 
   @override
-  Stream<EditorEvent> events() => events_.stream;
+  Stream<EditorEvent> events() => cancelableStream(events_.stream);
 }

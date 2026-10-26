@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart' show addTearDown;
 import 'package:kanso/injection.dart';
+import 'package:kanso/note/models/repos/impl/memory_note_place_repository.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
@@ -38,7 +39,11 @@ void registerPageBlocs(
     getIt.unregister<NoteBloc>();
   }
   getIt.registerFactory<NoteBloc>(
-    () => NoteBloc(library, renderer ?? FixtureRendererRepository()),
+    () => NoteBloc(
+      library,
+      renderer ?? FixtureRendererRepository(),
+      MemoryNotePlaceRepository(),
+    ),
   );
   if (getIt.isRegistered<SearchBloc>()) {
     getIt.unregister<SearchBloc>();

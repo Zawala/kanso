@@ -403,6 +403,42 @@
   "@textSizeLarger": {
     "description": "The largest text size."
   },
+  "editorTitleHint": "Title",
+  "@editorTitleHint": {
+    "description": "What the empty title field of a note being edited says."
+  },
+  "editorChangedMessage": "This note was changed elsewhere while you were editing. The version you don't keep stays in its history.",
+  "@editorChangedMessage": {
+    "description": "Says a note was changed elsewhere while it was being edited."
+  },
+  "editorKeepMine": "Keep mine",
+  "@editorKeepMine": {
+    "description": "Keeps the text typed here over a change made elsewhere."
+  },
+  "editorUseTheirs": "Use theirs",
+  "@editorUseTheirs": {
+    "description": "Takes a change made elsewhere over the text typed here."
+  },
+  "editorDeletedMessage": "This note was deleted elsewhere while you were editing.",
+  "@editorDeletedMessage": {
+    "description": "Says a note was deleted elsewhere while it was being edited."
+  },
+  "editorKeepIt": "Keep it",
+  "@editorKeepIt": {
+    "description": "Keeps a note that was deleted elsewhere, by saving it again."
+  },
+  "editorDiscard": "Discard",
+  "@editorDiscard": {
+    "description": "Lets go of a note that was deleted elsewhere."
+  },
+  "editorSaveFailed": "Your changes aren't saved yet.",
+  "@editorSaveFailed": {
+    "description": "Says that saving a note failed."
+  },
+  "editorOpeningLabel": "Opening the note",
+  "@editorOpeningLabel": {
+    "description": "What a screen reader says while a note is opened for editing."
+  },
   "noteModeLabel": "View mode",
   "@noteModeLabel": {
     "description": "Names the switch between a rendered note and its text."

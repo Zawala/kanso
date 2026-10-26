@@ -322,6 +322,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get textSizeLarger => 'Larger';
 
   @override
+  String get editorTitleHint => 'Title';
+
+  @override
+  String get editorChangedMessage =>
+      'This note was changed elsewhere while you were editing. The version you don\'t keep stays in its history.';
+
+  @override
+  String get editorKeepMine => 'Keep mine';
+
+  @override
+  String get editorUseTheirs => 'Use theirs';
+
+  @override
+  String get editorDeletedMessage =>
+      'This note was deleted elsewhere while you were editing.';
+
+  @override
+  String get editorKeepIt => 'Keep it';
+
+  @override
+  String get editorDiscard => 'Discard';
+
+  @override
+  String get editorSaveFailed => 'Your changes aren\'t saved yet.';
+
+  @override
+  String get editorOpeningLabel => 'Opening the note';
+
+  @override
   String get noteModeLabel => 'View mode';
 
   @override

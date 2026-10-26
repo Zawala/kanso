@@ -676,6 +676,60 @@ abstract class AppLocalizations {
   /// **'Larger'**
   String get textSizeLarger;
 
+  /// What the empty title field of a note being edited says.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get editorTitleHint;
+
+  /// Says a note was changed elsewhere while it was being edited.
+  ///
+  /// In en, this message translates to:
+  /// **'This note was changed elsewhere while you were editing. The version you don\'t keep stays in its history.'**
+  String get editorChangedMessage;
+
+  /// Keeps the text typed here over a change made elsewhere.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep mine'**
+  String get editorKeepMine;
+
+  /// Takes a change made elsewhere over the text typed here.
+  ///
+  /// In en, this message translates to:
+  /// **'Use theirs'**
+  String get editorUseTheirs;
+
+  /// Says a note was deleted elsewhere while it was being edited.
+  ///
+  /// In en, this message translates to:
+  /// **'This note was deleted elsewhere while you were editing.'**
+  String get editorDeletedMessage;
+
+  /// Keeps a note that was deleted elsewhere, by saving it again.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep it'**
+  String get editorKeepIt;
+
+  /// Lets go of a note that was deleted elsewhere.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get editorDiscard;
+
+  /// Says that saving a note failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Your changes aren\'t saved yet.'**
+  String get editorSaveFailed;
+
+  /// What a screen reader says while a note is opened for editing.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening the note'**
+  String get editorOpeningLabel;
+
   /// Names the switch between a rendered note and its text.
   ///
   /// In en, this message translates to:
