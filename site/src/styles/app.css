@@ -39,6 +39,16 @@
   --warn: #8a6424;
   --bad: #a6493f;
   --dot: #d4613f;
+  /* Syntax highlighting in code blocks. */
+  --tok-keyword: #8a4f7d;
+  --tok-string: #55704a;
+  --tok-number: #9c5f2a;
+  --tok-comment: #857c6e;
+  --tok-title: #3f6586;
+  --tok-type: #2d7673;
+  --tok-attr: #8a6424;
+  --tok-builtin: #a24f48;
+  --tok-punct: #70695d;
   --window-shadow: 0 0 0 1px rgb(38 36 31 / 0.09), 0 2px 4px rgb(38 36 31 / 0.04), 0 24px 48px -16px rgb(38 36 31 / 0.18),
     0 64px 120px -48px rgb(38 36 31 / 0.22);
 }
@@ -73,6 +83,15 @@
     --warn: #c49a5a;
     --bad: #c96e63;
     --dot: #e0714d;
+    --tok-keyword: #c49bc9;
+    --tok-string: #a9bc98;
+    --tok-number: #d6a56c;
+    --tok-comment: #8a8678;
+    --tok-title: #8fb0d6;
+    --tok-type: #7fc1bb;
+    --tok-attr: #c9b27a;
+    --tok-builtin: #d99a92;
+    --tok-punct: #a09b8f;
     --window-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 2px 4px rgb(0 0 0 / 0.3), 0 24px 48px -16px rgb(0 0 0 / 0.55),
       0 64px 120px -48px rgb(0 0 0 / 0.6);
   }
@@ -302,6 +321,42 @@
   }
   .tone-quote {
     color: var(--fg-2);
+  }
+
+  /* Code tokens, in the preview's code blocks and the editor's fences. */
+  .tok-keyword {
+    color: var(--tok-keyword);
+  }
+  .tok-string {
+    color: var(--tok-string);
+  }
+  .tok-number {
+    color: var(--tok-number);
+  }
+  .tok-comment {
+    color: var(--tok-comment);
+    font-style: italic;
+  }
+  .tok-title {
+    color: var(--tok-title);
+  }
+  .tok-type {
+    color: var(--tok-type);
+  }
+  .tok-attr {
+    color: var(--tok-attr);
+  }
+  .tok-builtin {
+    color: var(--tok-builtin);
+  }
+  .tok-punct {
+    color: var(--tok-punct);
+  }
+  .tok-add {
+    color: var(--ok);
+  }
+  .tok-del {
+    color: var(--bad);
   }
 }
 

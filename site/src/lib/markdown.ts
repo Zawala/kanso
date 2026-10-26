@@ -6,6 +6,8 @@
  * recognise is text.
  */
 
+import { isHighlighterReady, languageFor, tokenize } from "./codeHighlight";
+
 export type Inline =
   | { readonly t: "text"; readonly v: string }
   | { readonly t: "code"; readonly v: string }
@@ -244,6 +246,8 @@ export type Tone =
 export interface Span {
   readonly tone: Tone;
   readonly text: string;
+  /** Inside a fence with a known language: the code token's scope (see codeHighlight.ts). */
+  readonly scope?: string;
 }
 
 const SOURCE_TONES: Readonly<Record<Inline["t"], Tone>> = {
@@ -284,6 +288,20 @@ function inlineSpans(text: string, base: Tone): Span[] {
   return spans;
 }
 
+/** The lines of a fence's body as spans coloured as code; null when its language isn't one we colour (or isn't loaded yet). */
+function codeLines(body: string, lang: string): Span[][] | null {
+  if (languageFor(lang) === null || !isHighlighterReady()) return null;
+  const out: Span[][] = [[]];
+  for (const token of tokenize(body, lang)) {
+    token.text.split("\n").forEach((piece, n) => {
+      if (n > 0) out.push([]);
+      if (piece === "") return;
+      (out[out.length - 1] as Span[]).push(token.scope ? { tone: "plain", text: piece, scope: token.scope } : { tone: "plain", text: piece });
+    });
+  }
+  return out;
+}
+
 /**
  * The source, line by line, as coloured spans. Joining every span's text,
  * and the lines with newlines, gives back the source exactly.
@@ -291,15 +309,22 @@ function inlineSpans(text: string, base: Tone): Span[] {
 export function highlight(source: string): Span[][] {
   const lines = source.split("\n");
   let fenced: string | null = null;
-  return lines.map((line) => {
+  let body: Span[][] | null = null;
+  let bodyStart = 0;
+  return lines.map((line, index) => {
     const fence = FENCE.exec(line);
     if (fenced !== null) {
       const closes = closesFence(fence, fenced);
       if (closes) fenced = null;
+      else if (body?.[index - bodyStart]) return body[index - bodyStart] as Span[];
       return line ? [{ tone: closes ? "fence" : "code", text: line }] : [];
     }
     if (fence) {
       fenced = fence[1] as string;
+      let end = index + 1;
+      while (end < lines.length && !closesFence(FENCE.exec(lines[end] as string), fenced)) end++;
+      bodyStart = index + 1;
+      body = codeLines(lines.slice(bodyStart, end).join("\n"), fence[2] ?? "");
       return [{ tone: "fence", text: line }];
     }
     if (line === "") return [];
