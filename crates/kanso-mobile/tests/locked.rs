@@ -188,6 +188,8 @@ proptest! {
                     if is_closed(&locked, open, *i) {
                         prop_assert_eq!(&view.body, &None);
                         prop_assert!(view.lock.is_closed());
+                        prop_assert!(view.tags.is_empty());
+                        prop_assert_eq!(view.status.as_str(), "none");
                     } else {
                         // The other side: what may be read is read.
                         prop_assert!(view.body.as_deref().is_some_and(|b| b.contains(&marker(*i))));

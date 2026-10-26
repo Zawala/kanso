@@ -612,15 +612,22 @@ fn view(note: Note, state: LockView) -> NoteView {
         LockView::Open => LockState::Open,
         LockView::Closed(reason) => LockState::Closed { reason },
     };
+    // A closed note is its title and lock, as in the lists: its tags and
+    // status are its content too.
+    let closed = lock.is_closed();
     NoteView {
         id: note.id,
         rev: note.rev.unwrap_or_default(),
         title: note.title,
-        body: (!lock.is_closed()).then_some(note.body),
+        body: (!closed).then_some(note.body),
         lock,
         notebook_id: note.book_id,
-        tags: note.tags,
-        status: note.status.as_str().to_owned(),
+        tags: if closed { Vec::new() } else { note.tags },
+        status: if closed {
+            NoteStatus::None.as_str().to_owned()
+        } else {
+            note.status.as_str().to_owned()
+        },
         pinned: note.pinned,
         created_ms: note.created_at,
         updated_ms: note.updated_at,
