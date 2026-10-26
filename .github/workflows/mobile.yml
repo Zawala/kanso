@@ -89,6 +89,13 @@ jobs:
       # The settings that live in two places are the same in both.
       - name: Mobile profile and toolchain match
         run: ../scripts/mobile-parity.sh
+      # The release pipeline's inputs (docs/RELEASING-MOBILE.md): the version
+      # script, the store listing text and the plists the release reads.
+      - name: Release inputs
+        run: |
+          ../scripts/test-mobile-version.sh
+          ../scripts/mobile-store-check.sh
+          plutil -lint ios/ExportOptions.plist ios/Runner/PrivacyInfo.xcprivacy ios/Runner/Info.plist ios/Runner.xcodeproj/project.pbxproj
       # The bridge generator, built once per version.
       - name: Cache flutter_rust_bridge_codegen
         id: frb
@@ -227,12 +234,28 @@ jobs:
       - name: Size
         run: ../scripts/mobile-size.sh android --no-build | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # The integration tests in an iPhone simulator. macos-latest is Apple
+  # The integration tests in an iPhone simulator and in an iPad simulator,
+  # which lays the app out in two or three panes. macos-latest is Apple
   # silicon, which the arm64-only library needs; the simulator is the first
-  # iPhone the runner has.
+  # one of its kind the runner has (the first iPad is an iPad Pro or an Air,
+  # both 11 inch or larger). The iPad runs both orientations: the runner
+  # cannot turn a simulator, so a turn that the system ignores resizes the
+  # window the app is laid out in (see `turnDevice` in
+  # integration_test/helpers/flow_driver.dart).
   integration-ios:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: iPhone
+            orientation: portrait
+          - device: iPad
+            orientation: portrait
+          - device: iPad
+            orientation: landscape
+    name: integration-ios (${{ matrix.device }}, ${{ matrix.orientation }})
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -252,17 +275,20 @@ jobs:
           key: hooks-${{ runner.os }}-ios-sim-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mobile/rust/rust-toolchain.toml') }}
           restore-keys: hooks-${{ runner.os }}-ios-sim-
       - run: flutter pub get --enforce-lockfile
-      - name: Boot an iPhone simulator
+      - name: Boot a ${{ matrix.device }} simulator
+        env:
+          KIND: ${{ matrix.device }}
         run: |
           udid="$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
+          import json, os, sys
+          kind = os.environ["KIND"]
           runtimes = json.load(sys.stdin)["devices"]
           for runtime in sorted(runtimes, reverse=True):
               for device in runtimes[runtime]:
-                  if device["name"].startswith("iPhone"):
+                  if device["name"].startswith(kind):
                       print(device["udid"])
                       sys.exit(0)
-          sys.exit("no iPhone simulator is installed")
+          sys.exit("no " + kind + " simulator is installed")
           ')"
           echo "KANSO_IOS_SIM_UDID=$udid" >> "$GITHUB_ENV"
           # `bootstatus -b` boots a shut-down simulator and waits for it.
@@ -270,15 +296,20 @@ jobs:
       # Every call of the bridge, then the app's own flows: browsing,
       # searching, and opening links.
       - run: flutter test integration_test/facade_test.dart -d "$KANSO_IOS_SIM_UDID"
-      - run: flutter test integration_test/browse_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
-      - run: flutter test integration_test/search_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
-      - run: flutter test integration_test/open_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
+      - run: flutter test integration_test/browse_flow_test.dart -d "$KANSO_IOS_SIM_UDID" --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
+      - run: flutter test integration_test/search_flow_test.dart -d "$KANSO_IOS_SIM_UDID" --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
+      - run: flutter test integration_test/open_flow_test.dart -d "$KANSO_IOS_SIM_UDID" --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
       # Scrolling 2,000 notes. A simulator draws at 60 Hz in debug mode, so
       # this only proves the frame report is made; the limits apply in
       # profile mode, on a device (see mobile/README.md).
-      - run: flutter test integration_test/scroll_performance_test.dart -d "$KANSO_IOS_SIM_UDID"
+      - run: flutter test integration_test/scroll_performance_test.dart -d "$KANSO_IOS_SIM_UDID" --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
 
-  # The integration tests in an Android 10 (API 29) emulator. On Linux, not
+  # The integration tests in an Android 10 (API 29) phone emulator and in a
+  # Pixel Tablet emulator (Android 14, API 34), the tablet in both
+  # orientations: three panes turned one way, two the other. The emulator is
+  # turned with the system settings (no accelerometer, a fixed user rotation:
+  # a tablet's natural way round is landscape, so 0 is landscape for it and 1
+  # portrait), before the flows start. On Linux, not
   # a Mac: the Apple-silicon runners can't run an emulator (no nested
   # virtualisation) and the Linux ones can with KVM; the emulator is x86-64.
   # The facade suite reaches Kanso's default sync server over https, which
@@ -289,6 +320,26 @@ jobs:
   integration-android:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: phone
+            profile: pixel_6
+            api-level: 29
+            orientation: portrait
+            rotation: 0
+          - device: tablet
+            profile: pixel_tablet
+            api-level: 34
+            orientation: landscape
+            rotation: 0
+          - device: tablet
+            profile: pixel_tablet
+            api-level: 34
+            orientation: portrait
+            rotation: 1
+    name: integration-android (${{ matrix.device }}, ${{ matrix.orientation }})
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -320,18 +371,21 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          api-level: 29
+          api-level: ${{ matrix.api-level }}
           arch: x86_64
           target: default
+          profile: ${{ matrix.profile }}
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
           working-directory: mobile
           # Each line runs as its own shell command.
           script: |
+            adb -s emulator-5554 shell settings put system accelerometer_rotation 0
+            adb -s emulator-5554 shell settings put system user_rotation ${{ matrix.rotation }}
             flutter test integration_test/facade_test.dart -d emulator-5554
-            flutter test integration_test/browse_flow_test.dart -d emulator-5554
-            flutter test integration_test/search_flow_test.dart -d emulator-5554
-            flutter test integration_test/open_flow_test.dart -d emulator-5554
-            flutter test integration_test/scroll_performance_test.dart -d emulator-5554
+            flutter test integration_test/browse_flow_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
+            flutter test integration_test/search_flow_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
+            flutter test integration_test/open_flow_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
+            flutter test integration_test/scroll_performance_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
             adb -s emulator-5554 install -r build/app/outputs/flutter-apk/app-debug.apk
             ../scripts/mobile-backup-check.sh emulator-5554

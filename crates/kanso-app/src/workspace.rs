@@ -189,6 +189,33 @@ pub fn bind_keys(cx: &mut App) {
     crate::settings::bind_keys(cx);
     crate::tabs::bind_keys(cx);
     crate::zoom::bind_keys(cx);
+    crate::editor::format_keys::bind_format_keys(cx);
+}
+
+/// The Format submenu of the Note menu: the formatting shortcuts, which act
+/// on the note's text while it has the keyboard.
+pub(crate) fn format_menu() -> Vec<MenuItem> {
+    use crate::editor::format_keys::*;
+    vec![
+        MenuItem::action("Bold", FormatBold),
+        MenuItem::action("Italic", FormatItalic),
+        MenuItem::action("Strikethrough", FormatStrikethrough),
+        MenuItem::action("Code", FormatCode),
+        MenuItem::action("Link", FormatLink),
+        MenuItem::separator(),
+        MenuItem::action("Heading 1", FormatHeading1),
+        MenuItem::action("Heading 2", FormatHeading2),
+        MenuItem::action("Heading 3", FormatHeading3),
+        MenuItem::action("Heading 4", FormatHeading4),
+        MenuItem::action("Heading 5", FormatHeading5),
+        MenuItem::action("Heading 6", FormatHeading6),
+        MenuItem::separator(),
+        MenuItem::action("Task", FormatTask),
+        MenuItem::action("Bulleted List", FormatBulleted),
+        MenuItem::action("Numbered List", FormatNumbered),
+        MenuItem::action("Quote", FormatQuote),
+        MenuItem::action("Code Block", FormatCodeBlock),
+    ]
 }
 
 /// The View menu. Ask Your Notes is there only while AI is on: until then
@@ -282,6 +309,8 @@ pub fn set_menus(cx: &mut App) {
                 concat!("Stop Using ", crate::touch_id::unlock_name!()),
                 crate::locked::TurnOffTouchId,
             ),
+            MenuItem::separator(),
+            MenuItem::submenu(Menu::new("Format").items(format_menu())),
             MenuItem::separator(),
             MenuItem::action("Next Note", NextNote),
             MenuItem::action("Previous Note", PreviousNote),

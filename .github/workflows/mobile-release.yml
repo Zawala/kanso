@@ -1,0 +1,534 @@
+name: Mobile release
+
+# Builds the signed iPhone/iPad app and the Android App Bundle of a Kanso
+# release and sends them to testers: TestFlight and Play internal testing.
+# docs/RELEASING-MOBILE.md has the whole flow and every secret.
+#
+#   - A `v*` tag (the desktop release's tag, scripts/release.sh) builds both
+#     apps at that version and uploads them.
+#   - Run by hand on master, it does the same for the version Cargo.toml says
+#     (a build for testers before the release). Run by hand on any other
+#     branch it only builds and checks, with nothing signed or uploaded.
+#   - Run by hand on master with `action: shorebird-patch`, it ships a Dart-only
+#     fix to an existing release over the air (Shorebird), signed with Kanso's
+#     patch key, to the staging track unless told otherwise.
+#
+# Everything that needs an account, key or paid action is gated on a secret
+# of the `mobile-release` or `mobile-patch` environment. A step whose secrets
+# are missing says so in the log and is skipped, so this workflow is green
+# without any of them and does more as each one is added. Without the Apple
+# secrets, the iOS job still builds the unsigned archive and checks the
+# library in it; without the Android ones, the Android job signs with a
+# throwaway key made in the run (never uploaded) to check the same steps.
+#
+# The version is Cargo.toml's (one source of truth, scripts/mobile-version.sh);
+# the build number is this workflow's run number, which only grows.
+#
+# Every action is pinned to a commit. Signing material is only ever written
+# under $RUNNER_TEMP or ~/.appstoreconnect, in the job that uses it, and removed
+# at the end; nothing here prints a secret.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do"
+        type: choice
+        options:
+          - build
+          - shorebird-patch
+        default: build
+      release_version:
+        description: "shorebird-patch only: the release to patch, as Shorebird names it (for example 0.9.0+57)"
+        type: string
+        required: false
+      stage:
+        description: "shorebird-patch only: put the patch on the staging track (promote it later) instead of live"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# One run per ref; a release is never cancelled half way.
+concurrency:
+  group: mobile-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # The Flutter release the app is built with: the same as mobile.yml's.
+  # Bump it there and here together.
+  FLUTTER_VERSION: "3.44.8"
+
+defaults:
+  run:
+    shell: bash
+    working-directory: mobile
+
+jobs:
+  # The version and build number, from nothing but the checkout and the run.
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.version.outputs.name }}
+      number: ${{ steps.version.outputs.number }}
+      # Builds that come from a tag or from master may be uploaded; any other
+      # branch is built and checked only.
+      upload: ${{ steps.version.outputs.upload }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Store listing text is within the stores' limits
+        working-directory: .
+        run: scripts/mobile-store-check.sh
+      - name: Version
+        id: version
+        working-directory: .
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          REF: ${{ github.ref }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          scripts/test-mobile-version.sh
+          tag_args=()
+          if [ "$REF_TYPE" = tag ]; then tag_args=(--tag "$REF_NAME"); fi
+          scripts/mobile-version.sh "${tag_args[@]}" --build-number "$RUN_NUMBER" | tee -a "$GITHUB_OUTPUT"
+          if [ "$REF_TYPE" = tag ] || [ "$REF" = refs/heads/master ]; then
+            echo "upload=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "upload=false" >>"$GITHUB_OUTPUT"
+            echo "::notice::$REF is neither master nor a tag: building and checking only, nothing is signed or uploaded."
+          fi
+
+  # The iPhone and iPad app: archive, sign, check, upload to TestFlight.
+  ios:
+    name: iOS
+    needs: version
+    if: github.event_name != 'workflow_dispatch' || inputs.action == 'build'
+    runs-on: macos-latest
+    # The Apple and Shorebird secrets are in the `mobile-release` environment
+    # (tags and master only); every other branch gets none.
+    environment: ${{ needs.version.outputs.upload == 'true' && 'mobile-release' || '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: true
+          persist-credentials: false
+      # Installs the toolchain pinned in rust-toolchain.toml.
+      - run: ../scripts/ci-rust.sh
+      - run: rustup target add aarch64-apple-ios
+        working-directory: .
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Cache the library build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: mobile/.dart_tool/hooks_runner
+          key: hooks-${{ runner.os }}-ios-release-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mobile/rust/rust-toolchain.toml') }}
+          restore-keys: hooks-${{ runner.os }}-ios-release-
+      - run: flutter pub get --enforce-lockfile
+
+      # Which of this job's optional steps have what they need. Only names go
+      # to the outputs, never values.
+      - name: Which secrets are set
+        id: have
+        env:
+          ASC_KEY: ${{ secrets.IOS_ASC_API_KEY_P8_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.IOS_ASC_API_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.IOS_ASC_API_ISSUER_ID }}
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          SHOREBIRD_PUBLIC_KEY: ${{ secrets.SHOREBIRD_PATCH_PUBLIC_KEY }}
+          UPLOAD: ${{ needs.version.outputs.upload }}
+        run: |
+          if [ -n "$ASC_KEY" ] && [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER" ]; then
+            echo "asc=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "asc=false" >>"$GITHUB_OUTPUT"
+            echo "::notice::No App Store Connect API key (IOS_ASC_API_KEY_P8_BASE64, IOS_ASC_API_KEY_ID, IOS_ASC_API_ISSUER_ID): the archive is built and checked, but not signed or sent to TestFlight."
+          fi
+          if [ -n "$SHOREBIRD_TOKEN" ] && [ -n "$SHOREBIRD_PUBLIC_KEY" ] && [ -f shorebird.yaml ]; then
+            echo "shorebird=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "shorebird=false" >>"$GITHUB_OUTPUT"
+            echo "::notice::Shorebird is not set up (needs SHOREBIRD_TOKEN, SHOREBIRD_PATCH_PUBLIC_KEY and mobile/shorebird.yaml): this is a plain Flutter build that can't be patched over the air."
+          fi
+
+      # The export compliance code App Store Connect gives once the owner's
+      # documentation is approved (docs/RELEASING-MOBILE.md); a repository
+      # or environment variable, not a secret.
+      - name: Export compliance code
+        env:
+          CODE: ${{ vars.IOS_EXPORT_COMPLIANCE_CODE }}
+        run: |
+          if [ -n "$CODE" ]; then
+            /usr/libexec/PlistBuddy -c "Add :ITSEncryptionExportComplianceCode string $CODE" ios/Runner/Info.plist
+            echo "Export compliance code added to Info.plist."
+          else
+            echo "::notice::No IOS_EXPORT_COMPLIANCE_CODE variable: App Store Connect asks the export compliance questions for each build until the owner's answer is approved."
+          fi
+
+      - uses: shorebirdtech/setup-shorebird@8b1059ddb56a926f0146edf4133cc647775c162f # v1.4.1
+        if: steps.have.outputs.shorebird == 'true'
+        with:
+          cache: true
+
+      # The archive, unsigned: Xcode signs it when it is exported, with the
+      # API key (below), so the runner holds no certificate or profile.
+      - name: Archive (Shorebird release)
+        if: steps.have.outputs.shorebird == 'true'
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          PUBLIC_KEY: ${{ secrets.SHOREBIRD_PATCH_PUBLIC_KEY }}
+          VERSION: ${{ needs.version.outputs.name }}
+          NUMBER: ${{ needs.version.outputs.number }}
+        run: |
+          printf '%s\n' "$PUBLIC_KEY" >"$RUNNER_TEMP/shorebird-public.pem"
+          shorebird release ios --no-codesign --flutter-version="$FLUTTER_VERSION" \
+            --public-key-path="$RUNNER_TEMP/shorebird-public.pem" \
+            -- --build-name="$VERSION" --build-number="$NUMBER"
+          rm -f "$RUNNER_TEMP/shorebird-public.pem"
+      - name: Archive
+        if: steps.have.outputs.shorebird != 'true'
+        env:
+          VERSION: ${{ needs.version.outputs.name }}
+          NUMBER: ${{ needs.version.outputs.number }}
+        run: flutter build ipa --release --no-codesign --build-name="$VERSION" --build-number="$NUMBER"
+
+      - name: The library is in the archive and exports what it must
+        run: ../scripts/mobile-artifact-check.sh ios build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app
+      - name: Version in the archive
+        env:
+          VERSION: ${{ needs.version.outputs.name }}
+          NUMBER: ${{ needs.version.outputs.number }}
+        run: |
+          app=build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app
+          [ "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Info.plist")" = "$VERSION" ]
+          [ "$(plutil -extract CFBundleVersion raw -o - "$app/Info.plist")" = "$NUMBER" ]
+          echo "The archive is $VERSION ($NUMBER)."
+
+      # Xcode creates or fetches the Apple Distribution certificate and the
+      # App Store profile through the API key (cloud signing), as the owner's
+      # team allows.
+      - name: Export the signed IPA
+        id: export
+        if: steps.have.outputs.asc == 'true' && needs.version.outputs.upload == 'true'
+        env:
+          KEY_P8: ${{ secrets.IOS_ASC_API_KEY_P8_BASE64 }}
+          KEY_ID: ${{ secrets.IOS_ASC_API_KEY_ID }}
+          ISSUER: ${{ secrets.IOS_ASC_API_ISSUER_ID }}
+        run: |
+          # altool looks for AuthKey_<id>.p8 here; xcodebuild takes the path.
+          key_dir="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$key_dir"
+          chmod 700 "$key_dir"
+          (umask 077 && printf '%s' "$KEY_P8" | base64 --decode >"$key_dir/AuthKey_$KEY_ID.p8")
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist ios/ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$key_dir/AuthKey_$KEY_ID.p8" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER"
+          ipas=(build/ios/ipa/*.ipa)
+          [ -f "${ipas[0]}" ] || { echo "::error::The export made no IPA."; exit 1; }
+          echo "ipa=${ipas[0]}" >>"$GITHUB_OUTPUT"
+      - name: Check the IPA
+        if: steps.export.outcome == 'success'
+        env:
+          IPA: ${{ steps.export.outputs.ipa }}
+          VERSION: ${{ needs.version.outputs.name }}
+          NUMBER: ${{ needs.version.outputs.number }}
+        run: ../scripts/mobile-release/ipa-check.sh "$IPA" "$VERSION" "$NUMBER"
+      - name: Keep the IPA
+        if: steps.export.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: kanso-ios-${{ needs.version.outputs.name }}-${{ needs.version.outputs.number }}
+          path: mobile/build/ios/ipa/*.ipa
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      # altool exits 0 on some failures (Xcode 26), so its output is read too.
+      - name: Upload to TestFlight
+        if: steps.export.outcome == 'success'
+        env:
+          IPA: ${{ steps.export.outputs.ipa }}
+          KEY_ID: ${{ secrets.IOS_ASC_API_KEY_ID }}
+          ISSUER: ${{ secrets.IOS_ASC_API_ISSUER_ID }}
+        run: |
+          log="$RUNNER_TEMP/altool.log"
+          status=0
+          xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$KEY_ID" --apiIssuer "$ISSUER" 2>&1 | tee "$log" || status=$?
+          if [ "$status" != 0 ] || grep -q 'ERROR' "$log"; then
+            echo "::error::The TestFlight upload failed; see the log above."
+            exit 1
+          fi
+          echo "Uploaded. It shows in TestFlight once App Store Connect has processed it." | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Remove the API key
+        if: always()
+        env:
+          KEY_ID: ${{ secrets.IOS_ASC_API_KEY_ID }}
+        run: |
+          if [ -n "$KEY_ID" ]; then rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_$KEY_ID.p8"; fi
+
+  # The Android app: a signed bundle, checked, kept and sent to Play's
+  # internal testing track.
+  android:
+    name: Android
+    needs: version
+    if: github.event_name != 'workflow_dispatch' || inputs.action == 'build'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.version.outputs.upload == 'true' && 'mobile-release' || '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: true
+          persist-credentials: false
+      - run: ../scripts/ci-rust.sh
+      # The targets the hook's cargo builds for (one per ABI).
+      - run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+        working-directory: .
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Cache the library build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: mobile/.dart_tool/hooks_runner
+          key: hooks-${{ runner.os }}-android-aab-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mobile/rust/rust-toolchain.toml') }}
+          restore-keys: hooks-${{ runner.os }}-android-aab-
+      - run: flutter pub get --enforce-lockfile
+
+      - name: Which secrets are set
+        id: have
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          SHOREBIRD_PUBLIC_KEY: ${{ secrets.SHOREBIRD_PATCH_PUBLIC_KEY }}
+          UPLOAD: ${{ needs.version.outputs.upload }}
+        run: |
+          if [ -n "$KEYSTORE" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ] && [ "$UPLOAD" = true ]; then
+            echo "key=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "key=false" >>"$GITHUB_OUTPUT"
+            echo "::notice::No upload key (ANDROID_UPLOAD_KEYSTORE_BASE64, ANDROID_UPLOAD_KEYSTORE_PASSWORD, ANDROID_UPLOAD_KEY_ALIAS, ANDROID_UPLOAD_KEY_PASSWORD): the bundle is signed with a throwaway key made in this run, to check the build; it is not kept or uploaded."
+          fi
+          if [ -n "$PLAY" ]; then
+            echo "play=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "play=false" >>"$GITHUB_OUTPUT"
+            echo "::notice::No PLAY_SERVICE_ACCOUNT_JSON: the bundle is not uploaded to Play."
+          fi
+          if [ -n "$SHOREBIRD_TOKEN" ] && [ -n "$SHOREBIRD_PUBLIC_KEY" ] && [ -f shorebird.yaml ]; then
+            echo "shorebird=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "shorebird=false" >>"$GITHUB_OUTPUT"
+            echo "::notice::Shorebird is not set up (needs SHOREBIRD_TOKEN, SHOREBIRD_PATCH_PUBLIC_KEY and mobile/shorebird.yaml): this is a plain Flutter build that can't be patched over the air."
+          fi
+
+      # android/key.properties is what app/build.gradle.kts signs with. It is
+      # git-ignored, and removed at the end of the job.
+      - name: Upload key
+        env:
+          REAL: ${{ steps.have.outputs.key }}
+          KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          # key.properties is a Java properties file: backslashes are escaped.
+          esc() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
+          jks="$RUNNER_TEMP/upload.jks"
+          if [ "$REAL" = true ]; then
+            (umask 077 && printf '%s' "$KEYSTORE" | base64 --decode >"$jks")
+          else
+            # Not a real key: made here, used to sign this run's bundle, gone
+            # with the runner. A real build never takes this branch.
+            STORE_PASSWORD="$(openssl rand -hex 16)"
+            KEY_PASSWORD="$STORE_PASSWORD"
+            KEY_ALIAS=throwaway
+            keytool -genkeypair -keystore "$jks" -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" \
+              -alias "$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 1 -dname "CN=Kanso CI throwaway" >/dev/null 2>&1
+          fi
+          (
+            umask 077
+            {
+              printf 'storeFile=%s\n' "$(esc "$jks")"
+              printf 'storePassword=%s\n' "$(esc "$STORE_PASSWORD")"
+              printf 'keyAlias=%s\n' "$(esc "$KEY_ALIAS")"
+              printf 'keyPassword=%s\n' "$(esc "$KEY_PASSWORD")"
+            } >android/key.properties
+          )
+
+      - uses: shorebirdtech/setup-shorebird@8b1059ddb56a926f0146edf4133cc647775c162f # v1.4.1
+        if: steps.have.outputs.shorebird == 'true'
+        with:
+          cache: true
+
+      - name: Bundle (Shorebird release)
+        if: steps.have.outputs.shorebird == 'true'
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          PUBLIC_KEY: ${{ secrets.SHOREBIRD_PATCH_PUBLIC_KEY }}
+          VERSION: ${{ needs.version.outputs.name }}
+          NUMBER: ${{ needs.version.outputs.number }}
+        run: |
+          printf '%s\n' "$PUBLIC_KEY" >"$RUNNER_TEMP/shorebird-public.pem"
+          shorebird release android --artifact aab --flutter-version="$FLUTTER_VERSION" \
+            --public-key-path="$RUNNER_TEMP/shorebird-public.pem" \
+            -- --build-name="$VERSION" --build-number="$NUMBER"
+          rm -f "$RUNNER_TEMP/shorebird-public.pem"
+      - name: Bundle
+        if: steps.have.outputs.shorebird != 'true'
+        env:
+          VERSION: ${{ needs.version.outputs.name }}
+          NUMBER: ${{ needs.version.outputs.number }}
+        run: flutter build appbundle --release --build-name="$VERSION" --build-number="$NUMBER"
+
+      - name: Check the bundle
+        run: ../scripts/mobile-release/aab-check.sh build/app/outputs/bundle/release/app-release.aab build/app/outputs/mapping/release/mapping.txt
+      - name: Keep the bundle and R8's mapping
+        if: steps.have.outputs.key == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: kanso-android-${{ needs.version.outputs.name }}-${{ needs.version.outputs.number }}
+          path: |
+            mobile/build/app/outputs/bundle/release/app-release.aab
+            mobile/build/app/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      # Play shows the mapping with the release, so crash stacks read in the
+      # original names. PLAY_RELEASE_STATUS is `draft` until the app has had
+      # its first release (docs/RELEASING-MOBILE.md).
+      - name: Upload to Play internal testing
+        if: steps.have.outputs.play == 'true' && steps.have.outputs.key == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: app.kanso.kanso
+          releaseFiles: mobile/build/app/outputs/bundle/release/app-release.aab
+          mappingFile: mobile/build/app/outputs/mapping/release/mapping.txt
+          track: internal
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'completed' }}
+          releaseName: ${{ needs.version.outputs.name }} (${{ needs.version.outputs.number }})
+          whatsNewDirectory: mobile/store/play/whatsnew
+      - name: Remove the upload key
+        if: always()
+        run: rm -f android/key.properties "$RUNNER_TEMP/upload.jks"
+
+  # Shorebird patches: a Dart-only fix for an existing release, signed with
+  # Kanso's patch key. Only from master, only by hand, only in the
+  # `mobile-patch` environment (master only, with a required reviewer), and
+  # never with the store signing secrets: a patch is not signed with Apple's
+  # or Google's keys, so it needs none of them.
+  patch:
+    name: Shorebird patch (${{ matrix.platform }})
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'shorebird-patch' && github.ref == 'refs/heads/master'
+    runs-on: ${{ matrix.os }}
+    environment: mobile-patch
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+            rust_targets: aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          - platform: ios
+            os: macos-latest
+            rust_targets: aarch64-apple-ios
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: true
+          persist-credentials: false
+      - name: Which secrets are set
+        id: have
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          PRIVATE_KEY: ${{ secrets.SHOREBIRD_PATCH_PRIVATE_KEY }}
+          PUBLIC_KEY: ${{ secrets.SHOREBIRD_PATCH_PUBLIC_KEY }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          missing=""
+          [ -n "$SHOREBIRD_TOKEN" ] || missing="$missing SHOREBIRD_TOKEN"
+          [ -n "$PRIVATE_KEY" ] || missing="$missing SHOREBIRD_PATCH_PRIVATE_KEY"
+          [ -n "$PUBLIC_KEY" ] || missing="$missing SHOREBIRD_PATCH_PUBLIC_KEY"
+          [ -f shorebird.yaml ] || missing="$missing mobile/shorebird.yaml"
+          if [ -n "$missing" ]; then
+            echo "ok=false" >>"$GITHUB_OUTPUT"
+            echo "::notice::Shorebird is not set up, so no patch is made. Missing:$missing (docs/RELEASING-MOBILE.md › Shorebird)."
+          elif [ -z "$RELEASE_VERSION" ]; then
+            echo "ok=false" >>"$GITHUB_OUTPUT"
+            echo "::error::Say which release to patch: run the workflow with release_version, for example 0.9.0+57."
+            exit 1
+          else
+            echo "ok=true" >>"$GITHUB_OUTPUT"
+          fi
+      - run: ../scripts/ci-rust.sh
+        if: steps.have.outputs.ok == 'true'
+      - run: rustup target add ${{ matrix.rust_targets }}
+        if: steps.have.outputs.ok == 'true'
+        working-directory: .
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        if: steps.have.outputs.ok == 'true' && matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: steps.have.outputs.ok == 'true'
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+        if: steps.have.outputs.ok == 'true'
+      - uses: shorebirdtech/setup-shorebird@8b1059ddb56a926f0146edf4133cc647775c162f # v1.4.1
+        if: steps.have.outputs.ok == 'true'
+        with:
+          cache: true
+      # Shorebird builds the patch with the Flutter version of the release it
+      # patches, and refuses it if native code changed.
+      - name: Patch
+        if: steps.have.outputs.ok == 'true'
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          PRIVATE_KEY: ${{ secrets.SHOREBIRD_PATCH_PRIVATE_KEY }}
+          PUBLIC_KEY: ${{ secrets.SHOREBIRD_PATCH_PUBLIC_KEY }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          STAGE: ${{ inputs.stage }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          umask 077
+          printf '%s\n' "$PUBLIC_KEY" >"$RUNNER_TEMP/shorebird-public.pem"
+          printf '%s\n' "$PRIVATE_KEY" >"$RUNNER_TEMP/shorebird-private.pem"
+          args=(--release-version "$RELEASE_VERSION"
+            --public-key-path "$RUNNER_TEMP/shorebird-public.pem"
+            --private-key-path "$RUNNER_TEMP/shorebird-private.pem")
+          if [ "$STAGE" = true ]; then args+=(--track staging); fi
+          if [ "$PLATFORM" = ios ]; then args+=(--no-codesign); fi
+          status=0
+          shorebird patch "$PLATFORM" "${args[@]}" || status=$?
+          rm -f "$RUNNER_TEMP/shorebird-public.pem" "$RUNNER_TEMP/shorebird-private.pem"
+          exit "$status"

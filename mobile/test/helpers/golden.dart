@@ -13,6 +13,7 @@ import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/utils/kanso_scroll_behavior.dart';
 import 'package:kanso/gen/l10n/app_localizations.dart';
 
+import 'kanso_viewport.dart';
 import 'seeded_appearance_bloc.dart';
 
 /// The size of a phone in portrait, in logical pixels (device pixel ratio 3).
@@ -40,6 +41,9 @@ const EdgeInsets tabletSafeArea = EdgeInsets.only(top: 24, bottom: 20);
 /// is 1, animations are off and shadows are blurred as on a device. The
 /// golden path is relative to the test file that calls this.
 ///
+/// [viewport] is the window of a device in the matrix (see [KansoViewport])
+/// and takes the place of [size], its density and its safe area.
+///
 /// [safeArea] simulates the device's status bar and home indicator for both
 /// platforms; it defaults to an iPhone's on a phone and an iPad's on a
 /// tablet. [appearance] sets the fonts and text size the themes are built
@@ -58,19 +62,28 @@ Future<void> expectGoldenOnBothPlatforms(
   WidgetTester tester,
   Widget child, {
   required String name,
-  required Size size,
   required Brightness brightness,
+  Size? size,
+  KansoViewport? viewport,
   EdgeInsets? safeArea,
   AppearanceState appearance = const AppearanceState(),
   KansoPalette? palette,
   Future<void> Function(WidgetTester tester)? interact,
 }) async {
-  final devicePixelRatio = size.shortestSide < 600 ? 3.0 : 2.0;
+  assert(
+    (size == null) != (viewport == null),
+    'Give either a size or a viewport.',
+  );
+  final window = viewport?.size ?? size!;
+  final devicePixelRatio =
+      viewport?.devicePixelRatio ?? (window.shortestSide < 600 ? 3.0 : 2.0);
   final insets =
-      safeArea ?? (size.shortestSide < 600 ? phoneSafeArea : tabletSafeArea);
+      safeArea ??
+      viewport?.safeArea ??
+      (window.shortestSide < 600 ? phoneSafeArea : tabletSafeArea);
   tester.view
     ..devicePixelRatio = devicePixelRatio
-    ..physicalSize = size * devicePixelRatio;
+    ..physicalSize = window * devicePixelRatio;
   tester.platformDispatcher
     ..textScaleFactorTestValue = 1
     ..accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
@@ -162,7 +175,7 @@ Future<void> expectGoldenOnBothPlatforms(
     }
   }
 
-  final differing = _differingPixels(
+  final differing = differingPixels(
     renders[TargetPlatform.iOS]!,
     renders[TargetPlatform.android]!,
   );
@@ -173,7 +186,8 @@ Future<void> expectGoldenOnBothPlatforms(
   );
 }
 
-int _differingPixels(Uint8List a, Uint8List b) {
+/// How many pixels differ between two RGBA renders of the same size.
+int differingPixels(Uint8List a, Uint8List b) {
   if (a.length != b.length) {
     return a.length > b.length ? a.length ~/ 4 : b.length ~/ 4;
   }

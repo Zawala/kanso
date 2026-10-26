@@ -45,8 +45,9 @@
   // (src/room.ts). Reachable only through the Worker. The v1 migration creates the class with
   // SQLite storage; D1's 0005_collab.sql must be applied (npm run migrate:remote) before deploying.
   // Device approval: one AccountRoom per account, keyed by account ID, holding its devices'
-  // hibernating event sockets (src/account_room.ts). It stores nothing, so the v2 migration
-  // creates it without SQLite. v1 is deployed: append, never renumber.
+  // hibernating event sockets and the alarm that sends its pushes (src/account_room.ts). It keeps
+  // one value (the account ID), so the v2 migration creates it without SQLite; alarms work there.
+  // v1 is deployed: append, never renumber.
   "durable_objects": {
     "bindings": [
       { "name": "NOTE_ROOM", "class_name": "NoteRoom" },
@@ -72,6 +73,10 @@
   // with go.kansoapp.app's CNAME in the kansoapp.app zone).
   // SHARE_ORIGIN: where short links lead, so a published note is read on share.kansoapp.app
   // whichever name the app published it through.
+  // Push notifications (src/push.ts): APNS_TOPIC is the app's bundle ID. The secrets go through
+  // `wrangler secret put APNS_KEY_P8` (the .p8 file's PEM), `APNS_KEY_ID`, `APNS_TEAM_ID` and
+  // `FCM_SERVICE_ACCOUNT` (the service account's JSON key). A platform without its secrets stores
+  // its devices' tokens and sends nothing.
   // Sign-in (step 7, on since 2026-10-25). Secrets go through `wrangler secret put NAME`:
   // APPLE_PRIVATE_KEY and GOOGLE_CLIENT_SECRET. GOOGLE_CLIENT_ID is the Desktop client in Google
   // Cloud project kanso-512706; GITHUB_CLIENT_ID is the device-flow OAuth app (no secret).
@@ -87,7 +92,8 @@
     "APPLE_CLIENT_ID": "app.kanso.Kanso.web",
     "APPLE_TEAM_ID": "4973Y692JU",
     "APPLE_KEY_ID": "MS6Y3S5ZL7",
-    "APPLE_REDIRECT_URI": "https://sync.kansoapp.app/v2/auth/apple/callback"
+    "APPLE_REDIRECT_URI": "https://sync.kansoapp.app/v2/auth/apple/callback",
+    "APNS_TOPIC": "app.kanso.Kanso"
   }
   // AUTH_PEPPER (required) is a secret: `wrangler secret put AUTH_PEPPER` (reads stdin; see README.md).
   // SYNC_TOKEN is no longer read; `admin purge-legacy` deletes it.

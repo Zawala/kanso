@@ -31,26 +31,26 @@ void main() {
     final seeded = await seedLibrary();
 
     // All Notes: the pinned note under Pinned, the rest under Today.
-    await pumpUntil(tester, find.text('Weekly review'));
-    expect(find.text('Pinned'), findsOneWidget);
-    expect(find.text('Today'), findsOneWidget);
+    await pumpUntil(tester, inList('Weekly review'));
+    expect(inList('Pinned'), findsOneWidget);
+    expect(inList('Today'), findsOneWidget);
     expect(
-      top(tester, find.text('Pinned')),
+      top(tester, inList('Pinned')),
       lessThan(
-        top(tester, find.text('Weekly review')),
+        top(tester, inList('Weekly review')),
       ),
     );
     expect(
-      top(tester, find.text('Weekly review')),
-      lessThan(top(tester, find.text('Today'))),
+      top(tester, inList('Weekly review')),
+      lessThan(top(tester, inList('Today'))),
     );
 
     // The locked note: its title and its lock, and none of its text.
-    expect(find.text('Private journal'), findsOneWidget);
+    expect(inList('Private journal'), findsOneWidget);
     expect(
       find.descendant(
         of: find.ancestor(
-          of: find.text('Private journal'),
+          of: inList('Private journal'),
           matching: find.byType(KansoNoteRow),
         ),
         matching: lockIcon,
@@ -62,13 +62,13 @@ void main() {
     // The library: Work lists its notes and not Garden's.
     await openLibrary(tester);
     await tester.tap(inLibrary('Work'));
-    await pumpUntil(tester, find.text('Sprint plan'));
-    expect(find.text('Standup notes'), findsOneWidget);
-    expect(find.text('Garden beds'), findsNothing);
-    expect(find.text('Weekly review'), findsNothing);
+    await pumpUntil(tester, inList('Sprint plan'));
+    expect(inList('Standup notes'), findsOneWidget);
+    expect(inList('Garden beds'), findsNothing);
+    expect(inList('Weekly review'), findsNothing);
 
     // A note opens with its title, notebook and styled text, and closes.
-    await tester.tap(find.text('Sprint plan'));
+    await tester.tap(inList('Sprint plan'));
     await pumpUntil(tester, find.textContaining('Ship the beta build'));
     expect(find.text('Work'), findsWidgets);
     final heading = find.byWidgetPredicate(
@@ -78,32 +78,30 @@ void main() {
           _hasStyledRun(widget.text),
     );
     expect(heading, findsOneWidget);
-    // The bar's chevron, not the history arrows of the bottom bar.
-    await tester.tap(find.bySemanticsLabel('Back').first);
-    await tester.pumpAndSettle();
-    expect(find.text('Standup notes'), findsOneWidget);
+    await leaveNote(tester);
+    expect(inList('Standup notes'), findsOneWidget);
 
     // A full swipe pins a note: it goes under Pinned, above Today.
-    await tester.drag(find.text('Sprint plan'), const Offset(300, 0));
-    await pumpUntil(tester, find.text('Pinned'));
+    await tester.drag(inList('Sprint plan'), const Offset(300, 0));
+    await pumpUntil(tester, inList('Pinned'));
     await tester.pumpAndSettle();
     expect(
-      top(tester, find.text('Pinned')),
-      lessThan(top(tester, find.text('Sprint plan'))),
+      top(tester, inList('Pinned')),
+      lessThan(top(tester, inList('Sprint plan'))),
     );
     expect(
-      top(tester, find.text('Sprint plan')),
-      lessThan(top(tester, find.text('Today'))),
+      top(tester, inList('Sprint plan')),
+      lessThan(top(tester, inList('Today'))),
     );
     expect(
-      top(tester, find.text('Today')),
-      lessThan(top(tester, find.text('Standup notes'))),
+      top(tester, inList('Today')),
+      lessThan(top(tester, inList('Standup notes'))),
     );
 
     // Long press two notes and move them to Garden.
-    await tester.longPress(find.text('Sprint plan'));
+    await tester.longPress(inList('Sprint plan'));
     await tester.pump();
-    await tester.tap(find.text('Standup notes'));
+    await tester.tap(inList('Standup notes'));
     await tester.pump();
     expect(find.text('2 selected'), findsOneWidget);
     await tester.tap(find.bySemanticsLabel('Move'));
@@ -118,24 +116,22 @@ void main() {
     await pumpUntil(tester, find.text('No notes in Work yet'));
     await openLibrary(tester);
     await tester.tap(inLibrary('Garden'));
-    await pumpUntil(tester, find.text('Standup notes'));
+    await pumpUntil(tester, inList('Standup notes'));
     for (final title in <String>[
       'Sprint plan',
       'Standup notes',
       'Garden beds',
       'Seed catalogue',
     ]) {
-      expect(find.text(title), findsOneWidget, reason: title);
+      expect(inList(title), findsOneWidget, reason: title);
     }
 
     // Trash one: the Trash count goes up by one.
     await openLibrary(tester);
     final trashed = libraryCount(tester, 'Trash') ?? 0;
-    final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
-    await tester.tapAt(Offset(width - 5, 400));
-    await tester.pumpAndSettle();
-    await tester.drag(find.text('Seed catalogue'), const Offset(-300, 0));
-    await pumpUntilGone(tester, find.text('Seed catalogue'));
+    await closeLibrary(tester);
+    await tester.drag(inList('Seed catalogue'), const Offset(-300, 0));
+    await pumpUntilGone(tester, inList('Seed catalogue'));
     await openLibrary(tester);
     await pumpUntilTrue(
       tester,
@@ -143,11 +139,11 @@ void main() {
       reason: 'the Trash count to be ${trashed + 1}',
     );
     await tester.tap(inLibrary('All Notes'));
-    await pumpUntil(tester, find.text('Private journal'));
+    await pumpUntil(tester, inList('Private journal'));
 
     // The locked note opens to its title, its lock and a card that says it
     // is locked, and the text is nowhere.
-    await tester.tap(find.text('Private journal'));
+    await tester.tap(inList('Private journal'));
     await pumpUntil(tester, find.text('This note is locked'));
     expect(lockIcon, findsWidgets);
     expect(find.textContaining(SeededLibrary.secretBody), findsNothing);
