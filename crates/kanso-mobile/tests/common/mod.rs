@@ -161,3 +161,22 @@ pub fn long_note(words: usize) -> String {
     }
     out
 }
+
+/// `long_note`, with the broken table the Dart fixture
+/// (`mobile/integration_test/helpers/long_note.dart`) has after three
+/// quarters of its words: a syntax error that makes the highlighter parse
+/// all that follows as one block.
+pub fn long_note_with_error(words: usize) -> String {
+    let mut out = String::new();
+    let mut broken = false;
+    let mut counted = 0;
+    for block in long_note(words).split_inclusive("\n\n") {
+        if !broken && counted >= words * 3 / 4 {
+            broken = true;
+            out.push_str("|\n 日本語 |\n|:-\n\n\n!A A0-|:--|\n| **a** | [b](c) |\n\n\nafter the broken table\n\n");
+        }
+        counted += block.split_whitespace().count();
+        out.push_str(block);
+    }
+    out
+}

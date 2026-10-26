@@ -1013,6 +1013,61 @@ fn one_keystroke_in_a_50000_word_note_parses_at_most_two_blocks() {
     assert_eq!(styled, fresh);
 }
 
+// no-prop-test: a fixed 50,000-word note with a syntax error in it, and the
+// cost of one keystroke for the window the editor asks for; the equality
+// with a full parse is property H6 in kanso_engine::highlight and the
+// property above.
+#[test]
+fn a_keystroke_in_a_50000_word_note_with_an_error_parses_a_bounded_window() {
+    let text = long_note_with_error(50_000);
+    let phone = lone_phone();
+    let (mut typed, _) = Typed::open(&phone, &text);
+    let window = |typed: &Typed, at: usize| {
+        let start = at.saturating_sub(4096) as u32;
+        (start, (start + 8192).min(typed.model.len() as u32))
+    };
+    // Everything highlighted once, as scrolling through it would.
+    let total = typed.model.len() as u32;
+    typed.session.styled_runs(0, total, THEME.into()).unwrap();
+    for (label, at) in [
+        ("before the error", text.len() * 2 / 5),
+        ("after the error", text.len() * 9 / 10),
+    ] {
+        let at = units(&text[..(0..=at).rev().find(|b| text.is_char_boundary(*b)).unwrap()]).len();
+        let mut newest = None;
+        let parsed = typed.session.blocks_parsed();
+        for i in 0..5 {
+            typed.type_over(at + i, at + i, "x");
+            let (start, end) = window(&typed, at + i);
+            newest = Some(typed.session.styled_runs(start, end, THEME.into()).unwrap());
+        }
+        let reparsed = typed.session.blocks_parsed() - parsed;
+        // Five keystrokes, each in one block, and after the error that
+        // block is the error's parse, made for the window: at most two
+        // parses a keystroke, never the 2,800 blocks of the note.
+        assert!(reparsed <= 10, "{label}: {reparsed} blocks parsed");
+        // The runs are in the window, in order, apart, and those a cold
+        // session on the same text gives for it.
+        let batch = newest.unwrap();
+        let (start, end) = window(&typed, at + 4);
+        let mut last = start;
+        for run in &batch.runs {
+            assert!(run.range.start >= last && run.range.end > run.range.start);
+            assert!(run.range.end <= end, "{label}: {run:?} past {end}");
+            last = run.range.end;
+        }
+        assert!(
+            batch.runs.len() < 2_000,
+            "{label}: {} runs",
+            batch.runs.len()
+        );
+        let id = note(&phone.library, "Cold", &typed.text());
+        let cold = phone.library.edit(&id).unwrap();
+        let fresh = cold.styled_runs(start, end, THEME.into()).unwrap();
+        assert_eq!(batch.runs, fresh.runs, "{label}");
+    }
+}
+
 // MARK: Locked notes
 
 // no-prop-test: the guarantee is property-tested in tests/locked.rs; this is

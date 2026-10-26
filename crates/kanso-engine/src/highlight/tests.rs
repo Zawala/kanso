@@ -4,7 +4,7 @@ use std::ops::Range;
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 
-use super::{Highlighter, Span, Token, blocks, spans, whole_document_spans};
+use super::{Highlighter, Span, Token, blocks, spans, spans_uncapped, whole_document_spans};
 use crate::strategies::markdown::{calm_notes, notes};
 use crate::theme::file::{CAPTURES, SYNTAX_KEYS, TokenStyle};
 use crate::theme::{Rgb, style};
@@ -42,6 +42,14 @@ fn difference(text: &str, cut: &Spans, whole: &Spans) -> String {
         blocks::cut(text),
     )
 }
+
+/// Notes' broken parts: a table the grammar's recovery swallows what
+/// follows into, and a fence that is never closed.
+const BROKEN: [&str; 3] = [
+    "|\n 日本語 |\n|:-\n\n\n!A A0-|:--|\n| **a** | [b](c) |",
+    "```rust\nfn broken() {",
+    "| a | b |\n| - |\n| **x** |\n|",
+];
 
 type Spans = [Span];
 
@@ -192,6 +200,31 @@ proptest! {
         }
         let (cut, whole) = (spans(&text, 0..text.len()), whole_document_spans(&text));
         prop_assert!(cut == whole, "{}", difference(&text, &cut, &whole));
+    }
+
+    /// H6: a range of a note with a syntax error in it gets the spans it has
+    /// when the error's parse goes on to the end of the note, though it
+    /// stops short of it.
+    #[test]
+    fn prop_h6_a_cut_short_error_parse_gives_the_spans_of_the_whole_error_parse(
+        before in notes(true),
+        broken in proptest::sample::select(BROKEN.to_vec()),
+        after in notes(true),
+        edits in prop::collection::vec(edit(), 0..4),
+        probes in prop::collection::vec((any::<prop::sample::Index>(), any::<prop::sample::Index>()), 1..5),
+        capacity in prop_oneof![Just(0usize), Just(4000), Just(2 * 1024 * 1024)],
+    ) {
+        let mut text = format!("{before}\n\n{broken}\n\n{after}");
+        for edit in &edits {
+            apply(&mut text, edit);
+        }
+        let mut highlighter = Highlighter::with_capacity(capacity);
+        for (a, b) in &probes {
+            let range = range_of(&text, *a, *b);
+            let expected = spans_uncapped(&text, range.clone());
+            prop_assert_eq!(spans(&text, range.clone()), expected.clone(), "range {:?} of {:?}", range, text);
+            prop_assert_eq!(highlighter.spans(&text, range.clone()), expected, "cached, range {:?} of {:?}", range, text);
+        }
     }
 
     /// The blocks cover the note, one after another.
@@ -614,13 +647,38 @@ fn a_syntax_error_makes_the_rest_of_the_note_one_block() {
     );
     // The first block, and the broken one with all that follows it.
     assert_eq!(highlighter.blocks_parsed(), 2);
-    // A range further down is read from the same two.
+    // A range further down is read from the broken block's parse again: it
+    // is made for the range and not kept (it is one block more parsed).
     let after = text.find("last").unwrap();
     assert_eq!(
         highlighter.spans(text, after..text.len()),
         spans(text, after..text.len())
     );
-    assert_eq!(highlighter.blocks_parsed(), 2);
+    assert_eq!(highlighter.blocks_parsed(), 3);
+}
+
+// no-prop-test: the equality with the uncapped parse is property H6; this is
+// the cost it buys, on a fixed note.
+#[test]
+fn an_error_early_in_a_note_is_not_parsed_to_its_end_for_a_range_near_it() {
+    let broken = "|\n 日本語 |\n|:-\n\n\n!A A0-|:--|\n| **a** | [b](c) |\n\n\n";
+    let mut text = format!("intro\n\n{broken}");
+    for n in 0..200 {
+        text.push_str(&format!("Paragraph {n} with *emphasis*.\n\n"));
+    }
+    let range = 0..text.find("Paragraph 3 ").unwrap();
+    let mut highlighter = Highlighter::new();
+    let first = highlighter.spans(&text, range.clone());
+    assert_eq!(first, spans_uncapped(&text, range.clone()));
+    let parsed = highlighter.blocks_parsed();
+    // Typing at the very end: nothing the range reads is different, and
+    // only the broken block's parse is made again.
+    let end = text.len();
+    text.insert(end - 2, 'x');
+    assert_eq!(highlighter.spans(&text, range.clone()), first);
+    assert_eq!(highlighter.blocks_parsed(), parsed + 1);
+    // The cache holds the blocks before it, not the rest of the note.
+    assert!(highlighter.bytes < text.len() / 2, "{}", highlighter.bytes);
 }
 
 #[test]
