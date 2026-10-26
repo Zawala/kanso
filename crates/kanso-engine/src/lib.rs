@@ -35,6 +35,7 @@
 //! alone; tests use [`MemorySecrets`].
 
 pub mod account;
+pub mod batch;
 pub mod daily;
 pub mod edit;
 pub mod fuzzy;
