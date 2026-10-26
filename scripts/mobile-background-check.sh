@@ -41,7 +41,7 @@ if ! nm -g "$lib" | grep -E ' T _?kanso_background_sync$' >/dev/null; then
 	exit 1
 fi
 
-work="$(mktemp -d -t kanso-c-abi)"
+work="$(mktemp -d "${TMPDIR:-/tmp}/kanso-c-abi.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 cc -Wall -Wextra -Werror -o "$work/c_abi" mobile/rust/tests/c_abi/main.c \
 	-L "$(dirname "$lib")" -lkanso_mobile_bridge
