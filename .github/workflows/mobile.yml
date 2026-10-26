@@ -260,15 +260,21 @@ jobs:
           echo "KANSO_IOS_SIM_UDID=$udid" >> "$GITHUB_ENV"
           # `bootstatus -b` boots a shut-down simulator and waits for it.
           xcrun simctl bootstatus "$udid" -b
-      # Every call of the bridge, then the app's own flow.
+      # Every call of the bridge, then the app's own flows: browsing,
+      # searching, and opening links.
       - run: flutter test integration_test/facade_test.dart -d "$KANSO_IOS_SIM_UDID"
-      - run: flutter test integration_test/shell_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
+      - run: flutter test integration_test/browse_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
+      - run: flutter test integration_test/search_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
+      - run: flutter test integration_test/open_flow_test.dart -d "$KANSO_IOS_SIM_UDID"
 
   # The integration tests in an Android 10 (API 29) emulator. On Linux, not
   # a Mac: the Apple-silicon runners can't run an emulator (no nested
   # virtualisation) and the Linux ones can with KVM; the emulator is x86-64.
   # The facade suite reaches Kanso's default sync server over https, which
-  # proves the platform certificate verifier works from Rust.
+  # proves the platform certificate verifier works from Rust. After the
+  # flows, the installed package is asked whether it allows backups. The test
+  # runner removes the app it installed, so the debug APK it built goes on
+  # again first.
   integration-android:
     runs-on: ubuntu-latest
     steps:
@@ -311,4 +317,8 @@ jobs:
           # Each line runs as its own shell command.
           script: |
             flutter test integration_test/facade_test.dart -d emulator-5554
-            flutter test integration_test/shell_flow_test.dart -d emulator-5554
+            flutter test integration_test/browse_flow_test.dart -d emulator-5554
+            flutter test integration_test/search_flow_test.dart -d emulator-5554
+            flutter test integration_test/open_flow_test.dart -d emulator-5554
+            adb -s emulator-5554 install -r build/app/outputs/flutter-apk/app-debug.apk
+            ../scripts/mobile-backup-check.sh emulator-5554
