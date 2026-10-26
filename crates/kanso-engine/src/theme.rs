@@ -109,8 +109,8 @@ pub const DARK: Colors = Colors {
     button_text: Rgb(0xF1EFE7),
     code: Rgb(0x30302B),
     code_text: Rgb(0xCDB892),
-    syntax_keyword: Rgb(0x9AACC4),
-    syntax_string: Rgb(0xA9BC98),
+    syntax_keyword: Rgb(0x8FB0D9),
+    syntax_string: Rgb(0xA8C98A),
     success: Rgb(0x7BAA78),
     warning: Rgb(0xC49A5A),
     danger: Rgb(0xC96E63),
@@ -142,8 +142,8 @@ pub const LIGHT: Colors = Colors {
     button_text: Rgb(0xFFFDF8),
     code: Rgb(0xF4F1EA),
     code_text: Rgb(0x7D5B32),
-    syntax_keyword: Rgb(0x4D6684),
-    syntax_string: Rgb(0x55704A),
+    syntax_keyword: Rgb(0x3F6496),
+    syntax_string: Rgb(0x4A7A35),
     // The spec's status colors are for the dark theme; on paper they fall
     // under 3:1, so they are shaded the way muted text and links are.
     success: Rgb(0x4F7F4C),

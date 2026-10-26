@@ -623,9 +623,33 @@ mod tests {
     }
 
     /// The editor colors and syntax styles Kanso drew before themes were
-    /// files, kept to check that its own theme files draw the same.
+    /// files, kept to check that its own theme files draw the same, except
+    /// for the code colors, which are the ones the theme files now give:
+    /// `[keyword, string, number, function, type, attribute, punctuation,
+    /// property]`.
     fn legacy_highlight(c: &Colors) -> Value {
         let color = |rgb: Rgb| json!({ "color": rgb.hex() });
+        let [
+            keyword,
+            string,
+            number,
+            function,
+            ty,
+            attribute,
+            punctuation,
+            property,
+        ] = if c.editor == LIGHT.editor {
+            [
+                "#3F6496", "#4A7A35", "#A0522D", "#8A6416", "#2F7A6E", "#7A4F8F", "#6F695E",
+                "#3A362F",
+            ]
+        } else {
+            [
+                "#8FB0D9", "#A8C98A", "#E0A882", "#E6C68E", "#8EC5B8", "#C3A6D6", "#A29E94",
+                "#DAD6CB",
+            ]
+        };
+        let color_hex = |hex: &str| json!({ "color": hex });
         let muted = color(c.text_muted);
         let secondary = color(c.text_secondary);
         let mut syntax = json!({
@@ -642,25 +666,25 @@ mod tests {
                 "string.escape": muted,
                 "comment": { "color": c.text_muted.hex(), "font_style": "italic" },
                 "comment.doc": { "color": c.text_muted.hex(), "font_style": "italic" },
-                "keyword": color(c.syntax_keyword),
-                "tag": color(c.syntax_keyword),
-                "constructor": color(c.syntax_keyword),
+                "keyword": color_hex(keyword),
+                "tag": color_hex(keyword),
+                "constructor": color_hex(keyword),
         });
         let rest = json!({
-                "string": color(c.syntax_string),
-                "string.special": color(c.syntax_string),
-                "number": color(c.code_text),
-                "boolean": color(c.code_text),
-                "constant": color(c.code_text),
-                "variable.special": color(c.code_text),
-                "type": secondary,
-                "attribute": secondary,
-                "label": secondary,
-                "operator": secondary,
-                "punctuation": secondary,
-                "punctuation.bracket": secondary,
-                "function": color(c.text),
-                "property": color(c.text),
+                "string": color_hex(string),
+                "string.special": color_hex(string),
+                "number": color_hex(number),
+                "boolean": color_hex(number),
+                "constant": color_hex(number),
+                "variable.special": color_hex(number),
+                "type": color_hex(ty),
+                "attribute": color_hex(attribute),
+                "label": color_hex(attribute),
+                "operator": color_hex(punctuation),
+                "punctuation": color_hex(punctuation),
+                "punctuation.bracket": color_hex(punctuation),
+                "function": color_hex(function),
+                "property": color_hex(property),
                 "variable": color(c.text),
                 "embedded": color(c.text),
 
