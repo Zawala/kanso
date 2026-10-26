@@ -87,13 +87,6 @@ class KansoRouter {
           path: '${KansoRoutes.notebookById}/:notebookId',
           redirect: (context, state) => redirectLocation(state.uri),
         ),
-        GoRoute(
-          path: KansoRoutes.daily,
-          pageBuilder: (context, state) => CupertinoPage<void>(
-            key: state.pageKey,
-            child: const DailyNotePage(),
-          ),
-        ),
         ShellRoute(
           navigatorKey: _browseKey,
           builder: (context, state, child) => BrowseShell(
@@ -103,6 +96,15 @@ class KansoRouter {
             child: child,
           ),
           routes: <RouteBase>[
+            // Inside the shell, so going on to the note keeps the browsing
+            // screens (and their navigator) as they are.
+            GoRoute(
+              path: KansoRoutes.daily,
+              pageBuilder: (context, state) => NoTransitionPage<void>(
+                key: state.pageKey,
+                child: const DailyNotePage(),
+              ),
+            ),
             _placeRoute(KansoRoutes.notes, (_) => const ListPlace.all()),
             _placeRoute(KansoRoutes.pinned, (_) => const ListPlace.pinned()),
             _placeRoute(KansoRoutes.recent, (_) => const ListPlace.recent()),
