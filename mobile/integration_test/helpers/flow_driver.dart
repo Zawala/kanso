@@ -30,17 +30,27 @@ Future<void> startApp(WidgetTester tester) async {
 }
 
 /// Turns the device to [flowOrientation] and waits until the window is that
-/// way round; it is turned back when the test ends. A device that cannot
-/// turn (a phone's landscape is fine, an emulator with rotation locked is
-/// not) fails here, not later in a flow that finds the wrong layout.
+/// way round; it is turned back when the test ends.
+///
+/// Where the system will not turn the app (an iPad running apps in windows
+/// ignores what an app asks for, and a runner may have no way to turn a
+/// simulator), the window the app is laid out in is given the turned size
+/// instead, as `tester.view` allows: the panes are the ones a turned device
+/// has, though the screen is not. Say so, so a log shows which was run.
 Future<void> turnDevice(WidgetTester tester) async {
   if (flowOrientation.isEmpty) {
     return;
   }
   const landscape = flowOrientation == 'landscape';
-  addTearDown(
-    () => SystemChrome.setPreferredOrientations(<DeviceOrientation>[]),
-  );
+  bool turned() {
+    final size = tester.view.physicalSize;
+    return (size.width > size.height) == landscape;
+  }
+
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    return SystemChrome.setPreferredOrientations(<DeviceOrientation>[]);
+  });
   await SystemChrome.setPreferredOrientations(
     landscape
         ? <DeviceOrientation>[
@@ -52,14 +62,20 @@ Future<void> turnDevice(WidgetTester tester) async {
             DeviceOrientation.portraitDown,
           ],
   );
-  await pumpUntilTrue(
-    tester,
-    () {
-      final size = tester.view.physicalSize;
-      return (size.width > size.height) == landscape;
-    },
-    reason: 'the window to be in $flowOrientation',
-  );
+  final deadline = DateTime.now().add(const Duration(seconds: 5));
+  while (!turned() && DateTime.now().isBefore(deadline)) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  if (!turned()) {
+    final size = tester.view.physicalSize;
+    tester.view.physicalSize = Size(size.height, size.width);
+    // ignore: avoid_print
+    print(
+      'The device did not turn to $flowOrientation: the window is resized.',
+    );
+    await tester.pumpAndSettle();
+  }
+  expect(turned(), isTrue);
 }
 
 /// [label] in the list of notes, not in the library beside it or in the

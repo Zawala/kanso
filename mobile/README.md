@@ -120,8 +120,16 @@ flutter test integration_test/browse_flow_test.dart \
 ```
 
 An iPad in portrait lays the app out in two panes (the list and the note),
-in landscape in three; a Pixel Tablet is three panes in landscape and two in
-portrait (Android lets an app turn only if the emulator's auto-rotate is on).
+in landscape in three; a Pixel Tablet is three panes in landscape (its natural
+way round, 1280 x 800 dp) and two in portrait. On an Android emulator the flows
+turn the screen themselves; set it first with
+`adb shell settings put system accelerometer_rotation 0` and
+`adb shell settings put system user_rotation 1` (portrait; 0 is landscape).
+An iPad simulator cannot be turned from a script, and iPadOS ignores what an
+app asks for while it runs in a window, so there the flow gives the window the
+turned size (`tester.view.physicalSize`) and prints that it did: the panes
+and the flow are those of a turned iPad, the screen is not. Turn the
+simulator by hand (Device > Rotate Left) and the flow runs on the real turn.
 
 CI runs them on an iPhone simulator and an Android 10 emulator, and again on an
 iPad simulator and a Pixel Tablet emulator in both orientations. The Android job
