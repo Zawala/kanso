@@ -2,7 +2,6 @@
 // Created 2026-10-26.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'kanso_viewport.dart';
