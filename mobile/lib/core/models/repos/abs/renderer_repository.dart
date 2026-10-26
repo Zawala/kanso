@@ -30,6 +30,22 @@ abstract interface class RendererRepository {
   /// A theme file's JSON, fitted for drawing.
   Future<Either<ApplicationError, ThemeTokens>> themeTokens(String themeJson);
 
+  /// The built-in themes in the desktop's order, each fitted as the desktop
+  /// draws it.
+  Future<Either<ApplicationError, List<BuiltinTheme>>> builtinThemes();
+
+  /// The built-in theme [id] (`nord`), fitted.
+  Future<Either<ApplicationError, ThemeTokens>> builtinThemeTokens(String id);
+
+  /// The runs of [text] between [start] and [end] (UTF-16 units) that the
+  /// built-in theme [themeId] styles; text between runs is plain.
+  Future<Either<ApplicationError, List<StyledRun>>> styledRuns(
+    String text, {
+    required int start,
+    required int end,
+    required String themeId,
+  });
+
   Future<Either<ApplicationError, SvgRow>> mathSvg(
     String source, {
     required bool display,

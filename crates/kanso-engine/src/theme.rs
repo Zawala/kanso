@@ -14,6 +14,7 @@
 
 use std::collections::BTreeMap;
 
+pub mod builtin;
 pub mod file;
 
 use file::{PreviewColors, ResolvedTheme, TokenStyle, fit_preview, fit_syntax};

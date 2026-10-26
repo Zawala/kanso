@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Kanso's notes stay on this phone: nothing of the app is in a backup.
+
+  Android 6 to 11 read this file (android:fullBackupContent). It excludes
+  every domain, the whole of each; android:allowBackup="false" in the manifest
+  says the same. A test (test/platform/backup_exclusion_test.dart) reads it.
+-->
+<full-backup-content>
+    <exclude domain="root" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="external" path="." />
+    <exclude domain="device_root" path="." />
+    <exclude domain="device_file" path="." />
+    <exclude domain="device_database" path="." />
+    <exclude domain="device_sharedpref" path="." />
+</full-backup-content>

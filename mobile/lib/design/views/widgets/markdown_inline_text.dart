@@ -5,7 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/context_extensions.dart';
-import '../../utils/parse_inline_markdown.dart';
+import '../../../core/utils/parse_inline_markdown.dart';
 
 /// A run of text with Markdown marks, drawn as a note shows it.
 ///

@@ -16,8 +16,13 @@ void librarySuite(OpenLibrary open) {
   group('KansoLibrary', () {
     test('a new library holds no notes', () async {
       final library = await open();
-      expect(await library.notes(query: everyNote), isEmpty);
+      expect((await library.list(query: everyNote)).rows, isEmpty);
       expect(await library.tags(), isEmpty);
+      final counts = await library.overview();
+      expect(
+        [counts.all, counts.pinned, counts.recent, counts.trash],
+        everyElement(0),
+      );
     });
 
     test('creates, reads, saves and trashes a note', () async {
@@ -27,7 +32,7 @@ void librarySuite(OpenLibrary open) {
       );
       expect(saved.id, isNotEmpty);
 
-      final rows = await library.notes(query: everyNote);
+      final rows = (await library.list(query: everyNote)).rows;
       expect(rows, hasLength(1));
       expect(rows.single.id, saved.id);
       expect(rows.single.title, 'First');
@@ -48,8 +53,8 @@ void librarySuite(OpenLibrary open) {
       expect((await library.note(id: saved.id)).body, 'changed text');
 
       await library.trash(id: saved.id);
-      expect(await library.notes(query: everyNote), isEmpty);
-      final trashed = await library.notes(query: trashedNotes);
+      expect((await library.list(query: everyNote)).rows, isEmpty);
+      final trashed = (await library.list(query: trashedNotes)).rows;
       expect(trashed.map((row) => row.id), <String>[saved.id]);
     });
 
@@ -79,24 +84,27 @@ void librarySuite(OpenLibrary open) {
       final notebooks = await library.notebooks();
       expect(notebooks, isNotEmpty);
       expect(notebooks.fold<int>(0, (sum, book) => sum + book.count), 2);
-      final inBook = await library.notes(
-        query: NoteQuery(
-          notebookId: notebooks.first.id,
-          trash: false,
-          limit: 0,
-          skip: 0,
+      final inBook = await library.list(
+        query: ListQuery(
+          place: ListPlace.notebook(id: notebooks.first.id),
+          pinnedOnly: false,
           sort: SortKey.title,
           descending: false,
         ),
       );
-      expect(inBook.map((row) => row.title), <String>['One', 'Two']);
+      expect(inBook.rows.map((row) => row.title), <String>['One', 'Two']);
+      expect(inBook.shape.byDate, isFalse);
     });
 
     test('search finds a note and says where the words matched', () async {
       final library = await open();
       await makeNote(library, 'Grocery list', 'buy tulips on Tuesday');
       await makeNote(library, 'Other', 'nothing here');
-      final hits = await library.search(text: 'tulips', limit: 10);
+      final hits = await library.search(
+        text: 'tulips',
+        scope: const SearchScope.all(),
+        limit: 10,
+      );
       expect(hits, hasLength(1));
       expect(hits.single.row.title, 'Grocery list');
       expect(hits.single.snippetRanges, isNotEmpty);
@@ -105,8 +113,185 @@ void librarySuite(OpenLibrary open) {
         hits.single.row.snippet.substring(range.start, range.end),
         'tulips',
       );
-      expect(await library.search(text: 'zebra', limit: 10), isEmpty);
+      expect(
+        await library.search(
+          text: 'zebra',
+          scope: const SearchScope.all(),
+          limit: 10,
+        ),
+        isEmpty,
+      );
     });
+
+    test(
+      'a list is pinned first and laid out as the desktop lays it',
+      () async {
+        final library = await open();
+        final first = await makeNote(library, 'First', 'a');
+        final second = await makeNote(library, 'Second', 'b');
+        expect(
+          await library.change(
+            ids: <String>[first],
+            change: const NoteChange.togglePin(),
+          ),
+          1,
+        );
+        final all = await library.list(query: everyNote);
+        expect(all.rows.map((row) => row.id), <String>[first, second]);
+        expect(all.rows.first.pinned, isTrue);
+        expect(all.shape.byDate, isTrue);
+        expect(all.shape.groupPinned, isTrue);
+        expect(all.shape.date, DateField.updated);
+
+        final recent = await library.list(
+          query: const ListQuery(
+            place: ListPlace.recent(),
+            pinnedOnly: false,
+            sort: SortKey.title,
+            descending: false,
+          ),
+        );
+        expect(recent.shape.sort, SortKey.updated);
+        expect(recent.shape.groupPinned, isFalse);
+        expect(recent.rows, hasLength(2));
+
+        final pinned = await library.list(
+          query: const ListQuery(
+            place: ListPlace.pinned(),
+            pinnedOnly: false,
+            sort: SortKey.updated,
+            descending: true,
+          ),
+        );
+        expect(pinned.rows.map((row) => row.id), <String>[first]);
+        final counts = await library.overview();
+        expect(counts.all, 2);
+        expect(counts.pinned, 1);
+        expect(counts.recent, 2);
+        expect(counts.trash, 0);
+        await expectLater(
+          library.list(
+            query: const ListQuery(
+              place: ListPlace.all(),
+              statusOnly: 'someday',
+              pinnedOnly: false,
+              sort: SortKey.updated,
+              descending: true,
+            ),
+          ),
+          throwsA(isA<KansoError_Invalid>()),
+        );
+      },
+    );
+
+    test('several notes change at once: move, trash and unpin', () async {
+      final library = await open();
+      final a = await makeNote(library, 'A', 'a');
+      final b = await makeNote(library, 'B', 'b');
+      final garden = await library.createNotebook(name: 'Garden');
+      expect(
+        await library.change(
+          ids: <String>[a, b],
+          change: NoteChange.move(notebookId: garden.id),
+        ),
+        2,
+      );
+      expect(
+        (await library.note(id: a)).notebookId,
+        garden.id,
+      );
+      expect(
+        await library.change(
+          ids: <String>[a, b],
+          change: NoteChange.move(notebookId: garden.id),
+        ),
+        0,
+        reason: 'already there',
+      );
+      expect(
+        await library.change(
+          ids: <String>[a],
+          change: const NoteChange.trash(),
+        ),
+        1,
+      );
+      expect((await library.overview()).trash, 1);
+      await expectLater(
+        library.change(
+          ids: <String>['note:nope'],
+          change: const NoteChange.togglePin(),
+        ),
+        throwsA(isA<KansoError_NotFound>()),
+      );
+    });
+
+    test('a search looks in titles, tags or a notebook', () async {
+      final library = await open();
+      // New notes go in the first notebook by name: not the garden.
+      await library.createNotebook(name: 'Archive');
+      final garden = await library.createNotebook(name: 'Zed');
+      final named = await makeNote(library, 'Tomato plan', 'water #veg daily');
+      final texted = await makeNote(library, 'Shopping', 'buy tomato seeds');
+      final planted = (await library.create(
+        note: NewNote(
+          notebookId: garden.id,
+          title: 'Beds',
+          body: 'tomato rows',
+        ),
+      )).id;
+      Future<Set<String>> found(String text, SearchScope scope) async {
+        final hits = await library.search(text: text, scope: scope, limit: 0);
+        return hits.map((hit) => hit.row.id).toSet();
+      }
+
+      expect(
+        await found('tomato', const SearchScope.all()),
+        <String>{named, texted, planted},
+      );
+      expect(await found('tomato', const SearchScope.titles()), <String>{
+        named,
+      });
+      expect(
+        await found('tomato', SearchScope.notebook(id: garden.id)),
+        <String>{planted},
+      );
+      // The `#veg` in the text made the tag.
+      expect(await found('veg', const SearchScope.tags()), <String>{named});
+    });
+
+    test(
+      'notebooks come in tree order with depth, and text gives tags',
+      () async {
+        final library = await open();
+        final work = await library.createNotebook(name: 'Work');
+        final acme = await library.createNotebook(
+          name: 'Acme',
+          parentId: work.id,
+        );
+        expect((work.depth, acme.depth), (0, 1));
+        expect(acme.parentId, work.id);
+        expect(
+          (await library.notebooks()).map((book) => (book.name, book.depth)),
+          <(String, int)>[('Work', 0), ('Acme', 1)],
+        );
+        await expectLater(
+          library.createNotebook(name: '  '),
+          throwsA(isA<KansoError_Invalid>()),
+        );
+        await expectLater(
+          library.createNotebook(name: 'X', parentId: 'book:nowhere'),
+          throwsA(isA<KansoError_NotFound>()),
+        );
+
+        final id = await makeNote(library, 'Todo', 'call #errand soon');
+        final tags = await library.tags();
+        expect(tags.map((tag) => tag.name), <String>['errand']);
+        expect((await library.note(id: id)).tags, <String>[tags.single.id]);
+        final note = await library.note(id: id);
+        await library.save(id: id, baseRev: note.rev, body: 'call soon');
+        expect((await library.note(id: id)).tags, isEmpty);
+      },
+    );
 
     test('the properties of a note are its front matter', () async {
       final library = await open();

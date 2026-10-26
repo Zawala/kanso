@@ -1,8 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The notes stay on this phone: no cloud backup, no device transfer.
+         allowBackup covers the older versions, fullBackupContent Android
+         6 to 11 and dataExtractionRules Android 12 and later (allowBackup
+         alone does not stop a transfer to another phone there). -->
     <application
         android:label="Kanso"
         android:name=".KansoApplication"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -23,6 +30,16 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- Kanso's own links: kanso://open/note/<id>, notebook/<id>, search. -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="true" />
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="kanso" android:host="open"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

@@ -67,38 +67,122 @@ pub struct NoteView {
     pub updated_ms: i64,
 }
 
-/// Which notes a list shows. The default is every note outside the trash,
-/// newest edit first.
-#[derive(Clone, Debug, PartialEq)]
-pub struct NoteQuery {
-    /// Only this notebook's notes.
-    pub notebook_id: Option<String>,
-    /// Only notes with this tag (its ID).
-    pub tag_id: Option<String>,
-    /// Only notes with this status (`active`, `onHold`, ...).
-    pub status: Option<String>,
-    /// The trash instead.
-    pub trash: bool,
-    /// Most rows; 0 means all.
-    pub limit: u32,
-    pub skip: u32,
+/// Where a list is: one of the places the library offers.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum ListPlace {
+    /// Every note outside the trash.
+    #[default]
+    All,
+    Pinned,
+    /// Notes changed in the last seven days, newest first whatever the sort.
+    Recent,
+    /// One notebook's own notes.
+    Notebook {
+        id: String,
+    },
+    /// Notes with this tag (its ID). A locked note is never listed here: a
+    /// tag on it is its content.
+    Tag {
+        id: String,
+    },
+    Trash,
+}
+
+/// Which notes a list shows, and in what order. The default is every note
+/// outside the trash, newest edit first.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ListQuery {
+    pub place: ListPlace,
+    /// Only notes with this status (`active`, `onHold`, ...). A locked note
+    /// is not listed then: its status is its content.
+    pub status_only: Option<String>,
+    pub pinned_only: bool,
     pub sort: SortKey,
     pub descending: bool,
 }
 
-impl Default for NoteQuery {
+impl Default for ListQuery {
     fn default() -> Self {
-        NoteQuery {
-            notebook_id: None,
-            tag_id: None,
-            status: None,
-            trash: false,
-            limit: 0,
-            skip: 0,
+        ListQuery {
+            place: ListPlace::All,
+            status_only: None,
+            pinned_only: false,
             sort: SortKey::Updated,
             descending: true,
         }
     }
+}
+
+/// Which date a list is under headers of.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DateField {
+    Updated,
+    Created,
+}
+
+/// How a list is laid out, as the desktop decides it (`kanso_engine::list`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ListShape {
+    /// The sort the list is in: Recent is always by edit time.
+    pub sort: SortKey,
+    /// Whether the notes sit under headers for their days.
+    pub by_date: bool,
+    /// The date the headers and the rows' times are of.
+    pub date: DateField,
+    /// Whether pinned notes sit under their own header.
+    pub group_pinned: bool,
+}
+
+/// A list: the rows, in order, and how to lay them out.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NoteList {
+    pub rows: Vec<NoteRow>,
+    pub shape: ListShape,
+}
+
+/// The counts the library's places show.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LibraryOverview {
+    /// Notes outside the trash.
+    pub all: u32,
+    pub pinned: u32,
+    /// Notes changed in the last seven days.
+    pub recent: u32,
+    pub trash: u32,
+}
+
+/// What is done to every note in a change.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NoteChange {
+    /// Pins every note, or unpins them when they are all pinned.
+    TogglePin,
+    /// Into this notebook.
+    Move { notebook_id: String },
+    /// Into the trash.
+    Trash,
+}
+
+/// What a search looks in.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum SearchScope {
+    /// Titles and texts.
+    #[default]
+    All,
+    /// Titles only.
+    Titles,
+    /// Tag names (a tag, or the tags inside it). A locked note is never
+    /// found this way.
+    Tags,
+    /// One notebook's notes.
+    Notebook { id: String },
+}
+
+/// A notebook's job, which it keeps however it is renamed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NotebookRole {
+    Inbox,
+    Journal,
+    Templates,
 }
 
 /// What a list is ordered by.
@@ -127,7 +211,8 @@ pub struct Saved {
     pub rev: String,
 }
 
-/// A notebook in the sidebar.
+/// A notebook in the sidebar. The rows come in tree order: a notebook is
+/// followed by the ones inside it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NotebookRow {
     pub id: String,
@@ -140,6 +225,10 @@ pub struct NotebookRow {
     /// The icon's Lucide name and the wash color, as the notebook syncs them.
     pub icon: Option<String>,
     pub color: Option<String>,
+    /// Inbox, Journal or Templates, when it is one.
+    pub role: Option<NotebookRole>,
+    /// How many notebooks it is inside; 0 at the top.
+    pub depth: u32,
 }
 
 /// A tag in the sidebar.
@@ -358,6 +447,34 @@ pub struct ThemeTokens {
     pub syntax: Vec<SyntaxStyleRow>,
     /// The colors the preview and drawings are made in.
     pub palette: PaletteDto,
+}
+
+/// A built-in theme: who made it and how it is drawn.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BuiltinTheme {
+    /// The theme file's name without `.json`: `nord`, `github-light`.
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub license: String,
+    pub source: Option<String>,
+    pub dark: bool,
+    /// The theme fitted as one theme for the interface, the editor and the
+    /// preview (the desktop's own panes).
+    pub tokens: ThemeTokens,
+}
+
+/// A run of a note's source in a theme's colors. Text between runs, and any
+/// attribute a run leaves `None`, is drawn in the theme's plain text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StyledRun {
+    /// `[start, end)` in UTF-16 units of the text.
+    pub range: Range16,
+    /// `0xRRGGBB`.
+    pub color: Option<u32>,
+    pub italic: Option<bool>,
+    /// 100 to 900.
+    pub weight: Option<u16>,
 }
 
 /// Which diagram language a source is.

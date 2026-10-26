@@ -16,12 +16,16 @@ class KansoPressable extends StatefulWidget {
   const KansoPressable({
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.semanticLabel,
     super.key,
   });
 
   final Widget child;
   final VoidCallback? onTap;
+
+  /// What a press that is held does.
+  final VoidCallback? onLongPress;
   final String? semanticLabel;
 
   @override
@@ -44,9 +48,11 @@ class _KansoPressableState extends State<KansoPressable> {
       button: onTap != null,
       enabled: onTap != null,
       label: widget.semanticLabel,
+      onLongPress: widget.onLongPress,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
+        onLongPress: widget.onLongPress,
         onTapDown: onTap == null ? null : (_) => pressed.value = true,
         onTapUp: onTap == null ? null : (_) => pressed.value = false,
         onTapCancel: onTap == null ? null : () => pressed.value = false,

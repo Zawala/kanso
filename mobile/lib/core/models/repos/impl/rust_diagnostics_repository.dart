@@ -31,4 +31,8 @@ class RustDiagnosticsRepository implements DiagnosticsRepository {
     await core.secretsProbe();
     return unit;
   });
+
+  @override
+  Future<Either<ApplicationError, bool?>> backupExcluded(String folder) =>
+      attempt(() => core.backupExcluded(folder: folder));
 }

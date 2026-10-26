@@ -6,10 +6,10 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:glados/glados.dart' show BoolAny, Glados2, any;
-import 'package:kanso/core/models/data/tag_color.dart';
 import 'package:kanso/core/utils/muted_tag_color.dart';
 
 import '../../helpers/property.dart';
+import '../../helpers/tag_color.dart';
 
 void main() {
   group('mutedTagColor properties', () {

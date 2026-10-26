@@ -2,10 +2,12 @@
 
 The Flutter app of [Kanso](../README.md), tracked in
 [#48](https://github.com/iamngoni/kanso/issues/48). This folder holds the
-scaffold: the design system (colours, type, icons, spacing, motion), the
-shared appearance state, the test and golden-image tooling, and CI, and the
-Rust core behind a bridge (`rust/`, `lib/core/bridge/`). The screens come in
-later steps.
+design system (colours, type, icons, spacing, motion), the app shell (routes,
+links, one to three panes, preferences, keyboard shortcuts), the screens for
+browsing (the library, the note list, a note's text, search) and for settings
+(theme, fonts, text size, sync status, About), the test and golden-image
+tooling, CI, and the Rust core behind a bridge (`rust/`, `lib/core/bridge/`).
+Writing and editing a note, and the rendered preview, come in later steps.
 
 - Flutter 3.44.8 (stable), Dart 3.12, strict analysis.
 - iOS and iPadOS 17 or later; Android 10 (API 29) or later; phones and tablets.
@@ -58,30 +60,162 @@ profile (`[profile.mobile]` in the root `Cargo.toml`) and the compilers of
 core open the library it built (`test/helpers/core_library.dart`). The app
 opens its library at `kanso/library.db` in the application support folder
 (`lib/core/configs/core_module.dart`); the background sync opens the same file.
-The home page lists a "Rust core" row that opens `lib/core_check/`, real calls
-to the library.
+`preferences.json` sits beside it (see below).
 
 ## Check
 
 ```sh
-dart format --output=none --set-exit-if-changed lib test
+dart format --output=none --set-exit-if-changed lib test integration_test test_driver
 flutter analyze
 flutter test
 ```
 
+## Integration tests and the scrolling check
+
+`integration_test/` runs the app on a simulator or an emulator, and
+`AppEnvironment.integration` (what `bootstrap` takes there) opens a library in
+a new temporary folder, never the person's. `facade_test.dart` calls every
+function of the bridge with the platform's own secret store; the three flows
+use the app as a person does, on a library that `helpers/seed_library.dart`
+fills through the app's repositories (two notebooks, notes with `#todo`, a
+pinned note, a locked one):
+
+| Flow | What it does |
+| --- | --- |
+| `browse_flow_test.dart` | All Notes under Pinned and Today; the library and a notebook's notes; a note opened and closed; a swipe pins; two notes chosen and moved; a note trashed and the Trash count; the locked note shows its title and its lock, and its text is nowhere |
+| `search_flow_test.dart` | Type a word and see what matched highlighted; narrow to titles; open a hit |
+| `open_flow_test.dart` | `kanso://open/note/…`, `…/notebook/…` and `…/search?q=…` as the platform hands them over; a note that is not there; a locked note |
+
+```sh
+flutter test integration_test/browse_flow_test.dart -d <simulator or emulator>
+```
+
+CI runs them on an iPhone simulator and an Android 10 emulator. The Android job
+then runs `scripts/mobile-backup-check.sh`, which asks the installed package
+(`dumpsys package`) and fails if its flags list `ALLOW_BACKUP`.
+
+`scroll_performance_test.dart` flings the note list of 2,000 notes in 8
+notebooks up and down and records every frame's build and raster time
+(`FrameTiming`) with the display's refresh rate. `lib/core/utils/frame_report.dart`
+turns them into the numbers: the 50th, 90th and 99th percentile of each thread
+and how many frames took longer than one refresh interval (8.33 ms at 120 Hz).
+In debug mode, on a simulator or emulator at 60 Hz, it only checks that the
+report was made. In **profile mode**, which is what a shipped app runs in, it
+holds the numbers to a limit: p99 build and p99 raster under the interval, and
+at most 1% of frames over it. Run it on the device, with `flutter drive`
+(`test_driver/perf_driver.dart` prints the report and writes
+`build/scroll_performance.json`):
+
+```sh
+flutter drive --profile \
+  --driver=test_driver/perf_driver.dart \
+  --target=integration_test/scroll_performance_test.dart \
+  -d <device>
+```
+
+On a 120 Hz phone (ProMotion), add `--dart-define=KANSO_MIN_REFRESH_RATE=119`:
+the run then also fails if the display ran slower, which would otherwise pass
+at the looser 60 Hz interval. A simulator or emulator cannot measure 120 Hz;
+the numbers are for a device. The iPhone's `Info.plist` has
+`CADisableMinimumFrameDurationOnPhone`, which lets Flutter draw at 120 Hz.
+
+## The app shell
+
+**Routes** (`lib/core/router/`, go_router). `/` goes to `/notes`; the places
+are `/notes`, `/pinned`, `/recent`, `/trash`, `/notebooks/:notebookId` and
+`/tags/:tagId`; each of them and `/search?q=&scope=&in=` takes `/note/:noteId`
+for a note opened from it. Ids are written with `Uri.encodeComponent` (note ids
+contain `:`). `/settings` has `/settings/theme`, `/settings/fonts?at=size` and
+`/settings/licences` inside it, and `/design` is the gallery of the design
+proposal, in the development environment only (a row in its library). Places
+and searches are `BrowseLocation` (`core/models/data/browse_location.dart`),
+which writes and reads these addresses.
+
+**Links.** `kanso://open/note/<id>`, `kanso://open/notebook/<id>` and
+`kanso://open/search?q=…` open that (`core/router/deep_links.dart`; the scheme
+is registered in `ios/Runner/Info.plist` and `AndroidManifest.xml`). The router
+matches paths and ignores the scheme and host, so the redirect there turns a
+link into an address of the app. Try one on a simulator:
+`xcrun simctl openurl booted "kanso://open/notebook/<id>"`.
+
+**Panes** (`core/configs/kanso_layout.dart`). One pane on a phone or a narrow
+window, two when a tablet's window is 740 wide or more, three from 1020: the
+note pane keeps at least 400. `BrowseShell` lays the panes out; in one the
+library is a drawer (`KansoDrawer`: a button, a drag from the start edge on the
+list, and the system's back close it). The window's size reaches the router
+through `LayoutClassNotifier`, so the pages are built again for the new layout
+and the open note stays open. Settings is a sheet on a tablet and a page on a
+phone, whatever the width of the window.
+
+**Preferences** live in `kanso/preferences.json` in the library folder, so they
+stay on the phone and out of backups: the themes (`ThemeSelection`), fonts,
+text size, list sort and notices seen. A save writes a temporary file and
+renames it over the old one, one change at a time. A missing or unreadable file
+is the defaults; a value the file has and this version does not know is that
+value's default. `bootstrap` reads the saved themes before the first frame.
+
+**Themes** come from the Rust core, which has the same theme files as the
+desktop compiled in: `RendererRepository.builtinThemeTokens` gives the tokens
+and `paletteFromTokens` turns them into a `KansoPalette` (the interface colours,
+the syntax colours and styles, the preview's colours). `KansoPalette.kansoLight`
+and `kansoDark` are the two Kanso themes written out, for the first frame and
+for tests. `test/core/configs/theme_parity_test.dart` checks every theme's
+palette against `crates/kanso-app/src/themes.golden.json`, which records what
+the desktop draws.
+
+**Backups.** The library is kept out of device backups on iOS by the core
+(`kCFURLIsExcludedFromBackupKey`, set whenever it is opened) and on Android by
+`android:allowBackup="false"` and two rule files in `res/xml/` that exclude
+every domain from backups and from device transfers (Android 12 and later also
+need `dataExtractionRules`). `test/platform/backup_exclusion_test.dart` reads
+the manifest and both files.
+
+## Settings, themes and the first launch
+
+**Settings** (`lib/settings/`) has only rows that work: Appearance (Theme, Fonts,
+Text size), Sync (the live status, "Off" while no account is signed in, and a
+line that the notes are not in device backups) and About (the version, from
+`package_info_plus`; the website, opened with `url_launcher`; Licences). Licences
+is a page Kanso draws from Flutter's `LicenseRegistry`, never Flutter's own
+Material one. Settings opens as a sheet on a tablet and a page on a phone, and
+Fonts, Theme and Licences slide inside it. Everything the app does not do yet
+(default notebook, icon themes, locked notes, account, wake on change) is absent
+rather than disabled.
+
+**Theme picker** (`lib/themes/`): a switch to follow the system's light and dark
+mode, with the desktop's words, and the built-in themes as cards in a row, each
+drawn from its own tokens (`themePreviewFromBuiltin`), the ones in use outlined
+and first. Choosing one is `ThemeSelection.picked`, as on the desktop. The
+gallery of themes to install needs the signed catalogue and a network, and is not
+here.
+
+**First launch.** A card says once that the notes on this phone are not in
+device backups; OK is remembered in the preferences (`backupNoticeSeen`).
+
+**Keyboard shortcuts** (`lib/shell/views/widgets/kanso_shortcuts.dart`, bindings in
+`lib/shell/utils/kanso_shortcut_bindings.dart`). The secondary key is Command on
+iOS and Control on Android, as the desktop's: secondary+`[` and `]` back and
+forward through the notes opened, secondary+shift+F search all notes,
+secondary+`,` settings, secondary+`\` show or hide the library (the pane of
+three, or the drawer), secondary+option+down and up the next and previous note of
+the list, secondary+shift+P pin the open note. A new note, find in a note, the
+modes of a note and the command palette have none until what they act on is
+built.
+
 ## Design proposal
 
-Until the real screens are built, the app opens on a gallery of static mock
-screens (`lib/design/`) for the owner to review: the library, note list (and
-its loading and empty states), note (preview and edit), search, settings,
-fonts, theme picker, a locked note and an error card, for a phone and for a
-tablet in landscape, with a light, dark or system switch. The mock data is
-fixed (`lib/design/models/data/mock_data.dart`). The Fonts screen is live:
-choosing a font or a text size there restyles every note in the running app
-(`AppearanceBloc`; nothing is saved yet). The
-components the screens are made of (`lib/core/views/widgets/`) are the ones
-the real app will use. The images in `test/design/views/pages/goldens/` are
-the proposal as pictures.
+What is built is the real screens, with their goldens beside their tests
+(`test/**/goldens/`). The mock screens (`lib/design/`) are those of the design
+proposal that are not built yet, in a gallery for the owner to review, reached
+from the library in the development environment: the note in edit, with the
+keyboard's accessory bar and the completion of a link, and the signed-out card,
+for a phone and for a tablet in landscape, with a light, dark or system switch.
+The mock data is fixed (`lib/design/models/data/mock_data.dart`), and the images in
+`test/design/views/pages/goldens/` are the proposal as pictures. The mocks of
+the screens that have been built were removed with them; the approved images are
+in the history.
+The components the screens are made of (`lib/core/views/widgets/`) are the
+ones the app uses.
 
 ## Golden images
 
@@ -122,7 +256,7 @@ casts, inference and raw types).
 Colours are not chosen here. `lib/core/configs/kanso_colors.dart` holds the
 tokens of Kanso's own theme files, and `test/core/configs/kanso_colors_test.dart`
 reads `../themes/kanso-dark.json` and `kanso-light.json` so the app and the
-files cannot drift apart.
+files cannot drift apart; every other theme is drawn from the core's tokens.
 
 ## Dependencies
 
@@ -131,6 +265,9 @@ Every dependency is MIT, BSD or Apache licensed.
 | Package | Used for | Licence |
 | --- | --- | --- |
 | `bloc` | BLoC state machines | MIT |
+| `go_router` | Routes, deep links and the back button | BSD-3-Clause |
+| `bloc_concurrency` | `sequential` and `restartable` event transformers | MIT |
+| `clock` | The time screens read ("Today", a row's hour), which tests fix | Apache-2.0 |
 | `flutter_bloc` | Widgets for BLoCs | MIT |
 | `freezed_annotation` | Annotations for generated models, events and states | MIT |
 | `json_annotation` | Annotations for generated JSON conversion | BSD-3-Clause |
@@ -145,6 +282,12 @@ Every dependency is MIT, BSD or Apache licensed.
 | `path` | The build hook's file paths | BSD-3-Clause |
 | `dartz` | `Either` for repository results | MIT |
 | `path_provider` | The folder the library lives in | BSD-3-Clause |
+| `package_info_plus` | The version and build in Settings › About | BSD-3-Clause |
+| `url_launcher` | Opens the website from Settings › About | BSD-3-Clause |
+
+The Rust library adds `core-foundation` and `core-foundation-sys` (Apple
+targets only, MIT or Apache-2.0, already in the iOS tree through
+`security-framework`) to mark the library's folder as excluded from backups.
 
 Development only:
 
@@ -155,6 +298,7 @@ Development only:
 | `json_serializable` | Generates JSON conversion | BSD-3-Clause |
 | `injectable_generator` | Generates the GetIt registrations | MIT |
 | `very_good_analysis` | Lint rules | MIT |
+| `xml` | Reads the Android backup rules in a test | MIT |
 | `bloc_test` | BLoC tests | MIT |
 | `mocktail` | Mocks | MIT |
 | `glados` | Property-based tests | MIT |
@@ -191,5 +335,5 @@ stays in Instrument Sans. A note font can also be "System", the device's own
 font (San Francisco on iOS, the system font on Android): the one setting that
 looks different per platform on purpose, so no golden uses it.
 
-The licences are added to Flutter's licence page at start-up
+The licences are added to the registry the Licences page lists at start-up
 (`lib/core/utils/license_registration.dart`).

@@ -76,7 +76,7 @@ class KansoMessageCard extends StatelessWidget {
               textAlign: TextAlign.center,
               style: typography.secondary,
             ),
-            const SizedBox(height: KansoSpacing.lg),
+            if (actions.isNotEmpty) const SizedBox(height: KansoSpacing.lg),
             for (var i = 0; i < actions.length; i++) ...<Widget>[
               if (i > 0) const SizedBox(height: KansoSpacing.xs),
               actions[i],

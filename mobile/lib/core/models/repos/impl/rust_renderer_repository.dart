@@ -41,6 +41,30 @@ class RustRendererRepository implements RendererRepository {
   ) => attempt(() => KansoRenderer.themeTokens(themeJson: themeJson));
 
   @override
+  Future<Either<ApplicationError, List<BuiltinTheme>>> builtinThemes() =>
+      attempt(KansoRenderer.builtinThemes);
+
+  @override
+  Future<Either<ApplicationError, ThemeTokens>> builtinThemeTokens(
+    String id,
+  ) => attempt(() => KansoRenderer.builtinThemeTokens(id: id));
+
+  @override
+  Future<Either<ApplicationError, List<StyledRun>>> styledRuns(
+    String text, {
+    required int start,
+    required int end,
+    required String themeId,
+  }) => attempt(
+    () => KansoRenderer.styledRuns(
+      text: text,
+      start: start,
+      end: end,
+      themeId: themeId,
+    ),
+  );
+
+  @override
   Future<Either<ApplicationError, SvgRow>> mathSvg(
     String source, {
     required bool display,

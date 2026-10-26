@@ -1,0 +1,53 @@
+// Kanso — note_page.dart
+// Created 2026-10-26.
+// Licensed under AGPL-3.0-or-later (see LICENSE).
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../../../core/state/navigation_history/navigation_history_bloc.dart';
+import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/syntax_theme_id.dart';
+import '../../../injection.dart';
+import '../../state/note/note_bloc.dart';
+import '../widgets/note_pane.dart';
+import '../widgets/note_theme_sync.dart';
+
+/// One note, opened from a place or a search: read when it is opened, and
+/// given up when it is left.
+class NotePage extends StatelessWidget {
+  const NotePage({required this.noteId, this.inPane = false, super.key});
+
+  final String noteId;
+
+  /// Whether it is the note pane of a wide window rather than a page of its
+  /// own, with nowhere to go back to.
+  final bool inPane;
+
+  @override
+  Widget build(BuildContext context) {
+    // The theme the text is highlighted in is the one the screen is in: a
+    // change of it builds this again, and the bloc is told.
+    final themeId = syntaxThemeId(context);
+    return BlocProvider<NoteBloc>(
+      // Another note is a new read: nothing of the last is kept.
+      key: ValueKey<String>(noteId),
+      create: (context) {
+        // A note opened by a link, or any way but a list, is a visit too;
+        // one the history is already at changes nothing.
+        context.read<NavigationHistoryBloc>().add(
+          NavigationHistoryEvent.visited(noteId),
+        );
+        return getIt<NoteBloc>()..add(NoteEvent.started(noteId, themeId));
+      },
+      child: NoteThemeSync(
+        themeId: themeId,
+        child: Scaffold(
+          resizeToAvoidBottomInset: false,
+          backgroundColor: context.colors.editor,
+          body: NotePane(inPane: inPane),
+        ),
+      ),
+    );
+  }
+}

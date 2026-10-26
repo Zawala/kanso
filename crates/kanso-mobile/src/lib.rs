@@ -10,17 +10,21 @@
 //! # What is here
 //!
 //! - [`Library`] opens a library (one database file) and answers for its
-//!   notes: lists, one note, saving, creating, trashing, notebooks, tags,
-//!   search with the words matched, properties and query views, and the
+//!   notes: lists by place with the desktop's sort, narrowing and grouping,
+//!   the counts of the places, one note, saving, creating, changing several
+//!   notes at once, notebooks in tree order, tags, search by scope with the
+//!   words matched, properties and query views, and the
 //!   [`Library::changes`] stream.
 //! - [`LockSession`] (`library.locks()`) holds the lock password's keys. A
 //!   locked note's text, snippet, properties, tasks and preview never come
-//!   back while it is closed; only its title does, as on the desktop. Keys
-//!   never cross this edge.
+//!   back while it is closed; only its title and its lock show in a list.
+//!   Keys never cross this edge.
 //! - [`SyncHandle`] (`library.sync()`) signs in to a server, syncs and
 //!   reports its status.
 //! - [`Renderer`] (`library.renderer()`) draws a note's preview, highlights
-//!   source, fits a theme and draws math and diagrams.
+//!   source, fits a theme (the built-in ones are in, as the desktop has
+//!   them, and source can be colored in any of them) and draws math and
+//!   diagrams.
 //! - [`background`] is the sync that runs with no app: the code behind the
 //!   C entry `kanso_background_sync` that `mobile/rust` exports.
 //! - [`diagnostics`] has the version, the TLS check and the panic probe.
@@ -37,7 +41,9 @@
 //! store ([`secrets`]), never handed to the shell.
 
 pub mod background;
+mod backup;
 pub mod boundary;
+mod builtin_themes;
 pub mod diagnostics;
 mod errors;
 mod library;

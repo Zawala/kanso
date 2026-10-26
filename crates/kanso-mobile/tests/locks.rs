@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use common::*;
 use kanso_engine::lock::AUTO_LOCK;
-use kanso_mobile::{KansoError, LockEvent, LockReason, LockState, NewNote, NoteQuery};
+use kanso_mobile::{KansoError, ListQuery, LockEvent, LockReason, LockState, NewNote};
 use kanso_store::{SearchParams, Store};
 use kanso_sync::KdfParams;
 use kanso_sync::lock::{LockKey, LockPassword};
@@ -204,7 +204,7 @@ fn the_notes_of_a_locked_notebook_are_locked_with_it() {
     let locks = phone.library.locks();
     let books = phone.library.notebooks().unwrap();
     assert!(books.iter().any(|b| b.id == vault && b.locked));
-    let rows = phone.library.notes(NoteQuery::default()).unwrap();
+    let rows = phone.library.list(ListQuery::default()).unwrap().rows;
     assert_eq!(rows.len(), 2);
     for row in &rows {
         assert!(row.locked);

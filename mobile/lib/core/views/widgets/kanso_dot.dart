@@ -5,14 +5,14 @@
 import 'package:flutter/material.dart';
 
 import '../../configs/kanso_sizes.dart';
-import '../../models/data/tag_color.dart';
 import '../../utils/muted_tag_color.dart';
 
 /// A small round dot in a tag's colour, calmed to read on the current theme.
 class KansoDot extends StatelessWidget {
   const KansoDot({required this.color, super.key});
 
-  final TagColor color;
+  /// The tag's own colour, as stored; drawn calmed.
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +21,7 @@ class KansoDot extends StatelessWidget {
       width: KansoSizes.dot,
       height: KansoSizes.dot,
       decoration: BoxDecoration(
-        color: mutedTagColor(color.color, dark: dark),
+        color: mutedTagColor(color, dark: dark),
         shape: BoxShape.circle,
       ),
     );

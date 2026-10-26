@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_icons.dart';
 import 'package:kanso/core/configs/kanso_sizes.dart';
 import 'package:kanso/core/models/data/note_status.dart';
-import 'package:kanso/core/models/data/tag_color.dart';
 import 'package:kanso/core/views/widgets/kanso_checkbox.dart';
 import 'package:kanso/core/views/widgets/kanso_chip.dart';
 import 'package:kanso/core/views/widgets/kanso_icon.dart';
@@ -19,6 +18,7 @@ import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
 import 'package:kanso/core/views/widgets/kanso_tag_chip.dart';
 
 import '../../../helpers/pump.dart';
+import '../../../helpers/tag_color.dart';
 
 void main() {
   group('KansoCheckbox', () {
@@ -163,7 +163,7 @@ void main() {
     ) async {
       await pumpKanso(
         tester,
-        const SizedBox(
+        SizedBox(
           width: 361,
           child: KansoNoteRow(
             title: 'Sync design notes',
@@ -172,7 +172,7 @@ void main() {
             time: '09:41',
             status: NoteStatus.active,
             tags: <KansoTagChip>[
-              KansoTagChip(name: 'idea', color: TagColor.teal),
+              KansoTagChip(name: 'idea', color: TagColor.teal.color),
             ],
             pinned: true,
           ),
@@ -205,7 +205,7 @@ void main() {
     testWidgets('a narrow row does not overflow', (tester) async {
       await pumpKanso(
         tester,
-        const SizedBox(
+        SizedBox(
           width: 250,
           child: KansoNoteRow(
             title: 'A very long title that cannot possibly fit on one line',
@@ -216,7 +216,7 @@ void main() {
             locked: true,
             pinned: true,
             tags: <KansoTagChip>[
-              KansoTagChip(name: 'idea', color: TagColor.teal),
+              KansoTagChip(name: 'idea', color: TagColor.teal.color),
             ],
           ),
         ),

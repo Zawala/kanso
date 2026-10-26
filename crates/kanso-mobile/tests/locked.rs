@@ -1,8 +1,8 @@
 //! The guarantee the whole facade is built to keep: while a note's lock is
 //! not open, nothing the library returns holds its text.
 //!
-//! A library of notes, each with a marker in its text, its front matter and
-//! its tasks, some locked. A random sequence of calls (lists, reads, search,
+//! A library of notes, each with a marker in its text, its front matter, its
+//! tasks and an inline tag, some locked. A random sequence of calls (lists, reads, search,
 //! properties, query views, previews, saves, creating, trashing, locking and
 //! unlocking, the auto-lock) runs against it. After every call, the marker of
 //! every note that was closed when the call was made is looked for in the debug
@@ -18,7 +18,10 @@ use std::time::{Duration, Instant};
 
 use common::*;
 use kanso_engine::lock::AUTO_LOCK;
-use kanso_mobile::{KansoError, LockEvent, NoteQuery, PaletteDto, Renderer};
+use kanso_mobile::{
+    KansoError, ListPlace, ListQuery, LockEvent, NoteChange, NoteRow, PaletteDto, Renderer,
+    SearchScope, SortKey,
+};
 use proptest::prelude::*;
 
 const NOTES: usize = 4;
@@ -28,10 +31,16 @@ fn marker(i: usize) -> String {
     format!("SECRET-MARKER-{i:04}")
 }
 
+/// The inline tag note `i` carries.
+fn tag_name(i: usize) -> String {
+    format!("TAGMARK{i:04}")
+}
+
 fn body_of(i: usize) -> String {
     let m = marker(i);
     format!(
-        "---\nowner: {m}\nlevel: {m}\n---\nThe plan {m} is here.\n- [ ] do {m}\n- [x] done {m}\n"
+        "---\nowner: {m}\nlevel: {m}\n---\nThe plan {m} is here. #{tag}\n- [ ] do {m}\n- [x] done {m}\n",
+        tag = tag_name(i)
     )
 }
 
@@ -39,6 +48,22 @@ fn body_of(i: usize) -> String {
 /// come back.
 fn is_closed(locked: &[bool], open: bool, i: usize) -> bool {
     locked[i] && !open
+}
+
+/// Every row that is a locked note carries its title and its lock only.
+fn check_rows(rows: &[NoteRow], ids: &[String], locked: &[bool]) -> Result<(), TestCaseError> {
+    for row in rows {
+        if let Some(i) = ids.iter().position(|id| *id == row.id) {
+            prop_assert_eq!(row.locked, locked[i], "{:?}", row);
+            if row.locked {
+                prop_assert!(row.snippet.is_empty(), "{:?}", row);
+                prop_assert!(row.tags.is_empty(), "{:?}", row);
+                prop_assert_eq!(row.status.as_str(), "none", "{:?}", row);
+                prop_assert_eq!((row.tasks_done, row.tasks_total), (0, 0), "{:?}", row);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn palette() -> PaletteDto {
@@ -66,6 +91,13 @@ enum Op {
     UnlockWrong,
     IsNoteUnlocked(usize),
     Idle,
+    /// A place and narrowing of the list: which place, status narrowing,
+    /// pinned only, which sort.
+    List(usize, bool, bool, usize),
+    Change(usize, usize),
+    SearchIn(usize, usize),
+    CreateNotebook,
+    SaveWithTag(usize),
 }
 
 fn ops() -> impl Strategy<Value = Vec<Op>> {
@@ -89,6 +121,12 @@ fn ops() -> impl Strategy<Value = Vec<Op>> {
             1 => Just(Op::UnlockWrong),
             1 => index.clone().prop_map(Op::IsNoteUnlocked),
             1 => Just(Op::Idle),
+            4 => (0..6usize, any::<bool>(), any::<bool>(), 0..3usize)
+                .prop_map(|(p, s, o, k)| Op::List(p, s, o, k)),
+            3 => (index.clone(), 0..3usize).prop_map(|(i, k)| Op::Change(i, k)),
+            3 => (0..4usize, 0..5usize).prop_map(|(s, w)| Op::SearchIn(s, w)),
+            1 => Just(Op::CreateNotebook),
+            1 => index.clone().prop_map(Op::SaveWithTag),
         ],
         1..24,
     )
@@ -140,16 +178,9 @@ proptest! {
             match &op {
                 Op::ListAll | Op::ListTrash => {
                     let trash = matches!(op, Op::ListTrash);
-                    let rows = library.notes(NoteQuery { trash, ..NoteQuery::default() }).unwrap();
-                    for row in &rows {
-                        if let Some(i) = ids.iter().position(|id| *id == row.id) {
-                            prop_assert_eq!(row.locked, locked[i], "{:?}", row);
-                            if row.locked {
-                                prop_assert!(row.snippet.is_empty());
-                                prop_assert_eq!((row.tasks_done, row.tasks_total), (0, 0));
-                            }
-                        }
-                    }
+                    let place = if trash { ListPlace::Trash } else { ListPlace::All };
+                    let rows = library.list(ListQuery { place, ..ListQuery::default() }).unwrap().rows;
+                    check_rows(&rows, &ids, &locked)?;
                     returned.push(format!("{rows:?}"));
                 }
                 Op::ReadNote(i) => {
@@ -157,6 +188,8 @@ proptest! {
                     if is_closed(&locked, open, *i) {
                         prop_assert_eq!(&view.body, &None);
                         prop_assert!(view.lock.is_closed());
+                        prop_assert!(view.tags.is_empty());
+                        prop_assert_eq!(view.status.as_str(), "none");
                     } else {
                         // The other side: what may be read is read.
                         prop_assert!(view.body.as_deref().is_some_and(|b| b.contains(&marker(*i))));
@@ -164,14 +197,14 @@ proptest! {
                     returned.push(format!("{view:?}"));
                 }
                 Op::Search(i) => {
-                    let hits = library.search(&marker(*i), 0).unwrap();
+                    let hits = library.search(&marker(*i), SearchScope::All, 0).unwrap();
                     if !locked[*i] && !trashed[*i] {
                         prop_assert!(hits.iter().any(|h| h.row.id == ids[*i]), "a plain note is found");
                     }
                     returned.push(format!("{hits:?}"));
                 }
                 Op::SearchWord => {
-                    returned.push(format!("{:?}", library.search("SECRET MARKER plan", 0).unwrap()));
+                    returned.push(format!("{:?}", library.search("SECRET MARKER plan", SearchScope::All, 0).unwrap()));
                 }
                 Op::Properties(i) => {
                     let props = library.properties(&ids[*i]).unwrap();
@@ -209,6 +242,116 @@ proptest! {
                         Ok(saved) => {
                             prop_assert!(!is_closed(&locked, open, *i));
                             if locked[*i] { open = true; }
+                            returned.push(format!("{saved:?}"));
+                        }
+                        Err(err) => {
+                            prop_assert_eq!(err, KansoError::Locked);
+                            prop_assert!(is_closed(&locked, open, *i));
+                        }
+                    }
+                }
+                Op::List(place, status, pinned_only, sort) => {
+                    let notebooks = library.notebooks().unwrap();
+                    let tags = library.tags().unwrap();
+                    let places: Vec<ListPlace> = match place {
+                        0 => vec![ListPlace::All],
+                        1 => vec![ListPlace::Pinned],
+                        2 => vec![ListPlace::Recent],
+                        3 => notebooks.iter().map(|b| ListPlace::Notebook { id: b.id.clone() }).collect(),
+                        4 => tags.iter().map(|t| ListPlace::Tag { id: t.id.clone() }).collect(),
+                        _ => vec![ListPlace::Trash],
+                    };
+                    for place in places {
+                        let by_tag = matches!(place, ListPlace::Tag { .. });
+                        let list = library
+                            .list(ListQuery {
+                                place,
+                                status_only: status.then(|| "none".to_owned()),
+                                pinned_only: *pinned_only,
+                                sort: [SortKey::Updated, SortKey::Created, SortKey::Title][*sort],
+                                descending: true,
+                            })
+                            .unwrap();
+                        check_rows(&list.rows, &ids, &locked)?;
+                        if by_tag || *status {
+                            // Made of what a note holds: a locked note is
+                            // not in it.
+                            for row in &list.rows {
+                                if let Some(i) = ids.iter().position(|id| *id == row.id) {
+                                    prop_assert!(!locked[i], "a locked note in a tag or status list: {:?}", row);
+                                }
+                            }
+                        }
+                        returned.push(format!("{list:?}"));
+                    }
+                    returned.push(format!("{:?}", library.overview().unwrap()));
+                }
+                Op::Change(i, kind) => {
+                    let notebooks = library.notebooks().unwrap();
+                    let change = match kind {
+                        0 => NoteChange::TogglePin,
+                        1 => NoteChange::Trash,
+                        _ => NoteChange::Move { notebook_id: notebooks.last().unwrap().id.clone() },
+                    };
+                    // Pinning, trashing and moving between unlocked
+                    // notebooks are allowed on a locked note, open or not.
+                    let written = library.change(vec![ids[*i].clone()], change).unwrap();
+                    if *kind == 1 {
+                        trashed[*i] = true;
+                    }
+                    returned.push(format!("{written}"));
+                }
+                Op::SearchIn(scope, word) => {
+                    let notebooks = library.notebooks().unwrap();
+                    let scope = match scope {
+                        0 => SearchScope::All,
+                        1 => SearchScope::Titles,
+                        2 => SearchScope::Tags,
+                        _ => SearchScope::Notebook { id: notebooks.first().unwrap().id.clone() },
+                    };
+                    let word = ["SECRET", "TAGMARK0000", "Note", "status:none", "tag:TAGMARK0001"][*word];
+                    let by_content = matches!(scope, SearchScope::Tags)
+                        || word.starts_with("status:")
+                        || word.starts_with("tag:");
+                    let hits = library.search(word, scope.clone(), 0).unwrap();
+                    let rows: Vec<NoteRow> = hits.iter().map(|h| h.row.clone()).collect();
+                    check_rows(&rows, &ids, &locked)?;
+                    if by_content {
+                        for row in &rows {
+                            if let Some(i) = ids.iter().position(|id| *id == row.id) {
+                                prop_assert!(!locked[i], "a locked note found by its tags or status: {:?}", row);
+                            }
+                        }
+                    }
+                    if scope == SearchScope::Tags && word == "TAGMARK0000" {
+                        // The other side: a plain note is found by its tag.
+                        if !locked[0] && !trashed[0] {
+                            prop_assert!(rows.iter().any(|r| r.id == ids[0]), "not found by its tag");
+                        }
+                    }
+                    returned.push(format!("{hits:?}"));
+                }
+                Op::CreateNotebook => {
+                    let made = library.create_notebook("Garden".into(), None).unwrap();
+                    returned.push(format!("{made:?}"));
+                }
+                Op::SaveWithTag(i) => {
+                    let rev = library.note(&ids[*i]).unwrap().rev;
+                    let tag = format!("extra{i}");
+                    let edited = format!("{} #{tag}", body_of(*i));
+                    match library.save(&ids[*i], &rev, edited) {
+                        Ok(saved) => {
+                            prop_assert!(!is_closed(&locked, open, *i));
+                            if locked[*i] {
+                                open = true;
+                            } else {
+                                // A plain note takes the tag its text names.
+                                let names: Vec<String> =
+                                    library.tags().unwrap().into_iter().map(|t| t.name).collect();
+                                prop_assert!(names.iter().any(|n| n.eq_ignore_ascii_case(&tag)), "{names:?}");
+                                let view = library.note(&ids[*i]).unwrap();
+                                prop_assert!(!view.tags.is_empty());
+                            }
                             returned.push(format!("{saved:?}"));
                         }
                         Err(err) => {

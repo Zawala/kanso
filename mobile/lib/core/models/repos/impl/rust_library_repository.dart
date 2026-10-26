@@ -20,8 +20,18 @@ class RustLibraryRepository implements LibraryRepository {
   final KansoLibrary _library;
 
   @override
-  Future<Either<ApplicationError, List<NoteRow>>> notes(NoteQuery query) =>
-      attempt(() => _library.notes(query: query));
+  Future<Either<ApplicationError, NoteList>> list(ListQuery query) =>
+      attempt(() => _library.list(query: query));
+
+  @override
+  Future<Either<ApplicationError, LibraryOverview>> overview() =>
+      attempt(_library.overview);
+
+  @override
+  Future<Either<ApplicationError, int>> change(
+    List<String> ids,
+    NoteChange change,
+  ) => attempt(() => _library.change(ids: ids, change: change));
 
   @override
   Future<Either<ApplicationError, NoteView>> note(String id) =>
@@ -49,14 +59,25 @@ class RustLibraryRepository implements LibraryRepository {
       attempt(_library.notebooks);
 
   @override
+  Future<Either<ApplicationError, NotebookRow>> createNotebook(
+    String name, {
+    String? parentId,
+  }) => attempt(
+    () => _library.createNotebook(name: name, parentId: parentId),
+  );
+
+  @override
   Future<Either<ApplicationError, List<TagRow>>> tags() =>
       attempt(_library.tags);
 
   @override
   Future<Either<ApplicationError, List<Hit>>> search(
     String text, {
+    SearchScope scope = const SearchScope.all(),
     int limit = 50,
-  }) => attempt(() => _library.search(text: text, limit: limit));
+  }) => attempt(
+    () => _library.search(text: text, scope: scope, limit: limit),
+  );
 
   @override
   Future<Either<ApplicationError, List<Property>>> properties(String id) =>

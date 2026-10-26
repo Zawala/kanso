@@ -78,7 +78,7 @@ void main() {
       expect(functions.length, greaterThan(30));
       expect(
         functions.map((f) => f.name),
-        containsAll(<String>['notes', 'unlock', 'syncNow', 'version']),
+        containsAll(<String>['list', 'unlock', 'syncNow', 'version']),
       );
     });
 

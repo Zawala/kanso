@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanso/core/configs/kanso_palette.dart';
 import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/utils/kanso_scroll_behavior.dart';
@@ -45,6 +46,14 @@ const EdgeInsets tabletSafeArea = EdgeInsets.only(top: 24, bottom: 20);
 /// with and the state of the `AppearanceBloc` the page can read; it must not
 /// use the device's own font (`KansoFontFamily.system`), which differs per
 /// platform by design.
+///
+/// [palette] draws the page in a theme's colours instead of Kanso Light and
+/// Dark (which [brightness] chooses between); [brightness] is then only
+/// what the platform is told. The palette must come from the theme tokens,
+/// not be made up.
+///
+/// [interact] runs on the settled page, once per platform, before the
+/// picture is taken: a swipe, a long press, a tap that opens a sheet.
 Future<void> expectGoldenOnBothPlatforms(
   WidgetTester tester,
   Widget child, {
@@ -53,6 +62,8 @@ Future<void> expectGoldenOnBothPlatforms(
   required Brightness brightness,
   EdgeInsets? safeArea,
   AppearanceState appearance = const AppearanceState(),
+  KansoPalette? palette,
+  Future<void> Function(WidgetTester tester)? interact,
 }) async {
   final devicePixelRatio = size.shortestSide < 600 ? 3.0 : 2.0;
   final insets =
@@ -95,12 +106,12 @@ Future<void> expectGoldenOnBothPlatforms(
             // Built per platform: a ThemeData records the platform it was
             // made on, and the shared themes are made once.
             theme: KansoTheme.build(
-              Brightness.light,
+              palette ?? KansoPalette.kansoLight,
               fonts: appearance.fonts,
               textSize: appearance.textSize,
             ).copyWith(platform: platform),
             darkTheme: KansoTheme.build(
-              Brightness.dark,
+              palette ?? KansoPalette.kansoDark,
               fonts: appearance.fonts,
               textSize: appearance.textSize,
             ).copyWith(platform: platform),
@@ -126,6 +137,10 @@ Future<void> expectGoldenOnBothPlatforms(
         ),
       );
       await tester.pumpAndSettle();
+      if (interact != null) {
+        await interact(tester);
+        await tester.pumpAndSettle();
+      }
       final boundary = tester.renderObject<RenderRepaintBoundary>(
         find.byKey(key),
       );

@@ -4,18 +4,18 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kanso/core/models/data/tag_color.dart';
 import 'package:kanso/core/utils/muted_tag_color.dart';
 import 'package:kanso/core/views/widgets/kanso_tag_chip.dart';
 
 import '../../../helpers/pump.dart';
+import '../../../helpers/tag_color.dart';
 
 void main() {
   group('KansoTagChip', () {
     testWidgets('shows the name after a hash', (tester) async {
       await pumpKanso(
         tester,
-        const KansoTagChip(name: 'idea', color: TagColor.teal),
+        KansoTagChip(name: 'idea', color: TagColor.teal.color),
       );
       expect(find.text('#idea'), findsOneWidget);
     });
@@ -23,11 +23,11 @@ void main() {
     testWidgets('is only as wide as its text', (tester) async {
       await pumpKanso(
         tester,
-        const SizedBox(
+        SizedBox(
           width: 300,
           child: Wrap(
             children: <Widget>[
-              KansoTagChip(name: 'idea', color: TagColor.teal),
+              KansoTagChip(name: 'idea', color: TagColor.teal.color),
             ],
           ),
         ),
@@ -38,7 +38,7 @@ void main() {
     testWidgets('draws the colour calmed for the theme', (tester) async {
       await pumpKanso(
         tester,
-        const KansoTagChip(name: 'todo', color: TagColor.pink),
+        KansoTagChip(name: 'todo', color: TagColor.pink.color),
         brightness: Brightness.dark,
       );
       final text = tester.widget<Text>(find.text('#todo'));

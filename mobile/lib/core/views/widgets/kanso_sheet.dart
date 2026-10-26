@@ -8,6 +8,7 @@ import '../../configs/kanso_radii.dart';
 import '../../configs/kanso_shadows.dart';
 import '../../configs/kanso_sizes.dart';
 import '../../utils/context_extensions.dart';
+import 'kanso_plain_text.dart';
 
 /// A floating sheet: a rounded surface with a soft shadow, [width] wide,
 /// for a tablet's modal pages such as settings.
@@ -40,7 +41,7 @@ class KansoSheet extends StatelessWidget {
         context: context,
         removeTop: true,
         removeBottom: true,
-        child: child,
+        child: KansoPlainText(child: child),
       ),
     );
   }

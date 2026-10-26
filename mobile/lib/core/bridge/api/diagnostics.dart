@@ -20,3 +20,9 @@ Future<bool> tlsReady() => KansoCore.instance.api.crateApiDiagnosticsTlsReady();
 /// Writes a value to the phone's secret store, reads it back and removes it.
 Future<void> secretsProbe() =>
     KansoCore.instance.api.crateApiDiagnosticsSecretsProbe();
+
+/// Whether the library folder at `folder` is kept out of the device's
+/// backups: `Some(true)` on iOS once a library is open in it, `None` on
+/// Android (its manifest does that) and for a folder that isn't there.
+Future<bool?> backupExcluded({required String folder}) =>
+    KansoCore.instance.api.crateApiDiagnosticsBackupExcluded(folder: folder);

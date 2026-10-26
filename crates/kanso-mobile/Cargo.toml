@@ -32,6 +32,13 @@ zeroize.workspace = true
 [target.'cfg(target_os = "ios")'.dependencies]
 security-framework = "3.7"
 
+# The folder's "excluded from backup" flag (`backup.rs`): CoreFoundation's URL
+# resource keys. Both are MIT or Apache-2.0, and already in the tree through
+# `security-framework`.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+core-foundation = "0.10"
+core-foundation-sys = { version = "0.8", features = ["mac_os_10_8_features"] }
+
 # The Keystore sits behind a Kotlin class (`secrets::android` says which).
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.22", default-features = false }

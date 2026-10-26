@@ -7,20 +7,38 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/app.dart';
 import 'package:kanso/core/configs/kanso_typography.dart';
+import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
+import 'package:kanso/core/models/data/layout_class.dart';
+import 'package:kanso/core/router/kanso_router.dart';
+import 'package:kanso/core/router/kanso_routes.dart';
+import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
+import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
+
+import 'helpers/seeded_appearance_bloc.dart';
 
 Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
-  final bloc = AppearanceBloc();
+  final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
   tester.view
     ..physicalSize = const Size(393, 2400)
     ..devicePixelRatio = 1;
   addTearDown(tester.view.reset);
+  final router = KansoRouter(
+    const DesignGalleryAccess(available: true),
+    LayoutClassNotifier.starting(LayoutClass.single),
+  )..config.go(KansoRoutes.design);
   await tester.pumpWidget(
-    BlocProvider<AppearanceBloc>.value(value: bloc, child: const App()),
+    MultiBlocProvider(
+      providers: <BlocProvider<dynamic>>[
+        BlocProvider<AppearanceBloc>.value(value: bloc),
+        BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
+      ],
+      child: App(router: router),
+    ),
   );
   return bloc;
 }

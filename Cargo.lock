@@ -4657,6 +4657,8 @@ name = "kanso-mobile"
 version = "0.8.4"
 dependencies = [
  "async-channel",
+ "core-foundation 0.10.1",
+ "core-foundation-sys",
  "jni",
  "kanso-core",
  "kanso-engine",

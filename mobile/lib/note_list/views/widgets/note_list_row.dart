@@ -1,0 +1,134 @@
+// Kanso — note_list_row.dart
+// Created 2026-10-25.
+// Licensed under AGPL-3.0-or-later (see LICENSE).
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../../../core/bridge/api/types.dart';
+import '../../../core/configs/kanso_icons.dart';
+import '../../../core/models/data/kanso_swipe_action.dart';
+import '../../../core/state/library_index/library_index_bloc.dart';
+import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/status_label.dart';
+import '../../../core/utils/tag_row_color.dart';
+import '../../../core/views/widgets/kanso_note_row.dart';
+import '../../../core/views/widgets/kanso_swipe_actions.dart';
+import '../../../core/views/widgets/kanso_tag_chip.dart';
+import '../../state/note_list/note_list_bloc.dart';
+import 'move_sheet.dart';
+
+/// A note of the library as a row of the note list: its title, a locked
+/// note's lock, its text, the notebook it is in, its status and tags, and
+/// when it was last changed.
+///
+/// A locked note shows its title and lock and nothing else of it.
+///
+/// A swipe towards the end pins or unpins it (all the way, at once); a swipe
+/// the other way shows Move and Trash (all the way trashes it). In the
+/// trash the only action is Move, which restores it. A long press starts
+/// choosing several notes, and while that goes on there are no swipes.
+class NoteListRow extends StatelessWidget {
+  const NoteListRow({
+    required this.row,
+    required this.index,
+    required this.time,
+    this.open = false,
+    this.checked,
+    this.onTap,
+    this.onLongPress,
+    super.key,
+  });
+
+  final NoteRow row;
+
+  /// The notebooks and tags the row's names are looked up in.
+  final LibraryIndexState index;
+
+  /// When the note was last changed, as the list says it.
+  final String time;
+
+  /// Whether the note is the one open beside the list.
+  final bool open;
+
+  /// While several notes are being chosen, whether this one is.
+  final bool? checked;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final colors = context.colors;
+    final bloc = context.read<NoteListBloc>();
+    final inTrash = context.select<NoteListBloc, bool>(
+      (list) => list.state.inTrash,
+    );
+    void pin() => bloc.add(
+      NoteListEvent.changeRequested(
+        const NoteChange.togglePin(),
+        <String>[row.id],
+      ),
+    );
+    void trash() => bloc.add(
+      NoteListEvent.changeRequested(
+        const NoteChange.trash(),
+        <String>[row.id],
+      ),
+    );
+    return KansoSwipeActions(
+      id: row.id,
+      enabled: checked == null,
+      startActions: inTrash
+          ? const <KansoSwipeAction>[]
+          : <KansoSwipeAction>[
+              KansoSwipeAction(
+                icon: KansoIcons.pin,
+                label: row.pinned ? l10n.noteListUnpin : l10n.noteListPin,
+                background: colors.accent,
+                onPressed: pin,
+              ),
+            ],
+      endActions: <KansoSwipeAction>[
+        KansoSwipeAction(
+          icon: KansoIcons.notebook,
+          label: l10n.noteListMove,
+          background: colors.warning,
+          onPressed: () => MoveSheet.show(
+            context,
+            bloc: bloc,
+            ids: <String>[row.id],
+          ),
+        ),
+        if (!inTrash)
+          KansoSwipeAction(
+            icon: KansoIcons.trash,
+            label: l10n.noteListTrash,
+            background: colors.danger,
+            onPressed: trash,
+          ),
+      ],
+      onCommitStart: inTrash ? null : pin,
+      onCommitEnd: inTrash ? null : trash,
+      onArmed: () => bloc.add(const NoteListEvent.swipeArmed()),
+      child: KansoNoteRow(
+        title: row.title.trim().isEmpty ? l10n.noteUntitled : row.title,
+        excerpt: row.locked ? l10n.noteListLocked : row.snippet,
+        notebook: index.notebookPath(row.notebookId) ?? '',
+        time: time,
+        status: noteStatusOf(row.status),
+        pinned: row.pinned,
+        locked: row.locked,
+        selected: open,
+        checked: checked,
+        onTap: onTap,
+        onLongPress: onLongPress,
+        tags: <KansoTagChip>[
+          for (final id in row.tags)
+            if (index.tag(id) case final tag?)
+              KansoTagChip(name: tag.name, color: tag.tint),
+        ],
+      ),
+    );
+  }
+}

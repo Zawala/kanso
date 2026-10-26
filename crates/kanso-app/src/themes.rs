@@ -31,7 +31,7 @@ use crate::theme_file::{PreviewColors, ResolvedTheme, ThemeFile};
 use crate::workspace::AppState;
 use kanso_engine::theme::Tokens;
 
-include!(concat!(env!("OUT_DIR"), "/builtin_themes.rs"));
+pub use kanso_engine::theme::builtin::BUILTIN;
 
 /// How often the themes folder is checked for changes.
 const WATCH_INTERVAL: Duration = Duration::from_secs(2);

@@ -5,25 +5,24 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/configs/kanso_spacing.dart';
+import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_scrim.dart';
-import '../../models/data/design_layout.dart';
-import '../widgets/note_list_pane.dart';
 import '../widgets/signed_out_card.dart';
 
-/// The signed-out error card on a phone: the note list dimmed behind a
+/// The signed-out error card on a phone: the page dimmed behind a
 /// small centred card with one clear action.
 class ErrorMockPage extends StatelessWidget {
   const ErrorMockPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: <Widget>[
-          Positioned.fill(child: NoteListPane(layout: DesignLayout.phone)),
-          Positioned.fill(child: KansoScrim()),
-          Center(
+          Positioned.fill(child: ColoredBox(color: context.colors.list)),
+          const Positioned.fill(child: KansoScrim()),
+          const Center(
             child: Padding(
               padding: EdgeInsets.all(KansoSpacing.lg),
               child: SignedOutCard(),

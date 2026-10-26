@@ -10,19 +10,17 @@ import 'package:kanso/core/bridge/api/types.dart';
 typedef OpenLibrary = Future<KansoLibrary> Function();
 
 /// Every note outside the trash, the newest edit first.
-const NoteQuery everyNote = NoteQuery(
-  trash: false,
-  limit: 0,
-  skip: 0,
+const ListQuery everyNote = ListQuery(
+  place: ListPlace.all(),
+  pinnedOnly: false,
   sort: SortKey.updated,
   descending: true,
 );
 
 /// The notes in the trash.
-const NoteQuery trashedNotes = NoteQuery(
-  trash: true,
-  limit: 0,
-  skip: 0,
+const ListQuery trashedNotes = ListQuery(
+  place: ListPlace.trash(),
+  pinnedOnly: false,
   sort: SortKey.updated,
   descending: true,
 );

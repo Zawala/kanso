@@ -12,10 +12,16 @@ import 'types.dart';
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
 abstract class KansoLibrary implements RustOpaqueInterface {
+  Future<int> change({required List<String> ids, required NoteChange change});
+
   /// The IDs of what changed, in batches, until Dart stops listening.
   Stream<List<String>> changes();
 
   Future<Saved> create({required NewNote note});
+
+  Future<NotebookRow> createNotebook({required String name, String? parentId});
+
+  Future<NoteList> list({required ListQuery query});
 
   KansoLocks locks();
 
@@ -23,11 +29,11 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<List<NotebookRow>> notebooks();
 
-  Future<List<NoteRow>> notes({required NoteQuery query});
-
   /// Opens (creating if needed) the library whose database file is `path`.
   static Future<KansoLibrary> open({required String path}) =>
       KansoCore.instance.api.crateApiLibraryKansoLibraryOpen(path: path);
+
+  Future<LibraryOverview> overview();
 
   Future<List<Property>> properties({required String id});
 
@@ -41,7 +47,11 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required String body,
   });
 
-  Future<List<Hit>> search({required String text, required int limit});
+  Future<List<Hit>> search({
+    required String text,
+    required SearchScope scope,
+    required int limit,
+  });
 
   KansoSync syncing();
 

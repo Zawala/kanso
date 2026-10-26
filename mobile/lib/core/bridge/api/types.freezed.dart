@@ -706,6 +706,450 @@ as String,
 }
 
 /// @nodoc
+mixin _$ListPlace {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ListPlace);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ListPlace()';
+}
+
+
+}
+
+/// @nodoc
+class $ListPlaceCopyWith<$Res>  {
+$ListPlaceCopyWith(ListPlace _, $Res Function(ListPlace) __);
+}
+
+
+/// Adds pattern-matching-related methods to [ListPlace].
+extension ListPlacePatterns on ListPlace {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ListPlace_All value)?  all,TResult Function( ListPlace_Pinned value)?  pinned,TResult Function( ListPlace_Recent value)?  recent,TResult Function( ListPlace_Notebook value)?  notebook,TResult Function( ListPlace_Tag value)?  tag,TResult Function( ListPlace_Trash value)?  trash,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case ListPlace_All() when all != null:
+return all(_that);case ListPlace_Pinned() when pinned != null:
+return pinned(_that);case ListPlace_Recent() when recent != null:
+return recent(_that);case ListPlace_Notebook() when notebook != null:
+return notebook(_that);case ListPlace_Tag() when tag != null:
+return tag(_that);case ListPlace_Trash() when trash != null:
+return trash(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ListPlace_All value)  all,required TResult Function( ListPlace_Pinned value)  pinned,required TResult Function( ListPlace_Recent value)  recent,required TResult Function( ListPlace_Notebook value)  notebook,required TResult Function( ListPlace_Tag value)  tag,required TResult Function( ListPlace_Trash value)  trash,}){
+final _that = this;
+switch (_that) {
+case ListPlace_All():
+return all(_that);case ListPlace_Pinned():
+return pinned(_that);case ListPlace_Recent():
+return recent(_that);case ListPlace_Notebook():
+return notebook(_that);case ListPlace_Tag():
+return tag(_that);case ListPlace_Trash():
+return trash(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ListPlace_All value)?  all,TResult? Function( ListPlace_Pinned value)?  pinned,TResult? Function( ListPlace_Recent value)?  recent,TResult? Function( ListPlace_Notebook value)?  notebook,TResult? Function( ListPlace_Tag value)?  tag,TResult? Function( ListPlace_Trash value)?  trash,}){
+final _that = this;
+switch (_that) {
+case ListPlace_All() when all != null:
+return all(_that);case ListPlace_Pinned() when pinned != null:
+return pinned(_that);case ListPlace_Recent() when recent != null:
+return recent(_that);case ListPlace_Notebook() when notebook != null:
+return notebook(_that);case ListPlace_Tag() when tag != null:
+return tag(_that);case ListPlace_Trash() when trash != null:
+return trash(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  all,TResult Function()?  pinned,TResult Function()?  recent,TResult Function( String id)?  notebook,TResult Function( String id)?  tag,TResult Function()?  trash,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case ListPlace_All() when all != null:
+return all();case ListPlace_Pinned() when pinned != null:
+return pinned();case ListPlace_Recent() when recent != null:
+return recent();case ListPlace_Notebook() when notebook != null:
+return notebook(_that.id);case ListPlace_Tag() when tag != null:
+return tag(_that.id);case ListPlace_Trash() when trash != null:
+return trash();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  all,required TResult Function()  pinned,required TResult Function()  recent,required TResult Function( String id)  notebook,required TResult Function( String id)  tag,required TResult Function()  trash,}) {final _that = this;
+switch (_that) {
+case ListPlace_All():
+return all();case ListPlace_Pinned():
+return pinned();case ListPlace_Recent():
+return recent();case ListPlace_Notebook():
+return notebook(_that.id);case ListPlace_Tag():
+return tag(_that.id);case ListPlace_Trash():
+return trash();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  all,TResult? Function()?  pinned,TResult? Function()?  recent,TResult? Function( String id)?  notebook,TResult? Function( String id)?  tag,TResult? Function()?  trash,}) {final _that = this;
+switch (_that) {
+case ListPlace_All() when all != null:
+return all();case ListPlace_Pinned() when pinned != null:
+return pinned();case ListPlace_Recent() when recent != null:
+return recent();case ListPlace_Notebook() when notebook != null:
+return notebook(_that.id);case ListPlace_Tag() when tag != null:
+return tag(_that.id);case ListPlace_Trash() when trash != null:
+return trash();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class ListPlace_All extends ListPlace {
+  const ListPlace_All(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ListPlace_All);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ListPlace.all()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ListPlace_Pinned extends ListPlace {
+  const ListPlace_Pinned(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ListPlace_Pinned);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ListPlace.pinned()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ListPlace_Recent extends ListPlace {
+  const ListPlace_Recent(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ListPlace_Recent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ListPlace.recent()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ListPlace_Notebook extends ListPlace {
+  const ListPlace_Notebook({required this.id}): super._();
+  
+
+ final  String id;
+
+/// Create a copy of ListPlace
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ListPlace_NotebookCopyWith<ListPlace_Notebook> get copyWith => _$ListPlace_NotebookCopyWithImpl<ListPlace_Notebook>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ListPlace_Notebook&&(identical(other.id, id) || other.id == id));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,id);
+
+@override
+String toString() {
+  return 'ListPlace.notebook(id: $id)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ListPlace_NotebookCopyWith<$Res> implements $ListPlaceCopyWith<$Res> {
+  factory $ListPlace_NotebookCopyWith(ListPlace_Notebook value, $Res Function(ListPlace_Notebook) _then) = _$ListPlace_NotebookCopyWithImpl;
+@useResult
+$Res call({
+ String id
+});
+
+
+
+
+}
+/// @nodoc
+class _$ListPlace_NotebookCopyWithImpl<$Res>
+    implements $ListPlace_NotebookCopyWith<$Res> {
+  _$ListPlace_NotebookCopyWithImpl(this._self, this._then);
+
+  final ListPlace_Notebook _self;
+  final $Res Function(ListPlace_Notebook) _then;
+
+/// Create a copy of ListPlace
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
+  return _then(ListPlace_Notebook(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ListPlace_Tag extends ListPlace {
+  const ListPlace_Tag({required this.id}): super._();
+  
+
+ final  String id;
+
+/// Create a copy of ListPlace
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ListPlace_TagCopyWith<ListPlace_Tag> get copyWith => _$ListPlace_TagCopyWithImpl<ListPlace_Tag>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ListPlace_Tag&&(identical(other.id, id) || other.id == id));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,id);
+
+@override
+String toString() {
+  return 'ListPlace.tag(id: $id)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ListPlace_TagCopyWith<$Res> implements $ListPlaceCopyWith<$Res> {
+  factory $ListPlace_TagCopyWith(ListPlace_Tag value, $Res Function(ListPlace_Tag) _then) = _$ListPlace_TagCopyWithImpl;
+@useResult
+$Res call({
+ String id
+});
+
+
+
+
+}
+/// @nodoc
+class _$ListPlace_TagCopyWithImpl<$Res>
+    implements $ListPlace_TagCopyWith<$Res> {
+  _$ListPlace_TagCopyWithImpl(this._self, this._then);
+
+  final ListPlace_Tag _self;
+  final $Res Function(ListPlace_Tag) _then;
+
+/// Create a copy of ListPlace
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
+  return _then(ListPlace_Tag(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ListPlace_Trash extends ListPlace {
+  const ListPlace_Trash(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ListPlace_Trash);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ListPlace.trash()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
 mixin _$LockEvent {
 
 
@@ -1253,6 +1697,636 @@ class _$LockState_ClosedCopyWithImpl<$Res>
   return _then(LockState_Closed(
 reason: freezed == reason ? _self.reason : reason // ignore: cast_nullable_to_non_nullable
 as String?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+mixin _$NoteChange {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteChange);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'NoteChange()';
+}
+
+
+}
+
+/// @nodoc
+class $NoteChangeCopyWith<$Res>  {
+$NoteChangeCopyWith(NoteChange _, $Res Function(NoteChange) __);
+}
+
+
+/// Adds pattern-matching-related methods to [NoteChange].
+extension NoteChangePatterns on NoteChange {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( NoteChange_TogglePin value)?  togglePin,TResult Function( NoteChange_Move value)?  move,TResult Function( NoteChange_Trash value)?  trash,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case NoteChange_TogglePin() when togglePin != null:
+return togglePin(_that);case NoteChange_Move() when move != null:
+return move(_that);case NoteChange_Trash() when trash != null:
+return trash(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( NoteChange_TogglePin value)  togglePin,required TResult Function( NoteChange_Move value)  move,required TResult Function( NoteChange_Trash value)  trash,}){
+final _that = this;
+switch (_that) {
+case NoteChange_TogglePin():
+return togglePin(_that);case NoteChange_Move():
+return move(_that);case NoteChange_Trash():
+return trash(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( NoteChange_TogglePin value)?  togglePin,TResult? Function( NoteChange_Move value)?  move,TResult? Function( NoteChange_Trash value)?  trash,}){
+final _that = this;
+switch (_that) {
+case NoteChange_TogglePin() when togglePin != null:
+return togglePin(_that);case NoteChange_Move() when move != null:
+return move(_that);case NoteChange_Trash() when trash != null:
+return trash(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  togglePin,TResult Function( String notebookId)?  move,TResult Function()?  trash,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case NoteChange_TogglePin() when togglePin != null:
+return togglePin();case NoteChange_Move() when move != null:
+return move(_that.notebookId);case NoteChange_Trash() when trash != null:
+return trash();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  togglePin,required TResult Function( String notebookId)  move,required TResult Function()  trash,}) {final _that = this;
+switch (_that) {
+case NoteChange_TogglePin():
+return togglePin();case NoteChange_Move():
+return move(_that.notebookId);case NoteChange_Trash():
+return trash();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  togglePin,TResult? Function( String notebookId)?  move,TResult? Function()?  trash,}) {final _that = this;
+switch (_that) {
+case NoteChange_TogglePin() when togglePin != null:
+return togglePin();case NoteChange_Move() when move != null:
+return move(_that.notebookId);case NoteChange_Trash() when trash != null:
+return trash();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class NoteChange_TogglePin extends NoteChange {
+  const NoteChange_TogglePin(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteChange_TogglePin);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'NoteChange.togglePin()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class NoteChange_Move extends NoteChange {
+  const NoteChange_Move({required this.notebookId}): super._();
+  
+
+ final  String notebookId;
+
+/// Create a copy of NoteChange
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NoteChange_MoveCopyWith<NoteChange_Move> get copyWith => _$NoteChange_MoveCopyWithImpl<NoteChange_Move>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteChange_Move&&(identical(other.notebookId, notebookId) || other.notebookId == notebookId));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,notebookId);
+
+@override
+String toString() {
+  return 'NoteChange.move(notebookId: $notebookId)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NoteChange_MoveCopyWith<$Res> implements $NoteChangeCopyWith<$Res> {
+  factory $NoteChange_MoveCopyWith(NoteChange_Move value, $Res Function(NoteChange_Move) _then) = _$NoteChange_MoveCopyWithImpl;
+@useResult
+$Res call({
+ String notebookId
+});
+
+
+
+
+}
+/// @nodoc
+class _$NoteChange_MoveCopyWithImpl<$Res>
+    implements $NoteChange_MoveCopyWith<$Res> {
+  _$NoteChange_MoveCopyWithImpl(this._self, this._then);
+
+  final NoteChange_Move _self;
+  final $Res Function(NoteChange_Move) _then;
+
+/// Create a copy of NoteChange
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? notebookId = null,}) {
+  return _then(NoteChange_Move(
+notebookId: null == notebookId ? _self.notebookId : notebookId // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NoteChange_Trash extends NoteChange {
+  const NoteChange_Trash(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteChange_Trash);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'NoteChange.trash()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+mixin _$SearchScope {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SearchScope);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'SearchScope()';
+}
+
+
+}
+
+/// @nodoc
+class $SearchScopeCopyWith<$Res>  {
+$SearchScopeCopyWith(SearchScope _, $Res Function(SearchScope) __);
+}
+
+
+/// Adds pattern-matching-related methods to [SearchScope].
+extension SearchScopePatterns on SearchScope {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SearchScope_All value)?  all,TResult Function( SearchScope_Titles value)?  titles,TResult Function( SearchScope_Tags value)?  tags,TResult Function( SearchScope_Notebook value)?  notebook,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case SearchScope_All() when all != null:
+return all(_that);case SearchScope_Titles() when titles != null:
+return titles(_that);case SearchScope_Tags() when tags != null:
+return tags(_that);case SearchScope_Notebook() when notebook != null:
+return notebook(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SearchScope_All value)  all,required TResult Function( SearchScope_Titles value)  titles,required TResult Function( SearchScope_Tags value)  tags,required TResult Function( SearchScope_Notebook value)  notebook,}){
+final _that = this;
+switch (_that) {
+case SearchScope_All():
+return all(_that);case SearchScope_Titles():
+return titles(_that);case SearchScope_Tags():
+return tags(_that);case SearchScope_Notebook():
+return notebook(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SearchScope_All value)?  all,TResult? Function( SearchScope_Titles value)?  titles,TResult? Function( SearchScope_Tags value)?  tags,TResult? Function( SearchScope_Notebook value)?  notebook,}){
+final _that = this;
+switch (_that) {
+case SearchScope_All() when all != null:
+return all(_that);case SearchScope_Titles() when titles != null:
+return titles(_that);case SearchScope_Tags() when tags != null:
+return tags(_that);case SearchScope_Notebook() when notebook != null:
+return notebook(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  all,TResult Function()?  titles,TResult Function()?  tags,TResult Function( String id)?  notebook,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case SearchScope_All() when all != null:
+return all();case SearchScope_Titles() when titles != null:
+return titles();case SearchScope_Tags() when tags != null:
+return tags();case SearchScope_Notebook() when notebook != null:
+return notebook(_that.id);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  all,required TResult Function()  titles,required TResult Function()  tags,required TResult Function( String id)  notebook,}) {final _that = this;
+switch (_that) {
+case SearchScope_All():
+return all();case SearchScope_Titles():
+return titles();case SearchScope_Tags():
+return tags();case SearchScope_Notebook():
+return notebook(_that.id);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  all,TResult? Function()?  titles,TResult? Function()?  tags,TResult? Function( String id)?  notebook,}) {final _that = this;
+switch (_that) {
+case SearchScope_All() when all != null:
+return all();case SearchScope_Titles() when titles != null:
+return titles();case SearchScope_Tags() when tags != null:
+return tags();case SearchScope_Notebook() when notebook != null:
+return notebook(_that.id);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class SearchScope_All extends SearchScope {
+  const SearchScope_All(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SearchScope_All);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'SearchScope.all()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class SearchScope_Titles extends SearchScope {
+  const SearchScope_Titles(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SearchScope_Titles);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'SearchScope.titles()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class SearchScope_Tags extends SearchScope {
+  const SearchScope_Tags(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SearchScope_Tags);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'SearchScope.tags()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class SearchScope_Notebook extends SearchScope {
+  const SearchScope_Notebook({required this.id}): super._();
+  
+
+ final  String id;
+
+/// Create a copy of SearchScope
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SearchScope_NotebookCopyWith<SearchScope_Notebook> get copyWith => _$SearchScope_NotebookCopyWithImpl<SearchScope_Notebook>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SearchScope_Notebook&&(identical(other.id, id) || other.id == id));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,id);
+
+@override
+String toString() {
+  return 'SearchScope.notebook(id: $id)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SearchScope_NotebookCopyWith<$Res> implements $SearchScopeCopyWith<$Res> {
+  factory $SearchScope_NotebookCopyWith(SearchScope_Notebook value, $Res Function(SearchScope_Notebook) _then) = _$SearchScope_NotebookCopyWithImpl;
+@useResult
+$Res call({
+ String id
+});
+
+
+
+
+}
+/// @nodoc
+class _$SearchScope_NotebookCopyWithImpl<$Res>
+    implements $SearchScope_NotebookCopyWith<$Res> {
+  _$SearchScope_NotebookCopyWithImpl(this._self, this._then);
+
+  final SearchScope_Notebook _self;
+  final $Res Function(SearchScope_Notebook) _then;
+
+/// Create a copy of SearchScope
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
+  return _then(SearchScope_Notebook(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
   ));
 }
 

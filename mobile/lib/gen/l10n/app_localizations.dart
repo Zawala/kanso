@@ -124,12 +124,6 @@ abstract class AppLocalizations {
   /// **'Recent'**
   String get libraryRecent;
 
-  /// The library row for open tasks across notes.
-  ///
-  /// In en, this message translates to:
-  /// **'Tasks'**
-  String get libraryTasks;
-
   /// The label above the list of notebooks.
   ///
   /// In en, this message translates to:
@@ -147,18 +141,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Trash'**
   String get libraryTrash;
-
-  /// What the sort button of the notebooks header does.
-  ///
-  /// In en, this message translates to:
-  /// **'Sort notebooks'**
-  String get librarySortNotebooks;
-
-  /// What the add button of the notebooks header does.
-  ///
-  /// In en, this message translates to:
-  /// **'New notebook'**
-  String get libraryNewNotebook;
 
   /// What the settings button does.
   ///
@@ -226,12 +208,6 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 note} other{{count} notes}}'**
   String noteListCount(int count);
 
-  /// What the add button of the note list does.
-  ///
-  /// In en, this message translates to:
-  /// **'New note'**
-  String get noteListNewNote;
-
   /// What the more button of the note list does.
   ///
   /// In en, this message translates to:
@@ -273,18 +249,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Note info'**
   String get noteInfo;
-
-  /// The label of a note's notebook.
-  ///
-  /// In en, this message translates to:
-  /// **'Notebook'**
-  String get noteMetaNotebook;
-
-  /// The label of a note's status.
-  ///
-  /// In en, this message translates to:
-  /// **'Status'**
-  String get noteMetaStatus;
 
   /// The label of when a note was made.
   ///
@@ -403,18 +367,6 @@ abstract class AppLocalizations {
   /// A section of settings.
   ///
   /// In en, this message translates to:
-  /// **'General'**
-  String get settingsGeneral;
-
-  /// The notebook new notes go to.
-  ///
-  /// In en, this message translates to:
-  /// **'Default notebook'**
-  String get settingsDefaultNotebook;
-
-  /// A section of settings.
-  ///
-  /// In en, this message translates to:
   /// **'Appearance'**
   String get settingsAppearance;
 
@@ -423,12 +375,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Theme'**
   String get settingsTheme;
-
-  /// The icon set.
-  ///
-  /// In en, this message translates to:
-  /// **'Icons'**
-  String get settingsIcons;
 
   /// The size of text in notes.
   ///
@@ -441,66 +387,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sync'**
   String get settingsSync;
-
-  /// The row that shows the sync account.
-  ///
-  /// In en, this message translates to:
-  /// **'Account'**
-  String get settingsSyncAccount;
-
-  /// The sync state, a moment after it finished.
-  ///
-  /// In en, this message translates to:
-  /// **'Synced · just now'**
-  String get settingsSyncedJustNow;
-
-  /// A switch for push notifications that trigger a sync.
-  ///
-  /// In en, this message translates to:
-  /// **'Wake this device when notes change elsewhere'**
-  String get settingsWakeDevice;
-
-  /// A section of settings.
-  ///
-  /// In en, this message translates to:
-  /// **'Locked notes'**
-  String get settingsLockedNotes;
-
-  /// A switch to unlock notes with Face ID.
-  ///
-  /// In en, this message translates to:
-  /// **'Unlock with Face ID'**
-  String get settingsUnlockFaceId;
-
-  /// How long until a note locks again.
-  ///
-  /// In en, this message translates to:
-  /// **'Lock after'**
-  String get settingsLockAfter;
-
-  /// A length of time.
-  ///
-  /// In en, this message translates to:
-  /// **'10 minutes'**
-  String get settingsTenMinutes;
-
-  /// A section of settings.
-  ///
-  /// In en, this message translates to:
-  /// **'Account'**
-  String get settingsAccount;
-
-  /// Who is signed in.
-  ///
-  /// In en, this message translates to:
-  /// **'Signed in as'**
-  String get settingsSignedInAs;
-
-  /// Signs out of the account.
-  ///
-  /// In en, this message translates to:
-  /// **'Sign out'**
-  String get settingsSignOut;
 
   /// A section of settings.
   ///
@@ -520,18 +406,6 @@ abstract class AppLocalizations {
   /// **'Website'**
   String get settingsWebsite;
 
-  /// Opens the release notes.
-  ///
-  /// In en, this message translates to:
-  /// **'Release notes'**
-  String get settingsReleaseNotes;
-
-  /// Opens the help.
-  ///
-  /// In en, this message translates to:
-  /// **'Help'**
-  String get settingsHelp;
-
   /// Opens the licences of what Kanso is made of.
   ///
   /// In en, this message translates to:
@@ -550,48 +424,6 @@ abstract class AppLocalizations {
   /// **'Installed'**
   String get themesInstalled;
 
-  /// The label above the themes that can be installed.
-  ///
-  /// In en, this message translates to:
-  /// **'Gallery'**
-  String get themesGallery;
-
-  /// The hint in the theme search field.
-  ///
-  /// In en, this message translates to:
-  /// **'Search themes'**
-  String get themesSearchHint;
-
-  /// A theme filter: every theme.
-  ///
-  /// In en, this message translates to:
-  /// **'All'**
-  String get themesFilterAll;
-
-  /// A theme filter: light themes.
-  ///
-  /// In en, this message translates to:
-  /// **'Light'**
-  String get themesFilterLight;
-
-  /// A theme filter: dark themes.
-  ///
-  /// In en, this message translates to:
-  /// **'Dark'**
-  String get themesFilterDark;
-
-  /// A theme filter: installed themes.
-  ///
-  /// In en, this message translates to:
-  /// **'Installed'**
-  String get themesFilterInstalled;
-
-  /// A theme filter: themes with an update.
-  ///
-  /// In en, this message translates to:
-  /// **'Updates'**
-  String get themesFilterUpdates;
-
   /// A badge on a theme that comes with Kanso.
   ///
   /// In en, this message translates to:
@@ -604,53 +436,17 @@ abstract class AppLocalizations {
   /// **'Installed'**
   String get themesBadgeInstalled;
 
-  /// Installs a theme.
-  ///
-  /// In en, this message translates to:
-  /// **'Install'**
-  String get themesInstall;
-
   /// Marks the theme in use.
   ///
   /// In en, this message translates to:
   /// **'In use'**
   String get themesCurrent;
 
-  /// A theme made for a light interface.
-  ///
-  /// In en, this message translates to:
-  /// **'Light'**
-  String get themesAppearanceLight;
-
-  /// A theme made for a dark interface.
-  ///
-  /// In en, this message translates to:
-  /// **'Dark'**
-  String get themesAppearanceDark;
-
   /// The title of the card shown in place of a locked note.
   ///
   /// In en, this message translates to:
   /// **'This note is locked'**
   String get lockedTitle;
-
-  /// Says how a locked note is opened and when it locks.
-  ///
-  /// In en, this message translates to:
-  /// **'Unlock it to read and edit. It locks again after {minutes} minutes or when you leave Kanso.'**
-  String lockedMessage(int minutes);
-
-  /// Unlocks a note with Face ID.
-  ///
-  /// In en, this message translates to:
-  /// **'Unlock with Face ID'**
-  String get lockedUnlock;
-
-  /// Unlocks a note with a password instead.
-  ///
-  /// In en, this message translates to:
-  /// **'Use password'**
-  String get lockedUsePassword;
 
   /// The title of the card shown when the session ended.
   ///
@@ -688,12 +484,6 @@ abstract class AppLocalizations {
   /// **'Static screens for review. Nothing here saves or syncs.'**
   String get designGalleryIntro;
 
-  /// The label of the control that switches between light and dark.
-  ///
-  /// In en, this message translates to:
-  /// **'Appearance'**
-  String get designGalleryAppearance;
-
   /// The group of mock screens drawn for a phone.
   ///
   /// In en, this message translates to:
@@ -727,56 +517,8 @@ abstract class AppLocalizations {
   /// The name of a mock screen.
   ///
   /// In en, this message translates to:
-  /// **'Library'**
-  String get screenLibrary;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Library, scrolled'**
-  String get screenLibraryScrolled;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Note list'**
-  String get screenNoteList;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Note, preview'**
-  String get screenNotePreview;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
   /// **'Note, edit'**
   String get screenNoteEdit;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Search'**
-  String get screenSearch;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Settings'**
-  String get screenSettings;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Theme picker'**
-  String get screenThemePicker;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Locked note'**
-  String get screenLockedNote;
 
   /// The name of a mock screen.
   ///
@@ -807,18 +549,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'a quote'**
   String get themesSampleQuote;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Settings, scrolled'**
-  String get screenSettingsScrolled;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Theme picker, scrolled'**
-  String get screenThemePickerScrolled;
 
   /// The settings row that opens the fonts of notes.
   ///
@@ -946,18 +676,6 @@ abstract class AppLocalizations {
   /// **'Larger'**
   String get textSizeLarger;
 
-  /// Starts adding a font from a file.
-  ///
-  /// In en, this message translates to:
-  /// **'Add a font…'**
-  String get fontsAdd;
-
-  /// Says which files can be added as fonts.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose a .ttf or .otf file from Files.'**
-  String get fontsAddFooter;
-
   /// Names the switch between a rendered note and its text.
   ///
   /// In en, this message translates to:
@@ -994,143 +712,539 @@ abstract class AppLocalizations {
   /// **'Choose a note from the list to read it here.'**
   String get noNoteSelectedMessage;
 
-  /// The name of a mock screen.
+  /// The library row that opens the gallery of the design proposal; in development builds only.
   ///
   /// In en, this message translates to:
-  /// **'Fonts'**
-  String get screenFonts;
+  /// **'Design gallery'**
+  String get libraryDesignGallery;
 
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Fonts, scrolled'**
-  String get screenFontsScrolled;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Note list, loading'**
-  String get screenLoadingList;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Empty notebook'**
-  String get screenEmptyNotebook;
-
-  /// The gallery section that opens the core check.
-  ///
-  /// In en, this message translates to:
-  /// **'Library on this phone'**
-  String get designGalleryCoreTitle;
-
-  /// The gallery row that opens the core check page.
-  ///
-  /// In en, this message translates to:
-  /// **'Rust core'**
-  String get designGalleryCoreCheck;
-
-  /// The title of the core check page.
-  ///
-  /// In en, this message translates to:
-  /// **'Rust core'**
-  String get coreCheckTitle;
-
-  /// Says the library is being opened.
-  ///
-  /// In en, this message translates to:
-  /// **'Opening the library…'**
-  String get coreCheckLoading;
-
-  /// The label above the core check's facts.
-  ///
-  /// In en, this message translates to:
-  /// **'Library'**
-  String get coreCheckLibrary;
-
-  /// The core check row that shows the library's version.
-  ///
-  /// In en, this message translates to:
-  /// **'Version'**
-  String get coreCheckVersion;
-
-  /// The core check row that says whether the library can check a server's certificate.
-  ///
-  /// In en, this message translates to:
-  /// **'Certificates'**
-  String get coreCheckCertificates;
-
-  /// The library can check certificates.
-  ///
-  /// In en, this message translates to:
-  /// **'Ready'**
-  String get coreCheckCertificatesReady;
-
-  /// The library can't check certificates yet.
-  ///
-  /// In en, this message translates to:
-  /// **'Not ready'**
-  String get coreCheckCertificatesNotReady;
-
-  /// The core check row that shows how many notes the library holds.
-  ///
-  /// In en, this message translates to:
-  /// **'Notes'**
-  String get coreCheckNotes;
-
-  /// The core check row that shows the last change the library reported.
-  ///
-  /// In en, this message translates to:
-  /// **'Last change'**
-  String get coreCheckLastChange;
-
-  /// No change has been reported yet.
-  ///
-  /// In en, this message translates to:
-  /// **'None yet'**
-  String get coreCheckNoChange;
-
-  /// How many notes the last reported change touched.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 note changed} other{{count} notes changed}}'**
-  String coreCheckChanged(int count);
-
-  /// What the core check's button does: makes a note.
-  ///
-  /// In en, this message translates to:
-  /// **'New note'**
-  String get coreCheckNewNote;
-
-  /// The label above the newest notes in the core check.
-  ///
-  /// In en, this message translates to:
-  /// **'Latest notes'**
-  String get coreCheckLatest;
-
-  /// Says the last action in the core check failed.
-  ///
-  /// In en, this message translates to:
-  /// **'That didn\'t work. Try again.'**
-  String get coreCheckActionFailed;
-
-  /// The title of the core check's error card.
-  ///
-  /// In en, this message translates to:
-  /// **'The library didn\'t open'**
-  String get coreCheckFailedTitle;
-
-  /// Says what happened, and what to do.
-  ///
-  /// In en, this message translates to:
-  /// **'Something went wrong reading the notes on this phone. Try again.'**
-  String get coreCheckFailedMessage;
-
-  /// What the core check's error card button does.
+  /// The button that tries a failed reading again.
   ///
   /// In en, this message translates to:
   /// **'Try again'**
-  String get coreCheckRetry;
+  String get retry;
+
+  /// What a screen reader says while the library's rows are read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading the library'**
+  String get libraryLoading;
+
+  /// The title of the card shown when the notebooks and tags could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The library didn\'t load'**
+  String get libraryFailedTitle;
+
+  /// The message of the card shown when the notebooks and tags could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the notebooks and tags on this phone. Try again.'**
+  String get libraryFailedMessage;
+
+  /// Shown under the Notebooks heading when the library has no notebooks.
+  ///
+  /// In en, this message translates to:
+  /// **'No notebooks yet'**
+  String get libraryNoNotebooks;
+
+  /// Shown under the Tags heading when no note has a tag.
+  ///
+  /// In en, this message translates to:
+  /// **'No tags yet'**
+  String get libraryNoTags;
+
+  /// A day in a list's header or a row's time: the day it is.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get dayToday;
+
+  /// A day in a list's header or a row's time: the day before.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get dayYesterday;
+
+  /// What a note with no title is called in a list.
+  ///
+  /// In en, this message translates to:
+  /// **'Untitled'**
+  String get noteUntitled;
+
+  /// The line of text a locked note's row shows in place of its text.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked'**
+  String get noteListLocked;
+
+  /// The title of the card shown when a list of notes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'These notes didn\'t load'**
+  String get noteListFailedTitle;
+
+  /// The message of the card shown when a list of notes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the notes on this phone. Try again.'**
+  String get noteListFailedMessage;
+
+  /// The title shown when the library has no notes.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes yet'**
+  String get emptyAllTitle;
+
+  /// What the empty list of all notes says will appear there.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes will appear here.'**
+  String get emptyAllMessage;
+
+  /// The title shown when no note is pinned.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing pinned'**
+  String get emptyPinnedTitle;
+
+  /// What the empty list of pinned notes says.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin a note by swiping it, and it will wait here.'**
+  String get emptyPinnedMessage;
+
+  /// The title shown when no note was changed lately.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing recent'**
+  String get emptyRecentTitle;
+
+  /// What the empty list of recent notes says.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes you have changed lately will appear here.'**
+  String get emptyRecentMessage;
+
+  /// The title shown when the trash has no notes.
+  ///
+  /// In en, this message translates to:
+  /// **'The trash is empty'**
+  String get emptyTrashTitle;
+
+  /// What the empty trash says.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes you trash wait here until you move them out.'**
+  String get emptyTrashMessage;
+
+  /// The title shown when no note has the tag.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes tagged {tag}'**
+  String emptyTagTitle(String tag);
+
+  /// What the empty list of a tag's notes says.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes with this tag will appear in this list.'**
+  String get emptyTagMessage;
+
+  /// The title shown when the list's narrowing hides every note.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes match'**
+  String get emptyNarrowedTitle;
+
+  /// What the list says when its narrowing hides every note.
+  ///
+  /// In en, this message translates to:
+  /// **'Try another status, or turn off Pinned Only.'**
+  String get emptyNarrowedMessage;
+
+  /// The title of the sheet that sorts and narrows a list.
+  ///
+  /// In en, this message translates to:
+  /// **'View options'**
+  String get listOptionsTitle;
+
+  /// The heading of the choices of what to sort a list by.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort by'**
+  String get listOptionsSortBy;
+
+  /// A way to sort a list: by when each note was last changed.
+  ///
+  /// In en, this message translates to:
+  /// **'Date Updated'**
+  String get listOptionsDateUpdated;
+
+  /// A way to sort a list: by when each note was made.
+  ///
+  /// In en, this message translates to:
+  /// **'Date Created'**
+  String get listOptionsDateCreated;
+
+  /// A way to sort a list: by each note's title.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get listOptionsTitleSort;
+
+  /// A direction of a list sorted by date.
+  ///
+  /// In en, this message translates to:
+  /// **'Newest First'**
+  String get listOptionsNewestFirst;
+
+  /// A direction of a list sorted by date.
+  ///
+  /// In en, this message translates to:
+  /// **'Oldest First'**
+  String get listOptionsOldestFirst;
+
+  /// A direction of a list sorted by title.
+  ///
+  /// In en, this message translates to:
+  /// **'A to Z'**
+  String get listOptionsAToZ;
+
+  /// A direction of a list sorted by title.
+  ///
+  /// In en, this message translates to:
+  /// **'Z to A'**
+  String get listOptionsZToA;
+
+  /// The heading of the choices of a status to narrow a list to.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get listOptionsStatus;
+
+  /// The choice that does not narrow a list by status.
+  ///
+  /// In en, this message translates to:
+  /// **'Any Status'**
+  String get listOptionsAnyStatus;
+
+  /// The choice that narrows a list to pinned notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned Only'**
+  String get listOptionsPinnedOnly;
+
+  /// The button that ends choosing several notes, or closes a sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get noteListDone;
+
+  /// How many notes are chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} selected'**
+  String noteListSelected(int count);
+
+  /// The action that pins the notes chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get noteListPin;
+
+  /// The action that unpins the notes chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin'**
+  String get noteListUnpin;
+
+  /// The action that moves notes to a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Move'**
+  String get noteListMove;
+
+  /// The action that moves notes to the trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Trash'**
+  String get noteListTrash;
+
+  /// The title of the sheet that asks which notebook to move notes to.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Move 1 note to} other{Move {count} notes to}}'**
+  String moveSheetTitle(int count);
+
+  /// The button that closes a sheet without doing what it offers.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get noteListCancel;
+
+  /// The line shown when a change to notes did not happen.
+  ///
+  /// In en, this message translates to:
+  /// **'That didn\'t work. Try again.'**
+  String get noteListChangeFailed;
+
+  /// The line shown when notes could not be moved into or out of a locked notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked notebooks can\'t take or give up notes here yet.'**
+  String get noteListChangeLocked;
+
+  /// The button that closes the line that says a change did not happen.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get noteListDismiss;
+
+  /// What a screen reader says while a note is read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading the note'**
+  String get noteLoading;
+
+  /// The title shown when a note that was asked for does not exist.
+  ///
+  /// In en, this message translates to:
+  /// **'This note isn\'t here'**
+  String get noteNotFoundTitle;
+
+  /// What the screen of a note that is not there says.
+  ///
+  /// In en, this message translates to:
+  /// **'It may have been deleted, or it hasn\'t reached this phone yet.'**
+  String get noteNotFoundMessage;
+
+  /// The title of the card shown when a note could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'This note didn\'t load'**
+  String get noteFailedTitle;
+
+  /// The message of the card shown when a note could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the note on this phone. Try again.'**
+  String get noteFailedMessage;
+
+  /// What the card of a locked note says about its text.
+  ///
+  /// In en, this message translates to:
+  /// **'Its text stays sealed. Only its title can be shown here.'**
+  String get lockedMessageSealed;
+
+  /// The button of a text field's menu that cuts the selected text.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut'**
+  String get menuCut;
+
+  /// The button of a text field's menu that copies the selected text.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get menuCopy;
+
+  /// The button of a text field's menu that pastes what was copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste'**
+  String get menuPaste;
+
+  /// The button of a text field's menu that selects all of its text.
+  ///
+  /// In en, this message translates to:
+  /// **'Select All'**
+  String get menuSelectAll;
+
+  /// The title shown under an empty search.
+  ///
+  /// In en, this message translates to:
+  /// **'Search your notes'**
+  String get searchIdleTitle;
+
+  /// What an empty search says it finds.
+  ///
+  /// In en, this message translates to:
+  /// **'Find words in titles and text, or a tag.'**
+  String get searchIdleMessage;
+
+  /// The title shown when a search finds nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes match'**
+  String get searchNoResultsTitle;
+
+  /// What a search that finds nothing says.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing matched “{query}”. Try fewer or different words.'**
+  String searchNoResultsMessage(String query);
+
+  /// The title of the card shown when a search failed.
+  ///
+  /// In en, this message translates to:
+  /// **'The search didn\'t run'**
+  String get searchFailedTitle;
+
+  /// The message of the card shown when a search failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong searching the notes on this phone. Try again.'**
+  String get searchFailedMessage;
+
+  /// What a screen reader says while the notes are searched.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching'**
+  String get searchLoading;
+
+  /// The Theme row's value while the light and the dark theme follow the system: the names of both.
+  ///
+  /// In en, this message translates to:
+  /// **'{light}, {dark}'**
+  String settingsThemeBoth(String light, String dark);
+
+  /// The label of the row that shows the state of sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get settingsSyncStatus;
+
+  /// The state of sync while no account is signed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get settingsSyncOff;
+
+  /// The state of sync when an account is signed in and nothing has been synced yet.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get settingsSyncOn;
+
+  /// The state of sync while it runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Syncing…'**
+  String get settingsSyncSyncing;
+
+  /// The state of sync when it has finished.
+  ///
+  /// In en, this message translates to:
+  /// **'Synced'**
+  String get settingsSyncSynced;
+
+  /// The state of sync when it could not finish.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs attention'**
+  String get settingsSyncAttention;
+
+  /// Says under Sync that device backups do not hold the notes.
+  ///
+  /// In en, this message translates to:
+  /// **'The notes on this phone aren’t included in device backups.'**
+  String get settingsSyncBackupFooter;
+
+  /// The app's version and the number of its build.
+  ///
+  /// In en, this message translates to:
+  /// **'{version} ({build})'**
+  String settingsVersionValue(String version, String build);
+
+  /// Says to a screen reader that the licences are being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading licences'**
+  String get licencesLoading;
+
+  /// The title of the card shown when the licences could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The licences didn’t load'**
+  String get licencesFailedTitle;
+
+  /// The message of the card shown when the licences could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the licences. Try again.'**
+  String get licencesFailedMessage;
+
+  /// The title shown when there are no licences to list.
+  ///
+  /// In en, this message translates to:
+  /// **'No licences'**
+  String get licencesEmptyTitle;
+
+  /// Says what the empty list of licences will hold.
+  ///
+  /// In en, this message translates to:
+  /// **'The packages Kanso is made of will be listed here.'**
+  String get licencesEmptyMessage;
+
+  /// How many licences a package comes under.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 licence} other{{count} licences}}'**
+  String licencesCount(int count);
+
+  /// The switch that makes the interface follow the system's light or dark mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch between a light and a dark theme with the system'**
+  String get themesFollowSystem;
+
+  /// Says what following the system does, while it is on.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing the light theme in light mode and the dark one in dark mode.'**
+  String get themesFollowSystemOn;
+
+  /// Says what happens while following the system is off.
+  ///
+  /// In en, this message translates to:
+  /// **'Off: the theme stays as picked whatever the system’s mode.'**
+  String get themesFollowSystemOff;
+
+  /// The title of the card shown when the themes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The themes didn’t load'**
+  String get themesFailedTitle;
+
+  /// The message of the card shown when the themes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the themes. Try again.'**
+  String get themesFailedMessage;
+
+  /// Says to a screen reader that the themes are being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading themes'**
+  String get themesLoading;
+
+  /// The title of the card that says the notes are not in device backups.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes stay on this phone'**
+  String get backupNoticeTitle;
+
+  /// Says that device backups do not hold the notes.
+  ///
+  /// In en, this message translates to:
+  /// **'The notes on this phone aren’t included in device backups, so losing or resetting the phone takes them with it.'**
+  String get backupNoticeMessage;
+
+  /// Dismisses the notice about device backups.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get backupNoticeOk;
 }
 
 class _AppLocalizationsDelegate

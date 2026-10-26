@@ -1,11 +1,12 @@
-//! A library of notes: lists, reading, writing, search, properties and
-//! query views, and the stream of changes.
+//! A library of notes: lists and counts, reading, writing, changing several
+//! notes, notebooks, search, properties and query views, and the stream of
+//! changes.
 
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    Hit, KansoError, Library, NewNote, NoteQuery, NoteRow, NoteView, NotebookRow, Property, Saved,
-    Table, TagRow,
+    Hit, KansoError, Library, LibraryOverview, ListQuery, NewNote, NoteChange, NoteList, NoteView,
+    NotebookRow, Property, Saved, SearchScope, Table, TagRow,
 };
 
 use super::locks::KansoLocks;
@@ -22,8 +23,16 @@ impl KansoLibrary {
         Library::open(std::path::Path::new(&path)).map(KansoLibrary)
     }
 
-    pub fn notes(&self, query: NoteQuery) -> Result<Vec<NoteRow>, KansoError> {
-        self.0.notes(query)
+    pub fn list(&self, query: ListQuery) -> Result<NoteList, KansoError> {
+        self.0.list(query)
+    }
+
+    pub fn overview(&self) -> Result<LibraryOverview, KansoError> {
+        self.0.overview()
+    }
+
+    pub fn change(&self, ids: Vec<String>, change: NoteChange) -> Result<u32, KansoError> {
+        self.0.change(ids, change)
     }
 
     pub fn note(&self, id: String) -> Result<NoteView, KansoError> {
@@ -46,12 +55,25 @@ impl KansoLibrary {
         self.0.notebooks()
     }
 
+    pub fn create_notebook(
+        &self,
+        name: String,
+        parent_id: Option<String>,
+    ) -> Result<NotebookRow, KansoError> {
+        self.0.create_notebook(name, parent_id)
+    }
+
     pub fn tags(&self) -> Result<Vec<TagRow>, KansoError> {
         self.0.tags()
     }
 
-    pub fn search(&self, text: String, limit: u32) -> Result<Vec<Hit>, KansoError> {
-        self.0.search(&text, limit)
+    pub fn search(
+        &self,
+        text: String,
+        scope: SearchScope,
+        limit: u32,
+    ) -> Result<Vec<Hit>, KansoError> {
+        self.0.search(&text, scope, limit)
     }
 
     pub fn properties(&self, id: String) -> Result<Vec<Property>, KansoError> {

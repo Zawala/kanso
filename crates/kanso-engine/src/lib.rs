@@ -7,6 +7,10 @@
 //! launch) and says their results in plain words, and [`sync`] decides when
 //! a sync starts, queues, backs off or stops.
 //!
+//! What the note list shows is here: [`list`] has the places, the search each
+//! one is, the sort and narrowing, the order of the notebook tree and the
+//! date headers a list sits under.
+//!
 //! What happens in a note is here too. [`links`] decides how wiki-links
 //! resolve, what `[[` and `#` autocomplete offer, which link a note copies
 //! and when a rename offers to update links; [`fuzzy`] ranks what was typed
@@ -31,12 +35,14 @@
 //! alone; tests use [`MemorySecrets`].
 
 pub mod account;
+pub mod batch;
 pub mod daily;
 pub mod edit;
 pub mod fuzzy;
 #[cfg(feature = "highlight")]
 pub mod highlight;
 pub mod links;
+pub mod list;
 pub mod lock;
 #[cfg(any(test, feature = "test-support"))]
 pub mod strategies;

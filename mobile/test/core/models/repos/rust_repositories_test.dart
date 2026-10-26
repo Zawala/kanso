@@ -16,12 +16,18 @@ class _MockLibrary extends Mock implements KansoLibrary {}
 
 class _MockLocks extends Mock implements KansoLocks {}
 
-const _query = NoteQuery(
-  trash: false,
-  limit: 0,
-  skip: 0,
+const _query = ListQuery(
+  place: ListPlace.all(),
+  pinnedOnly: false,
   sort: SortKey.updated,
   descending: true,
+);
+
+const _shape = ListShape(
+  sort: SortKey.updated,
+  byDate: true,
+  date: DateField.updated,
+  groupPinned: true,
 );
 
 void main() {
@@ -35,12 +41,11 @@ void main() {
     });
 
     test('returns the notes the library lists', () async {
-      when(() => library.notes(query: _query)).thenAnswer(
-        (_) async => const <NoteRow>[],
-      );
+      const empty = NoteList(rows: <NoteRow>[], shape: _shape);
+      when(() => library.list(query: _query)).thenAnswer((_) async => empty);
       expect(
-        await repository.notes(_query),
-        const Right<ApplicationError, List<NoteRow>>(<NoteRow>[]),
+        await repository.list(_query),
+        const Right<ApplicationError, NoteList>(empty),
       );
     });
 
@@ -57,6 +62,81 @@ void main() {
       expect(
         await repository.trash('n_1'),
         const Right<ApplicationError, Unit>(unit),
+      );
+    });
+
+    test('a change returns how many notes were written', () async {
+      const change = NoteChange.move(notebookId: 'b_2');
+      when(
+        () => library.change(ids: <String>['n_1', 'n_2'], change: change),
+      ).thenAnswer((_) async => 2);
+      expect(
+        await repository.change(<String>['n_1', 'n_2'], change),
+        const Right<ApplicationError, int>(2),
+      );
+    });
+
+    test('a change into a locked notebook is a locked error', () async {
+      when(
+        () => library.change(
+          ids: <String>['n_1'],
+          change: const NoteChange.togglePin(),
+        ),
+      ).thenAnswer((_) => Future<int>.error(const KansoError.locked()));
+      final result = await repository.change(
+        <String>['n_1'],
+        const NoteChange.togglePin(),
+      );
+      expect(result.swap().toOption().toNullable(), isA<LockedError>());
+    });
+
+    test(
+      'a search looks in all by default and in the scope it is given',
+      () async {
+        when(
+          () => library.search(
+            text: 'tulips',
+            scope: const SearchScope.all(),
+            limit: 50,
+          ),
+        ).thenAnswer((_) async => const <Hit>[]);
+        when(
+          () => library.search(
+            text: 'tulips',
+            scope: const SearchScope.notebook(id: 'b_1'),
+            limit: 5,
+          ),
+        ).thenAnswer((_) async => const <Hit>[]);
+        expect(
+          await repository.search('tulips'),
+          const Right<ApplicationError, List<Hit>>(<Hit>[]),
+        );
+        expect(
+          await repository.search(
+            'tulips',
+            scope: const SearchScope.notebook(id: 'b_1'),
+            limit: 5,
+          ),
+          const Right<ApplicationError, List<Hit>>(<Hit>[]),
+        );
+      },
+    );
+
+    test('a notebook is made inside its parent', () async {
+      const made = NotebookRow(
+        id: 'b_2',
+        name: 'Plans',
+        parentId: 'b_1',
+        count: 0,
+        locked: false,
+        depth: 1,
+      );
+      when(
+        () => library.createNotebook(name: 'Plans', parentId: 'b_1'),
+      ).thenAnswer((_) async => made);
+      expect(
+        await repository.createNotebook('Plans', parentId: 'b_1'),
+        const Right<ApplicationError, NotebookRow>(made),
       );
     });
 

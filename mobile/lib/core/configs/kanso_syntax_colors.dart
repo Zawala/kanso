@@ -229,6 +229,66 @@ class KansoSyntaxColors extends ThemeExtension<KansoSyntaxColors> {
   /// The `code_background` token.
   final Color codeBackground;
 
+  /// Every colour, in the order of the fields: what equality and the hash
+  /// are made of.
+  List<Color> get values => <Color>[
+    text,
+    heading,
+    blockMarker,
+    marker,
+    listMarker,
+    task,
+    hr,
+    link,
+    url,
+    code,
+    codeBlock,
+    escape,
+    comment,
+    commentDoc,
+    keyword,
+    string,
+    stringSpecial,
+    function,
+    typeName,
+    typeConstructor,
+    number,
+    boolean,
+    constant,
+    variable,
+    variableSpecial,
+    property,
+    attribute,
+    tag,
+    label,
+    operator,
+    punctuation,
+    bracket,
+    embedded,
+    codeBackground,
+  ];
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    if (other is! KansoSyntaxColors) {
+      return false;
+    }
+    final mine = values;
+    final theirs = other.values;
+    for (var i = 0; i < mine.length; i++) {
+      if (mine[i] != theirs[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(values);
+
   @override
   KansoSyntaxColors copyWith({
     Color? text,

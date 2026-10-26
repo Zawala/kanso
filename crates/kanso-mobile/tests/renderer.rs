@@ -222,3 +222,168 @@ fn fonts_are_handed_over_to_the_render_crate() {
     let _ = Renderer::set_fonts(vec![]);
     assert!(!Renderer::set_fonts(vec![]));
 }
+
+/// The ids `themes/index.json` lists, as the desktop's Themes page orders
+/// them: Kanso's own first, then the rest as the index lists them.
+fn indexed_files() -> Vec<String> {
+    let text = std::fs::read_to_string(themes_dir().join("index.json")).unwrap();
+    let index: serde_json::Value = serde_json::from_str(&text).unwrap();
+    index["themes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|theme| theme["file"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+// no-prop-test: every built-in theme, all of them, against the files and the
+// engine's own fit.
+#[test]
+fn the_built_in_themes_are_the_desktops_in_its_order_fitted_as_it_fits_them() {
+    use kanso_engine::theme::Tokens;
+    use kanso_engine::theme::builtin::BUILTIN;
+    use kanso_engine::theme::file::ThemeFile;
+
+    let themes = Renderer::builtin_themes().unwrap();
+    let ids: Vec<&str> = themes.iter().map(|t| t.id.as_str()).collect();
+    let order: Vec<&str> = BUILTIN
+        .iter()
+        .map(|(file, _)| file.trim_end_matches(".json"))
+        .collect();
+    assert_eq!(ids, order, "the engine's table, in its order");
+    assert_eq!(&ids[..2], ["kanso-light", "kanso-dark"]);
+    // The same themes as the index lists, none missing and none extra.
+    let mut listed: Vec<String> = indexed_files()
+        .into_iter()
+        .map(|file| file.trim_end_matches(".json").to_owned())
+        .collect();
+    let mut have: Vec<String> = ids.iter().map(|id| (*id).to_owned()).collect();
+    listed.sort();
+    have.sort();
+    assert_eq!(have, listed);
+
+    for theme in &themes {
+        let file = themes_dir().join(format!("{}.json", theme.id));
+        let text = std::fs::read_to_string(&file).unwrap();
+        // The same as fitting the file by hand.
+        assert_eq!(
+            Renderer::builtin_theme_tokens(theme.id.clone()).unwrap(),
+            theme.tokens,
+            "{}",
+            theme.id
+        );
+        assert_eq!(
+            Renderer::theme_tokens(text.clone()).unwrap(),
+            theme.tokens,
+            "{}",
+            theme.id
+        );
+        // And as the desktop fits a theme for its own panes.
+        let parsed = ThemeFile::parse(&text).unwrap();
+        let resolved = parsed.resolve();
+        let fit = Tokens::fit(&resolved, &resolved, &resolved);
+        let row = |name: &str| theme.tokens.ui.iter().find(|c| c.name == name).unwrap().rgb;
+        assert_eq!(row("editor"), fit.ui.editor.0, "{}", theme.id);
+        assert_eq!(row("text"), fit.ui.text.0, "{}", theme.id);
+        assert_eq!(row("accent"), fit.ui.accent.0, "{}", theme.id);
+        assert_eq!(row("link"), fit.ui.link.0, "{}", theme.id);
+        assert_eq!(row("danger"), fit.ui.danger.0, "{}", theme.id);
+        assert_eq!(theme.tokens.caret, fit.caret.0);
+        assert_eq!(theme.tokens.selection, fit.selection.rgb.0);
+        assert_eq!(theme.tokens.palette.surface, fit.preview.code_background.0);
+        assert_eq!(theme.tokens.palette.text, fit.preview.text.0);
+        assert_eq!(theme.tokens.dark, fit.dark);
+        assert_eq!(theme.dark, parsed.resolve().dark);
+        assert_eq!(theme.tokens.syntax.len(), fit.syntax.len());
+        for style in &theme.tokens.syntax {
+            let want = fit.syntax[style.token.as_str()];
+            assert_eq!(
+                style.color,
+                want.color.map(|c| c.0),
+                "{} {}",
+                theme.id,
+                style.token
+            );
+            assert_eq!((style.italic, style.weight), (want.italic, want.weight));
+        }
+        // Who made it.
+        assert_eq!(theme.name, parsed.name);
+        assert_eq!(theme.author, parsed.author);
+        assert_eq!(theme.license, parsed.license);
+        assert_eq!(theme.source, parsed.source);
+    }
+}
+
+// no-prop-test: a refusal.
+#[test]
+fn a_theme_that_is_not_built_in_is_not_found() {
+    for id in ["", "nope", "nord.json", "../nord"] {
+        assert_eq!(
+            Renderer::builtin_theme_tokens(id.into()),
+            Err(KansoError::NotFound)
+        );
+        assert_eq!(
+            Renderer::styled_runs("# a".into(), 0, 3, id.into()),
+            Err(KansoError::NotFound)
+        );
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(48))]
+
+    /// Model: the styled runs are the highlighter's runs with each one's
+    /// tokens folded through the theme's syntax rows, outermost first, a
+    /// later token's attributes winning and unset ones showing what is under
+    /// them; the runs the theme leaves unstyled are left out.
+    #[test]
+    fn prop_styled_runs_are_the_highlights_folded_through_the_theme(
+        text in "[#*`\\[\\]()a-z0-9 \n_>-]{0,80}|\\PC{0,30}",
+        a in 0u32..100,
+        b in 0u32..100,
+        theme in prop::sample::select(vec!["kanso-light", "kanso-dark", "nord", "github-light", "dracula"]),
+    ) {
+        let (start, end) = (a.min(b), a.max(b));
+        let rows = Renderer::builtin_theme_tokens(theme.into()).unwrap().syntax;
+        let fold = |tokens: &[String]| {
+            tokens.iter().fold((None, None, None), |under: (Option<u32>, Option<bool>, Option<u16>), token| {
+                let row = rows.iter().find(|r| &r.token == token);
+                match row {
+                    Some(r) => (r.color.or(under.0), r.italic.or(under.1), r.weight.or(under.2)),
+                    None => under,
+                }
+            })
+        };
+        let expected: Vec<_> = Renderer::highlight(text.clone(), start, end).unwrap()
+            .into_iter()
+            .filter_map(|span| {
+                let style = fold(&span.tokens);
+                (style != (None, None, None)).then_some((span.range, style))
+            })
+            .collect();
+        let runs = Renderer::styled_runs(text.clone(), start, end, theme.into()).unwrap();
+        let got: Vec<_> = runs.iter().map(|r| (r.range, (r.color, r.italic, r.weight))).collect();
+        prop_assert_eq!(got, expected);
+        let units = text.encode_utf16().count() as u32;
+        let mut at = 0;
+        for run in &runs {
+            prop_assert!(run.range.start < run.range.end && run.range.end <= units);
+            prop_assert!(run.range.start >= at);
+            at = run.range.end;
+            prop_assert!(run.color.is_none_or(|c| c <= 0xFF_FFFF));
+        }
+    }
+}
+
+// no-prop-test: a heading in Nord's own color.
+#[test]
+fn a_heading_is_in_the_themes_heading_color() {
+    let nord = Renderer::builtin_theme_tokens("nord".into()).unwrap();
+    let heading = nord.syntax.iter().find(|s| s.token == "heading").unwrap();
+    let runs = Renderer::styled_runs("# Title\n".into(), 0, 8, "nord".into()).unwrap();
+    assert!(
+        runs.iter()
+            .any(|run| run.color == heading.color && run.color.is_some()),
+        "{runs:?}"
+    );
+}

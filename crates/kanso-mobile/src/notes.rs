@@ -1,19 +1,26 @@
-//! The note calls of [`Library`]: lists, one note, saving, creating,
-//! trashing, notebooks, tags, search, properties and query views.
+//! The note calls of [`Library`]: lists, counts, one note, saving, creating,
+//! changing several notes, notebooks, tags, search, properties and query
+//! views.
 //!
-//! A locked note shows its title and nothing else while it is closed (and
-//! its snippet, tasks and properties never, open or not): its text is only
-//! ever returned by [`Library::note`] and read for [`Library::properties`]
-//! and the preview when a key this session holds opens it.
+//! A locked note shows its title and its lock in a list and nothing else
+//! while it is closed (and its snippet, tags, status and tasks never, open or
+//! not): its text is only ever returned by [`Library::note`] and read for
+//! [`Library::properties`] and the preview when a key this session holds
+//! opens it. A place that is made of what a note holds (a tag, a status, a
+//! tag search) leaves a locked note out.
 
 use std::time::Instant;
 
 use kanso_core::model::{BOOK_COLOR_FIELD, BOOK_ICON_FIELD, TRASH_BOOK_ID};
 use kanso_core::query::{Clause, Field, Query};
 use kanso_core::query_view::ViewNote;
+use kanso_core::roles::{ROLE_FIELD, Role};
 use kanso_core::{DocType, Note, NoteStatus, new_id, now_ms};
+use kanso_engine::batch::{self, Change};
+use kanso_engine::links::tags::apply_inline_tags;
+use kanso_engine::list::{self, DAY_MS, DateKey, Filter, RECENT_DAYS};
 use kanso_engine::lock::LockView;
-use kanso_store::{Origin, Put, SearchParams, Sort};
+use kanso_store::{NoteSummary, Origin, Put, SearchParams, Sort};
 use serde_json::{Value, json};
 
 use crate::boundary::{guard, held};
@@ -21,34 +28,155 @@ use crate::errors::KansoError;
 use crate::library::Library;
 use crate::matching::ranges;
 use crate::model::{
-    Hit, LockState, NewNote, NoteQuery, NoteRow, NoteView, NotebookRow, Property, PropertyKind,
-    Saved, SortKey, Table, TableRow, TagRow,
+    DateField, Hit, LibraryOverview, ListPlace, ListQuery, ListShape, LockState, NewNote,
+    NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, Property, PropertyKind,
+    Saved, SearchScope, SortKey, Table, TableRow, TagRow,
 };
 
 impl Library {
-    /// The notes `query` lists, as list rows. Locked notes are listed with
-    /// their titles; their snippets are empty and they count no tasks.
-    pub fn notes(&self, query: NoteQuery) -> Result<Vec<NoteRow>, KansoError> {
+    /// The notes a place lists, with the layout the desktop gives that list:
+    /// pinned notes first (Recent is newest edit first, whatever the sort),
+    /// narrowed to one status or to pinned notes when asked. A locked note is
+    /// listed with its title and its lock; its snippet, tags, status and
+    /// tasks are empty, and a place made of tags or a status leaves it out.
+    pub fn list(&self, query: ListQuery) -> Result<NoteList, KansoError> {
         guard(|| {
-            let params = SearchParams {
-                query: list_query(&query)?,
-                sort: match query.sort {
-                    SortKey::Updated => Sort::UpdatedAt,
-                    SortKey::Created => Sort::CreatedAt,
-                    SortKey::Title => Sort::Title,
-                },
-                descending: query.descending,
-                limit: (query.limit > 0).then_some(query.limit as usize),
-                skip: query.skip as usize,
-                ocr: false,
+            let filter = match &query.place {
+                ListPlace::All => Filter::All,
+                ListPlace::Pinned => Filter::Pinned,
+                ListPlace::Recent => Filter::Recent,
+                ListPlace::Notebook { id } => Filter::Book(id.clone()),
+                ListPlace::Tag { id } => Filter::Tag(id.clone()),
+                ListPlace::Trash => Filter::Trash,
             };
-            Ok(self
-                .inner
-                .store
-                .search_summaries(&params)?
+            let sort = match query.sort {
+                SortKey::Updated => Sort::UpdatedAt,
+                SortKey::Created => Sort::CreatedAt,
+                SortKey::Title => Sort::Title,
+            };
+            let mut params = list::search_params(&filter, "", sort, query.descending);
+            let status =
+                match &query.status_only {
+                    Some(status) => Some(NoteStatus::parse(status).ok_or_else(|| {
+                        KansoError::invalid(format!("“{status}” isn't a status."))
+                    })?),
+                    None => None,
+                };
+            list::refine_status(&mut params, status);
+            let mut notes = list::list_notes(
+                &self.inner.store,
+                &filter,
+                &params,
+                query.pinned_only,
+                recent_since(),
+            )?;
+            if status.is_some() || matches!(query.place, ListPlace::Tag { .. }) {
+                notes.retain(|note| !note.locked);
+            }
+            let shape = list::shape(&filter, query.pinned_only, sort);
+            Ok(NoteList {
+                rows: notes.into_iter().map(row).collect(),
+                shape: ListShape {
+                    sort: match shape.sort {
+                        Sort::UpdatedAt => SortKey::Updated,
+                        Sort::CreatedAt => SortKey::Created,
+                        Sort::Title => SortKey::Title,
+                    },
+                    by_date: shape.by_date,
+                    date: match shape.date {
+                        DateKey::Updated => DateField::Updated,
+                        DateKey::Created => DateField::Created,
+                    },
+                    group_pinned: shape.group_pinned,
+                },
+            })
+        })
+    }
+
+    /// How many notes each place of the library lists.
+    pub fn overview(&self) -> Result<LibraryOverview, KansoError> {
+        guard(|| {
+            let counts = self.inner.store.status_counts()?;
+            Ok(LibraryOverview {
+                all: counts.all,
+                pinned: counts.pinned,
+                recent: self.inner.store.count_recent(recent_since())?,
+                trash: counts.trash,
+            })
+        })
+    }
+
+    /// Makes one change to every note in `ids` in one write, and says how
+    /// many notes it wrote (none when they were already as asked). Pinning
+    /// pins them all, or unpins them when they are all pinned.
+    ///
+    /// Nothing is written when an ID isn't a note ([`KansoError::NotFound`]),
+    /// or when unlocked notes would go into a locked notebook or a note
+    /// would leave one ([`KansoError::Locked`]): those go one at a time, with
+    /// the lock open, as on the desktop. A locked note can be pinned, trashed
+    /// and moved between unlocked notebooks.
+    pub fn change(&self, ids: Vec<String>, change: NoteChange) -> Result<u32, KansoError> {
+        guard(|| {
+            let store = &self.inner.store;
+            let mut seen = std::collections::HashSet::new();
+            let ids: Vec<String> = ids
                 .into_iter()
-                .map(row)
-                .collect())
+                .filter(|id| seen.insert(id.clone()))
+                .collect();
+            let locked_books = store.locked_books()?;
+            let mut notes = Vec::with_capacity(ids.len());
+            let mut in_locked_book = std::collections::HashSet::new();
+            for id in &ids {
+                let note = self.stored(id)?;
+                let sealed = store.note_is_locked(id)?;
+                if locked_books.contains(&note.book_id) {
+                    in_locked_book.insert(note.id.clone());
+                }
+                notes.push(NoteSummary {
+                    locked: sealed || locked_books.contains(&note.book_id),
+                    id: note.id,
+                    rev: note.rev.unwrap_or_default(),
+                    title: note.title,
+                    snippet: String::new(),
+                    book_id: note.book_id,
+                    status: note.status,
+                    tags: note.tags,
+                    pinned: note.pinned,
+                    updated_at: note.updated_at,
+                    created_at: note.created_at,
+                    tasks_done: 0,
+                    tasks_total: 0,
+                });
+            }
+            let change = match change {
+                NoteChange::TogglePin => Change::TogglePin,
+                NoteChange::Trash => Change::Move(TRASH_BOOK_ID.to_owned()),
+                NoteChange::Move { notebook_id } => {
+                    if notebook_id != TRASH_BOOK_ID
+                        && !store.books()?.iter().any(|book| book.id == notebook_id)
+                    {
+                        return Err(KansoError::NotFound);
+                    }
+                    Change::Move(notebook_id)
+                }
+            };
+            if batch::needs_one_by_one(&notes, &change, &locked_books) {
+                return Err(KansoError::Locked);
+            }
+            let edits = batch::plan(&notes, &change);
+            if let Change::Move(book) = &change
+                && book != TRASH_BOOK_ID
+                && edits.iter().any(|edit| in_locked_book.contains(&edit.id))
+            {
+                return Err(KansoError::Locked);
+            }
+            if edits.is_empty() {
+                return Ok(0);
+            }
+            let count = edits.len() as u32;
+            let changes = edits.into_iter().map(|edit| edit.change).collect();
+            store.merge_many(DocType::Note, changes, Origin::Ui)?;
+            Ok(count)
         })
     }
 
@@ -87,6 +215,11 @@ impl Library {
             }
             note.body = body;
             note.updated_at = now_ms();
+            // The text's `#tags` are the note's tags. A locked note's stay
+            // in its text: its tags are not shown.
+            if state == LockView::Plain {
+                apply_inline_tags(&self.inner.store, &mut note, None);
+            }
             if state == LockView::Open {
                 held(&self.inner.keys)
                     .seal(&mut note, Instant::now())
@@ -127,6 +260,9 @@ impl Library {
             }))
             .map_err(|err| KansoError::invalid(err.to_string()))?;
             let in_locked_notebook = self.inner.store.locked_books()?.contains(&book_id);
+            if !in_locked_notebook {
+                apply_inline_tags(&self.inner.store, &mut note, None);
+            }
             let stored = if in_locked_notebook {
                 held(&self.inner.keys)
                     .seal_for_notebook(&mut note, &self.inner.store)
@@ -161,32 +297,45 @@ impl Library {
         })
     }
 
-    /// The notebooks, by name.
+    /// The notebooks in tree order: each one is followed by the notebooks
+    /// inside it, in the order the desktop's sidebar has them.
     pub fn notebooks(&self) -> Result<Vec<NotebookRow>, KansoError> {
+        guard(|| Ok(notebook_rows(&self.inner.store.books()?)))
+    }
+
+    /// Makes a notebook, inside `parent_id` if given ([`KansoError::NotFound`]
+    /// when there is no such notebook), and returns it as the sidebar lists
+    /// it. The name is trimmed; an empty one is refused.
+    pub fn create_notebook(
+        &self,
+        name: String,
+        parent_id: Option<String>,
+    ) -> Result<NotebookRow, KansoError> {
         guard(|| {
-            Ok(self
-                .inner
-                .store
-                .books()?
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(KansoError::invalid("A notebook needs a name."));
+            }
+            if let Some(parent) = &parent_id
+                && !self
+                    .inner
+                    .store
+                    .books()?
+                    .iter()
+                    .any(|book| &book.id == parent)
+            {
+                return Err(KansoError::NotFound);
+            }
+            let created = self.inner.store.put(
+                DocType::Book,
+                json!({"name": name, "parentBookId": parent_id}),
+                Put::Upsert,
+                Origin::Ui,
+            )?;
+            notebook_rows(&self.inner.store.books()?)
                 .into_iter()
-                .map(|book| NotebookRow {
-                    locked: book.is_locked(),
-                    icon: book
-                        .extra
-                        .get(BOOK_ICON_FIELD)
-                        .and_then(Value::as_str)
-                        .map(str::to_owned),
-                    color: book
-                        .extra
-                        .get(BOOK_COLOR_FIELD)
-                        .and_then(Value::as_str)
-                        .map(str::to_owned),
-                    id: book.id,
-                    name: book.name,
-                    parent_id: book.parent_book_id,
-                    count: book.count,
-                })
-                .collect())
+                .find(|row| row.id == created.id)
+                .ok_or(KansoError::NotFound)
         })
     }
 
@@ -208,29 +357,53 @@ impl Library {
         })
     }
 
-    /// Searches titles and texts (and the words in images) for `text`, which
-    /// may use the search language (`tag:work "two words" -status:dropped`).
-    /// The hits come with where the words matched. A locked note is found by
-    /// its title; its text isn't searched, and its snippet stays empty.
-    /// `limit` 0 is no limit.
-    pub fn search(&self, text: &str, limit: u32) -> Result<Vec<Hit>, KansoError> {
+    /// Searches `scope` for `text`, which may use the search language
+    /// (`tag:work "two words" -status:dropped`). The hits come with where
+    /// the words matched. A locked note is found by its title; its text isn't
+    /// searched, its snippet stays empty, and a search by tag or status
+    /// (typed, or the Tags scope) leaves it out. `limit` 0 is no limit.
+    ///
+    /// - `All`: titles and texts (and the words in images).
+    /// - `Titles`: the bare words must be in the title.
+    /// - `Tags`: the bare words must name a tag, or a tag it is inside
+    ///   (`work` finds `work/acme`).
+    /// - `Notebook`: as `All`, within one notebook.
+    pub fn search(
+        &self,
+        text: &str,
+        scope: SearchScope,
+        limit: u32,
+    ) -> Result<Vec<Hit>, KansoError> {
         guard(|| {
-            let query = Query::parse(text);
-            if query.is_empty() {
+            let typed = Query::parse(text);
+            if typed.is_empty() {
                 return Ok(Vec::new());
             }
+            let query = scoped(typed, &scope);
+            let by_content = query.clauses.iter().any(|clause| {
+                matches!(
+                    clause.field,
+                    Some(Field::Tag | Field::TagId | Field::Status)
+                )
+            });
             let params = SearchParams {
                 query: query.clone(),
-                limit: (limit > 0).then_some(limit as usize),
+                // A limit counts what is kept, so it comes after leaving
+                // locked notes out.
+                limit: (limit > 0 && !by_content).then_some(limit as usize),
                 ocr: true,
                 ..SearchParams::default()
             };
             let title_terms: Vec<&str> = query.terms_for(Field::Title).collect();
             let body_terms: Vec<&str> = query.terms_for(Field::Body).collect();
-            Ok(self
-                .inner
-                .store
-                .search_summaries(&params)?
+            let mut found = self.inner.store.search_summaries(&params)?;
+            if by_content {
+                found.retain(|summary| !summary.locked);
+                if limit > 0 {
+                    found.truncate(limit as usize);
+                }
+            }
+            Ok(found
                 .into_iter()
                 .map(|summary| {
                     let row = row(summary);
@@ -343,54 +516,93 @@ impl Library {
     }
 }
 
-/// The search a list asks for.
-fn list_query(query: &NoteQuery) -> Result<Query, KansoError> {
-    let mut clauses = Vec::new();
-    if query.trash {
-        clauses.push(Clause::field(Field::BookId, TRASH_BOOK_ID));
-    } else if let Some(book) = &query.notebook_id {
-        clauses.push(Clause::field(Field::BookId, book.as_str()));
-    }
-    if let Some(tag) = &query.tag_id {
-        clauses.push(Clause::field(Field::TagId, tag.as_str()));
-    }
-    if let Some(status) = &query.status {
-        let status = NoteStatus::parse(status)
-            .ok_or_else(|| KansoError::invalid(format!("“{status}” isn't a status.")))?;
-        clauses.push(Clause::field(Field::Status, status.as_str()));
-    }
-    Ok(Query { clauses })
+/// The time Recent reaches back to.
+fn recent_since() -> i64 {
+    now_ms() - RECENT_DAYS * DAY_MS
 }
 
+/// `query` as `scope` narrows it: the bare words of Titles are title words,
+/// those of Tags are tag names, and a notebook's search is in that notebook.
+fn scoped(mut query: Query, scope: &SearchScope) -> Query {
+    let field = match scope {
+        SearchScope::Titles => Some(Field::Title),
+        SearchScope::Tags => Some(Field::Tag),
+        SearchScope::All | SearchScope::Notebook { .. } => None,
+    };
+    if let Some(field) = field {
+        for clause in &mut query.clauses {
+            if clause.field.is_none() {
+                clause.field = Some(field);
+            }
+        }
+    }
+    if let SearchScope::Notebook { id } = scope {
+        query
+            .clauses
+            .push(Clause::field(Field::BookId, id.as_str()));
+    }
+    query
+}
+
+/// The notebooks as rows, in tree order.
+fn notebook_rows(books: &[kanso_core::Book]) -> Vec<NotebookRow> {
+    list::notebook_tree(books)
+        .into_iter()
+        .map(|(depth, book)| NotebookRow {
+            locked: book.is_locked(),
+            icon: book
+                .extra
+                .get(BOOK_ICON_FIELD)
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            color: book
+                .extra
+                .get(BOOK_COLOR_FIELD)
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            role: Role::of_book(&book.id, book.extra.get(ROLE_FIELD).and_then(Value::as_str)).map(
+                |role| match role {
+                    Role::Inbox => NotebookRole::Inbox,
+                    Role::Journal => NotebookRole::Journal,
+                    Role::Templates => NotebookRole::Templates,
+                },
+            ),
+            depth: depth as u32,
+            id: book.id.clone(),
+            name: book.name.clone(),
+            parent_id: book.parent_book_id.clone(),
+            count: book.count,
+        })
+        .collect()
+}
+
+/// A list row. A locked note's row is its title and its lock: whatever the
+/// store holds of its snippet, tags, status and tasks, none of it is passed
+/// on.
 fn row(summary: kanso_store::NoteSummary) -> NoteRow {
+    let locked = summary.locked;
     NoteRow {
         id: summary.id,
         rev: summary.rev,
         title: summary.title,
-        // A locked note's snippet is empty in the store; keep it that way
-        // even if the store changes its mind.
-        snippet: if summary.locked {
+        snippet: if locked {
             String::new()
         } else {
             summary.snippet
         },
         notebook_id: summary.book_id,
-        status: summary.status.as_str().to_owned(),
-        tags: summary.tags,
+        status: if locked {
+            NoteStatus::None.as_str().to_owned()
+        } else {
+            summary.status.as_str().to_owned()
+        },
+        tags: if locked { Vec::new() } else { summary.tags },
         pinned: summary.pinned,
         created_ms: summary.created_at,
         updated_ms: summary.updated_at,
-        tasks_done: if summary.locked {
-            0
-        } else {
-            summary.tasks_done
-        },
-        tasks_total: if summary.locked {
-            0
-        } else {
-            summary.tasks_total
-        },
-        locked: summary.locked,
+        tasks_done: if locked { 0 } else { summary.tasks_done },
+        tasks_total: if locked { 0 } else { summary.tasks_total },
+        locked,
     }
 }
 
@@ -400,15 +612,22 @@ fn view(note: Note, state: LockView) -> NoteView {
         LockView::Open => LockState::Open,
         LockView::Closed(reason) => LockState::Closed { reason },
     };
+    // A closed note is its title and lock, as in the lists: its tags and
+    // status are its content too.
+    let closed = lock.is_closed();
     NoteView {
         id: note.id,
         rev: note.rev.unwrap_or_default(),
         title: note.title,
-        body: (!lock.is_closed()).then_some(note.body),
+        body: (!closed).then_some(note.body),
         lock,
         notebook_id: note.book_id,
-        tags: note.tags,
-        status: note.status.as_str().to_owned(),
+        tags: if closed { Vec::new() } else { note.tags },
+        status: if closed {
+            NoteStatus::None.as_str().to_owned()
+        } else {
+            note.status.as_str().to_owned()
+        },
         pinned: note.pinned,
         created_ms: note.created_at,
         updated_ms: note.updated_at,
