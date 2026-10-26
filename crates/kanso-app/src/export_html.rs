@@ -93,7 +93,7 @@ pub fn export_html(
     cx: &mut App,
 ) {
     let palette = crate::preview_rich::palette(cx);
-    let style = crate::export_style::PageStyle::from_cx(cx);
+    let style = crate::export_style::PageStyle::for_palette(cx, &palette);
     let picked = cx.prompt_for_new_path(&documents(), Some(&file_name(&title, "html")));
     window
         .spawn(cx, async move |cx| {
@@ -142,7 +142,7 @@ pub fn export_pdf(
     cx: &mut App,
 ) {
     let palette = print_palette(crate::preview_rich::palette(cx));
-    let style = crate::export_style::PageStyle::from_cx(cx);
+    let style = crate::export_style::PageStyle::for_palette(cx, &palette);
     #[cfg(target_os = "macos")]
     {
         let picked = cx.prompt_for_new_path(&documents(), Some(&file_name(&title, "pdf")));
