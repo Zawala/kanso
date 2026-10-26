@@ -500,21 +500,28 @@ fn shared_notes_work_in_the_foreground() {
     a.sign_up(&owner, "Device A");
     let b = Device::new(&server);
     b.sign_up(&friend, "Device B");
-    // Syncing shared notes publishes B's sharing identity, which an owner
-    // needs before it can share with B.
-    b.library
-        .shared()
-        .sync_shared()
-        .expect("B's first shared sync");
-
     let a_note = a.write("Shared", "start of the shared note");
     a.sync();
-    let info = patiently("share", || {
-        a.library
-            .shared()
-            .share(a_note.clone(), vec![(friend.clone(), ShareRole::Editor)])
-    })
-    .expect("share");
+    // B's sign-up publishes its sharing identity by itself, off the sign-in
+    // thread: an owner can share with B without B syncing first.
+    let mut shared = None;
+    wait_until(
+        "B's sharing identity",
+        Duration::from_secs(30),
+        || match patiently("share", || {
+            a.library
+                .shared()
+                .share(a_note.clone(), vec![(friend.clone(), ShareRole::Editor)])
+        }) {
+            Ok(info) => {
+                shared = Some(info);
+                true
+            }
+            Err(err) if err.to_string().contains("can share yet") => false,
+            Err(err) => panic!("share: {err}"),
+        },
+    );
+    let info = shared.expect("share");
     assert_eq!(info.my_role, ShareRole::Owner);
 
     let mut invitation = None;

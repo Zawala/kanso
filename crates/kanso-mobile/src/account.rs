@@ -759,6 +759,33 @@ impl AccountHandle {
         *held(&self.inner.sync_state) = SyncState::Off;
         self.sync().notify();
         publish(&self.inner);
+        self.publish_identity();
+    }
+
+    /// Publishes this account's sharing identity, as the desktop does at
+    /// sign-up, so others can share with it before its first sync. Off this
+    /// thread and best effort: the next shared-notes sync tries again.
+    fn publish_identity(&self) {
+        let shared = crate::SharedNotes {
+            inner: self.inner.clone(),
+        };
+        let spawned = std::thread::Builder::new()
+            .name("kanso-identity".into())
+            .spawn(move || {
+                let published = crate::boundary::guard(|| {
+                    shared
+                        .engine()?
+                        .identity()
+                        .map(|_| ())
+                        .map_err(|err| crate::sharing::collab_error(&err))
+                });
+                if let Err(err) = published {
+                    eprintln!("kanso: publishing the sharing identity: {err}");
+                }
+            });
+        if let Err(err) = spawned {
+            eprintln!("kanso: couldn't start publishing the sharing identity: {err}");
+        }
     }
 
     /// Remembers `key` as the one shown, and writes it down for the shell.
