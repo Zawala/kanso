@@ -10,7 +10,6 @@ import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/design/models/data/gallery_appearance.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
-import 'package:kanso/design/views/widgets/loading_list_pane.dart';
 import 'package:kanso/gen/l10n/app_localizations.dart';
 
 import '../../../helpers/seeded_appearance_bloc.dart';
@@ -48,23 +47,25 @@ Future<void> _settle(WidgetTester tester) async {
 
 void main() {
   group('DesignGalleryPage', () {
-    testWidgets('lists every phone and tablet screen', (tester) async {
-      await _pump(tester);
-      expect(find.text('Rust core'), findsOneWidget);
-      expect(find.text('Phone'), findsOneWidget);
-      expect(find.text('Tablet'), findsOneWidget);
-      expect(find.text('Library'), findsOneWidget);
-      expect(find.text('Note list'), findsOneWidget);
-      // Settings and the theme picker are listed once per layout.
-      expect(find.text('Settings'), findsNWidgets(2));
-      expect(find.text('Theme picker'), findsNWidgets(2));
-      expect(find.text('Error card'), findsNWidgets(2));
-      // The fonts, the loading list and the empty notebook have both.
-      expect(find.text('Fonts'), findsNWidgets(2));
-      expect(find.text('Fonts, scrolled'), findsNWidgets(2));
-      expect(find.text('Note list, loading'), findsNWidgets(2));
-      expect(find.text('Empty notebook'), findsNWidgets(2));
-    });
+    testWidgets(
+      'lists the screens that are not built yet, on a phone and a tablet',
+      (tester) async {
+        await _pump(tester);
+        expect(find.text('Rust core'), findsOneWidget);
+        expect(find.text('Phone'), findsOneWidget);
+        expect(find.text('Tablet'), findsOneWidget);
+        // Every screen that is not built yet is listed once per layout.
+        expect(find.text('Note, edit'), findsNWidgets(2));
+        expect(find.text('Settings'), findsNWidgets(2));
+        expect(find.text('Theme picker'), findsNWidgets(2));
+        expect(find.text('Error card'), findsNWidgets(2));
+        expect(find.text('Fonts'), findsNWidgets(2));
+        expect(find.text('Fonts, scrolled'), findsNWidgets(2));
+        // The screens that are built are not mocks any more.
+        expect(find.text('Note list'), findsNothing);
+        expect(find.text('Library'), findsNothing);
+      },
+    );
 
     testWidgets('the appearance control dispatches the chosen mode', (
       tester,
@@ -85,9 +86,9 @@ void main() {
 
     testWidgets('opens a screen and comes back', (tester) async {
       await _pump(tester);
-      await tester.tap(find.text('Locked note').first);
+      await tester.tap(find.text('Error card').first);
       await tester.pumpAndSettle();
-      expect(find.text('This note is locked'), findsOneWidget);
+      expect(find.text('Signed out on this device'), findsOneWidget);
       tester.state<NavigatorState>(find.byType(Navigator)).pop();
       await tester.pumpAndSettle();
       expect(find.text('Design proposal'), findsOneWidget);
@@ -103,20 +104,6 @@ void main() {
       await tester.tap(find.text('Literata').last);
       await tester.pumpAndSettle();
       expect(bloc.state.fonts.previewFont, KansoFontFamily.literata);
-    });
-
-    testWidgets('opens the empty notebook and the loading list', (
-      tester,
-    ) async {
-      await _pump(tester);
-      await tester.tap(find.text('Empty notebook').first);
-      await tester.pumpAndSettle();
-      expect(find.text('No notes in Someday yet'), findsOneWidget);
-      tester.state<NavigatorState>(find.byType(Navigator)).pop();
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Note list, loading').first);
-      await tester.pumpAndSettle();
-      expect(find.byType(LoadingListPane), findsOneWidget);
     });
   });
 }

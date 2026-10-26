@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../../configs/kanso_effects.dart';
 import '../../configs/kanso_radii.dart';
 import '../../configs/kanso_sizes.dart';
-import '../../models/data/tag_color.dart';
 import '../../utils/context_extensions.dart';
 import '../../utils/muted_tag_color.dart';
 
@@ -17,12 +16,14 @@ class KansoTagChip extends StatelessWidget {
   const KansoTagChip({required this.name, required this.color, super.key});
 
   final String name;
-  final TagColor color;
+
+  /// The tag's own colour, as stored; drawn calmed.
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     final dark = Theme.brightnessOf(context) == Brightness.dark;
-    final tint = mutedTagColor(color.color, dark: dark);
+    final tint = mutedTagColor(color, dark: dark);
     return Container(
       height: KansoSizes.tagChip,
       padding: const EdgeInsets.symmetric(horizontal: 7),

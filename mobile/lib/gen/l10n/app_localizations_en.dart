@@ -570,4 +570,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get libraryDesignGallery => 'Design gallery';
+
+  @override
+  String get retry => 'Try again';
+
+  @override
+  String get libraryLoading => 'Loading the library';
+
+  @override
+  String get libraryFailedTitle => 'The library didn\'t load';
+
+  @override
+  String get libraryFailedMessage =>
+      'Something went wrong reading the notebooks and tags on this phone. Try again.';
+
+  @override
+  String get libraryNoNotebooks => 'No notebooks yet';
+
+  @override
+  String get libraryNoTags => 'No tags yet';
 }

@@ -82,7 +82,7 @@ class NoteMetadataBlock extends StatelessWidget {
             runSpacing: KansoSpacing.xs,
             children: <Widget>[
               for (final tag in tags)
-                KansoTagChip(name: tag.name, color: tag.color),
+                KansoTagChip(name: tag.name, color: tag.color.color),
             ],
           ),
         ],

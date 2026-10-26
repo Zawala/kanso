@@ -6,16 +6,9 @@ import 'package:flutter/widgets.dart';
 
 import '../models/data/design_layout.dart';
 import '../models/data/design_screen.dart';
-import '../views/pages/empty_notebook_mock_page.dart';
 import '../views/pages/error_mock_page.dart';
 import '../views/pages/fonts_mock_page.dart';
-import '../views/pages/library_mock_page.dart';
-import '../views/pages/loading_list_mock_page.dart';
-import '../views/pages/locked_note_mock_page.dart';
 import '../views/pages/note_edit_mock_page.dart';
-import '../views/pages/note_list_mock_page.dart';
-import '../views/pages/note_preview_mock_page.dart';
-import '../views/pages/search_mock_page.dart';
 import '../views/pages/settings_mock_page.dart';
 import '../views/pages/tablet_mock_page.dart';
 import '../views/pages/theme_picker_mock_page.dart';
@@ -26,14 +19,7 @@ Widget pageForScreen(DesignScreen screen, DesignLayout layout) {
     return TabletMockPage(screen: screen);
   }
   return switch (screen) {
-    DesignScreen.library => const LibraryMockPage(),
-    DesignScreen.libraryScrolled => const LibraryMockPage(scrolled: true),
-    DesignScreen.noteList => const NoteListMockPage(),
-    DesignScreen.loadingList => const LoadingListMockPage(),
-    DesignScreen.emptyNotebook => const EmptyNotebookMockPage(),
-    DesignScreen.notePreview => const NotePreviewMockPage(),
     DesignScreen.noteEdit => const NoteEditMockPage(),
-    DesignScreen.search => const SearchMockPage(),
     DesignScreen.settings => const SettingsMockPage(),
     DesignScreen.settingsScrolled => const SettingsMockPage(scrolled: true),
     DesignScreen.fonts => const FontsMockPage(),
@@ -42,7 +28,6 @@ Widget pageForScreen(DesignScreen screen, DesignLayout layout) {
     DesignScreen.themePickerScrolled => const ThemePickerMockPage(
       scrolled: true,
     ),
-    DesignScreen.lockedNote => const LockedNoteMockPage(),
     DesignScreen.error => const ErrorMockPage(),
   };
 }

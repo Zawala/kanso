@@ -729,5 +729,29 @@
   "libraryDesignGallery": "Design gallery",
   "@libraryDesignGallery": {
     "description": "The library row that opens the gallery of the design proposal; in development builds only."
+  },
+  "retry": "Try again",
+  "@retry": {
+    "description": "The button that tries a failed reading again."
+  },
+  "libraryLoading": "Loading the library",
+  "@libraryLoading": {
+    "description": "What a screen reader says while the library's rows are read."
+  },
+  "libraryFailedTitle": "The library didn't load",
+  "@libraryFailedTitle": {
+    "description": "The title of the card shown when the notebooks and tags could not be read."
+  },
+  "libraryFailedMessage": "Something went wrong reading the notebooks and tags on this phone. Try again.",
+  "@libraryFailedMessage": {
+    "description": "The message of the card shown when the notebooks and tags could not be read."
+  },
+  "libraryNoNotebooks": "No notebooks yet",
+  "@libraryNoNotebooks": {
+    "description": "Shown under the Notebooks heading when the library has no notebooks."
+  },
+  "libraryNoTags": "No tags yet",
+  "@libraryNoTags": {
+    "description": "Shown under the Tags heading when no note has a tag."
   }
 }

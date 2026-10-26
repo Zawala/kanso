@@ -11,26 +11,6 @@ import '../../../helpers/golden.dart';
 
 void main() {
   group('TabletMockPage', () {
-    testWidgets('note preview, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.notePreview),
-        name: 'tablet_note_preview_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('note preview, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.notePreview),
-        name: 'tablet_note_preview_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
     testWidgets('note edit, light', (tester) async {
       await expectGoldenOnBothPlatforms(
         tester,
@@ -46,26 +26,6 @@ void main() {
         tester,
         const TabletMockPage(screen: DesignScreen.noteEdit),
         name: 'tablet_note_edit_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
-    testWidgets('search, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.search),
-        name: 'tablet_search_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('search, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.search),
-        name: 'tablet_search_dark',
         size: tabletLandscapeSize,
         brightness: Brightness.dark,
       );
@@ -151,26 +111,6 @@ void main() {
       );
     });
 
-    testWidgets('locked note, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.lockedNote),
-        name: 'tablet_locked_note_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('locked note, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.lockedNote),
-        name: 'tablet_locked_note_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
     testWidgets('error, light', (tester) async {
       await expectGoldenOnBothPlatforms(
         tester,
@@ -226,46 +166,6 @@ void main() {
         tester,
         const TabletMockPage(screen: DesignScreen.fontsScrolled),
         name: 'tablet_fonts_scrolled_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
-    testWidgets('loading list, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.loadingList),
-        name: 'tablet_loading_list_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('loading list, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.loadingList),
-        name: 'tablet_loading_list_dark',
-        size: tabletLandscapeSize,
-        brightness: Brightness.dark,
-      );
-    });
-
-    testWidgets('empty notebook, light', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.emptyNotebook),
-        name: 'tablet_empty_notebook_light',
-        size: tabletLandscapeSize,
-        brightness: Brightness.light,
-      );
-    });
-
-    testWidgets('empty notebook, dark', (tester) async {
-      await expectGoldenOnBothPlatforms(
-        tester,
-        const TabletMockPage(screen: DesignScreen.emptyNotebook),
-        name: 'tablet_empty_notebook_dark',
         size: tabletLandscapeSize,
         brightness: Brightness.dark,
       );

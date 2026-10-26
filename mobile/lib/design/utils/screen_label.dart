@@ -10,21 +10,13 @@ extension DesignScreenLabel on AppLocalizations {
   /// What the gallery calls [screen].
   String screenName(DesignScreen screen) {
     return switch (screen) {
-      DesignScreen.library => screenLibrary,
-      DesignScreen.libraryScrolled => screenLibraryScrolled,
-      DesignScreen.noteList => screenNoteList,
-      DesignScreen.loadingList => screenLoadingList,
-      DesignScreen.emptyNotebook => screenEmptyNotebook,
-      DesignScreen.notePreview => screenNotePreview,
       DesignScreen.noteEdit => screenNoteEdit,
-      DesignScreen.search => screenSearch,
       DesignScreen.settings => screenSettings,
       DesignScreen.settingsScrolled => screenSettingsScrolled,
       DesignScreen.fonts => screenFonts,
       DesignScreen.fontsScrolled => screenFontsScrolled,
       DesignScreen.themePicker => screenThemePicker,
       DesignScreen.themePickerScrolled => screenThemePickerScrolled,
-      DesignScreen.lockedNote => screenLockedNote,
       DesignScreen.error => screenError,
     };
   }

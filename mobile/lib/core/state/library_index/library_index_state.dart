@@ -47,4 +47,20 @@ abstract class LibraryIndexState with _$LibraryIndexState {
 
   /// The name of the notebook [id], or null when there is none.
   String? notebookName(String id) => notebook(id)?.name;
+
+  /// The names of the notebook [id] and the ones it is inside, outermost
+  /// first, joined by " / " (`Projects / Kanso`); null when there is no such
+  /// notebook.
+  String? notebookPath(String id) {
+    final names = <String>[];
+    var current = notebook(id);
+    // A notebook is inside at most as many others as there are notebooks;
+    // the bound keeps a malformed tree from looping.
+    for (var depth = 0; current != null && depth <= notebooks.length; depth++) {
+      names.add(current.name);
+      final parent = current.parentId;
+      current = parent == null ? null : notebook(parent);
+    }
+    return names.isEmpty ? null : names.reversed.join(' / ');
+  }
 }

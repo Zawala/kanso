@@ -12,10 +12,12 @@ import 'package:kanso/app.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/configs/kanso_layout.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
+import 'package:kanso/core/models/data/library_index_status.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_drawer_scope.dart';
 import 'package:kanso/core/views/widgets/kanso_sheet.dart';
@@ -27,6 +29,8 @@ import 'package:kanso/search/views/pages/search_page.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
 import 'package:kanso/shell/views/widgets/library_navigation.dart';
 
+import '../../../helpers/close_bloc_later.dart';
+import '../../../helpers/fixture_library_repository.dart';
 import '../../../helpers/mock_repositories.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 
@@ -43,8 +47,16 @@ Future<GoRouter> _pump(
 }) async {
   final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
+  final library = FixtureLibraryRepository();
+  addTearDown(() => unawaited(library.close()));
   final history = NavigationHistoryBloc(MockLibraryRepository());
   addTearDown(history.close);
+  final index = LibraryIndexBloc(library)
+    ..add(const LibraryIndexEvent.started());
+  closeBlocLater(index);
+  await index.stream.firstWhere(
+    (state) => state.status != LibraryIndexStatus.loading,
+  );
   tester.view
     ..physicalSize = size
     ..devicePixelRatio = 1;
@@ -64,6 +76,7 @@ Future<GoRouter> _pump(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<AppearanceBloc>.value(value: bloc),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
+        BlocProvider<LibraryIndexBloc>.value(value: index),
       ],
       child: App(router: kansoRouter),
     ),
@@ -326,28 +339,29 @@ void main() {
       tester,
     ) async {
       await _pump(tester, _landscape, gallery: true);
-      expect(find.text('Design gallery'), findsOneWidget);
+      expect(
+        find.text('Design gallery', skipOffstage: false),
+        findsOneWidget,
+      );
       await tester.pumpWidget(const SizedBox.shrink());
       await _pump(tester, _landscape);
-      expect(find.text('Design gallery'), findsNothing);
+      expect(find.text('Design gallery', skipOffstage: false), findsNothing);
     });
 
     testWidgets('the row of the place being listed is selected', (
       tester,
     ) async {
-      await _pump(tester, _landscape, at: '/trash');
+      // Tall enough for every row of the library to be built.
+      await _pump(tester, const Size(1180, 2000), at: '/trash');
       Map<String, bool> selected() => <String, bool>{
         for (final row in tester.widgetList<KansoSidebarRow>(
           find.byType(KansoSidebarRow),
         ))
           row.label: row.selected,
       };
-      expect(selected(), <String, bool>{
-        'All Notes': false,
-        'Pinned': false,
-        'Recent': false,
-        'Trash': true,
-      });
+      expect(selected()['Trash'], isTrue);
+      expect(selected()['All Notes'], isFalse);
+      expect(selected()['Pinned'], isFalse);
       await tester.tap(find.text('Pinned'));
       await tester.pumpAndSettle();
       expect(selected()['Pinned'], isTrue);

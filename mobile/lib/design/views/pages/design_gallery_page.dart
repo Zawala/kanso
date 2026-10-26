@@ -109,18 +109,17 @@ class DesignGalleryPage extends StatelessWidget {
                         : l10n.designGalleryTablet,
                     children: <Widget>[
                       for (final screen in DesignScreen.values)
-                        if (layout == DesignLayout.phone || screen.hasTablet)
-                          KansoSettingsRow(
-                            label: l10n.screenName(screen),
-                            chevron: true,
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => pageForScreen(screen, layout),
-                                ),
-                              );
-                            },
-                          ),
+                        KansoSettingsRow(
+                          label: l10n.screenName(screen),
+                          chevron: true,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => pageForScreen(screen, layout),
+                              ),
+                            );
+                          },
+                        ),
                     ],
                   ),
                 ],

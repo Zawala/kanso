@@ -1143,6 +1143,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Design gallery'**
   String get libraryDesignGallery;
+
+  /// The button that tries a failed reading again.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get retry;
+
+  /// What a screen reader says while the library's rows are read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading the library'**
+  String get libraryLoading;
+
+  /// The title of the card shown when the notebooks and tags could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The library didn\'t load'**
+  String get libraryFailedTitle;
+
+  /// The message of the card shown when the notebooks and tags could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the notebooks and tags on this phone. Try again.'**
+  String get libraryFailedMessage;
+
+  /// Shown under the Notebooks heading when the library has no notebooks.
+  ///
+  /// In en, this message translates to:
+  /// **'No notebooks yet'**
+  String get libraryNoNotebooks;
+
+  /// Shown under the Tags heading when no note has a tag.
+  ///
+  /// In en, this message translates to:
+  /// **'No tags yet'**
+  String get libraryNoTags;
 }
 
 class _AppLocalizationsDelegate

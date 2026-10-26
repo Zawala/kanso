@@ -28,7 +28,7 @@ class MockNoteRow extends StatelessWidget {
       selected: selected,
       tags: <KansoTagChip>[
         for (final tag in note.tags)
-          KansoTagChip(name: tag.name, color: tag.color),
+          KansoTagChip(name: tag.name, color: tag.color.color),
       ],
     );
   }
