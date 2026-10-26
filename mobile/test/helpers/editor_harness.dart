@@ -11,6 +11,7 @@ import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/editor/models/repos/impl/rust_editor_repository.dart';
+import 'package:kanso/editor/utils/editor_window.dart';
 import 'package:kanso/editor/views/controllers/kanso_markdown_controller.dart';
 import 'package:kanso/editor/views/widgets/markdown_editor.dart';
 import 'package:kanso/gen/l10n/app_localizations.dart';
@@ -70,6 +71,9 @@ Future<EditorHarness> pumpEditor(
   TargetPlatform platform = TargetPlatform.iOS,
   Size size = const Size(393, 600),
   String themeId = 'kanso-light',
+  int? caret,
+  int windowUnits = WindowSizes.cap,
+  int windowMargin = WindowSizes.margin,
 }) async {
   tester.view
     ..physicalSize = size
@@ -91,6 +95,9 @@ Future<EditorHarness> pumpEditor(
     document: document,
     snapshot: snapshot,
     themeId: themeId,
+    caret: caret,
+    windowUnits: windowUnits,
+    windowMargin: windowMargin,
   );
   final focusNode = FocusNode();
   addTearDown(() {

@@ -15,6 +15,7 @@ import '../../../note/models/data/note_mode.dart';
 import '../../../note/state/note/note_bloc.dart';
 import '../../models/data/editor_destination.dart';
 import '../../models/data/flush_reason.dart';
+import '../../models/data/outside_side.dart';
 import '../../models/repos/abs/editor_repository.dart';
 import '../../state/editor/editor_bloc.dart';
 import '../controllers/kanso_markdown_controller.dart';
@@ -26,6 +27,7 @@ import 'editor_title_field.dart';
 import 'keyboard_accessory_bar.dart';
 import 'link_context_menu.dart';
 import 'markdown_editor.dart';
+import 'outside_text.dart';
 import 'properties_section.dart';
 
 /// The open note's editor: the strips for a change made elsewhere or a
@@ -70,10 +72,6 @@ class NoteEditorContent extends StatefulWidget {
   /// Whether the title, rather than the text, gets the focus (a new note).
   final bool focusTitle;
 
-  /// The longest text the platform's spell checker is given: beyond it spell
-  /// check is off, because it checks the whole text at every change.
-  static const int spellCheckLimit = 200000;
-
   @override
   State<NoteEditorContent> createState() => _NoteEditorContentState();
 }
@@ -91,40 +89,56 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
   late final AppLifecycleListener lifecycle;
   EditorContext? lastContext;
 
+  // Keeping the place on the screen when the window moves: where in the
+  // note, and where on the screen, the page was anchored before it did.
+  final Key headerKey = const ValueKey<String>('editor header');
+  final Key editorSliverKey = const ValueKey<String>('editor text');
+  int seenWindow = 0;
+  int? anchorOffset;
+  double? anchorY;
+  double? tappedY;
+
   @override
   void initState() {
     super.initState();
     editor = context.read<EditorBloc>();
     note = context.read<NoteBloc>();
+    final caret = widget.caret;
+    int? start;
+    if (caret != null) {
+      // The text is the end of the body: what is before it is the front
+      // matter.
+      final body = note.state.note?.body ?? '';
+      final text = widget.snapshot.text;
+      final hidden = widget.caretInBody && body.endsWith(text)
+          ? body.length - text.length
+          : 0;
+      start = (caret - hidden).clamp(0, text.length);
+    }
     controller = KansoMarkdownController(
       document: widget.document,
       snapshot: widget.snapshot,
       themeId: note.state.themeId,
+      caret: start,
       onContext: told,
       onEdited: () => editor.add(const EditorEvent.edited()),
       onLocked: () => editor.add(
         // Rust says the lock is closed: the same as being told.
         const EditorEvent.signalReceived(EditorEvent_Closed()),
       ),
-    );
+    )..onWindowWillMove = anchorAt;
+    controller.addListener(keepPlace);
     title = TextEditingController(text: widget.snapshot.title);
     textFocus = FocusNode(debugLabel: 'Note text');
     titleFocus = FocusNode(debugLabel: 'Note title');
-    scroll = ScrollController(initialScrollOffset: widget.scroll);
+    // The page's place is kept from its top; with text before the window it
+    // is from the editor, and the caret is shown as the field takes focus.
+    scroll = ScrollController(
+      initialScrollOffset: controller.hasBefore.value ? 0 : widget.scroll,
+    );
     lifecycle = AppLifecycleListener(
       onStateChange: (state) => editor.add(EditorEvent.lifecycleChanged(state)),
     );
-    final caret = widget.caret;
-    if (caret != null) {
-      // The text is the end of the body: what is before it is the front
-      // matter.
-      final body = note.state.note?.body ?? '';
-      final hidden = widget.caretInBody && body.endsWith(controller.text)
-          ? body.length - controller.text.length
-          : 0;
-      final at = (caret - hidden).clamp(0, controller.text.length);
-      controller.selection = TextSelection.collapsed(offset: at);
-    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         (widget.focusTitle ? titleFocus : textFocus).requestFocus();
@@ -145,12 +159,13 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
   @override
   void dispose() {
     lifecycle.dispose();
+    controller.removeListener(keepPlace);
     if (!note.isClosed) {
-      final selection = controller.selection;
+      final selection = controller.noteSelection;
       note.add(
         NoteEvent.placeKept(
           selection.isValid ? selection.baseOffset : 0,
-          scroll.hasClients ? scroll.offset : widget.scroll,
+          scroll.hasClients && !controller.hasBefore.value ? scroll.offset : 0,
         ),
       );
     }
@@ -173,17 +188,57 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
 
   /// The blank space below the text puts the caret at its end.
   void focusEnd() {
-    controller.selection = TextSelection.collapsed(
-      offset: controller.text.length,
-    );
+    controller.placeCaret(controller.noteLength);
     textFocus.requestFocus();
+  }
+
+  /// Where on the screen the caret at [offset] of the note is drawn now;
+  /// null when it is not in the field.
+  double? yOf(int offset) {
+    final at = controller.fieldOffsetOf(offset);
+    final render = editableKey.currentState?.renderEditable;
+    if (at == null || render == null || !render.attached) {
+      return null;
+    }
+    final rect = render.getLocalRectForCaret(TextPosition(offset: at));
+    return render.localToGlobal(rect.topLeft).dy;
+  }
+
+  /// The window is about to move: remember where [offset] is on the screen.
+  void anchorAt(int offset) {
+    anchorOffset = offset;
+    anchorY = tappedY ?? yOf(offset);
+    tappedY = null;
+  }
+
+  /// After the window has moved, scrolls the page so that what was anchored
+  /// is where it was on the screen.
+  void keepPlace() {
+    if (controller.windowRevision == seenWindow) {
+      return;
+    }
+    seenWindow = controller.windowRevision;
+    final offset = anchorOffset;
+    final before = anchorY;
+    anchorOffset = null;
+    anchorY = null;
+    if (offset == null || before == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !scroll.hasClients) {
+        return;
+      }
+      final after = yOf(offset);
+      if (after != null && (after - before).abs() > 0.5) {
+        scroll.jumpTo(scroll.offset + (after - before));
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final gutter = widget.gutter;
-    final long =
-        widget.snapshot.text.length > NoteEditorContent.spellCheckLimit;
     return MultiBlocListener(
       listeners: <BlocListener<dynamic, dynamic>>[
         BlocListener<EditorBloc, EditorState>(
@@ -256,110 +311,140 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
               },
             ),
             Expanded(
-              child: CustomScrollView(
-                controller: scroll,
-                slivers: <Widget>[
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      gutter,
-                      KansoSpacing.xxs,
-                      gutter,
-                      0,
-                    ),
-                    sliver: SliverToBoxAdapter(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: <Widget>[
-                          EditorTitleField(
-                            controller: title,
-                            focusNode: titleFocus,
-                            onChanged: onTitleChanged,
-                            onSubmitted: focusText,
-                          ),
-                          BlocBuilder<EditorBloc, EditorState>(
-                            buildWhen: (before, now) =>
-                                before.properties != now.properties ||
-                                before.propertiesOpen != now.propertiesOpen ||
-                                before.propertyError != now.propertyError,
-                            builder: (context, state) => PropertiesSection(
-                              properties: state.properties,
-                              open: state.propertiesOpen,
-                              failed: state.propertyError != null,
-                              onToggle: () => editor.add(
-                                const EditorEvent.propertiesToggled(),
-                              ),
-                              onSet: (key, value, {index}) => editor.add(
-                                EditorEvent.propertySet(
-                                  key: key,
-                                  value: value,
-                                  index: index,
+              child: ValueListenableBuilder<bool>(
+                valueListenable: controller.hasBefore,
+                // A page that starts at the top (the whole note, or its
+                // start, is in the field) grows down from its title. With
+                // text before the window it grows from the editor, up and
+                // down, so that text far from where the page is scrolled
+                // to costs nothing to lay out.
+                builder: (context, hasBefore, _) => CustomScrollView(
+                  controller: scroll,
+                  center: hasBefore ? editorSliverKey : headerKey,
+                  slivers: <Widget>[
+                    SliverPadding(
+                      key: headerKey,
+                      padding: EdgeInsets.fromLTRB(
+                        gutter,
+                        KansoSpacing.xxs,
+                        gutter,
+                        0,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            EditorTitleField(
+                              controller: title,
+                              focusNode: titleFocus,
+                              onChanged: onTitleChanged,
+                              onSubmitted: focusText,
+                            ),
+                            BlocBuilder<EditorBloc, EditorState>(
+                              buildWhen: (before, now) =>
+                                  before.properties != now.properties ||
+                                  before.propertiesOpen != now.propertiesOpen ||
+                                  before.propertyError != now.propertyError,
+                              builder: (context, state) => PropertiesSection(
+                                properties: state.properties,
+                                open: state.propertiesOpen,
+                                failed: state.propertyError != null,
+                                onToggle: () => editor.add(
+                                  const EditorEvent.propertiesToggled(),
+                                ),
+                                onSet: (key, value, {index}) => editor.add(
+                                  EditorEvent.propertySet(
+                                    key: key,
+                                    value: value,
+                                    index: index,
+                                  ),
+                                ),
+                                onRemove: (index) => editor.add(
+                                  EditorEvent.propertyRemoved(index),
                                 ),
                               ),
-                              onRemove: (index) => editor.add(
-                                EditorEvent.propertyRemoved(index),
-                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  SliverPadding(
-                    padding: EdgeInsets.symmetric(horizontal: gutter),
-                    sliver: SliverToBoxAdapter(
-                      child: EditorShortcuts(
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: gutter),
+                      sliver: OutsideText(
                         controller: controller,
-                        completionOpen: () => controller.completion != null,
-                        onSave: () => editor.add(
-                          const EditorEvent.flushRequested(
-                            FlushReason.shortcut,
-                          ),
-                        ),
-                        onDismissCompletion: () =>
-                            editor.add(const EditorEvent.completionDismissed()),
-                        onEscape: () {
-                          textFocus.unfocus();
-                          note.add(
-                            const NoteEvent.modeChanged(NoteMode.preview),
-                          );
-                        },
-                        child: CompletionHost(
+                        side: OutsideSide.before,
+                        reverse: true,
+                        onTapAt: (y) => tappedY = y,
+                      ),
+                    ),
+                    SliverPadding(
+                      key: editorSliverKey,
+                      padding: EdgeInsets.symmetric(horizontal: gutter),
+                      sliver: SliverToBoxAdapter(
+                        child: EditorShortcuts(
                           controller: controller,
-                          editableKey: editableKey,
-                          reservedBottom: KansoSizes.touchTarget + 1,
-                          child: MarkdownEditor(
+                          completionOpen: () => controller.completion != null,
+                          onSave: () => editor.add(
+                            const EditorEvent.flushRequested(
+                              FlushReason.shortcut,
+                            ),
+                          ),
+                          onDismissCompletion: () => editor.add(
+                            const EditorEvent.completionDismissed(),
+                          ),
+                          onEscape: () {
+                            textFocus.unfocus();
+                            note.add(
+                              const NoteEvent.modeChanged(NoteMode.preview),
+                            );
+                          },
+                          child: CompletionHost(
                             controller: controller,
-                            focusNode: textFocus,
                             editableKey: editableKey,
-                            spellCheckService: long
-                                ? null
-                                : DefaultSpellCheckService(),
-                            menuBuilder: (context, state) => LinkContextMenu(
-                              state: state,
-                              document: widget.document,
-                              onOpen: (target) => editor.add(
-                                EditorEvent.linkOpenRequested(target),
+                            reservedBottom: KansoSizes.touchTarget + 1,
+                            child: MarkdownEditor(
+                              controller: controller,
+                              focusNode: textFocus,
+                              editableKey: editableKey,
+                              // The platform checks what the field holds: a
+                              // window of a long note, never the whole.
+                              spellCheckService: DefaultSpellCheckService(),
+                              menuBuilder: (context, state) => LinkContextMenu(
+                                state: state,
+                                document: widget.document,
+                                windowStart: controller.windowStart,
+                                onOpen: (target) => editor.add(
+                                  EditorEvent.linkOpenRequested(target),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: focusEnd,
-                      child: SizedBox(
-                        height:
-                            MediaQuery.paddingOf(context).bottom +
-                            KansoSpacing.xl,
-                        width: double.infinity,
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: gutter),
+                      sliver: OutsideText(
+                        controller: controller,
+                        side: OutsideSide.after,
+                        onTapAt: (y) => tappedY = y,
                       ),
                     ),
-                  ),
-                ],
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: focusEnd,
+                        child: SizedBox(
+                          height:
+                              MediaQuery.paddingOf(context).bottom +
+                              KansoSpacing.xl,
+                          width: double.infinity,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             ListenableBuilder(

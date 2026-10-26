@@ -82,6 +82,17 @@ class KansoEditableTextState extends EditableTextState {
     super.removeTextPlaceholder();
   }
 
+  /// Select All of a long note makes the window the whole note first: one
+  /// slow layout, for something the person asked for.
+  @override
+  void selectAll(SelectionChangedCause cause) {
+    final controller = widget.controller;
+    if (controller is KansoMarkdownController && controller.isWindowed) {
+      controller.selectEverything();
+    }
+    super.selectAll(cause);
+  }
+
   @override
   TextSpan buildTextSpan() {
     final controller = widget.controller;

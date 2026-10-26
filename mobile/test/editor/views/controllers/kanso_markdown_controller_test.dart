@@ -51,6 +51,21 @@ void main() {
       expect(await editor.rustText(tester), '- one\n- \n');
     });
 
+    testWidgets('Return right after a composed word still continues the list', (
+      tester,
+    ) async {
+      final editor = await pumpEditor(tester, text: '- one');
+      await editor.type(
+        tester,
+        _at('- onex', 6, composing: const TextRange(start: 5, end: 6)),
+      );
+      expect(editor.controller.isComposing, isTrue);
+      // The keyboard commits the word and types the newline in one update.
+      await editor.type(tester, _at('- onex\n', 7));
+      expect(editor.controller.text, '- onex\n- ');
+      expect(await editor.rustText(tester), '- onex\n- ');
+    });
+
     testWidgets('Return on an empty list item ends the list', (tester) async {
       final editor = await pumpEditor(tester, text: '- one\n- ');
       editor.controller.selection = const TextSelection.collapsed(offset: 8);

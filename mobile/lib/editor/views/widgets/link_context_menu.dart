@@ -19,11 +19,16 @@ class LinkContextMenu extends StatefulWidget {
     required this.state,
     required this.document,
     required this.onOpen,
+    this.windowStart = 0,
     super.key,
   });
 
   final EditableTextState state;
   final EditorDocument document;
+
+  /// Where the field's text starts in the note's, when the field holds only
+  /// a window of a long note.
+  final int windowStart;
 
   /// The person chose Open link, for a link that leads where this says.
   final ValueChanged<LinkTarget> onOpen;
@@ -41,7 +46,7 @@ class _LinkContextMenuState extends State<LinkContextMenu> {
     final at = widget.state.textEditingValue.selection;
     target = at.isValid
         ? widget.document
-              .linkAt(at.start)
+              .linkAt(widget.windowStart + at.start)
               .then(
                 (found) => found.fold<LinkTarget?>((_) => null, (hit) => hit),
               )
