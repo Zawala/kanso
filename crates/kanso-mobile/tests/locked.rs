@@ -96,6 +96,8 @@ enum Op {
     List(usize, bool, bool, usize),
     Change(usize, usize),
     SearchIn(usize, usize),
+    CreateNotebook,
+    SaveWithTag(usize),
 }
 
 fn ops() -> impl Strategy<Value = Vec<Op>> {
@@ -123,6 +125,8 @@ fn ops() -> impl Strategy<Value = Vec<Op>> {
                 .prop_map(|(p, s, o, k)| Op::List(p, s, o, k)),
             3 => (index.clone(), 0..3usize).prop_map(|(i, k)| Op::Change(i, k)),
             3 => (0..4usize, 0..5usize).prop_map(|(s, w)| Op::SearchIn(s, w)),
+            1 => Just(Op::CreateNotebook),
+            1 => index.clone().prop_map(Op::SaveWithTag),
         ],
         1..24,
     )
@@ -317,7 +321,42 @@ proptest! {
                             }
                         }
                     }
+                    if scope == SearchScope::Tags && word == "TAGMARK0000" {
+                        // The other side: a plain note is found by its tag.
+                        if !locked[0] && !trashed[0] {
+                            prop_assert!(rows.iter().any(|r| r.id == ids[0]), "not found by its tag");
+                        }
+                    }
                     returned.push(format!("{hits:?}"));
+                }
+                Op::CreateNotebook => {
+                    let made = library.create_notebook("Garden".into(), None).unwrap();
+                    returned.push(format!("{made:?}"));
+                }
+                Op::SaveWithTag(i) => {
+                    let rev = library.note(&ids[*i]).unwrap().rev;
+                    let tag = format!("extra{i}");
+                    let edited = format!("{} #{tag}", body_of(*i));
+                    match library.save(&ids[*i], &rev, edited) {
+                        Ok(saved) => {
+                            prop_assert!(!is_closed(&locked, open, *i));
+                            if locked[*i] {
+                                open = true;
+                            } else {
+                                // A plain note takes the tag its text names.
+                                let names: Vec<String> =
+                                    library.tags().unwrap().into_iter().map(|t| t.name).collect();
+                                prop_assert!(names.iter().any(|n| n.eq_ignore_ascii_case(&tag)), "{names:?}");
+                                let view = library.note(&ids[*i]).unwrap();
+                                prop_assert!(!view.tags.is_empty());
+                            }
+                            returned.push(format!("{saved:?}"));
+                        }
+                        Err(err) => {
+                            prop_assert_eq!(err, KansoError::Locked);
+                            prop_assert!(is_closed(&locked, open, *i));
+                        }
+                    }
                 }
                 Op::Create => {
                     let saved = library

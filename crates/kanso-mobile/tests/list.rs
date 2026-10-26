@@ -11,7 +11,8 @@ use common::*;
 use kanso_core::model::LOCK_FIELD;
 use kanso_core::now_ms;
 use kanso_mobile::{
-    DateField, KansoError, ListPlace, ListQuery, NoteChange, NotebookRole, SearchScope, SortKey,
+    DateField, KansoError, ListPlace, ListQuery, NewNote, NoteChange, NotebookRole, SearchScope,
+    SortKey,
 };
 use kanso_sync::MemoryServer;
 use proptest::prelude::*;
@@ -306,6 +307,77 @@ fn notebooks_come_in_tree_order_with_their_roles_and_depth() {
             .filter(|r| r.id != templates)
             .all(|r| r.role.is_none())
     );
+}
+
+// no-prop-test: a notebook made inside another, and the refusals.
+#[test]
+fn a_notebook_is_made_inside_another() {
+    let phone = lone_phone();
+    let library = &phone.library;
+    let work = library.create_notebook("Work".into(), None).unwrap();
+    let acme = library
+        .create_notebook("  Acme ".into(), Some(work.id.clone()))
+        .unwrap();
+    let deep = library
+        .create_notebook("Plans".into(), Some(acme.id.clone()))
+        .unwrap();
+    assert_eq!(acme.name, "Acme", "the name is trimmed");
+    assert_eq!(acme.parent_id.as_deref(), Some(work.id.as_str()));
+    assert_eq!((work.depth, acme.depth, deep.depth), (0, 1, 2));
+    assert_eq!(deep.count, 0);
+    let names: Vec<_> = library
+        .notebooks()
+        .unwrap()
+        .into_iter()
+        .map(|r| r.name)
+        .collect();
+    assert_eq!(names, ["Work", "Acme", "Plans"]);
+
+    assert!(matches!(
+        library.create_notebook("   ".into(), None),
+        Err(KansoError::Invalid { .. })
+    ));
+    assert_eq!(
+        library.create_notebook("X".into(), Some("book:nowhere".into())),
+        Err(KansoError::NotFound)
+    );
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(24))]
+
+    /// A note's `#tags` are its tags: written, they appear; taken out of the
+    /// text, they go; and a tag added by hand stays. The same on the
+    /// first write as on every save.
+    #[test]
+    fn prop_the_text_gives_the_note_its_tags(
+        words in proptest::collection::btree_set("[a-z]{3,8}", 0..4),
+        kept in proptest::collection::btree_set("[a-z]{3,8}", 0..3),
+    ) {
+        let phone = lone_phone();
+        let library = &phone.library;
+        let text = |words: &BTreeSet<String>| {
+            let tags: Vec<String> = words.iter().map(|w| format!("#{w}")).collect();
+            format!("Notes {}\n", tags.join(" "))
+        };
+        let saved = library
+            .create(NewNote { notebook_id: None, title: "T".into(), body: text(&words) })
+            .unwrap();
+        let tag_names = |id: &str| -> BTreeSet<String> {
+            let all = library.tags().unwrap();
+            library.note(id).unwrap().tags.iter()
+                .map(|t| all.iter().find(|a| &a.id == t).unwrap().name.clone())
+                .collect()
+        };
+        prop_assert_eq!(tag_names(&saved.id), words.clone());
+
+        // Taking the words out of the text takes their tags off; new words
+        // add theirs.
+        let rev = library.note(&saved.id).unwrap().rev;
+        let next = library.save(&saved.id, &rev, text(&kept)).unwrap();
+        prop_assert_eq!(tag_names(&saved.id), kept.clone());
+        prop_assert_ne!(next.rev, rev);
+    }
 }
 
 // no-prop-test: one library, scopes read side by side.

@@ -17,6 +17,7 @@ use kanso_core::query_view::ViewNote;
 use kanso_core::roles::{ROLE_FIELD, Role};
 use kanso_core::{DocType, Note, NoteStatus, new_id, now_ms};
 use kanso_engine::batch::{self, Change};
+use kanso_engine::links::tags::apply_inline_tags;
 use kanso_engine::list::{self, DAY_MS, DateKey, Filter, RECENT_DAYS};
 use kanso_engine::lock::LockView;
 use kanso_store::{NoteSummary, Origin, Put, SearchParams, Sort};
@@ -214,6 +215,11 @@ impl Library {
             }
             note.body = body;
             note.updated_at = now_ms();
+            // The text's `#tags` are the note's tags. A locked note's stay
+            // in its text: its tags are not shown.
+            if state == LockView::Plain {
+                apply_inline_tags(&self.inner.store, &mut note, None);
+            }
             if state == LockView::Open {
                 held(&self.inner.keys)
                     .seal(&mut note, Instant::now())
@@ -254,6 +260,9 @@ impl Library {
             }))
             .map_err(|err| KansoError::invalid(err.to_string()))?;
             let in_locked_notebook = self.inner.store.locked_books()?.contains(&book_id);
+            if !in_locked_notebook {
+                apply_inline_tags(&self.inner.store, &mut note, None);
+            }
             let stored = if in_locked_notebook {
                 held(&self.inner.keys)
                     .seal_for_notebook(&mut note, &self.inner.store)
@@ -292,6 +301,42 @@ impl Library {
     /// inside it, in the order the desktop's sidebar has them.
     pub fn notebooks(&self) -> Result<Vec<NotebookRow>, KansoError> {
         guard(|| Ok(notebook_rows(&self.inner.store.books()?)))
+    }
+
+    /// Makes a notebook, inside `parent_id` if given ([`KansoError::NotFound`]
+    /// when there is no such notebook), and returns it as the sidebar lists
+    /// it. The name is trimmed; an empty one is refused.
+    pub fn create_notebook(
+        &self,
+        name: String,
+        parent_id: Option<String>,
+    ) -> Result<NotebookRow, KansoError> {
+        guard(|| {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(KansoError::invalid("A notebook needs a name."));
+            }
+            if let Some(parent) = &parent_id
+                && !self
+                    .inner
+                    .store
+                    .books()?
+                    .iter()
+                    .any(|book| &book.id == parent)
+            {
+                return Err(KansoError::NotFound);
+            }
+            let created = self.inner.store.put(
+                DocType::Book,
+                json!({"name": name, "parentBookId": parent_id}),
+                Put::Upsert,
+                Origin::Ui,
+            )?;
+            notebook_rows(&self.inner.store.books()?)
+                .into_iter()
+                .find(|row| row.id == created.id)
+                .ok_or(KansoError::NotFound)
+        })
     }
 
     /// The tags, by name.
