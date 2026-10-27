@@ -18,11 +18,15 @@
 //! `u` and Ctrl-R; one register, kept in step with the system clipboard;
 //! and `:w`, `:q`, `:wq`, `:x` and `:N`.
 //!
+//! [`Session`] is an editor's side of it: the bookkeeping around the state
+//! machine that doesn't draw anything.
+//!
 //! Offsets are UTF-8 byte offsets. A "character" to the cursor is a
 //! grapheme cluster, so an emoji or an accented letter is one step.
 
 mod motion;
 mod object;
+mod session;
 #[cfg(test)]
 mod tests;
 mod text;
@@ -32,6 +36,7 @@ use std::ops::Range;
 use motion::{Context as MotionContext, FindKind, Kind, Motion, Want};
 use text::*;
 
+pub use session::{Base, Input, Keyed, Left, Route, Session, Step};
 pub use text::{clamp_normal, diff};
 
 /// How long the character (grapheme) `text` starts with is; 0 when it
@@ -233,7 +238,7 @@ struct Change {
 
 /// The Insert mode a command began.
 #[derive(Clone, Debug)]
-struct Session {
+struct Insertion {
     keys: Vec<Key>,
     count: Option<usize>,
     repeat: Repeat,
@@ -270,7 +275,7 @@ pub struct Vim {
     clip_seen: Option<String>,
     last_find: Option<(FindKind, char)>,
     last_change: Option<Change>,
-    session: Option<Session>,
+    session: Option<Insertion>,
     /// The ex command being typed after `:`.
     ex: Option<String>,
     /// While `.` replays a change, which mustn't record itself.
@@ -477,7 +482,7 @@ impl Vim {
     /// Into Insert mode at `at`, from the command typed so far.
     fn enter_insert(&mut self, work: &mut Work, at: usize, repeat: Repeat) {
         work.cursor = at;
-        self.session = Some(Session {
+        self.session = Some(Insertion {
             keys: std::mem::take(&mut self.keys),
             count: self.total_count(),
             repeat,
@@ -1085,7 +1090,7 @@ impl Vim {
 
     /// The end of Insert mode: a count types the text again, and the
     /// cursor steps back onto the last character typed.
-    fn finish_insert(&mut self, work: &mut Work, inserted: &Inserted, session: Option<&Session>) {
+    fn finish_insert(&mut self, work: &mut Work, inserted: &Inserted, session: Option<&Insertion>) {
         if let Some(session) = session {
             let extra = session.count.unwrap_or(1).clamp(1, MAX_COUNT) - 1;
             if extra > 0 {

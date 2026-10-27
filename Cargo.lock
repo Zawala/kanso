@@ -4496,7 +4496,6 @@ dependencies = [
  "toml 0.8.23",
  "tree-sitter-c-sharp",
  "tree-sitter-swift",
- "unicode-segmentation",
  "ureq",
  "url",
  "windows 0.62.2",
@@ -4587,6 +4586,7 @@ dependencies = [
  "tree-sitter-toml-ng",
  "tree-sitter-typescript",
  "tree-sitter-yaml",
+ "unicode-segmentation",
  "unicode-width",
 ]
 

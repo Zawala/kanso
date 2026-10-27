@@ -92,8 +92,6 @@ toml = "0.8"
 # `kanso capture` hands its text to a running Kanso's local API, and the
 # related-notes model downloads with it. The sync client already builds it.
 ureq = "3.4"
-# Vim keys step over a character as it is read (a grapheme cluster).
-unicode-segmentation = "1.13"
 # A passkey's PRF output and a security key's PIN are wiped after use.
 zeroize.workspace = true
 
