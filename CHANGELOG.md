@@ -34,6 +34,7 @@ heading compares the release with the one before.
 - **mobile:** Settings › About links to the release notes and help on kansoapp.app, shows the Shorebird patch number, and the store pictures for every required size are rendered from the golden tests on each build (#48 step 13)
 - **site:** Release notes and Help pages, and a Crash reports section on the privacy page (#48 step 13)
 - **mobile:** The note's preview for the phones' app (#48 step 7): the published page with tappable notes, wiki-links to headings, notes to make, tags, attachments, task boxes, due-date chips, query views and a copy link on every code block, headings anchored, code colored by the theme, failed diagrams shown with the reason and empty drawings as the desktop shows them; it carries no script, handler or fetch, and every address not on the app's short list is dropped. Ticking a box writes only that box and refuses a note changed since the page was drawn; a locked note's text is read only while it is open
+- **mobile:** A note in Preview is its rendered page, under its title and facts: a tapped note link opens the note, a wiki-link to a note not made yet makes it and opens it, a tag opens its list, a heading link scrolls to it, a web or mail link goes to the system, an image attachment opens full screen and any other file opens a sheet to share it, a task box is ticked in one write with Undo, and a code block's button copies it; the page follows the theme and is drawn again when the library changes (#48 step 7)
 
 ### Fixed
 
