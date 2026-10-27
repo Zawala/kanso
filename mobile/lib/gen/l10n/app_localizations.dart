@@ -4432,6 +4432,12 @@ abstract class AppLocalizations {
   /// **'Backups'**
   String get backupsTitle;
 
+  /// The daily backup schedule and retention shown beside Backups in Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Once a day · last 14'**
+  String get backupsSchedule;
+
   /// How many backups there are, as the value of the Backups row in Settings.
   ///
   /// In en, this message translates to:
@@ -4779,6 +4785,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Restore this version'**
   String get historyRestore;
+
+  /// Confirms that the selected saved version was restored.
+  ///
+  /// In en, this message translates to:
+  /// **'This version was restored.'**
+  String get historyRestoreDone;
 
   /// What the restore button says while it works.
   ///

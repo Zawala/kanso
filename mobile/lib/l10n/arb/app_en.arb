@@ -3333,6 +3333,10 @@
   "@backupsTitle": {
     "description": "The title of the screen that lists the library's backups, and its row in Settings."
   },
+  "backupsSchedule": "Once a day · last 14",
+  "@backupsSchedule": {
+    "description": "The daily backup schedule and retention shown beside Backups in Settings."
+  },
   "backupsCount": "{count, plural, =0{None yet} =1{1 backup} other{{count} backups}}",
   "@backupsCount": {
     "description": "How many backups there are, as the value of the Backups row in Settings.",
@@ -3630,6 +3634,10 @@
   "historyRestore": "Restore this version",
   "@historyRestore": {
     "description": "The button that sets the note's text to the version's."
+  },
+  "historyRestoreDone": "This version was restored.",
+  "@historyRestoreDone": {
+    "description": "Confirms that the selected saved version was restored."
   },
   "historyRestoring": "Restoring…",
   "@historyRestoring": {

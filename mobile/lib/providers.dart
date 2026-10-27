@@ -5,6 +5,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'backups/state/backups/backups_bloc.dart';
 import 'core/state/account/account_bloc.dart';
 import 'core/state/appearance/appearance_bloc.dart';
 import 'core/state/capture_inbox/capture_inbox_bloc.dart';
@@ -46,6 +47,10 @@ class AppProviders extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
+        BlocProvider<BackupsBloc>(
+          create: (_) =>
+              getIt<BackupsBloc>()..add(const BackupsEvent.started()),
+        ),
         BlocProvider<AppearanceBloc>.value(value: appearance),
         BlocProvider<LibraryIndexBloc>(
           create: (_) =>

@@ -57,6 +57,7 @@ abstract final class KansoRoutes {
   static const String settingsFonts = '/settings/fonts';
   static const String settingsLicences = '/settings/licences';
   static const String settingsCrashReports = '/settings/crash-reports';
+  static const String settingsBackups = '/settings/backups';
 
   /// Shared with you, the notes other people shared with this account: a
   /// sheet on a tablet and a page on a phone, like Settings.
@@ -64,6 +65,12 @@ abstract final class KansoRoutes {
 
   /// Join with a link, inside [shared].
   static const String sharedJoin = '/shared/join';
+
+  /// A note's saved versions: `/history/:noteId`.
+  static const String history = '/history';
+
+  /// Replace text across the library.
+  static const String replace = '/replace';
 
   /// Settings › Account: the signed-in account's page.
   static const String settingsAccount = '/settings/account';
