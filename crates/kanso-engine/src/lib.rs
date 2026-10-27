@@ -18,7 +18,9 @@
 //! [`tasks`] reads due dates and decides reminders; [`edit`] turns the
 //! formatting toolbar, auto-pairing and Tab and Enter in lists and tables
 //! into one change to the text; [`text`] converts offsets between UTF-8 and
-//! UTF-16; [`theme`] has the palettes, the theme file format and how three
+//! UTF-16; [`text_stats`] counts words and finds the caret's line and
+//! column; [`word_goal`] keeps a note's word goal; [`editor_settings`] has
+//! the editor's settings as the config file names them; [`theme`] has the palettes, the theme file format and how three
 //! themes are fitted together for drawing; and `highlight` (the `highlight`
 //! feature, with the `code-grammars` feature for the code in fenced blocks)
 //! says which parts of a note are headings, markers, links, keywords and the
@@ -38,6 +40,7 @@ pub mod account;
 pub mod batch;
 pub mod daily;
 pub mod edit;
+pub mod editor_settings;
 pub mod fuzzy;
 #[cfg(feature = "highlight")]
 pub mod highlight;
@@ -49,7 +52,9 @@ pub mod strategies;
 pub mod sync;
 pub mod tasks;
 pub mod text;
+pub mod text_stats;
 pub mod theme;
+pub mod word_goal;
 
 /// Where secrets live: the seam the Keychain, the Credential Manager and the
 /// mobile keystores stand behind.
