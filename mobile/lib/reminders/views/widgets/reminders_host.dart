@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/bridge/api/types.dart';
 import '../../../core/models/data/browse_location.dart';
+import '../../../core/router/kanso_routes.dart';
 import '../../utils/reminders_coordinator.dart';
 
 /// Runs the [RemindersCoordinator] for the life of the app: it starts it,
@@ -65,7 +66,17 @@ class _RemindersHostState extends State<RemindersHost>
     );
     final target = (here ?? const BrowseLocation.place(ListPlace.all()))
         .withNote(place.noteId);
-    widget.router.go(target.location);
+    final uri = Uri.parse(target.location);
+    widget.router.go(
+      uri
+          .replace(
+            queryParameters: <String, String>{
+              ...uri.queryParameters,
+              KansoRoutes.taskLineParameter: place.line.toString(),
+            },
+          )
+          .toString(),
+    );
   }
 
   @override

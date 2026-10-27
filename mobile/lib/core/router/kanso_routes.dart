@@ -34,6 +34,15 @@ abstract final class KansoRoutes {
   /// The board of a place's notes is that address plus `/board?kind=`.
   static const String board = 'board';
 
+  /// The zero-based source line to focus when opening a task reminder.
+  static const String taskLineParameter = 'line';
+
+  /// The UTF-16 body caret for a note opened from a template.
+  static const String madeCursorParameter = 'cursor';
+
+  /// Whether a newly made note should focus its title.
+  static const String madeTitleFirstParameter = 'titleFirst';
+
   /// A note by its id alone: redirects to the note in All Notes.
   static const String noteById = '/note';
 

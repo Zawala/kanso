@@ -19,6 +19,8 @@ import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
 import '../../../editor/views/widgets/note_editor_pane.dart';
+import '../../../journal/views/widgets/journal_opener.dart';
+import '../../../journal/views/widgets/note_journal_actions.dart';
 import '../../../lock/views/widgets/privacy_cover_sync.dart';
 import '../../../sharing/state/comments/comments_bloc.dart';
 import '../../../sharing/state/shared_note_status/shared_note_status_bloc.dart';
@@ -84,8 +86,9 @@ class NotePane extends StatelessWidget {
     } on ProviderNotFoundException {
       hasStatus = false;
     }
-    return NoteModeShortcuts(
-      child: ColoredBox(
+    return JournalOpener(
+      child: NoteModeShortcuts(
+        child: ColoredBox(
         color: context.colors.editor,
         child: BlocBuilder<NavigationHistoryBloc, NavigationHistoryState>(
           builder: (context, steps) {
@@ -114,6 +117,7 @@ class NotePane extends StatelessWidget {
                       onGoBack: steps.canGoBack ? goBack : null,
                       onGoForward: steps.canGoForward ? goForward : null,
                       trailing: <Widget>[
+                        if (readable) const NoteJournalActions(),
                         if (readable) ...<Widget>[
                           NoteModeToggle(
                             mode: shown.mode,
@@ -241,6 +245,7 @@ class NotePane extends StatelessWidget {
             );
           },
         ),
+      ),
       ),
     );
   }

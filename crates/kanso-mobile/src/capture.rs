@@ -76,10 +76,7 @@ impl Library {
     /// In a locked Journal the note is made without text from any locked
     /// template: nothing of a locked note is copied out.
     pub fn today_note(&self, now: LocalTime) -> Result<String, KansoError> {
-        guard(|| {
-            let now = date_time(now)?;
-            Ok(kanso_engine::daily::today(&self.inner.store, now)?.id)
-        })
+        self.journal_today(now).map(|made| made.id)
     }
 }
 
