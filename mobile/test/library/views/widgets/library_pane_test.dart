@@ -241,7 +241,7 @@ void main() {
             .widgetList<Semantics>(find.byType(Semantics))
             .any(
               (widget) =>
-                  widget.properties.selected == true &&
+                  (widget.properties.selected ?? false) &&
                   widget.properties.label == '#idea',
             ),
         isTrue,
