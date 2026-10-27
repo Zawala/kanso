@@ -94,7 +94,10 @@ fn sweep(
         let view = library.note(id).unwrap();
         prop_assert_eq!(&view.body, &None);
         prop_assert!(view.lock.is_closed());
-        prop_assert_eq!(library.save(id, &view.rev, "x".into()), Err(KansoError::Locked));
+        prop_assert_eq!(
+            library.save(id, &view.rev, "x".into()),
+            Err(KansoError::Locked)
+        );
         prop_assert!(!library.locks().is_note_unlocked(id).unwrap());
         let text = format!(
             "{:?}",

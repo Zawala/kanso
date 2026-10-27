@@ -18,7 +18,9 @@
 //! - [`LockSession`] (`library.locks()`) holds the lock password's keys. A
 //!   locked note's text, snippet, properties, tasks and preview never come
 //!   back while it is closed; only its title and its lock show in a list.
-//!   Keys never cross this edge.
+//!   Keys never cross this edge. Locking a note or a notebook, removing a
+//!   lock, changing the lock password and unlocking with biometrics
+//!   ([`biometrics`]: a ticket the native plugin answers) are here too.
 //! - [`SyncHandle`] (`library.sync()`) signs in to a server, syncs and
 //!   reports its status.
 //! - [`Renderer`] (`library.renderer()`) draws a note's preview, highlights

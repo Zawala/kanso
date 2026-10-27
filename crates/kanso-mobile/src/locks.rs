@@ -229,9 +229,7 @@ impl LockSession {
                 let key = self.key_from_password(&password)?;
                 self.add_key(key);
             }
-            let key = held(&self.inner.keys)
-                .current()
-                .ok_or(KansoError::Locked)?;
+            let key = held(&self.inner.keys).current().ok_or(KansoError::Locked)?;
             let sealed = lock::seal_notebook(&self.inner.store, book_id, &key)
                 .map_err(KansoError::storage)?;
             held(&self.inner.keys).touch(Instant::now());
@@ -280,8 +278,8 @@ impl LockSession {
                 return Err(KansoError::invalid("Nothing is locked yet."));
             }
             let params = held(&self.inner.keys).params();
-            let (key, skipped) = lock::rekey(&self.inner.store, &old, &new, params)
-                .map_err(|words| {
+            let (key, skipped) =
+                lock::rekey(&self.inner.store, &old, &new, params).map_err(|words| {
                     if words == lock::sentence(&LockError::WrongPassword) {
                         wrong()
                     } else {
@@ -395,4 +393,3 @@ impl LockSession {
         }
     }
 }
-

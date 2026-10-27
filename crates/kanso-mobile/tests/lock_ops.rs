@@ -64,7 +64,10 @@ fn a_note_is_locked_with_the_open_session_and_no_password() {
         note(&phone.library, "Two", "TWO"),
     );
     // No key is held: there is nothing to lock with.
-    assert_eq!(locks.lock_note_with_session(&first), Err(KansoError::Locked));
+    assert_eq!(
+        locks.lock_note_with_session(&first),
+        Err(KansoError::Locked)
+    );
     locks.lock_note(&first, LOCK_PASSWORD.into()).unwrap();
     let saved = locks.lock_note_with_session(&second).unwrap();
     assert_eq!(saved.id, second);
@@ -90,7 +93,11 @@ fn a_password_is_tried_on_the_note_or_notebook_asked_about() {
     let locks = phone.library.locks();
     let id = note(&phone.library, "Plan", SECRET);
     let plain = note(&phone.library, "Plain", "plain");
-    let book = phone.library.create_notebook("Vault".into(), None).unwrap().id;
+    let book = phone
+        .library
+        .create_notebook("Vault".into(), None)
+        .unwrap()
+        .id;
     locks.lock_note(&id, LOCK_PASSWORD.into()).unwrap();
     locks.lock().unwrap();
     assert_eq!(locks.unlock_note(&id, "not the password".into()), Ok(false));
@@ -140,16 +147,27 @@ fn removing_a_note_lock_needs_it_open_and_outside_a_locked_notebook() {
     assert_eq!(view.rev, saved.rev);
     assert_eq!(view.body.as_deref(), Some(SECRET));
     // Plain again: it is in the store as it was, and shows after a lock.
-    let stored = Store::open(phone.path()).unwrap().note(&id).unwrap().unwrap();
+    let stored = Store::open(phone.path())
+        .unwrap()
+        .note(&id)
+        .unwrap()
+        .unwrap();
     assert!(!stored.is_locked());
     assert_eq!(stored.body, SECRET);
     locks.lock().unwrap();
     assert_eq!(body(&phone, &id).as_deref(), Some(SECRET));
 
     // In a locked notebook the note stays locked.
-    let book = phone.library.create_notebook("Vault".into(), None).unwrap().id;
+    let book = phone
+        .library
+        .create_notebook("Vault".into(), None)
+        .unwrap()
+        .id;
     let inside = note_in(&phone, &book, "Inside", "INSIDE");
-    assert_eq!(locks.lock_notebook(&book, Some(LOCK_PASSWORD.into())), Ok(1));
+    assert_eq!(
+        locks.lock_notebook(&book, Some(LOCK_PASSWORD.into())),
+        Ok(1)
+    );
     assert_eq!(
         locks.remove_note_lock(&inside),
         Err(KansoError::invalid(
@@ -164,7 +182,11 @@ fn removing_a_note_lock_needs_it_open_and_outside_a_locked_notebook() {
 fn a_notebook_is_locked_opened_and_unlocked_as_on_the_desktop() {
     let phone = lone_phone();
     let locks = phone.library.locks();
-    let work = phone.library.create_notebook("Work".into(), None).unwrap().id;
+    let work = phone
+        .library
+        .create_notebook("Work".into(), None)
+        .unwrap()
+        .id;
     let inner = phone
         .library
         .create_notebook("Acme".into(), Some(work.clone()))
@@ -174,10 +196,17 @@ fn a_notebook_is_locked_opened_and_unlocked_as_on_the_desktop() {
         note_in(&phone, &work, "A", "A-TEXT"),
         note_in(&phone, &inner, "B", "B-TEXT"),
     );
-    let elsewhere = phone.library.create_notebook("Home".into(), None).unwrap().id;
+    let elsewhere = phone
+        .library
+        .create_notebook("Home".into(), None)
+        .unwrap()
+        .id;
     let outside = note_in(&phone, &elsewhere, "Outside", "OUTSIDE");
     assert!(locks.notebook_is_open(&work).unwrap());
-    assert_eq!(locks.notebook_is_open("book:nope"), Err(KansoError::NotFound));
+    assert_eq!(
+        locks.notebook_is_open("book:nope"),
+        Err(KansoError::NotFound)
+    );
 
     // No key and no password: nothing to lock with. Too short a password too.
     assert_eq!(locks.lock_notebook(&work, None), Err(KansoError::Locked));
@@ -191,7 +220,10 @@ fn a_notebook_is_locked_opened_and_unlocked_as_on_the_desktop() {
     );
     // The first lock sets the password; both notes and the inner notebook's
     // note are sealed, and stay open for the session.
-    assert_eq!(locks.lock_notebook(&work, Some(LOCK_PASSWORD.into())), Ok(2));
+    assert_eq!(
+        locks.lock_notebook(&work, Some(LOCK_PASSWORD.into())),
+        Ok(2)
+    );
     assert!(locks.is_unlocked().unwrap());
     assert!(locks.notebook_is_open(&work).unwrap());
     assert!(locks.notebook_is_open(&inner).unwrap());
@@ -208,11 +240,18 @@ fn a_notebook_is_locked_opened_and_unlocked_as_on_the_desktop() {
     locks.lock().unwrap();
     assert!(!locks.notebook_is_open(&work).unwrap());
     assert!(!locks.notebook_is_open(&inner).unwrap());
-    assert!(locks.notebook_is_open(&phone_book(&phone, &outside)).unwrap());
+    assert!(
+        locks
+            .notebook_is_open(&phone_book(&phone, &outside))
+            .unwrap()
+    );
     assert_eq!(body(&phone, &a), None);
     assert_eq!(body(&phone, &b), None);
     assert_eq!(locks.remove_notebook_lock(&work), Err(KansoError::Locked));
-    assert_eq!(locks.unlock_notebook(&work, "wrong password".into()), Ok(false));
+    assert_eq!(
+        locks.unlock_notebook(&work, "wrong password".into()),
+        Ok(false)
+    );
     assert!(!locks.notebook_is_open(&work).unwrap());
     assert_eq!(locks.unlock_notebook(&work, LOCK_PASSWORD.into()), Ok(true));
     assert!(locks.notebook_is_open(&work).unwrap());
@@ -220,7 +259,14 @@ fn a_notebook_is_locked_opened_and_unlocked_as_on_the_desktop() {
 
     // A note made there afterwards is sealed.
     let later = note_in(&phone, &work, "Later", "LATER");
-    assert!(Store::open(phone.path()).unwrap().note(&later).unwrap().unwrap().is_locked());
+    assert!(
+        Store::open(phone.path())
+            .unwrap()
+            .note(&later)
+            .unwrap()
+            .unwrap()
+            .is_locked()
+    );
 
     // Removing the lock needs the notebook open, leaves its notes locked and
     // doesn't lock what is put there later. An inner notebook has no lock of
@@ -261,12 +307,22 @@ fn the_password_of_a_second_notebook_must_be_the_first() {
     let phone = lone_phone();
     let locks = phone.library.locks();
     let (one, two) = (
-        phone.library.create_notebook("One".into(), None).unwrap().id,
-        phone.library.create_notebook("Two".into(), None).unwrap().id,
+        phone
+            .library
+            .create_notebook("One".into(), None)
+            .unwrap()
+            .id,
+        phone
+            .library
+            .create_notebook("Two".into(), None)
+            .unwrap()
+            .id,
     );
     note_in(&phone, &one, "A", "A");
     note_in(&phone, &two, "B", "B");
-    locks.lock_notebook(&one, Some(LOCK_PASSWORD.into())).unwrap();
+    locks
+        .lock_notebook(&one, Some(LOCK_PASSWORD.into()))
+        .unwrap();
     locks.lock().unwrap();
     assert!(matches!(
         locks.lock_notebook(&two, Some(OTHER_PASSWORD.into())),
@@ -292,18 +348,26 @@ fn the_lock_password_is_changed_and_what_it_didnt_open_is_counted() {
     // A note locked with another password, as another device might have.
     {
         let store = Store::open(phone.path()).unwrap();
-        let key = LockKey::create(&LockPassword::new("unrelated words").unwrap(), KdfParams::TEST)
-            .unwrap();
+        let key = LockKey::create(
+            &LockPassword::new("unrelated words").unwrap(),
+            KdfParams::TEST,
+        )
+        .unwrap();
         let mut stored = store.note(&stray).unwrap().unwrap();
         let sealed = key.seal(&stored.id, &stored.body);
         stored.body.clear();
         Envelope::store(Some(&sealed), &mut stored.extra);
-        store.lock_note(serde_json::to_value(&stored).unwrap()).unwrap();
+        store
+            .lock_note(serde_json::to_value(&stored).unwrap())
+            .unwrap();
     }
     locks.lock().unwrap();
 
     let wrong = locks.change_password("not the password".into(), OTHER_PASSWORD.into());
-    assert_eq!(wrong, Err(KansoError::auth("That isn't the lock password.")));
+    assert_eq!(
+        wrong,
+        Err(KansoError::auth("That isn't the lock password."))
+    );
     assert_eq!(
         locks.change_password("short".into(), OTHER_PASSWORD.into()),
         Err(KansoError::auth("That isn't the lock password."))

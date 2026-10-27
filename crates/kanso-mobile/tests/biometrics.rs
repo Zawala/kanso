@@ -8,8 +8,8 @@ use std::sync::mpsc;
 use common::*;
 use kanso_mobile::biometrics::{self, answer, status};
 use kanso_mobile::{KansoError, LockEvent, LockReason, LockSession, LockState};
-use kanso_sync::lock::{Envelope, LockKey, LockPassword};
 use kanso_sync::SecretStore;
+use kanso_sync::lock::{Envelope, LockKey, LockPassword};
 use proptest::prelude::*;
 
 const SECRET: &str = "the secret plan";
@@ -161,7 +161,10 @@ fn a_ticket_answers_once_and_an_unknown_one_not_at_all() {
         biometrics::deliver(ticket, status::OK, Some(&B)),
         answer::NO_TICKET
     );
-    assert_eq!(biometrics::deliver(0, status::OK, Some(&B)), answer::NO_TICKET);
+    assert_eq!(
+        biometrics::deliver(0, status::OK, Some(&B)),
+        answer::NO_TICKET
+    );
     // An enrolment ticket can't open the notes, nor an unlock ticket enrol.
     locks.lock().unwrap();
     let ticket = locks.begin_biometric_unlock().unwrap().unwrap();

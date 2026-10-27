@@ -24,8 +24,8 @@ use std::time::{Duration, Instant};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use kanso_engine::lock::Session as KeySession;
-use kanso_sync::lock::LockKey;
 use kanso_sync::Machine;
+use kanso_sync::lock::LockKey;
 use zeroize::Zeroizing;
 
 use crypto::{KEY_LEN, KeyPair};
@@ -97,6 +97,11 @@ struct Ticket {
 static TICKETS: LazyLock<Mutex<HashMap<u64, Ticket>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// The largest ticket: below 2^53, so every layer between here and the
+/// plugin (the bridge, the platform channel, a JavaScript number in a test)
+/// carries it as the same integer.
+const MAX_TICKET: u64 = (1 << 53) - 1;
+
 fn issue(kind: Kind, inner: &Arc<Inner>, now: Instant) -> u64 {
     let mut tickets = held(&TICKETS);
     tickets.retain(|_, ticket| {
@@ -106,7 +111,7 @@ fn issue(kind: Kind, inner: &Arc<Inner>, now: Instant) -> u64 {
     loop {
         let mut bytes = [0u8; 8];
         getrandom::fill(&mut bytes).expect("the system's random source failed");
-        let number = u64::from_le_bytes(bytes);
+        let number = u64::from_le_bytes(bytes) & MAX_TICKET;
         if number != 0 && !tickets.contains_key(&number) {
             tickets.insert(
                 number,
@@ -265,7 +270,9 @@ impl Item {
 fn load(inner: &Inner) -> Result<Option<(String, Item)>, KansoError> {
     let id = library_id(inner)?;
     let value = inner.secrets.get(&item_name(&id))?;
-    Ok(value.and_then(|text| Item::decode(&text)).map(|item| (id, item)))
+    Ok(value
+        .and_then(|text| Item::decode(&text))
+        .map(|item| (id, item)))
 }
 
 fn forget(inner: &Inner) -> Result<(), KansoError> {
@@ -289,7 +296,9 @@ fn parse_payload(text: &str) -> Vec<LockKey> {
     if lines.next() != Some(LOCK_KEYS_V1) {
         return Vec::new();
     }
-    lines.filter_map(|line| LockKey::from_secret(line).ok()).collect()
+    lines
+        .filter_map(|line| LockKey::from_secret(line).ok())
+        .collect()
 }
 
 fn session_keys(keys: &Mutex<KeySession>) -> Vec<Arc<LockKey>> {
@@ -446,6 +455,23 @@ mod tests {
             answer::NO_TICKET
         );
         assert_eq!(deliver(0, status::OK, Some(&B)), answer::NO_TICKET);
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(8))]
+
+        /// Every ticket is a nonzero integer below 2^53, and none repeats.
+        #[test]
+        fn prop_tickets_are_small_distinct_and_never_zero(n in 1usize..60) {
+            let dir = tempfile::tempdir().unwrap();
+            let library = library(dir.path());
+            let mut seen = std::collections::HashSet::new();
+            for _ in 0..n {
+                let ticket = issue(Kind::Unlock, &library.inner, Instant::now());
+                proptest::prop_assert!(ticket != 0 && ticket <= MAX_TICKET);
+                proptest::prop_assert!(seen.insert(ticket));
+            }
+        }
     }
 
     // no-prop-test: a ticket of a library that is closed.
