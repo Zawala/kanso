@@ -23,10 +23,8 @@ use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::component::{Icon, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
-use kanso_core::DocType;
 use kanso_core::outline::{Heading, headings};
-use kanso_store::{Backlink, Origin, Put, RelatedNote, Store};
-use serde_json::json;
+use kanso_store::{Backlink, RelatedNote, Store};
 
 use crate::ask_panel::AskPanel;
 use crate::config::InspectorTab;

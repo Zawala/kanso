@@ -108,7 +108,7 @@ pub fn ranked(
 
 /// Orders `sections` for `query`: as given for an empty one, otherwise by
 /// the best entry of each, the first of equally good ones first.
-pub fn order_sections(query: &str, sections: &mut Vec<(Section, Option<i64>)>) {
+pub fn order_sections(query: &str, sections: &mut [(Section, Option<i64>)]) {
     if !query.is_empty() {
         sections.sort_by_key(|(_, best)| Reverse(*best));
     }

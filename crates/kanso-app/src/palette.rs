@@ -29,8 +29,8 @@ use kanso_engine::navigate::quick_open::{
 };
 use kanso_engine::palette::item_score;
 use kanso_store::{
-    HeadingHit, MEANING_SIMILARITY, MeaningSearch, NoteSummary, Origin, Put, SearchParams, Sort,
-    Store, blend_meaning,
+    HeadingHit, MEANING_SIMILARITY, MeaningSearch, NoteSummary, Origin, Put, Sort, Store,
+    blend_meaning,
 };
 use serde_json::json;
 
