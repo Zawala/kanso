@@ -26,6 +26,7 @@ and the counters behind quotas and rate limits; R2 holds sealed file bytes under
 | `PUT` / `GET /v2/account/identity`, `GET /v2/users/<username>` | yes | Identity keys for sharing, and another account's public keys |
 | `/v2/collab/…` | yes | Shared notes: sharing, invitations, epochs, the log, snapshots, the live WebSocket, links, requests and notifications |
 | `GET /j/<link_id>` | | The page an invite link opens: "open Kanso and paste this link" |
+| `POST /v1/crash-reports` | | A crash report the person chose to send from the mobile apps ([docs/CRASH-REPORTS.md](../docs/CRASH-REPORTS.md)): no session, strictly validated, 204 stored, 5 an hour per address (`crash-ip`), kept 90 days, no IP or account stored |
 | `POST /v2/auth/passkey/start`, `/finish` | | Sign in with a passkey or security key |
 | `POST /v2/auth/passkey/signup/start`, `/finish` | | Create a passwordless account with a passkey |
 | `POST /v2/auth/{apple,google,github}/start` | | Start a provider sign-in or sign-up |
@@ -41,7 +42,7 @@ and the counters behind quotas and rate limits; R2 holds sealed file bytes under
 | `GET /v2/account/events` | yes | The account's event WebSocket (approval hints; needs the device proof) |
 | `GET`, `HEAD /.well-known/apple-app-site-association` | | The Associated Domains file macOS reads before it allows passkeys for this host |
 
-A session is `Authorization: Bearer kanso_…`. `/v1` and every other path answer 404. Any request
+A session is `Authorization: Bearer kanso_…`. Every other `/v1` path and every other path answer 404. Any request
 with an `Origin` header gets 403, except on the public routes (published notes, the viewer and
 invite pages, the AASA file) and on the Apple callback, which accepts only Apple's own origin
 (`https://appleid.apple.com`, a browser form post carries it); a body with the wrong

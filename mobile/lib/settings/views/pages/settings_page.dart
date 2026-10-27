@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/utils/context_extensions.dart';
 import '../../../injection.dart';
+import '../../../lock/state/biometrics/biometrics_bloc.dart';
 import '../../../push/state/push_setting/push_setting_bloc.dart';
 import '../../state/about/about_bloc.dart';
 import '../widgets/settings_pane.dart';
@@ -22,6 +23,9 @@ class SettingsPage extends StatelessWidget {
         BlocProvider<AboutBloc>(
           create: (context) =>
               getIt<AboutBloc>()..add(const AboutEvent.started()),
+        ),
+        BlocProvider<BiometricsBloc>(
+          create: (context) => getIt<BiometricsBloc>(),
         ),
         BlocProvider<PushSettingBloc>(
           create: (context) =>

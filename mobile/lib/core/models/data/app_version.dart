@@ -15,5 +15,9 @@ abstract class AppVersion with _$AppVersion {
 
     /// The number of the build: `1`.
     required String build,
+
+    /// The Shorebird patch the app is running; null without Shorebird or
+    /// before the first patch.
+    int? patch,
   }) = _AppVersion;
 }

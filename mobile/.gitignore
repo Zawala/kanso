@@ -44,8 +44,11 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Pictures for the store listings, made by scripts/mobile-store-screenshots.sh.
+# Pictures for the store listings, made by scripts/mobile-store-render.sh (or
+# by mobile-store-screenshots.sh on a simulator).
 /store/screenshots/
 
 # The Firebase configuration of the build (push on Android); see README.md.
 /android/app/google-services.json
+# What a failed golden test leaves behind.
+**/failures/

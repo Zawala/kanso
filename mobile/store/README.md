@@ -57,25 +57,54 @@ If Ask your notes ships in 0.9.0, add it to the descriptions and to the privacy 
 
 ## Screenshots
 
-Apple needs screenshots for the largest iPhone and iPad sizes (smaller ones are scaled
-from them); Play needs 2 to 8 per device type, JPEG or 24-bit PNG without alpha, each side
-between 320 and 3,840 px (tablet screenshots 1,080 px or more), the long side at most twice
-the short one; at least 4 at 1,080 px or more are needed for some featuring.
+Apple needs screenshots for the largest iPhone (6.9-inch, or 6.5-inch if there is no 6.9
+set) and, because Kanso runs on iPad, for the 13-inch iPad; smaller sizes are scaled from
+them. Play takes 2 to 8 per device type, JPEG or 24-bit PNG without alpha, each side between
+320 and 3,840 px, the long side at most twice the short one; a phone set is needed, and 7-inch
+and 10-inch tablet sets (1,080 px or more on the short side) for tablet featuring. Play also
+requires a 1024 × 500 feature graphic and a 512 × 512 icon.
 Sources: [App Store Connect screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications),
 [Play Console: add preview assets](https://support.google.com/googleplay/android-developer/answer/9866151).
 
-| Set | Device to use | Pixels (portrait) | Used for |
-|---|---|---|---|
-| `ios-iphone-6.9` | iPhone 17 Pro Max simulator | 1320 × 2868 | App Store, 6.9-inch iPhone |
-| `ios-ipad-13` | iPad Pro 13-inch (M5) simulator | 2064 × 2752 | App Store, 13-inch iPad |
-| `android-phone` | an emulator at 1080 × 1920 | 1080 × 1920 | Play phone |
-| `android-tablet` | an emulator at 1600 × 2560 | 1600 × 2560 | Play 10-inch tablet (and 7-inch) |
+The rendered pictures are the default for the listings. They are drawn from the golden-test
+harness (`test/store/store_screenshots_test.dart`): the real app over the mock library, in
+the real fonts, at each set's exact size, as iOS for the App Store sets and as Android for
+the Play sets, with no simulator, so CI can make them. The status bar and home indicator
+are left as blank safe area (the pictures carry no device frame or clock).
 
-Five screens, in this order, each in light (the dark variants as a second row if the stores'
-count allows): **01 All notes** (the list, with the pinned note), **02 Library** (notebooks,
-tags), **03 A notebook**, **04 A note**, **05 Search** with a highlighted match. Add **06
-the editor with the keyboard bar**, **07 a locked note** and **08 an iPad in three panes**
-as steps 6 and 9 land. The pictures show the app's own seeded library, not real notes.
+| Set | Pixels (portrait) | Layout | Used for |
+|---|---|---|---|
+| `ios-iphone-6.9` | 1320 × 2868 | one pane | App Store, 6.9-inch iPhone |
+| `ios-iphone-6.5` | 1284 × 2778 | one pane | App Store, 6.5-inch iPhone |
+| `ios-ipad-13` | 2064 × 2752 | three panes | App Store, 13-inch iPad |
+| `android-phone` | 1080 × 2160 | one pane | Play phone (2:1, the tallest Play accepts) |
+| `android-tablet-7` | 1200 × 1920 | one pane (tablet display) | Play 7-inch tablet |
+| `android-tablet-10` | 1600 × 2560 | two panes | Play 10-inch tablet |
+
+Each set holds six pictures: **01-notes** (the list, with the pinned note), **02-note** (an
+open note), **03-library** (notebooks and tags, a drawer on one and two panes, a pane on
+three), **04-search** (a highlighted match), then the same list and note in dark
+(**05-notes-dark**, **06-note-dark**). Add the editor with the keyboard bar, a locked note
+and the iPad in three panes as steps 6 and 9 land. The pictures show the mock library, not
+real notes. Play's extras are written to `play/`: `feature-graphic.png` (1024 × 500) and
+`icon-512.png` (512 × 512, the App Store icon scaled down). The 1024 × 1024 icon for the App
+Store is `ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png` (opaque).
+
+```sh
+scripts/mobile-store-render.sh            # writes mobile/store/screenshots/<set>/NN-name.png
+scripts/mobile-store-render.sh some/dir   # or somewhere else
+```
+
+The script runs the tagged test (`flutter test --tags store-screenshots`, which does nothing
+unless `KANSO_STORE_SHOTS_DIR` is set) and then checks every PNG's size against its set and
+that none has an alpha channel. Look at each picture before it goes to a store.
+
+For pictures on real device frames and status bars, the simulator script remains:
+
+| Set | Device to use | Pixels |
+|---|---|---|
+| `ios-iphone-6.9` | iPhone 17 Pro Max simulator | 1320 × 2868 |
+| `ios-ipad-13` | iPad Pro 13-inch (M5) simulator | 2064 × 2752 |
 
 ```sh
 scripts/mobile-store-screenshots.sh ios-iphone-6.9 "iPhone 17 Pro Max"
@@ -84,14 +113,10 @@ scripts/mobile-store-screenshots.sh android-phone emulator-5554
 scripts/mobile-store-screenshots.sh android-tablet emulator-5554
 ```
 
-The script runs `integration_test/store_screenshots_test.dart` with
+It runs `integration_test/store_screenshots_test.dart` with
 `test_driver/store_screenshot_driver.dart` (`flutter drive`), writes PNGs to
 `mobile/store/screenshots/<set>/` (git-ignored) and fails if a picture isn't the set's
 size. Boot the simulator or emulator first, at the set's size; set the status bar to 9:41
 and full battery for the iPhone (`xcrun simctl status_bar booted override --time 9:41
---batteryState charged --batteryLevel 100 --cellularBars 4`). They are not generated in CI:
-look at each picture before it goes to a store. It has not been run for this change (it needs
-the simulators and a full build of the Rust library); `flutter analyze` passes on it.
-
-A 512 × 512 icon and a 1024 × 500 feature graphic are also needed for Play, and the 1024 × 1024
-icon for the App Store comes from the asset catalog; none is made here.
+--batteryState charged --batteryLevel 100 --cellularBars 4`). It needs the simulators and a
+full build of the Rust library, so it is not run in CI.

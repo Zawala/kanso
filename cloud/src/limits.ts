@@ -37,7 +37,8 @@ export type Rule =
 	| "provider-poll"
 	| "approval-create"
 	| "approval-poll"
-	| "approval-respond";
+	| "approval-respond"
+	| "crash-ip";
 
 /**
  * Window and maximum of each rule. The two per-account daily rules read their
@@ -66,6 +67,9 @@ export type Rule =
  * `approval-respond` every challenge, name and approval answer. The
  * approver's list GET isn't counted: it runs on an event or a launch, never
  * on a timer.
+ *
+ * `crash-ip` counts every crash report posted (docs/CRASH-REPORTS.md), per IP
+ * group: a person sends a report by tapping Send, so five an hour is plenty.
  */
 export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"signup-ip": { window: HOUR, max: 10 },
@@ -87,6 +91,7 @@ export const RULES: Record<Rule, { window: number; max: number | null }> = {
 	"approval-create": { window: HOUR, max: 10 },
 	"approval-poll": { window: HOUR, max: 900 },
 	"approval-respond": { window: HOUR, max: 30 },
+	"crash-ip": { window: HOUR, max: 5 },
 };
 
 /**

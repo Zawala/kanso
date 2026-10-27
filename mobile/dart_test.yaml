@@ -1,0 +1,5 @@
+tags:
+  # Renders the pictures for the store listings; skipped unless
+  # KANSO_STORE_SHOTS_DIR is set (scripts/mobile-store-render.sh).
+  store-screenshots:
+    timeout: 5x

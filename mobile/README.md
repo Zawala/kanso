@@ -62,6 +62,13 @@ opens its library at `kanso/library.db` in the application support folder
 (`lib/core/configs/core_module.dart`); the background sync opens the same file.
 `preferences.json` sits beside it (see below).
 
+A note open for editing is a `KansoEditor` (`KansoLibrary.edit`): the text, its
+undo history, the editor's commands, the colours of the text, completion and
+saving are in Rust, and the field only hands over what changed. The calls it
+makes on every keystroke are `#[frb(sync)]`, so they run on the UI isolate in
+microseconds and a command and the field's text change in the same turn;
+`lib/editor/models/repos/` wraps them (`EditorDocument`).
+
 ## Release
 
 The release builds, signing, TestFlight and Play uploads, Shorebird patches and the store
@@ -91,13 +98,50 @@ pinned note, a locked one):
 | --- | --- |
 | `browse_flow_test.dart` | All Notes under Pinned and Today; the library and a notebook's notes; a note opened and closed; a swipe pins; two notes chosen and moved; a note trashed and the Trash count; the locked note shows its title and its lock, and its text is nowhere |
 | `search_flow_test.dart` | Type a word and see what matched highlighted; narrow to titles; open a hit |
+| `new_note_flow_test.dart` | The Default notebook chosen in Settings; + makes a note in it, opened to write its title; a note made from a tag's list is tagged; ⌘N; a new notebook, and a note made in its own list |
 | `open_flow_test.dart` | `kanso://open/note/…`, `…/notebook/…` and `…/search?q=…` as the platform hands them over; a note that is not there; a locked note |
+| `icons_flow_test.dart` | Settings › Appearance › Icons lists the icon themes with Lucide in use; choosing Phosphor draws the app's icons from its SVGs at once and the Icons row names it; choosing Lucide again puts Kanso's own icons back |
 
 ```sh
 flutter test integration_test/browse_flow_test.dart -d <simulator or emulator>
 ```
 
-CI runs them on an iPhone simulator and an Android 10 emulator. The Android job
+### On tablets
+
+The flows are written for every layout class (see below): where the library is
+a pane there is no drawer to open, where the note is beside its list there is
+no page to go back from, and search is the field at the top of the library
+rather than a button in the list's bar. `helpers/flow_driver.dart` has the
+helpers (`inList`, `leaveNote`, `closeLibrary`, `openSearch`) that do the right
+thing in each. `--dart-define=KANSO_ORIENTATION=portrait` or `landscape` turns
+the device first (`SystemChrome.setPreferredOrientations`) and waits until the
+window is that way round; without it the device keeps its own.
+
+```sh
+# An iPad simulator (boot it first: xcrun simctl boot <udid>)
+xcrun simctl list devices available | grep iPad
+flutter test integration_test/browse_flow_test.dart \
+  -d <iPad simulator udid> --dart-define=KANSO_ORIENTATION=landscape
+
+# A Pixel Tablet emulator (the AVD profile `pixel_tablet`, 2560x1600)
+flutter test integration_test/browse_flow_test.dart \
+  -d emulator-5556 --dart-define=KANSO_ORIENTATION=landscape
+```
+
+An iPad in portrait lays the app out in two panes (the list and the note),
+in landscape in three; a Pixel Tablet is three panes in landscape (its natural
+way round, 1280 x 800 dp) and two in portrait. On an Android emulator the flows
+turn the screen themselves; set it first with
+`adb shell settings put system accelerometer_rotation 0` and
+`adb shell settings put system user_rotation 1` (portrait; 0 is landscape).
+An iPad simulator cannot be turned from a script, and iPadOS ignores what an
+app asks for while it runs in a window, so there the flow gives the window the
+turned size (`tester.view.physicalSize`) and prints that it did: the panes
+and the flow are those of a turned iPad, the screen is not. Turn the
+simulator by hand (Device > Rotate Left) and the flow runs on the real turn.
+
+CI runs them on an iPhone simulator and an Android 10 emulator, and again on an
+iPad simulator and a Pixel Tablet emulator in both orientations. The Android job
 then runs `scripts/mobile-backup-check.sh`, which asks the installed package
 (`dumpsys package`) and fails if its flags list `ALLOW_BACKUP`.
 
@@ -126,14 +170,23 @@ at the looser 60 Hz interval. A simulator or emulator cannot measure 120 Hz;
 the numbers are for a device. The iPhone's `Info.plist` has
 `CADisableMinimumFrameDurationOnPhone`, which lets Flutter draw at 120 Hz.
 
+### Typing into a long note
+
+`editor_typing_performance_test.dart` types into a note of up to 50,000 words
+the way a person does (and `editor_bench_app.dart` runs the same script as an
+app, for a wireless iPhone). Long notes are edited a window at a time. How to
+run it, the limits, and the results are in
+[`docs/editor-gate.md`](docs/editor-gate.md); the manual device checks are in
+[`docs/editor-device-checks.md`](docs/editor-device-checks.md).
+
 ## The app shell
 
 **Routes** (`lib/core/router/`, go_router). `/` goes to `/notes`; the places
 are `/notes`, `/pinned`, `/recent`, `/trash`, `/notebooks/:notebookId` and
 `/tags/:tagId`; each of them and `/search?q=&scope=&in=` takes `/note/:noteId`
 for a note opened from it. Ids are written with `Uri.encodeComponent` (note ids
-contain `:`). `/settings` has `/settings/theme`, `/settings/fonts?at=size` and
-`/settings/licences` inside it, and `/design` is the gallery of the design
+contain `:`). `/settings` has `/settings/notebook`, `/settings/theme`,
+`/settings/fonts?at=size` and `/settings/licences` inside it, and `/design` is the gallery of the design
 proposal, in the development environment only (a row in its library). Places
 and searches are `BrowseLocation` (`core/models/data/browse_location.dart`),
 which writes and reads these addresses.
@@ -179,16 +232,33 @@ the manifest and both files.
 
 ## Settings, themes and the first launch
 
-**Settings** (`lib/settings/`) has only rows that work: Appearance (Theme, Fonts,
-Text size), Sync (the live status, "Off" while no account is signed in, a
+**Settings** (`lib/settings/`) has only rows that work: General (Default
+notebook), Appearance (Theme, Fonts, Text size), Sync (the live status, "Off" while no account is signed in, a
 line that the notes are not in device backups and, once an account is signed in,
 the switch "Wake this device when notes change elsewhere", see Push below) and About (the version, from
 `package_info_plus`; the website, opened with `url_launcher`; Licences). Licences
 is a page Kanso draws from Flutter's `LicenseRegistry`, never Flutter's own
 Material one. Settings opens as a sheet on a tablet and a page on a phone, and
 Fonts, Theme and Licences slide inside it. Everything the app does not do yet
-(default notebook, icon themes, locked notes, account) is absent
-rather than disabled.
+(icon themes, locked notes, account) is absent rather than disabled.
+
+**Default notebook** (`DefaultNotebookBloc`, `Preferences.defaultNotebookId`):
+Settings › General › Default notebook lists "First notebook" and the notebooks
+in the library's order, one checked; a locked notebook is dimmed and cannot be
+chosen. It is where a new note goes unless it is made from a notebook's own
+list; a notebook that is gone or locked reads as "First notebook".
+
+**New notes** (`NoteCreationBloc`, shared by the buttons, ⌘N and a link in a
+note to a note that is not there). Where a note goes is the Rust core's
+(`kanso_engine::list::new_note_target`, which the desktop's New Note asks too):
+the notebook of the list it is made from, else the Default notebook, else the
+first. A tag's list tags the note and Pinned pins it. On a phone the button is
+afloat over the list; where the list is beside the note it is in the list's bar
+(a tablet without a keyboard has no ⌘N). The note opens in Edit with its title
+to type; in a notebook that is locked and closed a line says to unlock it.
+**New notebook** is the + of the library's Notebooks header and
+secondary+shift+N: a sheet with a name (`NewNotebookBloc`) that makes a
+notebook at the top and opens its list.
 
 **Theme picker** (`lib/themes/`): a switch to follow the system's light and dark
 mode, with the desktop's words, and the built-in themes as cards in a row, each
@@ -206,9 +276,9 @@ iOS and Control on Android, as the desktop's: secondary+`[` and `]` back and
 forward through the notes opened, secondary+shift+F search all notes,
 secondary+`,` settings, secondary+`\` show or hide the library (the pane of
 three, or the drawer), secondary+option+down and up the next and previous note of
-the list, secondary+shift+P pin the open note. A new note, find in a note, the
-modes of a note and the command palette have none until what they act on is
-built.
+the list, secondary+shift+P pin the open note, secondary+`N` a new note in the place
+being listed and secondary+shift+`N` a new notebook. Find in a note and the
+command palette have none until what they act on is built.
 
 ## Push
 
@@ -242,6 +312,21 @@ the app returns to the front) and `PushSettingBloc` (the switch, on until turned
 deletes the token from the server). The core keeps the token and registers it whenever an
 account is signed in.
 
+## Crash reports
+
+`lib/crash/` keeps a scrubbed crash report on the phone and sends it only when the
+person taps Send. [docs/CRASH-REPORTS.md](../docs/CRASH-REPORTS.md) is the one
+definition of a report; `lib/crash/utils/crash_grammar.dart` writes its patterns
+once, and the scrubber (`crash_scrubber.dart` and one parser per source: Dart
+stack traces, MetricKit JSON, Android tombstones (a small protobuf reader),
+ANR traces and JVM exceptions) lets through only what matches. The native code
+only drops raw files into `crash-reports/raw/` of the application support folder
+(`ios/Runner/CrashDiagnostics.swift`, `android/.../KansoCrashes.kt`, also the
+`app.kanso/crash` channel for the device model); the repository parses them,
+keeps the reports in `crash-reports/pending/`, and deletes the raw files. After
+a launch that finds reports a card asks; Settings › Privacy › Crash reports lists
+them with the exact text.
+
 ## Design proposal
 
 What is built is the real screens, with their goldens beside their tests
@@ -256,6 +341,42 @@ the screens that have been built were removed with them; the approved images are
 in the history.
 The components the screens are made of (`lib/core/views/widgets/`) are the
 ones the app uses.
+
+## Windows and the viewport matrix
+
+The panes the app shows come from the size of the window (`KansoLayout`):
+one below 740 logical pixels wide or when the shortest side is under 600 (a
+phone, even turned), two from 740, three from 1020. A tablet's window changes
+with rotation, Split View, Slide Over and Stage Manager, so the tests use a
+small, explicit set of windows, `KansoViewport` in
+`test/helpers/kanso_viewport.dart`. Each is a size a real device reports, its
+density and safe area, and the layout it must get; `kanso_viewport_test.dart`
+checks that against `KansoLayout.classFor`, so the table cannot drift from the
+code.
+
+| Viewport | Size (logical px) | Density | Panes | Source |
+| --- | --- | --- | --- | --- |
+| `phone` | 393 x 852 | 3 | one | iPhone 17 (Apple HIG device sizes) |
+| `iPadPortrait` | 820 x 1180 | 2 | two | iPad 10th gen, iPad Air 11-inch |
+| `iPadLandscape` | 1180 x 820 | 2 | three | the same, turned |
+| `iPad13Portrait` | 1032 x 1376 | 2 | three | iPad Pro 13-inch (M4, M5) |
+| `androidTablet` | 1280 x 800 | 2 | three | Pixel Tablet, 2560 x 1600 px at xhdpi |
+| `androidTabletPortrait` | 800 x 1280 | 2 | two | the same, turned |
+| `splitViewTwoThirds` | 800 x 820 | 2 | two | iPad 11-inch landscape, two thirds |
+| `splitViewHalf` | 590 x 820 | 2 | one | the same, half |
+| `slideOver` | 375 x 820 | 2 | one | Slide Over, the width of an iPhone |
+
+`test/shell/views/widgets/viewport_goldens_test.dart` draws the whole app (its
+router, shell and panes, on the mock library) at `iPadPortrait`,
+`iPadLandscape` and `androidTablet`, light and dark: the library as a drawer, a
+list loading, empty, failed, choosing, its options and the move sheet and a
+swipe; a note open, locked, not found, failed and loading; a search idle, with
+results, none, failed, loading and finding a locked note; settings, fonts,
+themes, licences and the backup notice. The same file draws the licences on a
+phone, which had no picture. `viewport_resize_test.dart` walks a window through
+the table (landscape, two thirds, half, Slide Over and back; a turn of an iPad)
+and checks that the layout class follows, the open note, the list's scroll and
+the search stay, the settings sheet fits every window, and nothing overflows.
 
 ## Golden images
 
@@ -323,7 +444,10 @@ Every dependency is MIT, BSD or Apache licensed.
 | `dartz` | `Either` for repository results | MIT |
 | `path_provider` | The folder the library lives in | BSD-3-Clause |
 | `package_info_plus` | The version and build in Settings › About | BSD-3-Clause |
+| `shorebird_code_push` | Reads the number of the Shorebird patch the app runs (Settings › About and crash reports); it does not download patches | MIT |
+| `share_plus` | Hands an attachment tapped in a preview to the system's share sheet | BSD-3-Clause |
 | `url_launcher` | Opens the website from Settings › About | BSD-3-Clause |
+| `webview_flutter` | Shows a note's preview page, with every tapped address handed to the Rust core | BSD-3-Clause |
 | `kanso_push` (`plugins/kanso_push`, ours) | Registers for push and wakes the app | AGPL-3.0-or-later |
 | `com.google.firebase:firebase-messaging` (Android, native library of `kanso_push`) | The FCM token and data messages | Apache-2.0 |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` (Android, `kanso_push`) | The plugin's channel calls Dart with suspend functions | Apache-2.0 |

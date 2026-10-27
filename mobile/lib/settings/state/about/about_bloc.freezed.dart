@@ -55,12 +55,14 @@ extension AboutEventPatterns on AboutEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AboutStartedEvent value)?  started,TResult Function( AboutWebsiteOpenedEvent value)?  websiteOpened,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AboutStartedEvent value)?  started,TResult Function( AboutWebsiteOpenedEvent value)?  websiteOpened,TResult Function( AboutReleaseNotesOpenedEvent value)?  releaseNotesOpened,TResult Function( AboutHelpOpenedEvent value)?  helpOpened,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case AboutStartedEvent() when started != null:
 return started(_that);case AboutWebsiteOpenedEvent() when websiteOpened != null:
-return websiteOpened(_that);case _:
+return websiteOpened(_that);case AboutReleaseNotesOpenedEvent() when releaseNotesOpened != null:
+return releaseNotesOpened(_that);case AboutHelpOpenedEvent() when helpOpened != null:
+return helpOpened(_that);case _:
   return orElse();
 
 }
@@ -78,12 +80,14 @@ return websiteOpened(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AboutStartedEvent value)  started,required TResult Function( AboutWebsiteOpenedEvent value)  websiteOpened,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AboutStartedEvent value)  started,required TResult Function( AboutWebsiteOpenedEvent value)  websiteOpened,required TResult Function( AboutReleaseNotesOpenedEvent value)  releaseNotesOpened,required TResult Function( AboutHelpOpenedEvent value)  helpOpened,}){
 final _that = this;
 switch (_that) {
 case AboutStartedEvent():
 return started(_that);case AboutWebsiteOpenedEvent():
-return websiteOpened(_that);}
+return websiteOpened(_that);case AboutReleaseNotesOpenedEvent():
+return releaseNotesOpened(_that);case AboutHelpOpenedEvent():
+return helpOpened(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -97,12 +101,14 @@ return websiteOpened(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AboutStartedEvent value)?  started,TResult? Function( AboutWebsiteOpenedEvent value)?  websiteOpened,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AboutStartedEvent value)?  started,TResult? Function( AboutWebsiteOpenedEvent value)?  websiteOpened,TResult? Function( AboutReleaseNotesOpenedEvent value)?  releaseNotesOpened,TResult? Function( AboutHelpOpenedEvent value)?  helpOpened,}){
 final _that = this;
 switch (_that) {
 case AboutStartedEvent() when started != null:
 return started(_that);case AboutWebsiteOpenedEvent() when websiteOpened != null:
-return websiteOpened(_that);case _:
+return websiteOpened(_that);case AboutReleaseNotesOpenedEvent() when releaseNotesOpened != null:
+return releaseNotesOpened(_that);case AboutHelpOpenedEvent() when helpOpened != null:
+return helpOpened(_that);case _:
   return null;
 
 }
@@ -119,11 +125,13 @@ return websiteOpened(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  started,TResult Function()?  websiteOpened,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  started,TResult Function()?  websiteOpened,TResult Function()?  releaseNotesOpened,TResult Function()?  helpOpened,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case AboutStartedEvent() when started != null:
 return started();case AboutWebsiteOpenedEvent() when websiteOpened != null:
-return websiteOpened();case _:
+return websiteOpened();case AboutReleaseNotesOpenedEvent() when releaseNotesOpened != null:
+return releaseNotesOpened();case AboutHelpOpenedEvent() when helpOpened != null:
+return helpOpened();case _:
   return orElse();
 
 }
@@ -141,11 +149,13 @@ return websiteOpened();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  started,required TResult Function()  websiteOpened,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  started,required TResult Function()  websiteOpened,required TResult Function()  releaseNotesOpened,required TResult Function()  helpOpened,}) {final _that = this;
 switch (_that) {
 case AboutStartedEvent():
 return started();case AboutWebsiteOpenedEvent():
-return websiteOpened();}
+return websiteOpened();case AboutReleaseNotesOpenedEvent():
+return releaseNotesOpened();case AboutHelpOpenedEvent():
+return helpOpened();}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -159,11 +169,13 @@ return websiteOpened();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  started,TResult? Function()?  websiteOpened,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  started,TResult? Function()?  websiteOpened,TResult? Function()?  releaseNotesOpened,TResult? Function()?  helpOpened,}) {final _that = this;
 switch (_that) {
 case AboutStartedEvent() when started != null:
 return started();case AboutWebsiteOpenedEvent() when websiteOpened != null:
-return websiteOpened();case _:
+return websiteOpened();case AboutReleaseNotesOpenedEvent() when releaseNotesOpened != null:
+return releaseNotesOpened();case AboutHelpOpenedEvent() when helpOpened != null:
+return helpOpened();case _:
   return null;
 
 }
@@ -227,6 +239,70 @@ int get hashCode => runtimeType.hashCode;
 @override
 String toString() {
   return 'AboutEvent.websiteOpened()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class AboutReleaseNotesOpenedEvent implements AboutEvent {
+  const AboutReleaseNotesOpenedEvent();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AboutReleaseNotesOpenedEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'AboutEvent.releaseNotesOpened()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class AboutHelpOpenedEvent implements AboutEvent {
+  const AboutHelpOpenedEvent();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AboutHelpOpenedEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'AboutEvent.helpOpened()';
 }
 
 

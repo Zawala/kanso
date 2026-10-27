@@ -23,6 +23,8 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.3.20" apply false
     // Applied by app/build.gradle.kts only when google-services.json is there.
     id("com.google.gms.google-services") version "4.4.4" apply false
+    // The Compose compiler (Apache-2.0), which Glance's widget code needs.
+    id("org.jetbrains.kotlin.plugin.compose") version "2.3.20" apply false
 }
 
 include(":app")
