@@ -21,6 +21,7 @@ import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../state/about/about_bloc.dart';
 import '../../state/default_notebook/default_notebook_bloc.dart';
+import 'locked_notes_section.dart';
 import 'settings_sync_section.dart';
 
 /// Settings: a close button, a centred title and rows grouped in rounded
@@ -169,6 +170,7 @@ class SettingsPane extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: KansoSpacing.lg),
+                  const LockedNotesSection(dividerIndent: iconInset),
                   BlocBuilder<AboutBloc, AboutState>(
                     builder: (context, about) {
                       final version = about.version;

@@ -11,6 +11,8 @@ import '../../account/views/pages/recover_page.dart';
 import '../../account/views/pages/recovery_key_page.dart';
 import '../../account/views/pages/sign_in_page.dart';
 import '../../account/views/pages/unlock_page.dart';
+import '../../capture/views/pages/daily_note_page.dart';
+import '../../capture/views/pages/new_note_page.dart';
 import '../../crash/views/pages/crash_reports_page.dart';
 import '../../design/views/pages/design_gallery_page.dart';
 import '../../note/views/pages/note_page.dart';
@@ -43,6 +45,10 @@ import 'layout_class_notifier.dart';
 ///   opened from one is that address plus `/note/:noteId`.
 /// * Settings is a shell of its own on top of the root navigator, so it
 ///   opens over what the person was doing and closes back to it, with
+///   Theme, Fonts and Licences sliding inside it. It is a sheet on a tablet
+///   and a page on a phone.
+/// * `/daily` finds or makes today's note and goes to it in All Notes, and
+///   `/new` makes a note as the + button does (`?voice=1` to dictate into).
 ///   Theme, Icons, Fonts, Licences, Crash reports and the account's screens
 ///   (Account, Sign in, Open your notes, Reset your password, Your recovery
 ///   key) sliding inside it. It is a sheet on a tablet and a page on a phone.
@@ -107,6 +113,26 @@ class KansoRouter {
             child: child,
           ),
           routes: <RouteBase>[
+            // Inside the shell, so going on to the note keeps the browsing
+            // screens (and their navigator) as they are.
+            GoRoute(
+              path: KansoRoutes.daily,
+              pageBuilder: (context, state) => NoTransitionPage<void>(
+                key: state.pageKey,
+                child: const DailyNotePage(),
+              ),
+            ),
+            GoRoute(
+              path: KansoRoutes.newNote,
+              pageBuilder: (context, state) => NoTransitionPage<void>(
+                key: state.pageKey,
+                child: NewNotePage(
+                  voice:
+                      state.uri.queryParameters[KansoRoutes.voiceParameter] ==
+                      '1',
+                ),
+              ),
+            ),
             _placeRoute(KansoRoutes.notes, (_) => const ListPlace.all()),
             _placeRoute(KansoRoutes.pinned, (_) => const ListPlace.pinned()),
             _placeRoute(KansoRoutes.recent, (_) => const ListPlace.recent()),

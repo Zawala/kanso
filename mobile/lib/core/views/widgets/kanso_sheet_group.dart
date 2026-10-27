@@ -11,10 +11,19 @@ import 'kanso_grouped_section.dart';
 /// optional [title] over it: a sheet's choices drawn as Settings draws its
 /// rows.
 class KansoSheetGroup extends StatelessWidget {
-  const KansoSheetGroup({required this.children, this.title, super.key});
+  const KansoSheetGroup({
+    required this.children,
+    this.title,
+    this.dividerIndent = KansoSpacing.md,
+    super.key,
+  });
 
   final String? title;
   final List<Widget> children;
+
+  /// How far the hairlines are inset from the start: past the icon, for
+  /// rows that have one.
+  final double dividerIndent;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +34,11 @@ class KansoSheetGroup extends StatelessWidget {
         KansoSpacing.md,
         0,
       ),
-      child: KansoGroupedSection(title: title, children: children),
+      child: KansoGroupedSection(
+        title: title,
+        dividerIndent: dividerIndent,
+        children: children,
+      ),
     );
   }
 }

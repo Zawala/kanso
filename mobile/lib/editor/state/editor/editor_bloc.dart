@@ -11,6 +11,8 @@ import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../capture/models/data/media_source.dart';
+import '../../../capture/models/repos/abs/media_picker_repository.dart';
 import '../../../core/bridge/api/types.dart' hide EditorEvent;
 import '../../../core/bridge/api/types.dart' as core;
 import '../../../core/models/data/application_error.dart';
@@ -40,7 +42,8 @@ typedef EditorSignal = core.EditorEvent;
 /// kept: the state holds none.
 @injectable
 class EditorBloc extends Bloc<EditorEvent, EditorState> {
-  EditorBloc(this._editors, this._links) : super(const EditorState()) {
+  EditorBloc(this._editors, this._links, this._picker)
+    : super(const EditorState()) {
     on<EditorStartedEvent>(_onStarted, transformer: restartable());
     on<EditorSignalReceivedEvent>(_onSignal, transformer: sequential());
     on<EditorEditedEvent>(_onEdited);
@@ -59,12 +62,49 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
     on<EditorLinkOpenRequestedEvent>(_onLinkOpen, transformer: droppable());
     on<EditorDestinationHandledEvent>(_onDestinationHandled);
     on<EditorClosedEvent>(_onClosed, transformer: sequential());
+    on<EditorAttachRequestedEvent>(_onAttach, transformer: droppable());
+    on<EditorAttachNoticeDismissedEvent>(
+      (event, emit) => emit(
+        state.copyWith(attachProblems: const <ApplicationError>[]),
+      ),
+    );
   }
 
   final EditorRepository _editors;
   final WebLinkRepository _links;
+  final MediaPickerRepository _picker;
   EditorDocument? _document;
   StreamSubscription<EditorSignal>? _events;
+
+  /// Picks from the source, and attaches each file picked in turn where
+  /// the caret is then; why any was refused is kept to say.
+  Future<void> _onAttach(
+    EditorAttachRequestedEvent event,
+    Emitter<EditorState> emit,
+  ) async {
+    final picked = await _picker.pick(event.source);
+    final problems = <ApplicationError>[];
+    final files = picked.fold((error) {
+      problems.add(error);
+      return const <ShareFile>[];
+    }, (files) => files);
+    for (final file in files) {
+      final document = _document;
+      if (document == null || isClosed) {
+        return;
+      }
+      final attached = await document.attach(file);
+      attached.fold(
+        problems.add,
+        (outcome) => emit(
+          state.copyWith(attached: outcome, attachSeq: state.attachSeq + 1),
+        ),
+      );
+    }
+    if (problems.isNotEmpty) {
+      emit(state.copyWith(attachProblems: problems));
+    }
+  }
 
   Future<void> _onStarted(
     EditorStartedEvent event,

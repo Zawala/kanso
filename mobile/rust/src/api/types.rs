@@ -10,22 +10,23 @@ use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
     AccountDetails, AccountState, AccountStep, ApprovalPhase, ApprovalPrompt, ApprovalWait,
-    AttachmentFile, BindingAnswer, BindingQuestion, BuiltinTheme, Changed, ColorRow,
-    CommentPlacement, CommentRow, Completion, CompletionItem, CompletionKind, CursorMark,
-    DateField, DeviceRow, DiagramKind, DiagramRenderer, DueTone, EditCommand, EditOutcome,
-    EditorContext, EditorEvent, EditorRun, EditorSnapshot, FormatKind, GalleryColors, GalleryItem,
-    GalleryKind, HistoryState, Hit, IconThemeRow, InvitationRow, JoinRow, KansoError,
+    AttachmentFile, BindingAnswer, BindingQuestion, BuiltinTheme, CaptureOutcome, Changed,
+    ColorRow, CommentPlacement, CommentRow, Completion, CompletionItem, CompletionKind, CursorMark,
+    DateField, DeviceRow, DiagramKind, DiagramRenderer, DropsSaved, DueTone, EditCommand,
+    EditOutcome, EditorContext, EditorEvent, EditorRun, EditorSnapshot, FormatKind, GalleryColors,
+    GalleryItem, GalleryKind, HistoryState, Hit, IconThemeRow, InvitationRow, JoinRow, KansoError,
     LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveStatus,
-    LockEvent, LockReason, LockState, LockedInfo, MemberRow, MentionSpan, NewNote, NoteChange,
-    NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto, PasskeyFailure,
+    LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MemberRow,
+    MentionSpan, NewNote,
+    NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto, PasskeyFailure,
     PasskeyRequest, PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow, PreviewLink,
     PreviewOptions, PromptState, Property, PropertyKind, ProviderEvent, ProviderKind, QuotaLimit,
     Range16, RecoveryKeyText, Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo,
-    ServerMethods, ShareInfo, ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp,
-    SortKey, SpanRow, StyledRun, SvgRow, SyncAccount, SyncIntervalOption, SyncPhase,
-    SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone,
-    SyntaxStyleRow, Table, TableRow, TagRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery,
-    TaskSection, TextChange, ThemeTokens, ThemedIcon, Ticked,
+    ServerMethods, Share, ShareFile, ShareInfo, ShareLinkRow, ShareRole, SharedEvent,
+    SignOutReasonKind, SignedUp, SortKey, SpanRow, StyledRun, SvgRow, SyncAccount,
+    SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus,
+    SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagRow, TaskBoard, TaskGroupKind,
+    TaskItem, TaskListQuery, TaskSection, TextChange, ThemeTokens, ThemedIcon, Ticked,
 };
 
 #[frb(mirror(KansoError))]
@@ -313,6 +314,14 @@ pub struct _TableRow {
 pub enum _LockReason {
     Manual,
     Idle,
+    Background,
+}
+
+#[frb(mirror(LockStatus))]
+pub struct _LockStatus {
+    pub has_lock_password: bool,
+    pub unlocked: bool,
+    pub biometrics_on: bool,
 }
 
 #[frb(mirror(LockEvent))]
@@ -1077,4 +1086,42 @@ pub struct _AttachmentFile {
 pub enum _DiagramRenderer {
     Pele,
     Kanso,
+}
+
+#[frb(mirror(DropsSaved))]
+pub struct _DropsSaved {
+    pub notes: Vec<String>,
+    pub problems: Vec<String>,
+    pub kept: u32,
+}
+
+#[frb(mirror(LocalTime))]
+pub struct _LocalTime {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
+    pub hour: u32,
+    pub minute: u32,
+    pub second: u32,
+}
+
+#[frb(mirror(Share))]
+pub struct _Share {
+    pub subject: Option<String>,
+    pub text: Option<String>,
+    pub url: Option<String>,
+    pub files: Vec<ShareFile>,
+}
+
+#[frb(mirror(ShareFile))]
+pub struct _ShareFile {
+    pub name: String,
+    pub content_type: Option<String>,
+    pub bytes: Vec<u8>,
+}
+
+#[frb(mirror(CaptureOutcome))]
+pub struct _CaptureOutcome {
+    pub note_id: String,
+    pub problems: Vec<String>,
 }

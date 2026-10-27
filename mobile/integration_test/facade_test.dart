@@ -2,6 +2,7 @@
 // Created 2026-10-26.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,7 @@ import '../test/core/bridge/suites/locks_suite.dart';
 import '../test/core/bridge/suites/renderer_suite.dart';
 import '../test/core/bridge/suites/shared_suite.dart';
 import '../test/core/bridge/suites/sync_suite.dart';
+import '../test/helpers/biometric_answer.dart';
 
 /// Every call of the bridge, on a simulator or an emulator: the library the
 /// app ships, loaded the way the app loads it, with the platform's own secret
@@ -45,7 +47,14 @@ void main() {
   }
 
   librarySuite(openDeviceLibrary);
-  locksSuite(openDeviceLibrary);
+  locksSuite(
+    openDeviceLibrary,
+    answer: biometricAnswerOf(
+      Platform.isAndroid
+          ? DynamicLibrary.open('libkanso_mobile_bridge.so')
+          : DynamicLibrary.process(),
+    ),
+  );
   syncSuite(openDeviceLibrary);
   rendererSuite(openDeviceLibrary);
   diagnosticsSuite(openDeviceLibrary);

@@ -9,13 +9,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../capture/models/data/capture_first_row.dart';
+import '../../../capture/views/widgets/capture_sheet.dart';
 import '../../../core/bridge/api/types.dart' hide EditorEvent;
+import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
+import '../../../core/models/data/application_error.dart';
 import '../../../core/models/data/browse_location.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../note/models/data/note_mode.dart';
 import '../../../note/state/note/note_bloc.dart';
+import '../../../note_list/views/widgets/note_list_notice.dart';
 import '../../../sharing/state/comments/comments_bloc.dart';
 import '../../../sharing/state/shared_note_status/shared_note_status_bloc.dart';
 import '../../../sharing/views/widgets/comment_compose_sheet.dart';
@@ -246,6 +251,25 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
     );
   }
 
+  /// Offers the camera, photos and PDFs to attach where the caret is, or
+  /// an image's Markdown to write by hand.
+  void attach() {
+    final l10n = context.l10n;
+    unawaited(
+      CaptureSheet.show(
+        context,
+        first: CaptureFirstRow(
+          icon: KansoIcons.link,
+          label: l10n.captureImageLink,
+          onTap: () => controller.run(
+            const EditCommand.format(format: FormatKind.image),
+          ),
+        ),
+        onSource: (source) => editor.add(EditorEvent.attachRequested(source)),
+      ),
+    );
+  }
+
   /// What is under the caret: told on, unless it is what was told last and
   /// nothing completes there.
   void told(EditorContext context) {
@@ -357,6 +381,15 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
           },
         ),
         BlocListener<EditorBloc, EditorState>(
+          listenWhen: (before, now) => before.attachSeq != now.attachSeq,
+          listener: (context, state) {
+            final attached = state.attached;
+            if (attached != null) {
+              controller.adopt(attached);
+            }
+          },
+        ),
+        BlocListener<EditorBloc, EditorState>(
           listenWhen: (before, now) => before.completion != now.completion,
           listener: (context, state) => controller.offer(state.completion),
         ),
@@ -452,6 +485,37 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                   ),
                   _ => const SizedBox.shrink(),
                 };
+              },
+            ),
+            BlocBuilder<EditorBloc, EditorState>(
+              buildWhen: (before, now) =>
+                  before.attachProblems != now.attachProblems,
+              builder: (context, state) {
+                final problems = state.attachProblems;
+                if (problems.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                final l10n = context.l10n;
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    gutter,
+                    KansoSpacing.sm,
+                    gutter,
+                    0,
+                  ),
+                  child: NoteListNotice(
+                    message: <String>[
+                      for (final problem in problems)
+                        switch (problem) {
+                          InvalidError(:final message) => message,
+                          _ => l10n.captureAttachFailed,
+                        },
+                    ].join('\n'),
+                    onDismiss: () => editor.add(
+                      const EditorEvent.attachNoticeDismissed(),
+                    ),
+                  ),
+                );
               },
             ),
             Expanded(
@@ -633,6 +697,7 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                       onCommand: controller.run,
                       onUndo: controller.undo,
                       onRedo: controller.redo,
+                      onImage: attach,
                     ),
                   ),
                 );

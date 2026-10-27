@@ -2,6 +2,7 @@
 // Created 2026-10-26.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import '../../data/new_note_start.dart';
 import '../../data/note_place.dart';
 
 /// Where the person was in each note they edited, and which notes were just
@@ -18,9 +19,10 @@ abstract interface class NotePlaceRepository {
   void forget(String noteId);
 
   /// Remembers that [noteId] was just made, so that it opens ready to
-  /// write in.
-  void markOpenedNew(String noteId);
+  /// write in, at [start].
+  void markOpenedNew(String noteId, {NewNoteStart start = NewNoteStart.title});
 
-  /// Whether [noteId] was just made, once: asking again says no.
-  bool takeOpenedNew(String noteId);
+  /// Where [noteId] starts if it was just made, once: asking again says
+  /// null.
+  NewNoteStart? takeOpenedNew(String noteId);
 }

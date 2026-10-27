@@ -17,7 +17,7 @@ import '../../../core/views/widgets/kanso_top_bar.dart';
 /// button that opens search; with the library beside the list it has
 /// neither. [onOptions] opens how the list is sorted and narrowed, and
 /// [onNewNote], when the list has no button afloat over it, makes a new
-/// note.
+/// note; holding that button does [onNewNoteHeld].
 class NoteListTopBar extends StatelessWidget {
   const NoteListTopBar({
     required this.title,
@@ -25,6 +25,7 @@ class NoteListTopBar extends StatelessWidget {
     this.onSearch,
     this.onOptions,
     this.onNewNote,
+    this.onNewNoteHeld,
     this.optionsLabel,
     this.titleShown,
     super.key,
@@ -35,6 +36,7 @@ class NoteListTopBar extends StatelessWidget {
   final VoidCallback? onSearch;
   final VoidCallback? onOptions;
   final VoidCallback? onNewNote;
+  final VoidCallback? onNewNoteHeld;
 
   /// When the title shows, for a list whose large title scrolls with it.
   final ValueListenable<bool>? titleShown;
@@ -64,6 +66,7 @@ class NoteListTopBar extends StatelessWidget {
             icon: KansoIcons.plus,
             semanticLabel: l10n.noteListNewNote,
             onPressed: onNewNote,
+            onLongPress: onNewNoteHeld,
           ),
         if (drawer != null)
           KansoIconButton(

@@ -438,6 +438,20 @@ pub enum LockReason {
     Manual,
     /// The auto-lock time passed.
     Idle,
+    /// The app went to the background.
+    Background,
+}
+
+/// Where the lock session stands, for the screens that offer the lock.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LockStatus {
+    /// Some note or notebook is locked (here or on another device), so a lock
+    /// password exists and a note can be locked with it.
+    pub has_lock_password: bool,
+    /// The lock password has opened the locked notes.
+    pub unlocked: bool,
+    /// Biometrics can open the locked notes on this phone.
+    pub biometrics_on: bool,
 }
 
 /// The lock session changed.
@@ -667,6 +681,69 @@ pub struct SvgRow {
     pub height: f32,
     /// For inline math: how far below the top the text's baseline falls.
     pub baseline: Option<f32>,
+}
+
+/// What saving the shared items waiting in the inbox folder did
+/// ([`Library::save_drops`](crate::Library::save_drops)).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DropsSaved {
+    /// The IDs of the notes made, oldest item first. A note already made by
+    /// an earlier try is here too.
+    pub notes: Vec<String>,
+    /// What was left out or refused, a sentence each: a file that couldn't
+    /// be attached, an item discarded because the Inbox is locked.
+    pub problems: Vec<String>,
+    /// Items kept to try again, because saving them failed for a reason that
+    /// may pass.
+    pub kept: u32,
+}
+
+/// A local date and time of day, as the phone's clock shows it, to the
+/// second. The library never reads a clock for a calendar day: the app
+/// passes the day it means.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LocalTime {
+    pub year: i32,
+    /// 1 to 12.
+    pub month: u32,
+    /// 1 to 31.
+    pub day: u32,
+    /// 0 to 23.
+    pub hour: u32,
+    pub minute: u32,
+    pub second: u32,
+}
+
+/// Something shared from inside the app (photos, the camera, a PDF), to be
+/// saved as a note in the Inbox ([`Library::capture`](crate::Library::capture)).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Share {
+    /// A title for the note, if there is one.
+    pub subject: Option<String>,
+    pub text: Option<String>,
+    /// A web address.
+    pub url: Option<String>,
+    pub files: Vec<ShareFile>,
+}
+
+/// A file in a [`Share`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShareFile {
+    /// The file's name, as the person knows it.
+    pub name: String,
+    /// What the app that made the file says it is; only a hint, the file's
+    /// extension and first bytes decide.
+    pub content_type: Option<String>,
+    pub bytes: Vec<u8>,
+}
+
+/// What saving a [`Share`] made.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CaptureOutcome {
+    /// The note's ID.
+    pub note_id: String,
+    /// What was left out and why, a sentence each.
+    pub problems: Vec<String>,
 }
 
 // MARK: The editing session
