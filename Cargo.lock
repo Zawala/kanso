@@ -4732,6 +4732,7 @@ version = "0.8.4"
 dependencies = [
  "base64 0.22.1",
  "flate2",
+ "kanso-core",
  "markdown",
  "mermaid-svg",
  "proptest",

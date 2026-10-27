@@ -2,8 +2,8 @@
 
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    BuiltinTheme, DiagramKind, IconThemeRow, KansoError, PaletteDto, Renderer, SpanRow, StyledRun,
-    SvgRow, ThemeTokens, ThemedIcon,
+    BuiltinTheme, DiagramKind, DiagramRenderer, IconThemeRow, KansoError, PaletteDto, PreviewLink,
+    PreviewOptions, Renderer, SpanRow, StyledRun, SvgRow, ThemeTokens, ThemedIcon,
 };
 
 #[frb(opaque)]
@@ -16,6 +16,31 @@ impl KansoRenderer {
 
     pub fn preview_html(&self, id: String, palette: PaletteDto) -> Result<String, KansoError> {
         self.0.preview_html(&id, palette)
+    }
+
+    pub fn preview_html_with(
+        &self,
+        id: String,
+        palette: PaletteDto,
+        options: PreviewOptions,
+    ) -> Result<String, KansoError> {
+        self.0.preview_html_with(&id, palette, options)
+    }
+
+    pub fn link_target(&self, note_id: String, url: String) -> Result<PreviewLink, KansoError> {
+        self.0.link_target(&note_id, &url)
+    }
+
+    pub fn code_block(&self, note_id: String, index: u32) -> Result<String, KansoError> {
+        self.0.code_block(&note_id, index)
+    }
+
+    pub fn set_diagram_renderer(renderer: DiagramRenderer) -> Result<(), KansoError> {
+        Renderer::set_diagram_renderer(renderer)
+    }
+
+    pub fn diagram_renderer() -> Result<DiagramRenderer, KansoError> {
+        Renderer::diagram_renderer()
     }
 
     pub fn highlight(text: String, start: u32, end: u32) -> Result<Vec<SpanRow>, KansoError> {

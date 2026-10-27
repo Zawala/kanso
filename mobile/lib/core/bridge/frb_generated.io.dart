@@ -163,6 +163,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
+  AttachmentFile dco_decode_attachment_file(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
@@ -206,6 +209,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PaletteDto dco_decode_box_autoadd_palette_dto(dynamic raw);
+
+  @protected
+  PreviewOptions dco_decode_box_autoadd_preview_options(dynamic raw);
 
   @protected
   Range16 dco_decode_box_autoadd_range_16(dynamic raw);
@@ -254,6 +260,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DiagramKind dco_decode_diagram_kind(dynamic raw);
+
+  @protected
+  DiagramRenderer dco_decode_diagram_renderer(dynamic raw);
 
   @protected
   DueTone dco_decode_due_tone(dynamic raw);
@@ -461,6 +470,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PaletteDto dco_decode_palette_dto(dynamic raw);
+
+  @protected
+  PreviewLink dco_decode_preview_link(dynamic raw);
+
+  @protected
+  PreviewOptions dco_decode_preview_options(dynamic raw);
 
   @protected
   Property dco_decode_property(dynamic raw);
@@ -693,6 +708,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  AttachmentFile sse_decode_attachment_file(SseDeserializer deserializer);
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
@@ -740,6 +758,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PaletteDto sse_decode_box_autoadd_palette_dto(SseDeserializer deserializer);
+
+  @protected
+  PreviewOptions sse_decode_box_autoadd_preview_options(
+    SseDeserializer deserializer,
+  );
 
   @protected
   Range16 sse_decode_box_autoadd_range_16(SseDeserializer deserializer);
@@ -792,6 +815,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DiagramKind sse_decode_diagram_kind(SseDeserializer deserializer);
+
+  @protected
+  DiagramRenderer sse_decode_diagram_renderer(SseDeserializer deserializer);
 
   @protected
   DueTone sse_decode_due_tone(SseDeserializer deserializer);
@@ -1023,6 +1049,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PaletteDto sse_decode_palette_dto(SseDeserializer deserializer);
+
+  @protected
+  PreviewLink sse_decode_preview_link(SseDeserializer deserializer);
+
+  @protected
+  PreviewOptions sse_decode_preview_options(SseDeserializer deserializer);
 
   @protected
   Property sse_decode_property(SseDeserializer deserializer);
@@ -1277,6 +1309,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
+  void sse_encode_attachment_file(
+    AttachmentFile self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
@@ -1352,6 +1390,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_preview_options(
+    PreviewOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_range_16(Range16 self, SseSerializer serializer);
 
   @protected
@@ -1419,6 +1463,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_diagram_kind(DiagramKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_diagram_renderer(
+    DiagramRenderer self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_due_tone(DueTone self, SseSerializer serializer);
@@ -1692,6 +1742,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_palette_dto(PaletteDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_link(PreviewLink self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_options(
+    PreviewOptions self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_property(Property self, SseSerializer serializer);

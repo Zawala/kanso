@@ -33,6 +33,7 @@ heading compares the release with the one before.
 - **mobile:** Crash reports without an SDK and without note content: the iPhone, iPad and Android apps keep a report when they crash (MetricKit, Android's exit reasons and ANRs, uncaught JVM and Dart errors), built from a whitelist of fields (stack frames in a strict grammar, versions, the kind of device and the day), shown in full, and sent only when you tap Send; the sync server keeps it for 90 days with no IP address or account (docs/CRASH-REPORTS.md) (#48 step 13)
 - **mobile:** Settings › About links to the release notes and help on kansoapp.app, shows the Shorebird patch number, and the store pictures for every required size are rendered from the golden tests on each build (#48 step 13)
 - **site:** Release notes and Help pages, and a Crash reports section on the privacy page (#48 step 13)
+- **mobile:** The note's preview for the phones' app (#48 step 7): the published page with tappable notes, wiki-links to headings, notes to make, tags, attachments, task boxes, due-date chips, query views and a copy link on every code block, headings anchored, code colored by the theme, failed diagrams shown with the reason and empty drawings as the desktop shows them; it carries no script, handler or fetch, and every address not on the app's short list is dropped. Ticking a box writes only that box and refuses a note changed since the page was drawn; a locked note's text is read only while it is open
 
 ### Fixed
 

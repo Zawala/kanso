@@ -68,23 +68,24 @@ impl WikiIndex {
     }
 }
 
-/// `kanso-new:<title>`, with everything but letters, digits and a few safe
-/// marks percent-encoded, so the title survives as a link target.
-pub fn new_note_url(title: &str) -> String {
-    let mut url = String::from(NEW_NOTE_SCHEME);
-    for byte in title.bytes() {
+/// Text as a link target can carry it: everything but letters, digits and
+/// a few safe marks percent-encoded. Pure.
+pub fn percent_encode(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for byte in text.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
-            url.push(byte as char);
+            out.push(byte as char);
         } else {
-            url.push_str(&format!("%{byte:02X}"));
+            out.push_str(&format!("%{byte:02X}"));
         }
     }
-    url
+    out
 }
 
-/// The title a `kanso-new:` link asks to create.
-pub fn new_note_title(url: &str) -> Option<String> {
-    let encoded = url.strip_prefix(NEW_NOTE_SCHEME)?;
+/// Text from a link target, percent-decoded; bytes that don't decode stay
+/// as they are, and so does text that isn't UTF-8 once decoded (`None`).
+/// Pure.
+pub fn percent_decode(encoded: &str) -> Option<String> {
     let bytes = encoded.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -100,7 +101,18 @@ pub fn new_note_title(url: &str) -> Option<String> {
             i += 1;
         }
     }
-    let title = String::from_utf8(out).ok()?;
+    String::from_utf8(out).ok()
+}
+
+/// `kanso-new:<title>`, with everything but letters, digits and a few safe
+/// marks percent-encoded, so the title survives as a link target.
+pub fn new_note_url(title: &str) -> String {
+    format!("{NEW_NOTE_SCHEME}{}", percent_encode(title))
+}
+
+/// The title a `kanso-new:` link asks to create.
+pub fn new_note_title(url: &str) -> Option<String> {
+    let title = percent_decode(url.strip_prefix(NEW_NOTE_SCHEME)?)?;
     let title = title.trim();
     (!title.is_empty()).then(|| title.to_owned())
 }
@@ -110,6 +122,17 @@ pub fn new_note_title(url: &str) -> Option<String> {
 /// `kanso-new:` link. Text without wiki-links comes back as it is
 /// (borrowed). Pure.
 pub fn rewrite_for_preview<'a>(text: &'a str, index: &WikiIndex) -> Cow<'a, str> {
+    rewrite(text, index, false)
+}
+
+/// [`rewrite_for_preview`] for the phone's page: a wiki-link to a heading
+/// (`[[Title#Heading]]`) keeps it, as `…#Heading` (percent-encoded) after the
+/// note's address, so the app can open the note at the heading. Pure.
+pub fn rewrite_for_app<'a>(text: &'a str, index: &WikiIndex) -> Cow<'a, str> {
+    rewrite(text, index, true)
+}
+
+fn rewrite<'a>(text: &'a str, index: &WikiIndex, keep_heading: bool) -> Cow<'a, str> {
     if !text.contains("[[") {
         return Cow::Borrowed(text);
     }
@@ -124,8 +147,12 @@ pub fn rewrite_for_preview<'a>(text: &'a str, index: &WikiIndex) -> Cow<'a, str>
         let label = escape_label(&link.label());
         let target = match index.resolve(&link.title) {
             Some((id, _)) => format!(
-                "{NOTE_LINK_PREFIX}{}",
-                id.strip_prefix("note:").unwrap_or(id)
+                "{NOTE_LINK_PREFIX}{}{}",
+                id.strip_prefix("note:").unwrap_or(id),
+                match &link.heading {
+                    Some(heading) if keep_heading => format!("#{}", percent_encode(heading)),
+                    _ => String::new(),
+                }
             ),
             None => new_note_url(&link.title),
         };

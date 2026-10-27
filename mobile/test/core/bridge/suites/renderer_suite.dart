@@ -203,6 +203,50 @@ void rendererSuite(OpenLibrary open) {
       expect(html, contains('bold'));
     });
 
+    test('the app page takes options, and says what an address is', () async {
+      final library = await open();
+      final id = await makeNote(
+        library,
+        'In app',
+        '- [ ] Water the beds\n\n```\nlet x = 1;\n```\n',
+      );
+      final html = await library.renderer().previewHtmlWith(
+        id: id,
+        palette: palette,
+        options: const PreviewOptions(size: 18, utcOffsetSecs: 0, code: []),
+      );
+      expect(html, contains('kanso-task:0'));
+      final renderer = library.renderer();
+      expect(
+        await renderer.linkTarget(noteId: id, url: 'kanso-task:0'),
+        const PreviewLink.task(index: 0),
+      );
+      expect(
+        await renderer.linkTarget(noteId: id, url: 'https://example.com/'),
+        const PreviewLink.web(url: 'https://example.com/'),
+      );
+      expect(
+        await renderer.linkTarget(noteId: id, url: 'javascript:alert(1)'),
+        const PreviewLink.nothing(),
+      );
+      expect(
+        await renderer.codeBlock(noteId: id, index: 0),
+        contains('let x = 1;'),
+      );
+      await expectLater(
+        renderer.codeBlock(noteId: id, index: 5),
+        throwsA(isA<KansoError_NotFound>()),
+      );
+    });
+
+    test('the diagram renderer is chosen, and read back', () async {
+      final before = await KansoRenderer.diagramRenderer();
+      await KansoRenderer.setDiagramRenderer(renderer: DiagramRenderer.kanso);
+      expect(await KansoRenderer.diagramRenderer(), DiagramRenderer.kanso);
+      await KansoRenderer.setDiagramRenderer(renderer: before);
+      expect(await KansoRenderer.diagramRenderer(), before);
+    });
+
     test('fonts are taken once', () async {
       expect(await KansoRenderer.setFonts(fonts: const []), isA<bool>());
     });

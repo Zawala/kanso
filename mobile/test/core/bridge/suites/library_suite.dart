@@ -598,5 +598,45 @@ void librarySuite(OpenLibrary open) {
       expect(library.syncing(), isA<Object>());
       expect(library.renderer(), isA<Object>());
     });
+    test('a task box in the page is ticked against the text drawn', () async {
+      final library = await open();
+      final id = await makeNote(library, 'Chores', '- [ ] Sweep\n');
+      final rev = (await library.note(id: id)).rev;
+      final ticked = await library.toggleTaskAt(
+        noteId: id,
+        index: 0,
+        baseRev: rev,
+      );
+      expect(ticked, isA<Ticked_Changed>());
+      expect((await library.note(id: id)).body, contains('- [x] Sweep'));
+      // A page drawn before the tick is out of date.
+      await expectLater(
+        library.toggleTaskAt(noteId: id, index: 0, baseRev: rev),
+        throwsA(isA<KansoError_Conflict>()),
+      );
+    });
+
+    test('a wiki-link to no note makes it, once', () async {
+      final library = await open();
+      final from = await makeNote(library, 'From', '[[Seed]]');
+      final made = await library.createLinkedNote(
+        title: 'Seed',
+        fromNote: from,
+      );
+      expect((await library.note(id: made.id)).title, 'Seed');
+      final again = await library.createLinkedNote(
+        title: 'Seed',
+        fromNote: from,
+      );
+      expect(again.id, made.id);
+    });
+
+    test('an attachment no readable note links is not found', () async {
+      final library = await open();
+      await expectLater(
+        library.attachment(id: 'file:nope'),
+        throwsA(isA<KansoError_NotFound>()),
+      );
+    });
   });
 }

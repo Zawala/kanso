@@ -58,6 +58,7 @@ mod locks;
 mod matching;
 mod model;
 mod notes;
+mod preview;
 mod renderer;
 pub mod secrets;
 mod stream;

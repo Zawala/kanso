@@ -871,3 +871,91 @@ pub enum LinkTarget {
         url: String,
     },
 }
+
+/// How the preview page is set, beyond the palette.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewOptions {
+    /// The body face, when it isn't the system's.
+    pub font: Option<String>,
+    /// The monospaced face, when it isn't the system's.
+    pub mono: Option<String>,
+    /// The body text size, in points (16 is the preview's).
+    pub size: f32,
+    /// How far local time is ahead of UTC, in seconds: due chips say
+    /// "Today" and "Overdue" by the phone's day.
+    pub utc_offset_secs: i32,
+    /// How code blocks are colored: the theme's syntax styles (the
+    /// `syntax` of [`ThemeTokens`]). Empty leaves code uncolored.
+    pub code: Vec<SyntaxStyleRow>,
+}
+
+impl Default for PreviewOptions {
+    fn default() -> Self {
+        PreviewOptions {
+            font: None,
+            mono: None,
+            size: 16.,
+            utc_offset_secs: 0,
+            code: Vec::new(),
+        }
+    }
+}
+
+/// What a tapped address in the preview is. Anything the page doesn't emit,
+/// and anything unsafe, is [`PreviewLink::Nothing`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PreviewLink {
+    /// A note that exists and isn't in the trash (a locked one is a valid
+    /// target: it opens to its lock). `heading` is the heading named after
+    /// `#` in a wiki-link; `anchor` is that heading's `id` in the note's
+    /// page, when the note can be read now and has it.
+    Note {
+        id: String,
+        heading: Option<String>,
+        anchor: Option<String>,
+    },
+    /// A wiki-link to a note that doesn't exist yet: its title.
+    NewNote { title: String },
+    /// An inline `#tag`: its name (`work/clients`).
+    Tag { name: String },
+    /// A place in the same page: the heading's `id`.
+    Heading { id: String },
+    /// A web or mail address to hand to the system (`http`, `https`,
+    /// `mailto` only).
+    Web { url: String },
+    /// An attachment, to open or share.
+    Attachment {
+        id: String,
+        name: String,
+        content_type: String,
+        size: u64,
+    },
+    /// A task box: its place in the note's task list.
+    Task { index: u32 },
+    /// A code block's copy button: its place among the note's code blocks.
+    CopyCode { index: u32 },
+    /// A due-date chip.
+    Due,
+    /// Nothing to do.
+    Nothing,
+}
+
+/// An attachment's name, type and bytes, for a viewer or the share sheet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AttachmentFile {
+    pub id: String,
+    pub name: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+}
+
+/// What draws Mermaid diagrams (Settings › Appearance › Diagrams on the
+/// desktop).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DiagramRenderer {
+    /// Pele, Obsidian's renderer: the default.
+    #[default]
+    Pele,
+    /// Kanso's own.
+    Kanso,
+}

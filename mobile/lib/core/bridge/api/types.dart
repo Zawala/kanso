@@ -8,6 +8,34 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'types.freezed.dart';
 
+class AttachmentFile {
+  final String id;
+  final String name;
+  final String contentType;
+  final Uint8List bytes;
+
+  const AttachmentFile({
+    required this.id,
+    required this.name,
+    required this.contentType,
+    required this.bytes,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^ name.hashCode ^ contentType.hashCode ^ bytes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AttachmentFile &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          contentType == other.contentType &&
+          bytes == other.bytes;
+}
+
 class BuiltinTheme {
   final String id;
   final String name;
@@ -168,6 +196,11 @@ enum DateField {
 enum DiagramKind {
   mermaid,
   excalidraw,
+}
+
+enum DiagramRenderer {
+  pele,
+  kanso,
 }
 
 enum DueTone {
@@ -976,6 +1009,78 @@ class PaletteDto {
           inlineCodeBackground == other.inlineCodeBackground &&
           inlineCodeText == other.inlineCodeText &&
           tableHeaderBackground == other.tableHeaderBackground;
+}
+
+@freezed
+sealed class PreviewLink with _$PreviewLink {
+  const PreviewLink._();
+
+  const factory PreviewLink.note({
+    required String id,
+    String? heading,
+    String? anchor,
+  }) = PreviewLink_Note;
+  const factory PreviewLink.newNote({
+    required String title,
+  }) = PreviewLink_NewNote;
+  const factory PreviewLink.tag({
+    required String name,
+  }) = PreviewLink_Tag;
+  const factory PreviewLink.heading({
+    required String id,
+  }) = PreviewLink_Heading;
+  const factory PreviewLink.web({
+    required String url,
+  }) = PreviewLink_Web;
+  const factory PreviewLink.attachment({
+    required String id,
+    required String name,
+    required String contentType,
+    required int size,
+  }) = PreviewLink_Attachment;
+  const factory PreviewLink.task({
+    required int index,
+  }) = PreviewLink_Task;
+  const factory PreviewLink.copyCode({
+    required int index,
+  }) = PreviewLink_CopyCode;
+  const factory PreviewLink.due() = PreviewLink_Due;
+  const factory PreviewLink.nothing() = PreviewLink_Nothing;
+}
+
+class PreviewOptions {
+  final String? font;
+  final String? mono;
+  final double size;
+  final int utcOffsetSecs;
+  final List<SyntaxStyleRow> code;
+
+  const PreviewOptions({
+    this.font,
+    this.mono,
+    required this.size,
+    required this.utcOffsetSecs,
+    required this.code,
+  });
+
+  @override
+  int get hashCode =>
+      font.hashCode ^
+      mono.hashCode ^
+      size.hashCode ^
+      utcOffsetSecs.hashCode ^
+      code.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewOptions &&
+          runtimeType == other.runtimeType &&
+          font == other.font &&
+          mono == other.mono &&
+          size == other.size &&
+          utcOffsetSecs == other.utcOffsetSecs &&
+          code == other.code;
 }
 
 class Property {

@@ -9,15 +9,16 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    BuiltinTheme, Changed, ColorRow, Completion, CompletionItem, CompletionKind, DateField,
-    DiagramKind, DueTone, EditCommand, EditOutcome, EditorContext, EditorEvent, EditorRun,
-    EditorSnapshot, FormatKind, HistoryState, Hit, IconThemeRow, KansoError, LibraryOverview,
-    LinkTarget, ListPlace, ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote,
-    NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto, Property,
-    PropertyKind, Range16, Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo,
-    SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind, SyncReportRow, SyncStatus,
-    SyntaxStyleRow, Table, TableRow, TagRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery,
-    TaskSection, TextChange, ThemeTokens, ThemedIcon, Ticked,
+    AttachmentFile, BuiltinTheme, Changed, ColorRow, Completion, CompletionItem, CompletionKind,
+    DateField, DiagramKind, DiagramRenderer, DueTone, EditCommand, EditOutcome, EditorContext,
+    EditorEvent, EditorRun, EditorSnapshot, FormatKind, HistoryState, Hit, IconThemeRow,
+    KansoError, LibraryOverview, LinkTarget, ListPlace, ListQuery, ListShape, LockEvent,
+    LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole,
+    NotebookRow, PaletteDto, PreviewLink, PreviewOptions, Property, PropertyKind, Range16,
+    Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun,
+    SvgRow, SyncPhase, SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow,
+    TagRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange,
+    ThemeTokens, ThemedIcon, Ticked,
 };
 
 #[frb(mirror(KansoError))]
@@ -601,4 +602,62 @@ pub enum _LinkTarget {
     Note { id: String },
     NewNote { title: String },
     Web { url: String },
+}
+
+#[frb(mirror(PreviewOptions))]
+pub struct _PreviewOptions {
+    pub font: Option<String>,
+    pub mono: Option<String>,
+    pub size: f32,
+    pub utc_offset_secs: i32,
+    pub code: Vec<SyntaxStyleRow>,
+}
+
+#[frb(mirror(PreviewLink))]
+pub enum _PreviewLink {
+    Note {
+        id: String,
+        heading: Option<String>,
+        anchor: Option<String>,
+    },
+    NewNote {
+        title: String,
+    },
+    Tag {
+        name: String,
+    },
+    Heading {
+        id: String,
+    },
+    Web {
+        url: String,
+    },
+    Attachment {
+        id: String,
+        name: String,
+        content_type: String,
+        size: u64,
+    },
+    Task {
+        index: u32,
+    },
+    CopyCode {
+        index: u32,
+    },
+    Due,
+    Nothing,
+}
+
+#[frb(mirror(AttachmentFile))]
+pub struct _AttachmentFile {
+    pub id: String,
+    pub name: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+}
+
+#[frb(mirror(DiagramRenderer))]
+pub enum _DiagramRenderer {
+    Pele,
+    Kanso,
 }
