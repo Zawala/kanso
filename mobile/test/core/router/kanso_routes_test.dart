@@ -41,7 +41,7 @@ void main() {
         if (name.isEmpty) {
           return;
         }
-        final address = 'https://${name}.example.com:8787/a b?x=1&y=2';
+        final address = 'https://$name.example.com:8787/a b?x=1&y=2';
         final uri = Uri.parse(KansoRoutes.recover(server: address));
         expect(uri.queryParameters[KansoRoutes.serverParameter], address);
       },
