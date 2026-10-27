@@ -38,12 +38,12 @@ class RemindersSection extends StatelessWidget {
               icon: KansoIcons.bell,
               label: l10n.settingsRemindMe,
               onTap: () => bloc.add(
-                RemindersSettingsEvent.toggled(!state.enabled),
+                RemindersSettingsEvent.toggled(enabled: !state.enabled),
               ),
               trailing: KansoSwitch(
                 value: state.enabled,
                 onChanged: (on) =>
-                    bloc.add(RemindersSettingsEvent.toggled(on)),
+                    bloc.add(RemindersSettingsEvent.toggled(enabled: on)),
               ),
             ),
           ],

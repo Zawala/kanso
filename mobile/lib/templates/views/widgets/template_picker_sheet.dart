@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/load_status.dart';
@@ -16,7 +17,6 @@ import '../../../core/views/widgets/kanso_empty_state.dart';
 import '../../../core/views/widgets/sheet_header.dart';
 import '../../../injection.dart';
 import '../../state/template_picker/template_picker_bloc.dart';
-import '../../../core/bridge/api/types.dart';
 
 /// The templates to make a note from, or, with [current] given, to choose
 /// the daily template from (then "None" is the first choice and the one in
@@ -49,7 +49,8 @@ class TemplatePickerSheet extends StatelessWidget {
       context,
       builder: (_) => BlocProvider<TemplatePickerBloc>(
         create: (_) =>
-            getIt<TemplatePickerBloc>()..add(const TemplatePickerEvent.started()),
+            getIt<TemplatePickerBloc>()
+              ..add(const TemplatePickerEvent.started()),
         child: TemplatePickerSheet(title: context.l10n.templatePickerTitle),
       ),
     );
@@ -62,7 +63,8 @@ class TemplatePickerSheet extends StatelessWidget {
       context,
       builder: (_) => BlocProvider<TemplatePickerBloc>(
         create: (_) =>
-            getIt<TemplatePickerBloc>()..add(const TemplatePickerEvent.started()),
+            getIt<TemplatePickerBloc>()
+              ..add(const TemplatePickerEvent.started()),
         child: TemplatePickerSheet(
           title: context.l10n.settingsDailyTemplate,
           daily: true,

@@ -4,13 +4,13 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
 import '../../../core/views/widgets/kanso_check_row.dart';
 import '../../../core/views/widgets/sheet_header.dart';
 import '../../utils/board_labels.dart';
-import '../../../core/bridge/api/types.dart';
 
 /// The columns of the board, to move a card to; the one it is in is
 /// checked. Choosing another closes the sheet with its lane.

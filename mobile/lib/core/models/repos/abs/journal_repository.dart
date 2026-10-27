@@ -4,8 +4,8 @@
 
 import 'package:dartz/dartz.dart';
 
-import '../../data/application_error.dart';
 import '../../../bridge/api/types.dart';
+import '../../data/application_error.dart';
 
 /// The journal: the daily notes, found or made by the Rust core (the same
 /// rules as the desktop's). Every call that makes a note gives the note to

@@ -15,6 +15,6 @@ sealed class RemindersSettingsEvent with _$RemindersSettingsEvent {
       RemindersSettingsResumedEvent;
 
   /// The person flipped the switch.
-  const factory RemindersSettingsEvent.toggled(bool enabled) =
+  const factory RemindersSettingsEvent.toggled({required bool enabled}) =
       RemindersSettingsToggledEvent;
 }

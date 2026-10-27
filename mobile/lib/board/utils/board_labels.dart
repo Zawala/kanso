@@ -2,9 +2,9 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import '../../core/bridge/api/types.dart';
 import '../../core/utils/status_label.dart';
 import '../../gen/l10n/app_localizations.dart';
-import '../../core/bridge/api/types.dart';
 
 /// The words for the columns of a board.
 extension BoardLaneLabel on AppLocalizations {

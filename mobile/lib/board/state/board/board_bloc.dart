@@ -77,7 +77,6 @@ class BoardBloc extends Bloc<BoardEvent, BoardState> {
       BoardState(
         query: state.query,
         kind: event.kind,
-        status: LoadStatus.loading,
       ),
     );
     await _read(emit);

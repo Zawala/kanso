@@ -6,7 +6,6 @@ import 'package:dartz/dartz.dart';
 import 'package:injectable/injectable.dart';
 
 import '../../../bridge/api/library.dart';
-import '../../../bridge/api/reminders.dart';
 import '../../../bridge/api/types.dart';
 import '../../../utils/kanso_error_mapping.dart';
 import '../../data/application_error.dart';

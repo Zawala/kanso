@@ -4,13 +4,13 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_radii.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../models/data/board_drag.dart';
 import '../../utils/board_labels.dart';
 import 'board_card_tile.dart';
-import '../../../core/bridge/api/types.dart';
 
 /// One column of a board: its name and how many cards it has, then the
 /// cards, scrolling on their own. With [draggable] cards can be dropped on
@@ -31,7 +31,8 @@ class BoardColumnView extends StatelessWidget {
   final void Function(CardKey card) onOpen;
   final void Function(CardKey card) onMove;
   final void Function(BoardDrag drag, BoardLane to) onDrop;
-  final void Function(CardKey card, bool checked) onToggle;
+  final void Function({required CardKey card, required bool checked})
+      onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +103,8 @@ class BoardColumnView extends StatelessWidget {
                         onOpen: () => onOpen(card.key),
                         onMove: () => onMove(card.key),
                         onToggle: card.key is CardKey_Task
-                            ? (checked) => onToggle(card.key, checked)
+                            ? (checked) =>
+                                  onToggle(card: card.key, checked: checked)
                             : null,
                       );
                       if (!draggable) {

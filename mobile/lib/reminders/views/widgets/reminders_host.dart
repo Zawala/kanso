@@ -7,8 +7,8 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/models/data/browse_location.dart';
 import '../../../core/bridge/api/types.dart';
+import '../../../core/models/data/browse_location.dart';
 import '../../utils/reminders_coordinator.dart';
 
 /// Runs the [RemindersCoordinator] for the life of the app: it starts it,

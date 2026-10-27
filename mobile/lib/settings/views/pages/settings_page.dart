@@ -8,6 +8,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../injection.dart';
 import '../../../lock/state/biometrics/biometrics_bloc.dart';
+import '../../../reminders/state/reminders_settings/reminders_settings_bloc.dart';
+import '../../../templates/state/daily_template/daily_template_bloc.dart';
 import '../../state/about/about_bloc.dart';
 import '../widgets/settings_pane.dart';
 
@@ -25,6 +27,15 @@ class SettingsPage extends StatelessWidget {
         ),
         BlocProvider<BiometricsBloc>(
           create: (context) => getIt<BiometricsBloc>(),
+        ),
+        BlocProvider<DailyTemplateBloc>(
+          create: (context) =>
+              getIt<DailyTemplateBloc>()
+                ..add(const DailyTemplateEvent.started()),
+        ),
+        BlocProvider<RemindersSettingsBloc>(
+          create: (context) => getIt<RemindersSettingsBloc>()
+            ..add(const RemindersSettingsEvent.started()),
         ),
       ],
       child: Scaffold(

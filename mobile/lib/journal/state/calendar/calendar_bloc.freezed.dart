@@ -204,12 +204,12 @@ $CalendarStartedEventCopyWith<CalendarStartedEvent> get copyWith => _$CalendarSt
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is CalendarStartedEvent&&(identical(other.openNote, openNote) || other.openNote == openNote)&&(identical(other.today, today) || other.today == today)&&(identical(other.weekStart, weekStart) || other.weekStart == weekStart));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CalendarStartedEvent&&(identical(other.openNote, openNote) || other.openNote == openNote)&&const DeepCollectionEquality().equals(other.today, today)&&(identical(other.weekStart, weekStart) || other.weekStart == weekStart));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,openNote,today,weekStart);
+int get hashCode => Object.hash(runtimeType,openNote,const DeepCollectionEquality().hash(today),weekStart);
 
 @override
 String toString() {
@@ -241,10 +241,10 @@ class _$CalendarStartedEventCopyWithImpl<$Res>
 
 /// Create a copy of CalendarEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? openNote = freezed,Object? today = null,Object? weekStart = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? openNote = freezed,Object? today = freezed,Object? weekStart = null,}) {
   return _then(CalendarStartedEvent(
 openNote: freezed == openNote ? _self.openNote : openNote // ignore: cast_nullable_to_non_nullable
-as String?,today: null == today ? _self.today : today // ignore: cast_nullable_to_non_nullable
+as String?,today: freezed == today ? _self.today : today // ignore: cast_nullable_to_non_nullable
 as DayDate,weekStart: null == weekStart ? _self.weekStart : weekStart // ignore: cast_nullable_to_non_nullable
 as int,
   ));
@@ -402,12 +402,12 @@ $CalendarStateCopyWith<CalendarState> get copyWith => _$CalendarStateCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is CalendarState&&(identical(other.status, status) || other.status == status)&&(identical(other.year, year) || other.year == year)&&(identical(other.month, month) || other.month == month)&&(identical(other.today, today) || other.today == today)&&(identical(other.weekStart, weekStart) || other.weekStart == weekStart)&&(identical(other.grid, grid) || other.grid == grid)&&(identical(other.error, error) || other.error == error));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CalendarState&&(identical(other.status, status) || other.status == status)&&(identical(other.year, year) || other.year == year)&&(identical(other.month, month) || other.month == month)&&const DeepCollectionEquality().equals(other.today, today)&&(identical(other.weekStart, weekStart) || other.weekStart == weekStart)&&const DeepCollectionEquality().equals(other.grid, grid)&&(identical(other.error, error) || other.error == error));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,status,year,month,today,weekStart,grid,error);
+int get hashCode => Object.hash(runtimeType,status,year,month,const DeepCollectionEquality().hash(today),weekStart,const DeepCollectionEquality().hash(grid),error);
 
 @override
 String toString() {
@@ -439,12 +439,12 @@ class _$CalendarStateCopyWithImpl<$Res>
 
 /// Create a copy of CalendarState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? status = null,Object? year = null,Object? month = null,Object? today = null,Object? weekStart = null,Object? grid = freezed,Object? error = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? status = null,Object? year = null,Object? month = null,Object? today = freezed,Object? weekStart = null,Object? grid = freezed,Object? error = freezed,}) {
   return _then(_self.copyWith(
 status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as LoadStatus,year: null == year ? _self.year : year // ignore: cast_nullable_to_non_nullable
 as int,month: null == month ? _self.month : month // ignore: cast_nullable_to_non_nullable
-as int,today: null == today ? _self.today : today // ignore: cast_nullable_to_non_nullable
+as int,today: freezed == today ? _self.today : today // ignore: cast_nullable_to_non_nullable
 as DayDate,weekStart: null == weekStart ? _self.weekStart : weekStart // ignore: cast_nullable_to_non_nullable
 as int,grid: freezed == grid ? _self.grid : grid // ignore: cast_nullable_to_non_nullable
 as MonthGrid?,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
@@ -627,12 +627,12 @@ _$CalendarStateCopyWith<_CalendarState> get copyWith => __$CalendarStateCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _CalendarState&&(identical(other.status, status) || other.status == status)&&(identical(other.year, year) || other.year == year)&&(identical(other.month, month) || other.month == month)&&(identical(other.today, today) || other.today == today)&&(identical(other.weekStart, weekStart) || other.weekStart == weekStart)&&(identical(other.grid, grid) || other.grid == grid)&&(identical(other.error, error) || other.error == error));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _CalendarState&&(identical(other.status, status) || other.status == status)&&(identical(other.year, year) || other.year == year)&&(identical(other.month, month) || other.month == month)&&const DeepCollectionEquality().equals(other.today, today)&&(identical(other.weekStart, weekStart) || other.weekStart == weekStart)&&const DeepCollectionEquality().equals(other.grid, grid)&&(identical(other.error, error) || other.error == error));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,status,year,month,today,weekStart,grid,error);
+int get hashCode => Object.hash(runtimeType,status,year,month,const DeepCollectionEquality().hash(today),weekStart,const DeepCollectionEquality().hash(grid),error);
 
 @override
 String toString() {
@@ -664,12 +664,12 @@ class __$CalendarStateCopyWithImpl<$Res>
 
 /// Create a copy of CalendarState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? status = null,Object? year = null,Object? month = null,Object? today = null,Object? weekStart = null,Object? grid = freezed,Object? error = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? status = null,Object? year = null,Object? month = null,Object? today = freezed,Object? weekStart = null,Object? grid = freezed,Object? error = freezed,}) {
   return _then(_CalendarState(
 status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as LoadStatus,year: null == year ? _self.year : year // ignore: cast_nullable_to_non_nullable
 as int,month: null == month ? _self.month : month // ignore: cast_nullable_to_non_nullable
-as int,today: null == today ? _self.today : today // ignore: cast_nullable_to_non_nullable
+as int,today: freezed == today ? _self.today : today // ignore: cast_nullable_to_non_nullable
 as DayDate,weekStart: null == weekStart ? _self.weekStart : weekStart // ignore: cast_nullable_to_non_nullable
 as int,grid: freezed == grid ? _self.grid : grid // ignore: cast_nullable_to_non_nullable
 as MonthGrid?,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable

@@ -2,9 +2,9 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import '../../../bridge/api/types.dart';
 import '../../data/reminder_permission.dart';
 import '../../data/reminder_response.dart';
-import '../../../bridge/api/types.dart';
 
 /// The system's side of reminders: notifications and the permission to show
 /// them (the `app.kanso/reminders` channel).

@@ -5,12 +5,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_radii.dart';
 import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/journal_time.dart';
 import '../../../core/views/widgets/kanso_pressable.dart';
-import '../../../core/bridge/api/types.dart';
 
 /// One day of the calendar: its number, a dot under it when it has a note,
 /// and a wash of the accent colour when it is today. A day of the months

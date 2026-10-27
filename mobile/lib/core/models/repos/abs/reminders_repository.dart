@@ -4,8 +4,8 @@
 
 import 'package:dartz/dartz.dart';
 
-import '../../data/application_error.dart';
 import '../../../bridge/api/types.dart';
+import '../../data/application_error.dart';
 
 /// The Rust core's side of reminders: which to show and schedule, and what
 /// an answer does. The system's side is a `ReminderNotifier`.

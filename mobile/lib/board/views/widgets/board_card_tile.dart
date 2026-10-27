@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_radii.dart';
 import '../../../core/configs/kanso_spacing.dart';
@@ -12,7 +13,6 @@ import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_checkbox.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_pressable.dart';
-import '../../../core/bridge/api/types.dart';
 
 /// A card of a board. A note's card has its title and the start of its
 /// text; a task's has a checkbox, its words, the note it is in and when it

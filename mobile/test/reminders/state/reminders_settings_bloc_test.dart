@@ -49,7 +49,9 @@ void main() {
         canNotify: any(named: 'canNotify'),
       ),
     ).thenAnswer(
-      (_) async => const Right<ApplicationError, ReminderPlan>(ReminderPlan()),
+      (_) async => const Right<ApplicationError, ReminderPlan>(
+        ReminderPlan(showNow: [], schedule: []),
+      ),
     );
     coordinator = RemindersCoordinator(
       preferences,

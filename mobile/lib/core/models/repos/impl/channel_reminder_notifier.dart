@@ -8,11 +8,10 @@ import 'package:flutter/services.dart';
 import 'package:injectable/injectable.dart';
 
 import '../../../bridge/api/types.dart';
-import '../../data/reminder_permission.dart';
-import '../abs/reminder_notifier.dart';
-import '../../data/reminder_response.dart';
 import '../../../utils/reminder_channel.dart';
-import '../../../bridge/api/types.dart';
+import '../../data/reminder_permission.dart';
+import '../../data/reminder_response.dart';
+import '../abs/reminder_notifier.dart';
 
 /// The name of the method channel to the native side of reminders
 /// (`KansoReminders.swift`, `KansoReminders.kt`).
@@ -77,7 +76,9 @@ class ChannelReminderNotifier implements ReminderNotifier {
   }
 
   static List<Map<String, Object>> _maps(List<ReminderNote> reminders) =>
-      <Map<String, Object>>[for (final reminder in reminders) reminderToChannel(reminder)];
+      <Map<String, Object>>[
+        for (final reminder in reminders) reminderToChannel(reminder),
+      ];
 
   Future<T?> _invoke<T>(String method, [Object? arguments]) async {
     try {

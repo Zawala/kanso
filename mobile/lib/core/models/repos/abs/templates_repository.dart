@@ -4,8 +4,8 @@
 
 import 'package:dartz/dartz.dart';
 
-import '../../data/application_error.dart';
 import '../../../bridge/api/types.dart';
+import '../../data/application_error.dart';
 
 /// The notes in the Templates notebook, and the template new daily notes
 /// start from.

@@ -245,7 +245,7 @@ String toString() {
 
 
 class RemindersSettingsToggledEvent implements RemindersSettingsEvent {
-  const RemindersSettingsToggledEvent(this.enabled);
+  const RemindersSettingsToggledEvent({required this.enabled});
   
 
  final  bool enabled;
@@ -299,7 +299,7 @@ class _$RemindersSettingsToggledEventCopyWithImpl<$Res>
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') $Res call({Object? enabled = null,}) {
   return _then(RemindersSettingsToggledEvent(
-null == enabled ? _self.enabled : enabled // ignore: cast_nullable_to_non_nullable
+enabled: null == enabled ? _self.enabled : enabled // ignore: cast_nullable_to_non_nullable
 as bool,
   ));
 }

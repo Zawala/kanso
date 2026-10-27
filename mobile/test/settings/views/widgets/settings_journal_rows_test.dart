@@ -9,10 +9,10 @@ import 'package:kanso/core/models/data/reminder_permission.dart';
 import 'package:kanso/core/views/widgets/kanso_switch.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
 
+import '../../../helpers/fixture_library_repository.dart';
 import '../../../helpers/page_fixtures.dart';
 import '../../../helpers/pump_routed.dart';
 import '../../../helpers/register_page_blocs.dart';
-import '../../../helpers/fixture_library_repository.dart';
 import '../../../helpers/settings_blocs.dart';
 
 Future<SettingsBlocs> _pump(

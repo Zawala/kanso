@@ -5,7 +5,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 import '../../bridge/api/types.dart';
-import 'board_kind.dart';
 import 'search_scope_kind.dart';
 
 part 'browse_location.freezed.dart';

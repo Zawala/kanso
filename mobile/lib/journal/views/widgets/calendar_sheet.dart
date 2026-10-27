@@ -6,6 +6,7 @@ import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/load_status.dart';
@@ -18,7 +19,6 @@ import '../../../core/views/widgets/kanso_pressable.dart';
 import '../../../injection.dart';
 import '../../state/calendar/calendar_bloc.dart';
 import 'calendar_day_cell.dart';
-import '../../../core/bridge/api/types.dart';
 
 /// The journal's month calendar, as the desktop's: the month with back and
 /// forward, a Today button that goes to today's month, the weekdays from

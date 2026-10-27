@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:clock/clock.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../core/bridge/api/types.dart';
 import '../../core/models/data/reminder_permission.dart';
 import '../../core/models/data/reminder_response.dart';
 import '../../core/models/repos/abs/library_repository.dart';
@@ -14,7 +15,6 @@ import '../../core/models/repos/abs/preferences_repository.dart';
 import '../../core/models/repos/abs/reminder_notifier.dart';
 import '../../core/models/repos/abs/reminders_repository.dart';
 import '../../core/utils/debounce.dart';
-import '../../core/bridge/api/types.dart';
 
 /// How long the library must be quiet before the reminders are planned
 /// again.

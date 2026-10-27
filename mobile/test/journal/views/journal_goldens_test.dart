@@ -76,8 +76,8 @@ final List<_Screen> _screens = <_Screen>[
   ),
   const _Screen('board_notes', at: '/notes/board'),
   const _Screen('board_tasks', at: '/notes/board?kind=tasks'),
-  _Screen('board_move', at: '/notes/board', interact: _openMove),
-  _Screen('settings_journal', at: '/notes', interact: _scrollSettingsToEnd),
+  const _Screen('board_move', at: '/notes/board', interact: _openMove),
+  const _Screen('settings_journal', at: '/notes', interact: _scrollSettingsToEnd),
 ];
 
 void main() {

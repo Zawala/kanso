@@ -9,10 +9,11 @@ import 'package:dartz/dartz.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/models/data/application_error.dart';
 import '../../../core/models/repos/abs/journal_repository.dart';
 import '../../../core/models/repos/abs/templates_repository.dart';
-import '../../../core/bridge/api/types.dart';
+import '../../../core/utils/journal_time.dart';
 
 part 'journal_bloc.freezed.dart';
 part 'journal_event.dart';
