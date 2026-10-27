@@ -16,6 +16,9 @@ import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
+import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
+import 'package:kanso/lock/state/unlock/unlock_bloc.dart';
 import 'package:kanso/note/models/data/note_screen_status.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/models/data/note_list_status.dart';
@@ -25,8 +28,10 @@ import 'package:kanso/search/state/search/search_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 
 import 'close_bloc_later.dart';
+import 'fixture_device_lock_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_renderer_repository.dart';
+import 'fixture_session_repository.dart';
 import 'fixture_sync_repository.dart';
 import 'library_fixtures.dart';
 import 'seeded_appearance_bloc.dart';
@@ -58,6 +63,10 @@ class BrowseBlocs {
     this.syncRepository,
     this.listNavigation,
     this.libraryPane,
+    this.session,
+    this.device,
+    this.lock,
+    this.cover,
   );
 
   /// The mock library (see [FixtureLibraryRepository]).
@@ -68,6 +77,13 @@ class BrowseBlocs {
   final ListNavigationBloc listNavigation;
   final LibraryPaneBloc libraryPane;
   final FixtureSyncRepository syncRepository;
+
+  /// The lock session, closed with a lock password by default, and the
+  /// phone's biometrics (Face ID): see [FixtureSessionRepository].
+  final FixtureSessionRepository session;
+  final FixtureDeviceLockRepository device;
+  final LockStatusBloc lock;
+  final PrivacyCoverBloc cover;
   final FixtureRendererRepository renderer = FixtureRendererRepository();
   final RecordingHaptics haptics = RecordingHaptics();
 
@@ -75,6 +91,8 @@ class BrowseBlocs {
   static Future<BrowseBlocs> start([
     FixtureLibraryRepository? library,
     FixtureSyncRepository? syncRepository,
+    FixtureSessionRepository? session,
+    FixtureDeviceLockRepository? device,
   ]) async {
     final fixture = library ?? FixtureLibraryRepository();
     addTearDown(() => unawaited(fixture.close()));
@@ -99,6 +117,15 @@ class BrowseBlocs {
     final libraryPane = LibraryPaneBloc();
     closeBlocLater(listNavigation);
     closeBlocLater(libraryPane);
+    final lockSession = session ?? FixtureSessionRepository();
+    final lockDevice = device ?? FixtureDeviceLockRepository();
+    addTearDown(() => unawaited(lockSession.close()));
+    final lock = LockStatusBloc(lockSession, lockDevice)
+      ..add(const LockStatusEvent.started());
+    closeBlocLater(lock);
+    await lock.stream.firstWhere((state) => state.loaded);
+    final cover = PrivacyCoverBloc(lockDevice);
+    closeBlocLater(cover);
     return BrowseBlocs._(
       fixture,
       index,
@@ -107,7 +134,18 @@ class BrowseBlocs {
       account,
       listNavigation,
       libraryPane,
+      lockSession,
+      lockDevice,
+      lock,
+      cover,
     );
+  }
+
+  /// An unlock BLoC over the fixtures, for a locked note or notebook.
+  UnlockBloc unlockOf() {
+    final bloc = UnlockBloc(session, device, ForgetfulPreferencesRepository());
+    closeBlocLater(bloc);
+    return bloc;
   }
 
   /// A list of [place], read; or only made when [read] is false, so that it
@@ -177,9 +215,13 @@ class BrowseBlocs {
     NoteListBloc? list,
     NoteBloc? note,
     SearchBloc? search,
+    UnlockBloc? unlock,
   }) {
     return MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
+        BlocProvider<LockStatusBloc>.value(value: lock),
+        BlocProvider<PrivacyCoverBloc>.value(value: cover),
+        BlocProvider<UnlockBloc>.value(value: unlock ?? unlockOf()),
         BlocProvider<LibraryIndexBloc>.value(value: index),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
         BlocProvider<SyncStatusBloc>.value(value: sync),

@@ -16,6 +16,8 @@ import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
+import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 
@@ -67,7 +69,7 @@ Future<BrowseApp> pumpBrowseApp(
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start(library);
-  registerPageBlocs(blocs.library);
+  registerPageBlocs(blocs.library, null, blocs);
   final padding = FakeViewPadding(
     left: safeArea.left * devicePixelRatio,
     top: safeArea.top * devicePixelRatio,
@@ -102,6 +104,8 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
           BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
           BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
+          BlocProvider<LockStatusBloc>.value(value: blocs.lock),
+          BlocProvider<PrivacyCoverBloc>.value(value: blocs.cover),
           BlocProvider<BackupNoticeBloc>.value(
             value: backupNotice ?? hiddenBackupNoticeBloc(),
           ),

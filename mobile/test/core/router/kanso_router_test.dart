@@ -45,7 +45,7 @@ Future<GoRouter> _pump(
   final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start();
-  registerPageBlocs(blocs.library);
+  registerPageBlocs(blocs.library, null, blocs);
   final history = blocs.history;
   tester.view
     ..physicalSize = size

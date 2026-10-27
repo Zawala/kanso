@@ -6,6 +6,8 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart' show addTearDown;
 import 'package:kanso/injection.dart';
+import 'package:kanso/lock/state/biometrics/biometrics_bloc.dart';
+import 'package:kanso/lock/state/unlock/unlock_bloc.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
@@ -26,6 +28,7 @@ import 'seeded_appearance_bloc.dart';
 void registerPageBlocs(
   FixtureLibraryRepository library, [
   FixtureRendererRepository? renderer,
+  BrowseBlocs? blocs,
 ]) {
   final haptics = RecordingHaptics();
   if (getIt.isRegistered<NoteListBloc>()) {
@@ -60,5 +63,17 @@ void registerPageBlocs(
   getIt.registerFactory<ThemePickerBloc>(
     () => ThemePickerBloc(renderer ?? FixtureRendererRepository()),
   );
+  if (blocs != null) {
+    if (getIt.isRegistered<UnlockBloc>()) {
+      getIt.unregister<UnlockBloc>();
+    }
+    getIt.registerFactory<UnlockBloc>(blocs.unlockOf);
+    if (getIt.isRegistered<BiometricsBloc>()) {
+      getIt.unregister<BiometricsBloc>();
+    }
+    getIt.registerFactory<BiometricsBloc>(
+      () => BiometricsBloc(blocs.session, blocs.device),
+    );
+  }
   addTearDown(() => unawaited(getIt.reset()));
 }

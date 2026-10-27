@@ -63,6 +63,38 @@ Rust keeps, in the library's normal secret store (Keychain
 So the keys kept for biometrics are re-sealed with no prompt whenever the
 session's keys change (a password opened another key, the password was
 changed), as the desktop's `remember_keys` does, and opening them needs `B`.
+If that re-seal fails, Rust forgets the item (biometrics read as off, the
+password is the way in) rather than keep keys that are now the old ones.
+
+### A lock wins over a late unlock
+
+Rust counts how many times the notes were locked (`lock_gen`, changed under
+the keys mutex by every manual, background and idle lock). A password unlock
+or password change notes the count when it starts, before Argon2; a biometric
+ticket notes it when it is issued. Keys are added or replaced only if the
+count is unchanged. Otherwise they are dropped and the notes stay closed:
+`unlock*` return `KansoError::Locked`, a biometric answer returns `-5`, and a
+password change still re-seals the notes under the new password but holds no
+key and turns biometrics off (their kept keys are the old ones).
+
+### Which key seals a note
+
+A new lock is sealed with a key chosen, never "the session's first key":
+
+- `lock_note(id, password)` and `lock_notebook(id, Some(password))`: the key
+  of the password just typed. It must open the library's existing lock
+  (`KansoError::Auth` otherwise); with no lock at all, it is a new lock
+  password, whatever stale keys the session holds. Locks made with other
+  passwords on other devices are each tried, the most used first.
+- `lock_note_with_session(id)` and `lock_notebook(id, None)`: of the held
+  keys that open some existing lock, the one that opens the most notes and
+  notebooks (ties: the one held first). `KansoError::Locked` when none does
+  (nothing held, or only keys of locks that no longer exist), and the person
+  is asked for the password.
+
+The desktop (`locked.rs`, `notebook_lock.rs`) uses the session's first key
+(`LockKeys::current`) in these places and shares the issue of picking a stale
+key; this is the phones' fix.
 
 ### Tickets
 
@@ -80,11 +112,19 @@ A biometric check is a ticket, as passkeys are (step 8):
    - `status`: `0` ok (`secret` is `B`, 32 bytes), `1` cancelled, `2`
      invalidated (biometrics changed or removed), `3` unavailable, `4` failed.
    - Returns `1` applied, `0` no such ticket, `-1` the secret didn't open the
-     kept keys (Rust forgets them: treated as invalidated), `-5` a fault.
+     kept keys (Rust forgets them: treated as invalidated), `-5` a fault
+     (the secret store refused, or the notes were locked again between the
+     ticket and the answer: the keys are dropped and the notes stay closed;
+     the key the plugin holds is still good).
    - The plugin zeroes its copy of `B` after the call.
 4. The plugin tells Dart only the outcome: `done`, `cancelled`,
    `invalidated`, `unavailable` or `failed`. On `invalidated` Rust has
    already forgotten the kept keys; the plugin deleted its own key or item.
+   The plugin deletes its key or item only on `invalidated`, and, during
+   enrolment, when Rust did not keep the secret (status ok, outcome not
+   `done`); both platforms alike. A failed or faulted unlock leaves it.
+   A key the platform can no longer recover (Android
+   `UnrecoverableKeyException`) counts as gone (`invalidated`).
 
 Turning biometrics off: Rust `turn_off_biometrics()` forgets the item, and the
 plugin's `forget()` deletes the platform key or item.
@@ -101,7 +141,13 @@ plugin's `forget()` deletes the platform key or item.
     (`UIVisualEffectView`, `.systemMaterial`, the app's mark centred) on the
     window in `sceneWillResignActive` while secure is on, and takes it off in
     `sceneDidBecomeActive`. The app switcher's snapshot shows the cover.
-  - Android: `FLAG_SECURE` on the activity's window while on.
+    `setSecure(false)` takes a showing cover down only while the app is
+    active; while it is not (Dart locks the notes as the app leaves), it
+    only clears the flag and the did-become-active handler removes the
+    cover, so it can't come down before the snapshot.
+  - Android: `FLAG_SECURE` on the activity's window while on. It is cleared
+    only while the activity is resumed; a `setSecure(false)` that arrives
+    earlier waits for `onResume`, so the recents thumbnail stays blank.
 
 ## Provisional decisions (recorded on #48)
 
