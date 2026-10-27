@@ -1009,4 +1009,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String tasksRowDue(String due) {
     return 'Due $due';
   }
+
+  @override
+  String get previewLabel => 'The note\'s preview';
+
+  @override
+  String get previewFailed => 'The preview couldn\'t be drawn.';
+
+  @override
+  String get previewLinkFailed => 'That link couldn\'t be opened.';
+
+  @override
+  String get previewLinkLocked => 'Unlock your notes to open that.';
+
+  @override
+  String get attachmentDone => 'Done';
+
+  @override
+  String get attachmentShare => 'Share';
+
+  @override
+  String attachmentDetails(String type, String size) {
+    return '$type · $size';
+  }
 }

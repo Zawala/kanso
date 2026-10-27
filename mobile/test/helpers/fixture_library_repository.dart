@@ -73,6 +73,18 @@ class FixtureLibraryRepository implements LibraryRepository {
   final List<(String, int, String, bool)> tasksSet =
       <(String, int, String, bool)>[];
 
+  /// The boxes `toggleTaskAt` was asked to tick: note, index, rev.
+  final List<(String, int, String)> boxesToggled = <(String, int, String)>[];
+
+  /// The titles `createLinkedNote` was asked for, with the note linking.
+  final List<(String, String)> linkedMade = <(String, String)>[];
+
+  /// What `attachment` answers.
+  Either<ApplicationError, AttachmentFile> attachmentResult =
+      const Left<ApplicationError, AttachmentFile>(
+        ApplicationError.notFound(message: 'No such file.'),
+      );
+
   /// The tickets `undo` was asked to take back.
   final List<int> undone = <int>[];
 
@@ -191,6 +203,32 @@ class FixtureLibraryRepository implements LibraryRepository {
     tasksSet.add((noteId, line, text, checked));
     return setTaskResult;
   }
+
+  @override
+  Future<Either<ApplicationError, Ticked>> toggleTaskAt({
+    required String noteId,
+    required int index,
+    required String baseRev,
+  }) async {
+    boxesToggled.add((noteId, index, baseRev));
+    return setTaskResult;
+  }
+
+  @override
+  Future<Either<ApplicationError, Saved>> createLinkedNote({
+    required String title,
+    required String fromNote,
+  }) async {
+    linkedMade.add((title, fromNote));
+    return Right<ApplicationError, Saved>(
+      Saved(id: 'note:linked-${linkedMade.length}', rev: '1'),
+    );
+  }
+
+  @override
+  Future<Either<ApplicationError, AttachmentFile>> attachment(
+    String id,
+  ) async => attachmentResult;
 
   @override
   Stream<List<String>> changes() => changeStream.stream;

@@ -606,3 +606,18 @@ proptest! {
         prop_assert!(!is_allowed_link(&spaced));
     }
 }
+
+#[test]
+fn the_app_draws_the_title_and_the_margins_itself() {
+    let mode = AppMode::default();
+    let options = PageOptions {
+        app: Some(&mode),
+        ..PageOptions::default()
+    };
+    let html = crate::html::page_with("Title", "Some text.", &Palette::LIGHT, &none, &options);
+    assert!(html.contains("header{display:none}"));
+    assert!(html.contains("body{max-width:none;margin:0;padding:0 0 1rem}"));
+    // A page for anything else keeps them.
+    let page = crate::html::page("Title", "Some text.", &Palette::LIGHT, &none);
+    assert!(!page.contains("header{display:none}"));
+}

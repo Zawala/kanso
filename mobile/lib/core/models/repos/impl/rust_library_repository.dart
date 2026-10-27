@@ -117,5 +117,26 @@ class RustLibraryRepository implements LibraryRepository {
   );
 
   @override
+  Future<Either<ApplicationError, Ticked>> toggleTaskAt({
+    required String noteId,
+    required int index,
+    required String baseRev,
+  }) => attempt(
+    () => _library.toggleTaskAt(noteId: noteId, index: index, baseRev: baseRev),
+  );
+
+  @override
+  Future<Either<ApplicationError, Saved>> createLinkedNote({
+    required String title,
+    required String fromNote,
+  }) => attempt(
+    () => _library.createLinkedNote(title: title, fromNote: fromNote),
+  );
+
+  @override
+  Future<Either<ApplicationError, AttachmentFile>> attachment(String id) =>
+      attempt(() => _library.attachment(id: id));
+
+  @override
   Stream<List<String>> changes() => cancelableStream(_library.changes());
 }

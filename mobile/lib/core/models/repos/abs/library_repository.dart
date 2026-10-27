@@ -97,6 +97,27 @@ abstract interface class LibraryRepository {
     required bool checked,
   });
 
+  /// Ticks (or clears) the [index]-th task box of the note [noteId], as the
+  /// preview drawn at [baseRev] showed it, in one write. A
+  /// [ConflictError] when the note has changed since.
+  Future<Either<ApplicationError, Ticked>> toggleTaskAt({
+    required String noteId,
+    required int index,
+    required String baseRev,
+  });
+
+  /// The note a wiki-link in the note [fromNote] to the title [title] asks
+  /// for: made beside [fromNote], or the one with that title if there is one
+  /// by now.
+  Future<Either<ApplicationError, Saved>> createLinkedNote({
+    required String title,
+    required String fromNote,
+  });
+
+  /// An attachment's name, type and bytes, when a note that can be read now
+  /// links it.
+  Future<Either<ApplicationError, AttachmentFile>> attachment(String id);
+
   /// The IDs of what changed, in batches, as it is written: by this phone, a
   /// sync or the background.
   Stream<List<String>> changes();

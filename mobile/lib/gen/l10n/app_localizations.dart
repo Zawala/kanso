@@ -1845,6 +1845,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Due {due}'**
   String tasksRowDue(String due);
+
+  /// Read by a screen reader for the note's rendered page.
+  ///
+  /// In en, this message translates to:
+  /// **'The note\'s preview'**
+  String get previewLabel;
+
+  /// Shown instead of a note's rendered page when it could not be made.
+  ///
+  /// In en, this message translates to:
+  /// **'The preview couldn\'t be drawn.'**
+  String get previewFailed;
+
+  /// Said when a tap on a link in the preview did nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'That link couldn\'t be opened.'**
+  String get previewLinkFailed;
+
+  /// Said when a tap in the preview leads to a locked note or notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock your notes to open that.'**
+  String get previewLinkLocked;
+
+  /// Closes an attachment's sheet or full-screen image.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get attachmentDone;
+
+  /// Hands an attachment to the system's share sheet, to open, save or send it.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get attachmentShare;
+
+  /// An attachment's file type and size.
+  ///
+  /// In en, this message translates to:
+  /// **'{type} · {size}'**
+  String attachmentDetails(String type, String size);
 }
 
 class _AppLocalizationsDelegate

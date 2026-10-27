@@ -27,6 +27,27 @@ class RustRendererRepository implements RendererRepository {
   ) => attempt(() => _renderer.previewHtml(id: id, palette: palette));
 
   @override
+  Future<Either<ApplicationError, String>> previewPage(
+    String id,
+    PaletteDto palette,
+    PreviewOptions options,
+  ) => attempt(
+    () => _renderer.previewHtmlWith(id: id, palette: palette, options: options),
+  );
+
+  @override
+  Future<Either<ApplicationError, PreviewLink>> linkTarget(
+    String noteId,
+    String url,
+  ) => attempt(() => _renderer.linkTarget(noteId: noteId, url: url));
+
+  @override
+  Future<Either<ApplicationError, String>> codeBlock(
+    String noteId,
+    int index,
+  ) => attempt(() => _renderer.codeBlock(noteId: noteId, index: index));
+
+  @override
   Future<Either<ApplicationError, List<SpanRow>>> highlight(
     String text, {
     required int start,

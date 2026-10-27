@@ -1301,5 +1301,41 @@
         "type": "String"
       }
     }
+  },
+  "previewLabel": "The note's preview",
+  "@previewLabel": {
+    "description": "Read by a screen reader for the note's rendered page."
+  },
+  "previewFailed": "The preview couldn't be drawn.",
+  "@previewFailed": {
+    "description": "Shown instead of a note's rendered page when it could not be made."
+  },
+  "previewLinkFailed": "That link couldn't be opened.",
+  "@previewLinkFailed": {
+    "description": "Said when a tap on a link in the preview did nothing."
+  },
+  "previewLinkLocked": "Unlock your notes to open that.",
+  "@previewLinkLocked": {
+    "description": "Said when a tap in the preview leads to a locked note or notebook."
+  },
+  "attachmentDone": "Done",
+  "@attachmentDone": {
+    "description": "Closes an attachment's sheet or full-screen image."
+  },
+  "attachmentShare": "Share",
+  "@attachmentShare": {
+    "description": "Hands an attachment to the system's share sheet, to open, save or send it."
+  },
+  "attachmentDetails": "{type} · {size}",
+  "@attachmentDetails": {
+    "description": "An attachment's file type and size.",
+    "placeholders": {
+      "type": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
   }
 }

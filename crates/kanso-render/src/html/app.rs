@@ -956,7 +956,9 @@ pub(super) fn stylesheet(p: &Palette, check: &str) -> String {
     let tint = |rgb: Rgb| c(rgb.over(p.background, 0.16));
     let table_head = p.table_header_background.map_or_else(|| c(p.surface), c);
     format!(
-        r#"ul:has(>li>a.kanso-task){{padding-left:0;list-style:none}}
+        r#"header{{display:none}}
+body{{max-width:none;margin:0;padding:0 0 1rem}}
+ul:has(>li>a.kanso-task){{padding-left:0;list-style:none}}
 li:has(>a.kanso-task),li:has(>p:first-child>a.kanso-task){{list-style:none}}
 a.kanso-task{{display:inline-block;vertical-align:-2px;padding:15px;margin:-15px -7px -15px -15px;text-decoration:none;-webkit-tap-highlight-color:transparent}}
 .kanso-box{{display:block;width:15px;height:15px;border:1.5px solid {taskdone};border-radius:4px;background:transparent}}

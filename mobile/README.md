@@ -413,7 +413,9 @@ Every dependency is MIT, BSD or Apache licensed.
 | `path_provider` | The folder the library lives in | BSD-3-Clause |
 | `package_info_plus` | The version and build in Settings › About | BSD-3-Clause |
 | `shorebird_code_push` | Reads the number of the Shorebird patch the app runs (Settings › About and crash reports); it does not download patches | MIT |
+| `share_plus` | Hands an attachment tapped in a preview to the system's share sheet | BSD-3-Clause |
 | `url_launcher` | Opens the website from Settings › About | BSD-3-Clause |
+| `webview_flutter` | Shows a note's preview page, with every tapped address handed to the Rust core | BSD-3-Clause |
 
 The Rust library adds `core-foundation` and `core-foundation-sys` (Apple
 targets only, MIT or Apache-2.0, already in the iOS tree through
