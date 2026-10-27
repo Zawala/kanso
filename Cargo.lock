@@ -4662,6 +4662,7 @@ dependencies = [
  "jni",
  "kanso-core",
  "kanso-engine",
+ "kanso-import",
  "kanso-mobile",
  "kanso-render",
  "kanso-store",

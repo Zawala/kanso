@@ -9,11 +9,13 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview, ListPlace,
-    ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow,
-    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved,
-    SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
+    BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, ImportEvent, ImportFound, ImportPhase,
+    ImportProgress, ImportSource, ImportSummary, KansoError, LibraryOverview, ListPlace, ListQuery,
+    ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow, NoteView,
+    NotebookRole, NotebookRow, OpenedDocuments, OpenedFile, PaletteDto, Property, PropertyKind,
+    Range16, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase,
+    SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow,
+    ThemeTokens,
 };
 
 #[frb(mirror(KansoError))]
@@ -365,4 +367,70 @@ pub struct _SvgRow {
     pub width: f32,
     pub height: f32,
     pub baseline: Option<f32>,
+}
+
+#[frb(mirror(ImportSource))]
+pub struct _ImportSource {
+    pub kind: String,
+    pub label: String,
+    pub hint: String,
+    pub picks_files: bool,
+    pub picks_folders: bool,
+    pub extensions: Vec<String>,
+}
+
+#[frb(mirror(ImportPhase))]
+pub enum _ImportPhase {
+    Reading,
+    Notebooks,
+    Notes,
+}
+
+#[frb(mirror(ImportProgress))]
+pub struct _ImportProgress {
+    pub phase: Option<ImportPhase>,
+    pub label: String,
+    pub done: u64,
+    pub total: u64,
+    pub fraction: f64,
+}
+
+#[frb(mirror(ImportFound))]
+pub struct _ImportFound {
+    pub notes: u64,
+    pub notebooks: u64,
+    pub tags: u64,
+    pub attachments: u64,
+}
+
+#[frb(mirror(ImportSummary))]
+pub struct _ImportSummary {
+    pub kind: String,
+    pub dry_run: bool,
+    pub found: ImportFound,
+    pub empty: bool,
+    pub lines: Vec<String>,
+    pub skipped: Vec<String>,
+    pub rejected: Vec<String>,
+    pub first_note: Option<String>,
+}
+
+#[frb(mirror(ImportEvent))]
+pub enum _ImportEvent {
+    Progress(ImportProgress),
+    Done(ImportSummary),
+    Failed(String),
+}
+
+#[frb(mirror(OpenedFile))]
+pub struct _OpenedFile {
+    pub path: String,
+    pub name: String,
+    pub identity: Option<String>,
+}
+
+#[frb(mirror(OpenedDocuments))]
+pub struct _OpenedDocuments {
+    pub note_id: Option<String>,
+    pub problems: Vec<String>,
 }

@@ -5,8 +5,9 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    Hit, KansoError, Library, LibraryOverview, ListQuery, NewNote, NoteChange, NoteList, NoteView,
-    NotebookRow, Property, Saved, SearchScope, Table, TagRow,
+    Hit, ImportEvent, KansoError, Library, LibraryOverview, ListQuery, NewNote, NoteChange,
+    NoteList, NoteView, NotebookRow, OpenedDocuments, OpenedFile, Property, Saved, SearchScope,
+    Table, TagRow,
 };
 
 use super::locks::KansoLocks;
@@ -87,6 +88,33 @@ impl KansoLibrary {
     /// The IDs of what changed, in batches, until Dart stops listening.
     pub fn changes(&self, sink: StreamSink<Vec<String>>) {
         self.0.changes(move |ids| sink.add(ids).is_ok());
+    }
+
+    /// What importing `path` as a `kind` would do (one of `import_sources`):
+    /// progress, then one summary or one failure. Writes nothing. Returns at
+    /// once; the work runs on a thread of its own.
+    pub fn import_plan(&self, kind: String, path: String, sink: StreamSink<ImportEvent>) {
+        self.0
+            .import_plan(&kind, &path, move |event| sink.add(event).is_ok());
+    }
+
+    /// Imports `path` as a `kind`: progress, then one summary or one
+    /// failure. Returns at once; the notes written reach `changes`.
+    pub fn import(&self, kind: String, path: String, sink: StreamSink<ImportEvent>) {
+        self.0
+            .import(&kind, &path, move |event| sink.add(event).is_ok());
+    }
+
+    /// Opens the Markdown or text files the system handed over, each into
+    /// the Inbox; the last note opened and what went wrong with the others.
+    /// Copies of a document the platform names (`identity`) are staged under
+    /// `staging` so opening it again updates the same note.
+    pub fn open_documents(
+        &self,
+        files: Vec<OpenedFile>,
+        staging: String,
+    ) -> Result<OpenedDocuments, KansoError> {
+        self.0.open_documents(files, &staging)
     }
 
     #[frb(sync)]

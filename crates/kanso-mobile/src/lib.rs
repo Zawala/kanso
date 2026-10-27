@@ -27,6 +27,13 @@
 //!   diagrams.
 //! - [`background`] is the sync that runs with no app: the code behind the
 //!   C entry `kanso_background_sync` that `mobile/rust` exports.
+//! - [`import`] brings notes in from another app's export or a folder of
+//!   Markdown (`Library::import_plan` shows what would happen and writes
+//!   nothing, `Library::import` does it, both as a stream of progress ending in
+//!   one summary, with the words the desktop uses), lists the sources a phone
+//!   can read ([`import::import_sources`], [`import::import_kinds_for`]) and
+//!   opens the files other apps share (`Library::open_documents`). What an
+//!   import writes is announced on [`Library::changes`].
 //! - [`diagnostics`] has the version, the TLS check and the panic probe.
 //!
 //! # The edge
@@ -46,6 +53,7 @@ pub mod boundary;
 mod builtin_themes;
 pub mod diagnostics;
 mod errors;
+pub mod import;
 mod library;
 mod locks;
 mod matching;
