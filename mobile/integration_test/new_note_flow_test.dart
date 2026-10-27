@@ -13,6 +13,8 @@ import 'package:kanso/core/views/widgets/kanso_icon_button.dart';
 import 'package:kanso/editor/views/widgets/editor_title_field.dart';
 import 'package:kanso/injection.dart';
 import 'package:kanso/note_list/views/widgets/new_note_button.dart';
+import 'package:kanso/settings/views/widgets/default_notebook_pane.dart';
+import 'package:kanso/settings/views/widgets/settings_pane.dart';
 
 import 'helpers/editor_driver.dart';
 import 'helpers/flow_driver.dart';
@@ -81,11 +83,9 @@ void main() {
   /// its text, and waits until the library holds both.
   Future<String> write(WidgetTester tester, String title, String text) async {
     await pumpUntil(tester, find.byType(EditorTitleField));
-    await pumpUntilTrue(
-      tester,
-      () => titleFocused(tester),
-      reason: 'the title to have the focus',
-    );
+    // The title has the focus the moment the editor is there.
+    await tester.pumpAndSettle();
+    expect(titleFocused(tester), isTrue);
     await tester.enterText(
       find.descendant(
         of: find.byType(EditorTitleField),
@@ -117,14 +117,24 @@ void main() {
     expect(find.text('First notebook'), findsOneWidget);
     await tester.tap(find.text('Default notebook'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Garden'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(DefaultNotebookPane),
+        matching: find.text('Garden'),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('Back').last);
     await tester.pumpAndSettle();
-    expect(find.text('Garden'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(SettingsPane),
+        matching: find.text('Garden'),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.bySemanticsLabel('Close'));
     await tester.pumpAndSettle();
-    await closeLibrary(tester);
 
     // + makes a note in the default notebook, open to write its title.
     await tester.tap(newNoteButton());
@@ -140,7 +150,6 @@ void main() {
     await openLibrary(tester);
     await tester.tap(inLibrary('todo'));
     await tester.pumpAndSettle();
-    await closeLibrary(tester);
     await tester.tap(newNoteButton());
     await tester.pumpAndSettle();
     final tagged = await write(tester, 'Tagged here', 'Made from a tag.');
@@ -179,7 +188,7 @@ void main() {
       () => const <NotebookRow>[],
     );
     expect(notebooks.where((book) => book.name == 'Recipes'), hasLength(1));
-    expect(find.text('No notes in Recipes'), findsOneWidget);
+    expect(find.text('No notes in Recipes yet'), findsOneWidget);
 
     // A note made in an empty notebook's own list goes in it, whatever the
     // default is.

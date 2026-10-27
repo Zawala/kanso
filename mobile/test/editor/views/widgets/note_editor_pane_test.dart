@@ -55,13 +55,22 @@ Future<_Page> _open(
   bool edit = true,
   Size size = const Size(393, 852),
   NotePlace? place,
+  bool openedNew = false,
+  String noteTitle = 'Sync design notes',
 }) async {
   final blocs = await BrowseBlocs.start();
-  final document = FakeEditorDocument(text: text, title: 'Sync design notes');
+  final document = FakeEditorDocument(text: text, title: noteTitle);
   addTearDown(document.events_.close);
   registerEditorBloc(document);
   if (place != null) {
     blocs.places.keep(MockIds.syncDesign, place);
+  }
+  if (openedNew) {
+    blocs.library.notes[MockIds.syncDesign] = mockNote(
+      title: noteTitle,
+      body: text,
+    );
+    blocs.places.markOpenedNew(MockIds.syncDesign);
   }
   final note = await blocs.noteOf(MockIds.syncDesign);
   late final GoRouter router;
@@ -99,6 +108,34 @@ TextEditingValue _at(String text, int caret) => TextEditingValue(
 );
 
 void main() {
+  group('NotePane for a note just made', () {
+    testWidgets('opens to edit with the title to type when it has none', (
+      tester,
+    ) async {
+      await _open(tester, edit: false, openedNew: true, noteTitle: '');
+      await _settle(tester);
+      expect(find.byType(EditorTitleField), findsOneWidget);
+      final title = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byType(EditorTitleField),
+          matching: find.byType(EditableText),
+        ),
+      );
+      expect(title.focusNode.hasFocus, isTrue);
+    });
+
+    testWidgets('a note with a title, as a link makes one, is typed in', (
+      tester,
+    ) async {
+      await _open(tester, edit: false, openedNew: true, noteTitle: 'Not yet');
+      await _settle(tester);
+      final text = tester.widget<EditableText>(
+        find.byType(KansoEditableText),
+      );
+      expect(text.focusNode.hasFocus, isTrue);
+    });
+  });
+
   group('NotePane in edit mode', () {
     testWidgets('has the toggle and the info button, in either mode', (
       tester,
