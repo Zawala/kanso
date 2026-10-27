@@ -20,6 +20,12 @@ abstract class KansoEditor implements RustOpaqueInterface {
   /// A change the editor decides on; none when there is nothing to do.
   EditOutcome? command({required EditCommand command});
 
+  /// The words the note's open comments are on, to tint.
+  Future<List<Range16>> commentMarks();
+
+  /// Comments on the selected words of a shared note; the new comment's ID.
+  Future<String> commentOnSelection({required String body});
+
   /// What the caret completes, if anything.
   Future<Completion?> completion();
 
@@ -37,10 +43,16 @@ abstract class KansoEditor implements RustOpaqueInterface {
 
   EditOutcome? redo();
 
+  /// Other people's carets and selections, in units of the text.
+  Future<List<CursorMark>> remoteCursors();
+
   Future<List<Property>> removeProperty({required int index});
 
   /// The field's selection changed; what is under the caret.
   EditorContext select({required Range16 selection, required bool composing});
+
+  /// Selects the words a comment is on; the selection, if it was found.
+  Future<Range16?> selectComment({required String commentId});
 
   Future<List<Property>> setProperty({
     int? index,

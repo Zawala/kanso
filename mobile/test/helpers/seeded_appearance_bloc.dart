@@ -11,6 +11,8 @@ import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:mocktail/mocktail.dart';
 
+import 'fixture_gallery_repository.dart';
+
 class MockPreferencesRepository extends Mock implements PreferencesRepository {}
 
 class MockRendererRepository extends Mock implements RendererRepository {}
@@ -53,7 +55,11 @@ class SeededPreferencesRepository implements PreferencesRepository {
 /// has no themes to read besides Kanso's.
 class SeededAppearanceBloc extends AppearanceBloc {
   SeededAppearanceBloc(AppearanceState seed)
-    : super(ForgetfulPreferencesRepository(), MockRendererRepository()) {
+    : super(
+        ForgetfulPreferencesRepository(),
+        MockRendererRepository(),
+        FixtureGalleryRepository(),
+      ) {
     emit(seed);
   }
 }

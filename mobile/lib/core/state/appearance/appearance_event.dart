@@ -38,4 +38,10 @@ sealed class AppearanceEvent with _$AppearanceEvent {
   /// The person picked [size] for the text of notes.
   const factory AppearanceEvent.textSizeChanged(KansoTextSize size) =
       AppearanceTextSizeChangedEvent;
+
+  /// The theme [id] installed from the gallery was installed again (updated)
+  /// or removed: a theme in use is drawn again from its new tokens, and one
+  /// that is gone is replaced, in any slot that used it, by Kanso's own.
+  const factory AppearanceEvent.themeChanged(String id) =
+      AppearanceThemeChangedEvent;
 }

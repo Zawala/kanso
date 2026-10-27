@@ -2,6 +2,8 @@
 // Created 2026-10-25.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'dart:async';
+
 import 'package:bloc_test/bloc_test.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart' show ThemeMode;
@@ -20,6 +22,7 @@ import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/utils/palette_from_tokens.dart';
 import 'package:mocktail/mocktail.dart';
 
+import '../../../helpers/mock_repositories.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 import '../../../helpers/theme_tokens.dart';
 
@@ -44,6 +47,7 @@ const KansoIconSet _phosphor = KansoIconSet(
 void main() {
   late MockPreferencesRepository preferences;
   late MockRendererRepository renderer;
+  late MockGalleryRepository gallery;
   late Preferences saved;
 
   setUpAll(() {
@@ -54,6 +58,16 @@ void main() {
   setUp(() {
     preferences = MockPreferencesRepository();
     renderer = MockRendererRepository();
+    gallery = MockGalleryRepository();
+    when(
+      () => gallery.themeChanges(),
+    ).thenAnswer((_) => const Stream<String>.empty());
+    // No theme is installed from the gallery unless a test says so.
+    when(() => gallery.installedThemeTokens(any())).thenAnswer(
+      (_) async => const Left<ApplicationError, ThemeTokens>(
+        ApplicationError.notFound(message: 'Not installed.'),
+      ),
+    );
     saved = const Preferences();
     when(
       () => preferences.load(),
@@ -95,7 +109,7 @@ void main() {
     );
   });
 
-  AppearanceBloc build() => AppearanceBloc(preferences, renderer);
+  AppearanceBloc build() => AppearanceBloc(preferences, renderer, gallery);
 
   group('AppearanceBloc', () {
     test('starts loading, in the Kanso themes, following the system', () {
@@ -151,7 +165,9 @@ void main() {
       verify: (bloc) {
         expect(bloc.state.themeMode, ThemeMode.dark);
         verify(() => renderer.builtinThemeTokens('nord')).called(1);
-        verifyNever(() => renderer.builtinThemeTokens('github-light'));
+        // The slot not shown is read too, to know it is still there; it is
+        // read once and kept.
+        verify(() => renderer.builtinThemeTokens('github-light')).called(1);
       },
     );
 
@@ -170,23 +186,6 @@ void main() {
           light: _github,
           dark: _nord,
           status: AppearanceStatus.ready,
-        ),
-      ],
-    );
-
-    blocTest<AppearanceBloc, AppearanceState>(
-      'started with a theme that is gone shows the Kanso one and says failed',
-      setUp: () {
-        saved = const Preferences(
-          themeSelection: ThemeSelection(light: 'gone'),
-        );
-      },
-      build: build,
-      act: (bloc) => bloc.add(const AppearanceEvent.started()),
-      expect: () => <AppearanceState>[
-        AppearanceState(
-          selection: saved.themeSelection,
-          status: AppearanceStatus.failed,
         ),
       ],
     );
@@ -563,6 +562,209 @@ void main() {
         );
       },
     );
+
+    group('with themes installed from the gallery', () {
+      final dusk = fakePalette('dusk', dark: true);
+      final duskUpdated = dusk.copyWith(name: 'Dusk, updated');
+
+      setUp(() {
+        when(() => renderer.builtinThemeTokens('dusk')).thenAnswer(
+          (_) async => const Left<ApplicationError, ThemeTokens>(
+            ApplicationError.notFound(message: 'Not built in.'),
+          ),
+        );
+        when(() => gallery.installedThemeTokens('dusk')).thenAnswer(
+          (_) async => Right<ApplicationError, ThemeTokens>(tokensFor(dusk)),
+        );
+      });
+
+      blocTest<AppearanceBloc, AppearanceState>(
+        'picking an installed theme reads it from the gallery when it is not '
+        'built in',
+        build: build,
+        act: (bloc) =>
+            bloc.add(const AppearanceEvent.themePicked('dusk', dark: true)),
+        expect: () => <AppearanceState>[
+          AppearanceState(
+            selection: const ThemeSelection(ui: 'dusk', dark: 'dusk'),
+            dark: paletteFromTokens('dusk', tokensFor(dusk)),
+          ),
+        ],
+        verify: (_) {
+          verify(() => gallery.installedThemeTokens('dusk')).called(1);
+          expect(saved.themeSelection.dark, 'dusk');
+        },
+      );
+
+      blocTest<AppearanceBloc, AppearanceState>(
+        'a built-in theme is never looked for in the gallery',
+        build: build,
+        act: (bloc) =>
+            bloc.add(const AppearanceEvent.themePicked('nord', dark: true)),
+        verify: (_) => verifyNever(() => gallery.installedThemeTokens(any())),
+      );
+
+      blocTest<AppearanceBloc, AppearanceState>(
+        'a theme in use that was updated is drawn in its new colours',
+        seed: () => AppearanceState(
+          selection: const ThemeSelection(ui: 'dusk', dark: 'dusk'),
+          dark: paletteFromTokens('dusk', tokensFor(dusk)),
+        ),
+        setUp: () {
+          when(() => gallery.installedThemeTokens('dusk')).thenAnswer(
+            (_) async =>
+                Right<ApplicationError, ThemeTokens>(tokensFor(duskUpdated)),
+          );
+        },
+        build: build,
+        act: (bloc) => bloc.add(const AppearanceEvent.themeChanged('dusk')),
+        expect: () => <AppearanceState>[
+          AppearanceState(
+            selection: const ThemeSelection(ui: 'dusk', dark: 'dusk'),
+            dark: paletteFromTokens('dusk', tokensFor(duskUpdated)),
+          ),
+        ],
+      );
+
+      blocTest<AppearanceBloc, AppearanceState>(
+        'a theme in use that was removed goes back to Kanso’s own, in every '
+        'slot that held it, and the choice is saved',
+        seed: () => AppearanceState(
+          selection: const ThemeSelection(
+            followSystem: false,
+            ui: 'dusk',
+            light: 'dusk',
+            dark: 'dusk',
+          ),
+          light: paletteFromTokens('dusk', tokensFor(dusk)),
+          dark: paletteFromTokens('dusk', tokensFor(dusk)),
+        ),
+        setUp: () {
+          when(() => gallery.installedThemeTokens('dusk')).thenAnswer(
+            (_) async => const Left<ApplicationError, ThemeTokens>(
+              ApplicationError.notFound(message: 'Removed.'),
+            ),
+          );
+        },
+        build: build,
+        act: (bloc) => bloc.add(const AppearanceEvent.themeChanged('dusk')),
+        expect: () => <AppearanceState>[
+          const AppearanceState(
+            selection: ThemeSelection(followSystem: false),
+            light: KansoPalette.kansoDark,
+          ),
+        ],
+        verify: (bloc) {
+          expect(saved.themeSelection.ui, ThemeSelection.kansoDark);
+          expect(saved.themeSelection.light, ThemeSelection.kansoLight);
+          expect(saved.themeSelection.dark, ThemeSelection.kansoDark);
+        },
+      );
+
+      blocTest<AppearanceBloc, AppearanceState>(
+        'a removed theme in a slot that is not showing goes back to Kanso’s '
+        'own too, so it is not back when the system’s appearance changes',
+        // Following the system shows the light and dark slots; the fixed
+        // one, for when following stops, holds the removed theme.
+        seed: () => const AppearanceState(
+          selection: ThemeSelection(ui: 'dusk'),
+        ),
+        setUp: () {
+          when(() => gallery.installedThemeTokens('dusk')).thenAnswer(
+            (_) async => const Left<ApplicationError, ThemeTokens>(
+              ApplicationError.notFound(message: 'Removed.'),
+            ),
+          );
+        },
+        build: build,
+        act: (bloc) => bloc.add(const AppearanceEvent.themeChanged('dusk')),
+        verify: (bloc) {
+          expect(bloc.state.selection, const ThemeSelection());
+          expect(saved.themeSelection, const ThemeSelection());
+        },
+      );
+
+      test('a theme the gallery reports changed, wherever it was changed, '
+          'reaches the app', () async {
+        final changes = StreamController<String>.broadcast();
+        addTearDown(changes.close);
+        when(() => gallery.themeChanges()).thenAnswer((_) => changes.stream);
+        when(() => gallery.installedThemeTokens('dusk')).thenAnswer(
+          (_) async => const Left<ApplicationError, ThemeTokens>(
+            ApplicationError.notFound(message: 'Withdrawn.'),
+          ),
+        );
+        saved = const Preferences(
+          themeSelection: ThemeSelection(followSystem: false, ui: 'nord'),
+        );
+        final bloc = build()..add(const AppearanceEvent.started());
+        addTearDown(bloc.close);
+        await bloc.stream.firstWhere(
+          (state) => state.status == AppearanceStatus.ready,
+        );
+        bloc.add(const AppearanceEvent.themePicked('nord', dark: true));
+        // The catalog withdrew a theme in use, and nobody had the picker
+        // open: the gallery alone says so.
+        when(() => renderer.builtinThemeTokens('nord')).thenAnswer(
+          (_) async => const Left<ApplicationError, ThemeTokens>(
+            ApplicationError.notFound(message: 'Gone.'),
+          ),
+        );
+        changes.add('nord');
+        await bloc.stream.firstWhere(
+          (state) => state.selection.ui == ThemeSelection.kansoDark,
+        );
+        expect(saved.themeSelection.ui, ThemeSelection.kansoDark);
+      });
+
+      test('stops listening to the gallery once it is closed', () async {
+        final changes = StreamController<String>.broadcast();
+        addTearDown(changes.close);
+        when(() => gallery.themeChanges()).thenAnswer((_) => changes.stream);
+        final bloc = build();
+        expect(changes.hasListener, isTrue);
+        await bloc.close();
+        expect(changes.hasListener, isFalse);
+      });
+
+      blocTest<AppearanceBloc, AppearanceState>(
+        'a theme that is not in use changing changes nothing',
+        build: build,
+        act: (bloc) => bloc.add(const AppearanceEvent.themeChanged('dusk')),
+        expect: () => <AppearanceState>[],
+        verify: (_) => verifyNever(() => preferences.update(any())),
+      );
+    });
+
+    test('a saved theme that cannot be read at start is Kanso’s own from '
+        'then on, in every slot that held it, and that is saved', () async {
+      saved = const Preferences(
+        themeSelection: ThemeSelection(ui: 'gone', light: 'gone'),
+      );
+      final bloc = build()..add(const AppearanceEvent.started());
+      addTearDown(bloc.close);
+      final ready = await bloc.stream.firstWhere(
+        (state) => state.status != AppearanceStatus.loading,
+      );
+      expect(ready.status, AppearanceStatus.ready);
+      expect(ready.selection, const ThemeSelection());
+      expect(ready.light, KansoPalette.kansoLight);
+      await Future<void>.delayed(Duration.zero);
+      expect(saved.themeSelection, const ThemeSelection());
+    });
+
+    test('a start whose themes all read saves nothing', () async {
+      saved = const Preferences(
+        themeSelection: ThemeSelection(followSystem: false, ui: 'nord'),
+      );
+      final bloc = build()..add(const AppearanceEvent.started());
+      addTearDown(bloc.close);
+      await bloc.stream.firstWhere(
+        (state) => state.status != AppearanceStatus.loading,
+      );
+      await Future<void>.delayed(Duration.zero);
+      verifyNever(() => preferences.update(any()));
+    });
 
     test('does not touch what it does not own in the preferences', () async {
       saved = const Preferences(

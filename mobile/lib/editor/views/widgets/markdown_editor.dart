@@ -32,6 +32,7 @@ class MarkdownEditor extends StatefulWidget {
     this.scrollPadding = const EdgeInsets.all(24),
     this.menuBuilder,
     this.editableKey,
+    this.readOnly = false,
     super.key,
   });
 
@@ -52,6 +53,10 @@ class MarkdownEditor extends StatefulWidget {
 
   /// A key for the editable text inside, to find where the caret is.
   final GlobalKey<EditableTextState>? editableKey;
+
+  /// Whether the text may be selected and copied, and not changed: a note
+  /// shared to view or comment on.
+  final bool readOnly;
 
   /// How tall the caret is, in points, for an editor font [fontSize] high.
   static double caretHeightFor(double fontSize) =>
@@ -125,6 +130,12 @@ class _MarkdownEditorState extends State<MarkdownEditor>
     final service = widget.spellCheckService;
     widget.controller.misspelledStyle = widget.controller.misspelledStyle
         .copyWith(decorationColor: colors.danger);
+    // As the desktop tints them: the warning colour at a fifth.
+    widget.controller
+      ..commentStyle = TextStyle(
+        backgroundColor: colors.warning.withValues(alpha: 0.2),
+      )
+      ..darkCursors = Theme.brightnessOf(context) == Brightness.dark;
     return Actions(
       actions: <Type, Action<Intent>>{
         UndoTextIntent: CallbackAction<UndoTextIntent>(
@@ -141,6 +152,7 @@ class _MarkdownEditorState extends State<MarkdownEditor>
           controller: widget.controller,
           focusNode: widget.focusNode,
           autofocus: widget.autofocus,
+          readOnly: widget.readOnly,
           style: style,
           cursorColor: colors.accent,
           backgroundCursorColor: colors.textMuted,

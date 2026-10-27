@@ -2,6 +2,8 @@
 // Created 2026-10-25.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'dart:async';
+
 import 'package:bloc/bloc.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:flutter/material.dart' show ThemeMode;
@@ -16,6 +18,7 @@ import '../../models/data/kanso_icon_set.dart';
 import '../../models/data/kanso_text_size.dart';
 import '../../models/data/preferences.dart';
 import '../../models/data/theme_selection.dart';
+import '../../models/repos/abs/gallery_repository.dart';
 import '../../models/repos/abs/preferences_repository.dart';
 import '../../models/repos/abs/renderer_repository.dart';
 import '../../utils/palette_from_tokens.dart';
@@ -30,9 +33,14 @@ part 'appearance_state.dart';
 /// Every choice is shown at once and then saved in the preferences, so it is
 /// still there at the next start. A choice that cannot be saved stays for
 /// this run. Events are handled one after another, in the order they came.
+///
+/// A colour theme installed from the gallery that changes, wherever it was
+/// changed, is shown again: in its new colours, or, once it is gone,
+/// replaced by Kanso's own in every slot that held it, shown or not. A
+/// theme that cannot be read at start is replaced the same way.
 @injectable
 class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
-  AppearanceBloc(this._preferences, this._renderer)
+  AppearanceBloc(this._preferences, this._renderer, this._gallery)
     : super(const AppearanceState()) {
     // One handler for every event, so they all run one after another in the
     // order they came (a transformer orders only the events of one handler).
@@ -67,13 +75,19 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
           size,
           emit,
         ),
+        AppearanceThemeChangedEvent(:final id) => _onThemeChanged(id, emit),
       },
       transformer: sequential(),
+    );
+    _themeChanges = _gallery.themeChanges().listen(
+      (id) => add(AppearanceEvent.themeChanged(id)),
     );
   }
 
   final PreferencesRepository _preferences;
   final RendererRepository _renderer;
+  final GalleryRepository _gallery;
+  late final StreamSubscription<String> _themeChanges;
   final Map<String, KansoPalette> _palettes = <String, KansoPalette>{
     KansoPalette.kansoLight.id: KansoPalette.kansoLight,
     KansoPalette.kansoDark.id: KansoPalette.kansoDark,
@@ -85,11 +99,20 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
   Future<void> _onStarted(Emitter<AppearanceState> emit) async {
     final loaded = await _preferences.load();
     final preferences = loaded.getOrElse(Preferences.new);
-    final shown = await _paletteSlots(preferences.themeSelection);
+    final saved = preferences.themeSelection;
+    // A theme that is gone (removed while the app was not running) is
+    // Kanso's own in its slots from now on.
+    var selection = saved;
+    for (final id in <String>{saved.ui, saved.light, saved.dark}) {
+      if (await _palette(id) == null) {
+        selection = selection.without(id);
+      }
+    }
+    final shown = await _paletteSlots(selection);
     final icons = await _iconSet(preferences.iconTheme);
     emit(
       AppearanceState(
-        selection: preferences.themeSelection,
+        selection: selection,
         light: shown.light,
         dark: shown.dark,
         iconSet: icons ?? KansoIconSet.lucide,
@@ -100,6 +123,11 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
             : AppearanceStatus.failed,
       ),
     );
+    if (selection != saved) {
+      await _preferences.update(
+        (current) => current.copyWith(themeSelection: selection),
+      );
+    }
   }
 
   Future<void> _onThemePicked(
@@ -109,6 +137,27 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
   ) async {
     final selection = state.selection.picked(id, dark: dark);
     await _select(selection, emit);
+  }
+
+  Future<void> _onThemeChanged(
+    String id,
+    Emitter<AppearanceState> emit,
+  ) async {
+    _palettes.remove(id);
+    final selection = state.selection;
+    final without = selection.without(id);
+    if (without == selection) {
+      return;
+    }
+    if (await _palette(id) == null) {
+      // Removed: Kanso's own theme in every slot that held it, shown or
+      // not, so it is not back when the system's appearance changes.
+      await _select(without, emit);
+      return;
+    }
+    // Updated: the same theme in new colours.
+    final shown = await _paletteSlots(selection);
+    emit(state.copyWith(light: shown.light, dark: shown.dark));
   }
 
   /// Shows the icon theme [id] and saves it, unless it cannot be read: an
@@ -199,7 +248,11 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
     if (known != null) {
       return known;
     }
-    final tokens = await _renderer.builtinThemeTokens(id);
+    // A built-in theme, or one installed from the gallery.
+    var tokens = await _renderer.builtinThemeTokens(id);
+    if (tokens.isLeft()) {
+      tokens = await _gallery.installedThemeTokens(id);
+    }
     return tokens.fold((_) => null, (found) {
       final made = paletteFromTokens(id, found);
       _palettes[id] = made;
@@ -239,5 +292,11 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
       _iconSets[id] = made;
       return made;
     });
+  }
+
+  @override
+  Future<void> close() async {
+    await _themeChanges.cancel();
+    return super.close();
   }
 }

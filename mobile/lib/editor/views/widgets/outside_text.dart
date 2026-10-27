@@ -136,6 +136,13 @@ class _OutsideTextState extends State<OutsideText> {
                       ),
                   ],
                   base: style,
+                  comments: controller.outsideCommentsOf(side, start, end),
+                  commentStyle: controller.commentStyle,
+                  selections: controller.outsideSelectionsOf(
+                    side,
+                    start,
+                    end,
+                  ),
                 ),
               );
             }

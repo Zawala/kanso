@@ -19,6 +19,7 @@ import 'package:kanso/settings/views/widgets/settings_pane.dart';
 import 'package:kanso/shell/views/widgets/library_drawer_host.dart';
 import 'package:kanso/shell/views/widgets/list_note_layout.dart';
 import 'package:kanso/shell/views/widgets/tablet_layout.dart';
+import 'package:kanso/themes/state/theme_gallery/theme_gallery_bloc.dart';
 import 'package:kanso/themes/state/theme_picker/theme_picker_bloc.dart';
 import 'package:kanso/themes/views/widgets/theme_picker_pane.dart';
 
@@ -177,6 +178,7 @@ void main() {
           themeId: 'kanso-$name',
         );
         final picker = await startThemePicker();
+        final gallery = await startThemeGallery(emptyGallery());
         await atMockNow(
           () => expectGoldenOnBothPlatforms(
             tester,
@@ -189,6 +191,7 @@ void main() {
               sheet: const ThemePickerPane(),
               providers: <BlocProvider<dynamic>>[
                 BlocProvider<ThemePickerBloc>.value(value: picker),
+                BlocProvider<ThemeGalleryBloc>.value(value: gallery),
               ],
             ),
           ),

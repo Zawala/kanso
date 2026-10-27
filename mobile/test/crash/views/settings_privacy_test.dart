@@ -12,11 +12,13 @@ import 'package:go_router/go_router.dart';
 import 'package:kanso/core/models/data/app_version.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/preferences.dart';
+import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
 import 'package:mocktail/mocktail.dart';
 
@@ -25,7 +27,9 @@ import '../../helpers/fixture_library_repository.dart';
 import '../../helpers/fixture_sync_repository.dart';
 import '../../helpers/mock_repositories.dart';
 import '../../helpers/pump_routed.dart';
+import '../../helpers/seeded_account_blocs.dart';
 import '../../helpers/seeded_appearance_bloc.dart';
+import '../../helpers/sync_settings_blocs.dart';
 
 Future<GoRouter> _pump(WidgetTester tester, {int? patch}) async {
   final about = MockAboutRepository();
@@ -50,15 +54,19 @@ Future<GoRouter> _pump(WidgetTester tester, {int? patch}) async {
   closeBlocLater(aboutBloc);
   closeBlocLater(syncBloc);
   closeBlocLater(appearance);
+  final account = SeededAccountBloc();
+  closeBlocLater(account);
   final router = await pumpRouted(
     tester,
     MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<AppearanceBloc>.value(value: appearance),
         BlocProvider<SyncStatusBloc>.value(value: syncBloc),
+        BlocProvider<SyncSettingsBloc>.value(value: startedSyncSettingsBloc()),
         BlocProvider<AboutBloc>.value(value: aboutBloc),
         BlocProvider<LibraryIndexBloc>.value(value: index),
         BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
+        BlocProvider<AccountBloc>.value(value: account),
       ],
       child: const SettingsPane(),
     ),

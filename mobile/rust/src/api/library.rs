@@ -10,9 +10,14 @@ use kanso_mobile::{
     TaskBoard, TaskListQuery, Ticked,
 };
 
+use super::account::KansoAccount;
+use super::account_settings::KansoAccountSettings;
+use super::approvals::KansoApprovals;
 use super::editor::KansoEditor;
+use super::gallery::KansoGallery;
 use super::locks::KansoLocks;
 use super::renderer::KansoRenderer;
+use super::shared::KansoShared;
 use super::sync::KansoSync;
 
 /// An open library. Cheap to clone on the Rust side; Dart holds one.
@@ -157,5 +162,30 @@ impl KansoLibrary {
     #[frb(sync)]
     pub fn renderer(&self) -> KansoRenderer {
         KansoRenderer::new(self.0.renderer())
+    }
+
+    #[frb(sync)]
+    pub fn account(&self) -> KansoAccount {
+        KansoAccount::new(self.0.account())
+    }
+
+    #[frb(sync)]
+    pub fn account_settings(&self) -> KansoAccountSettings {
+        KansoAccountSettings::new(self.0.account_settings())
+    }
+
+    #[frb(sync)]
+    pub fn approvals(&self) -> KansoApprovals {
+        KansoApprovals::new(self.0.approvals())
+    }
+
+    #[frb(sync)]
+    pub fn shared(&self) -> KansoShared {
+        KansoShared::new(self.0.shared())
+    }
+
+    #[frb(sync)]
+    pub fn gallery(&self) -> KansoGallery {
+        KansoGallery::new(self.0.gallery())
     }
 }

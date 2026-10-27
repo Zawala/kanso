@@ -4,15 +4,26 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+import 'account.dart';
+import 'account_settings.dart';
+import 'approvals.dart';
 import 'editor.dart';
+import 'gallery.dart';
 import 'locks.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'renderer.dart';
+import 'shared.dart';
 import 'sync.dart';
 import 'types.dart';
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
 abstract class KansoLibrary implements RustOpaqueInterface {
+  KansoAccount account();
+
+  KansoAccountSettings accountSettings();
+
+  KansoApprovals approvals();
+
   Future<AttachmentFile> attachment({required String id});
 
   Future<Changed> change({
@@ -34,6 +45,8 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   /// Opens note `id` for editing. Locked while it is locked and closed.
   Future<KansoEditor> edit({required String id});
+
+  KansoGallery gallery();
 
   Future<NoteList> list({required ListQuery query});
 
@@ -76,6 +89,8 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required String text,
     required bool checked,
   });
+
+  KansoShared shared();
 
   KansoSync syncing();
 

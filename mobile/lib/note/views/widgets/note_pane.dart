@@ -18,6 +18,11 @@ import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
 import '../../../editor/views/widgets/note_editor_pane.dart';
+import '../../../sharing/state/comments/comments_bloc.dart';
+import '../../../sharing/state/shared_note_status/shared_note_status_bloc.dart';
+import '../../../sharing/views/widgets/comments_button.dart';
+import '../../../sharing/views/widgets/share_note_button.dart';
+import '../../../sharing/views/widgets/shared_note_status_strip.dart';
 import '../../models/data/note_mode.dart';
 import '../../models/data/note_screen_status.dart';
 import '../../state/note/note_bloc.dart';
@@ -48,6 +53,20 @@ class NotePane extends StatelessWidget {
     final l10n = context.l10n;
     final gutter = inPane ? KansoSpacing.lg : KansoSpacing.md;
     final history = context.read<NavigationHistoryBloc>();
+    // The note's comments, where the page has them.
+    CommentsBloc? comments;
+    try {
+      comments = context.read<CommentsBloc>();
+    } on ProviderNotFoundException {
+      comments = null;
+    }
+    // What the page says of the note's sharing, where it has that.
+    var hasStatus = true;
+    try {
+      context.read<SharedNoteStatusBloc>();
+    } on ProviderNotFoundException {
+      hasStatus = false;
+    }
     return NoteModeShortcuts(
       child: ColoredBox(
         color: context.colors.editor,
@@ -97,8 +116,24 @@ class NotePane extends StatelessWidget {
                             ),
                           ),
                         ],
+                        if (comments != null && readable)
+                          CommentsButton(
+                            // The words are selected in the editor: open
+                            // it first.
+                            onSelect: (commentId) {
+                              if (!editing) {
+                                context.read<NoteBloc>().add(
+                                  const NoteEvent.modeChanged(NoteMode.edit),
+                                );
+                              }
+                              comments?.add(CommentsEvent.selected(commentId));
+                            },
+                          ),
+                        const ShareNoteButton(),
                       ],
                     ),
+                    if (hasStatus && readable)
+                      SharedNoteStatusStrip(gutter: gutter),
                     Expanded(
                       child: editing
                           ? NoteEditorPane(

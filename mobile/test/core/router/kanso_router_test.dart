@@ -16,7 +16,9 @@ import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
+import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/device_approval/device_approval_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
@@ -29,17 +31,21 @@ import 'package:kanso/note_list/views/pages/note_list_page.dart';
 import 'package:kanso/search/views/pages/search_page.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/settings/views/pages/fonts_page.dart';
 import 'package:kanso/settings/views/pages/licences_page.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
+import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/shell/state/note_creation/note_creation_bloc.dart';
 import 'package:kanso/themes/views/pages/theme_picker_page.dart';
 
+import '../../helpers/account_blocs.dart';
 import '../../helpers/browse_blocs.dart';
 import '../../helpers/crash_samples.dart';
 import '../../helpers/register_page_blocs.dart';
 import '../../helpers/seeded_appearance_bloc.dart';
+import '../../helpers/sync_settings_blocs.dart';
 
 Future<GoRouter> _pump(
   WidgetTester tester, {
@@ -65,19 +71,24 @@ Future<GoRouter> _pump(
   if (at != null) {
     router.go(at);
   }
+  final accounts = AccountBlocs();
   await tester.pumpWidget(
     MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<AppearanceBloc>.value(value: bloc),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
         BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
+        BlocProvider<InvitationsBloc>.value(value: blocs.invitations),
         BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
+        BlocProvider<SyncSettingsBloc>.value(value: startedSyncSettingsBloc()),
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
         BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
         BlocProvider<NoteCreationBloc>.value(value: blocs.creation),
         BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
+        BlocProvider<AccountBloc>.value(value: accounts.account),
+        BlocProvider<DeviceApprovalBloc>.value(value: accounts.approval),
         BlocProvider<CrashReportsBloc>.value(value: quietCrashReportsBloc()),
       ],
       child: App(router: kansoRouter),

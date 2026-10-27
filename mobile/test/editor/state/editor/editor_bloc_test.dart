@@ -192,6 +192,7 @@ void main() {
         lock: LockState.plain(),
         properties: <Property>[],
         version: 9,
+        selection: Range16(start: 0, end: 0),
         history: _noHistory,
         save: SaveState.saved(rev: 'r2', atMs: 1),
       );

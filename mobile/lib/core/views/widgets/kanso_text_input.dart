@@ -15,31 +15,37 @@ import 'kanso_text_context_menu.dart';
 /// Kanso's caret and menu, and no handles or magnifier, so iOS and Android
 /// draw it alike: a filled field with the accent outline while it has focus.
 ///
-/// The caller owns the [controller] and [focusNode]. [hint] shows while the
-/// field is empty; [semanticLabel] says what the field is for.
+/// The caller owns the [controller], and the [focusNode] if it passes one;
+/// without one the field keeps its own. [hint] shows while the field is
+/// empty; [semanticLabel] says what the field is for, the hint if it is not
+/// given. While it is not [enabled] it is dimmed and read only.
 class KansoTextInput extends StatefulWidget {
   const KansoTextInput({
     required this.controller,
-    required this.focusNode,
+    this.focusNode,
     this.hint,
     this.semanticLabel,
     this.keyboardType = TextInputType.text,
     this.textInputAction = TextInputAction.done,
     this.textCapitalization = TextCapitalization.none,
     this.autocorrect = true,
+    this.autofocus = false,
+    this.enabled = true,
     this.onChanged,
     this.onSubmitted,
     super.key,
   });
 
   final TextEditingController controller;
-  final FocusNode focusNode;
+  final FocusNode? focusNode;
   final String? hint;
   final String? semanticLabel;
   final TextInputType keyboardType;
   final TextInputAction textInputAction;
   final TextCapitalization textCapitalization;
   final bool autocorrect;
+  final bool autofocus;
+  final bool enabled;
   final ValueChanged<String>? onChanged;
 
   /// The return key was pressed, with the text as it is.
@@ -56,6 +62,11 @@ class _KansoTextInputState extends State<KansoTextInput>
     implements TextSelectionGestureDetectorBuilderDelegate {
   late final TextSelectionGestureDetectorBuilder gestures;
   final TextSelectionControls selectionControls = KansoSelectionControls();
+
+  /// The field's own focus, made only when the caller passes none.
+  FocusNode? ownFocus;
+
+  FocusNode get focusNode => widget.focusNode ?? (ownFocus ??= FocusNode());
 
   @override
   final GlobalKey<EditableTextState> editableTextKey =
@@ -74,6 +85,12 @@ class _KansoTextInputState extends State<KansoTextInput>
   }
 
   @override
+  void dispose() {
+    ownFocus?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final typography = context.typography;
@@ -84,68 +101,77 @@ class _KansoTextInputState extends State<KansoTextInput>
       TargetPlatform.macOS => KansoTextInput.caretHeight - 2,
       _ => KansoTextInput.caretHeight,
     };
+    final focus = focusNode;
     return ListenableBuilder(
-      listenable: Listenable.merge(<Listenable>[
-        widget.controller,
-        widget.focusNode,
-      ]),
+      listenable: Listenable.merge(<Listenable>[widget.controller, focus]),
       builder: (context, _) {
-        final focused = widget.focusNode.hasFocus;
+        final focused = focus.hasFocus;
         final hint = widget.hint;
         return Semantics(
-          label: widget.semanticLabel,
+          label: widget.semanticLabel ?? hint,
           textField: true,
-          child: Container(
-            height: KansoSizes.searchField,
-            padding: const EdgeInsets.symmetric(horizontal: KansoSpacing.sm),
-            alignment: AlignmentDirectional.centerStart,
-            decoration: BoxDecoration(
-              color: colors.fill,
-              borderRadius: KansoRadii.mediumBorder,
-              border: Border.all(
-                color: focused ? colors.accent : colors.fill,
-                width: focused ? 1.5 : 1,
-              ),
-            ),
-            child: Stack(
+          child: Opacity(
+            opacity: widget.enabled ? 1 : 0.6,
+            child: Container(
+              height: KansoSizes.searchField,
+              padding: const EdgeInsets.symmetric(horizontal: KansoSpacing.sm),
               alignment: AlignmentDirectional.centerStart,
-              children: <Widget>[
-                if (hint != null && widget.controller.text.isEmpty)
-                  IgnorePointer(
-                    child: Text(
-                      hint,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: typography.body.copyWith(color: colors.textMuted),
+              decoration: BoxDecoration(
+                color: colors.fill,
+                borderRadius: KansoRadii.mediumBorder,
+                border: Border.all(
+                  color: focused ? colors.accent : colors.fill,
+                  width: focused ? 1.5 : 1,
+                ),
+              ),
+              child: Stack(
+                alignment: AlignmentDirectional.centerStart,
+                children: <Widget>[
+                  if (hint != null && widget.controller.text.isEmpty)
+                    IgnorePointer(
+                      child: ExcludeSemantics(
+                        child: Text(
+                          hint,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: typography.body.copyWith(
+                            color: colors.textMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  // A bare `EditableText` takes no touches: the gestures
+                  // that place the caret and select words are added.
+                  gestures.buildGestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    child: EditableText(
+                      key: editableTextKey,
+                      rendererIgnoresPointer: true,
+                      controller: widget.controller,
+                      focusNode: focus,
+                      readOnly: !widget.enabled,
+                      autofocus: widget.autofocus,
+                      style: typography.body,
+                      cursorColor: colors.accent,
+                      backgroundCursorColor: colors.textMuted,
+                      selectionColor: colors.accent.withValues(alpha: 0.3),
+                      cursorRadius: const Radius.circular(1),
+                      cursorHeight: asked,
+                      keyboardType: widget.keyboardType,
+                      textInputAction: widget.textInputAction,
+                      textCapitalization: widget.textCapitalization,
+                      autocorrect: widget.autocorrect,
+                      enableSuggestions: widget.autocorrect,
+                      keyboardAppearance: Theme.brightnessOf(context),
+                      selectionControls: selectionControls,
+                      contextMenuBuilder: (context, state) =>
+                          KansoTextContextMenu(state: state),
+                      onChanged: widget.onChanged,
+                      onSubmitted: widget.onSubmitted,
                     ),
                   ),
-                gestures.buildGestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  child: EditableText(
-                    key: editableTextKey,
-                    rendererIgnoresPointer: true,
-                    controller: widget.controller,
-                    focusNode: widget.focusNode,
-                    style: typography.body,
-                    cursorColor: colors.accent,
-                    backgroundCursorColor: colors.textMuted,
-                    selectionColor: colors.accent.withValues(alpha: 0.3),
-                    cursorRadius: const Radius.circular(1),
-                    cursorHeight: asked,
-                    keyboardType: widget.keyboardType,
-                    textInputAction: widget.textInputAction,
-                    textCapitalization: widget.textCapitalization,
-                    autocorrect: widget.autocorrect,
-                    enableSuggestions: widget.autocorrect,
-                    keyboardAppearance: Theme.brightnessOf(context),
-                    selectionControls: selectionControls,
-                    contextMenuBuilder: (context, state) =>
-                        KansoTextContextMenu(state: state),
-                    onChanged: widget.onChanged,
-                    onSubmitted: widget.onSubmitted,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );

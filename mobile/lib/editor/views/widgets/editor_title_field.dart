@@ -20,6 +20,7 @@ class EditorTitleField extends StatefulWidget {
     required this.focusNode,
     required this.onChanged,
     required this.onSubmitted,
+    this.readOnly = false,
     super.key,
   });
 
@@ -29,6 +30,9 @@ class EditorTitleField extends StatefulWidget {
 
   /// Return was pressed: go on to the text.
   final VoidCallback onSubmitted;
+
+  /// Whether the title may be read and not changed.
+  final bool readOnly;
 
   @override
   State<EditorTitleField> createState() => _EditorTitleFieldState();
@@ -83,6 +87,7 @@ class _EditorTitleFieldState extends State<EditorTitleField>
                 rendererIgnoresPointer: true,
                 controller: widget.controller,
                 focusNode: widget.focusNode,
+                readOnly: widget.readOnly,
                 style: style,
                 cursorColor: colors.accent,
                 backgroundCursorColor: colors.textMuted,

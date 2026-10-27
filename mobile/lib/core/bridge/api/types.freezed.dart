@@ -12,6 +12,1228 @@ part of 'types.dart';
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
+mixin _$AccountState {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AccountState);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'AccountState()';
+}
+
+
+}
+
+/// @nodoc
+class $AccountStateCopyWith<$Res>  {
+$AccountStateCopyWith(AccountState _, $Res Function(AccountState) __);
+}
+
+
+/// Adds pattern-matching-related methods to [AccountState].
+extension AccountStatePatterns on AccountState {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AccountState_SignedOut value)?  signedOut,TResult Function( AccountState_SignedIn value)?  signedIn,TResult Function( AccountState_Locked value)?  locked,TResult Function( AccountState_Question value)?  question,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case AccountState_SignedOut() when signedOut != null:
+return signedOut(_that);case AccountState_SignedIn() when signedIn != null:
+return signedIn(_that);case AccountState_Locked() when locked != null:
+return locked(_that);case AccountState_Question() when question != null:
+return question(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AccountState_SignedOut value)  signedOut,required TResult Function( AccountState_SignedIn value)  signedIn,required TResult Function( AccountState_Locked value)  locked,required TResult Function( AccountState_Question value)  question,}){
+final _that = this;
+switch (_that) {
+case AccountState_SignedOut():
+return signedOut(_that);case AccountState_SignedIn():
+return signedIn(_that);case AccountState_Locked():
+return locked(_that);case AccountState_Question():
+return question(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AccountState_SignedOut value)?  signedOut,TResult? Function( AccountState_SignedIn value)?  signedIn,TResult? Function( AccountState_Locked value)?  locked,TResult? Function( AccountState_Question value)?  question,}){
+final _that = this;
+switch (_that) {
+case AccountState_SignedOut() when signedOut != null:
+return signedOut(_that);case AccountState_SignedIn() when signedIn != null:
+return signedIn(_that);case AccountState_Locked() when locked != null:
+return locked(_that);case AccountState_Question() when question != null:
+return question(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  signedOut,TResult Function( String username,  String server)?  signedIn,TResult Function( LockedInfo field0)?  locked,TResult Function( BindingQuestion field0)?  question,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case AccountState_SignedOut() when signedOut != null:
+return signedOut();case AccountState_SignedIn() when signedIn != null:
+return signedIn(_that.username,_that.server);case AccountState_Locked() when locked != null:
+return locked(_that.field0);case AccountState_Question() when question != null:
+return question(_that.field0);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  signedOut,required TResult Function( String username,  String server)  signedIn,required TResult Function( LockedInfo field0)  locked,required TResult Function( BindingQuestion field0)  question,}) {final _that = this;
+switch (_that) {
+case AccountState_SignedOut():
+return signedOut();case AccountState_SignedIn():
+return signedIn(_that.username,_that.server);case AccountState_Locked():
+return locked(_that.field0);case AccountState_Question():
+return question(_that.field0);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  signedOut,TResult? Function( String username,  String server)?  signedIn,TResult? Function( LockedInfo field0)?  locked,TResult? Function( BindingQuestion field0)?  question,}) {final _that = this;
+switch (_that) {
+case AccountState_SignedOut() when signedOut != null:
+return signedOut();case AccountState_SignedIn() when signedIn != null:
+return signedIn(_that.username,_that.server);case AccountState_Locked() when locked != null:
+return locked(_that.field0);case AccountState_Question() when question != null:
+return question(_that.field0);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class AccountState_SignedOut extends AccountState {
+  const AccountState_SignedOut(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AccountState_SignedOut);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'AccountState.signedOut()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class AccountState_SignedIn extends AccountState {
+  const AccountState_SignedIn({required this.username, required this.server}): super._();
+  
+
+ final  String username;
+ final  String server;
+
+/// Create a copy of AccountState
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AccountState_SignedInCopyWith<AccountState_SignedIn> get copyWith => _$AccountState_SignedInCopyWithImpl<AccountState_SignedIn>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AccountState_SignedIn&&(identical(other.username, username) || other.username == username)&&(identical(other.server, server) || other.server == server));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,username,server);
+
+@override
+String toString() {
+  return 'AccountState.signedIn(username: $username, server: $server)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AccountState_SignedInCopyWith<$Res> implements $AccountStateCopyWith<$Res> {
+  factory $AccountState_SignedInCopyWith(AccountState_SignedIn value, $Res Function(AccountState_SignedIn) _then) = _$AccountState_SignedInCopyWithImpl;
+@useResult
+$Res call({
+ String username, String server
+});
+
+
+
+
+}
+/// @nodoc
+class _$AccountState_SignedInCopyWithImpl<$Res>
+    implements $AccountState_SignedInCopyWith<$Res> {
+  _$AccountState_SignedInCopyWithImpl(this._self, this._then);
+
+  final AccountState_SignedIn _self;
+  final $Res Function(AccountState_SignedIn) _then;
+
+/// Create a copy of AccountState
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? username = null,Object? server = null,}) {
+  return _then(AccountState_SignedIn(
+username: null == username ? _self.username : username // ignore: cast_nullable_to_non_nullable
+as String,server: null == server ? _self.server : server // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AccountState_Locked extends AccountState {
+  const AccountState_Locked(this.field0): super._();
+  
+
+ final  LockedInfo field0;
+
+/// Create a copy of AccountState
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AccountState_LockedCopyWith<AccountState_Locked> get copyWith => _$AccountState_LockedCopyWithImpl<AccountState_Locked>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AccountState_Locked&&(identical(other.field0, field0) || other.field0 == field0));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,field0);
+
+@override
+String toString() {
+  return 'AccountState.locked(field0: $field0)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AccountState_LockedCopyWith<$Res> implements $AccountStateCopyWith<$Res> {
+  factory $AccountState_LockedCopyWith(AccountState_Locked value, $Res Function(AccountState_Locked) _then) = _$AccountState_LockedCopyWithImpl;
+@useResult
+$Res call({
+ LockedInfo field0
+});
+
+
+
+
+}
+/// @nodoc
+class _$AccountState_LockedCopyWithImpl<$Res>
+    implements $AccountState_LockedCopyWith<$Res> {
+  _$AccountState_LockedCopyWithImpl(this._self, this._then);
+
+  final AccountState_Locked _self;
+  final $Res Function(AccountState_Locked) _then;
+
+/// Create a copy of AccountState
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? field0 = null,}) {
+  return _then(AccountState_Locked(
+null == field0 ? _self.field0 : field0 // ignore: cast_nullable_to_non_nullable
+as LockedInfo,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AccountState_Question extends AccountState {
+  const AccountState_Question(this.field0): super._();
+  
+
+ final  BindingQuestion field0;
+
+/// Create a copy of AccountState
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AccountState_QuestionCopyWith<AccountState_Question> get copyWith => _$AccountState_QuestionCopyWithImpl<AccountState_Question>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AccountState_Question&&(identical(other.field0, field0) || other.field0 == field0));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,field0);
+
+@override
+String toString() {
+  return 'AccountState.question(field0: $field0)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AccountState_QuestionCopyWith<$Res> implements $AccountStateCopyWith<$Res> {
+  factory $AccountState_QuestionCopyWith(AccountState_Question value, $Res Function(AccountState_Question) _then) = _$AccountState_QuestionCopyWithImpl;
+@useResult
+$Res call({
+ BindingQuestion field0
+});
+
+
+
+
+}
+/// @nodoc
+class _$AccountState_QuestionCopyWithImpl<$Res>
+    implements $AccountState_QuestionCopyWith<$Res> {
+  _$AccountState_QuestionCopyWithImpl(this._self, this._then);
+
+  final AccountState_Question _self;
+  final $Res Function(AccountState_Question) _then;
+
+/// Create a copy of AccountState
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? field0 = null,}) {
+  return _then(AccountState_Question(
+null == field0 ? _self.field0 : field0 // ignore: cast_nullable_to_non_nullable
+as BindingQuestion,
+  ));
+}
+
+
+}
+
+/// @nodoc
+mixin _$ApprovalPhase {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ApprovalPhase);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ApprovalPhase()';
+}
+
+
+}
+
+/// @nodoc
+class $ApprovalPhaseCopyWith<$Res>  {
+$ApprovalPhaseCopyWith(ApprovalPhase _, $Res Function(ApprovalPhase) __);
+}
+
+
+/// Adds pattern-matching-related methods to [ApprovalPhase].
+extension ApprovalPhasePatterns on ApprovalPhase {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ApprovalPhase_Requesting value)?  requesting,TResult Function( ApprovalPhase_Waiting value)?  waiting,TResult Function( ApprovalPhase_Compare value)?  compare,TResult Function( ApprovalPhase_Unlocking value)?  unlocking,TResult Function( ApprovalPhase_Approved value)?  approved,TResult Function( ApprovalPhase_NoDevices value)?  noDevices,TResult Function( ApprovalPhase_Cancelled value)?  cancelled,TResult Function( ApprovalPhase_Expired value)?  expired,TResult Function( ApprovalPhase_Failed value)?  failed,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case ApprovalPhase_Requesting() when requesting != null:
+return requesting(_that);case ApprovalPhase_Waiting() when waiting != null:
+return waiting(_that);case ApprovalPhase_Compare() when compare != null:
+return compare(_that);case ApprovalPhase_Unlocking() when unlocking != null:
+return unlocking(_that);case ApprovalPhase_Approved() when approved != null:
+return approved(_that);case ApprovalPhase_NoDevices() when noDevices != null:
+return noDevices(_that);case ApprovalPhase_Cancelled() when cancelled != null:
+return cancelled(_that);case ApprovalPhase_Expired() when expired != null:
+return expired(_that);case ApprovalPhase_Failed() when failed != null:
+return failed(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ApprovalPhase_Requesting value)  requesting,required TResult Function( ApprovalPhase_Waiting value)  waiting,required TResult Function( ApprovalPhase_Compare value)  compare,required TResult Function( ApprovalPhase_Unlocking value)  unlocking,required TResult Function( ApprovalPhase_Approved value)  approved,required TResult Function( ApprovalPhase_NoDevices value)  noDevices,required TResult Function( ApprovalPhase_Cancelled value)  cancelled,required TResult Function( ApprovalPhase_Expired value)  expired,required TResult Function( ApprovalPhase_Failed value)  failed,}){
+final _that = this;
+switch (_that) {
+case ApprovalPhase_Requesting():
+return requesting(_that);case ApprovalPhase_Waiting():
+return waiting(_that);case ApprovalPhase_Compare():
+return compare(_that);case ApprovalPhase_Unlocking():
+return unlocking(_that);case ApprovalPhase_Approved():
+return approved(_that);case ApprovalPhase_NoDevices():
+return noDevices(_that);case ApprovalPhase_Cancelled():
+return cancelled(_that);case ApprovalPhase_Expired():
+return expired(_that);case ApprovalPhase_Failed():
+return failed(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ApprovalPhase_Requesting value)?  requesting,TResult? Function( ApprovalPhase_Waiting value)?  waiting,TResult? Function( ApprovalPhase_Compare value)?  compare,TResult? Function( ApprovalPhase_Unlocking value)?  unlocking,TResult? Function( ApprovalPhase_Approved value)?  approved,TResult? Function( ApprovalPhase_NoDevices value)?  noDevices,TResult? Function( ApprovalPhase_Cancelled value)?  cancelled,TResult? Function( ApprovalPhase_Expired value)?  expired,TResult? Function( ApprovalPhase_Failed value)?  failed,}){
+final _that = this;
+switch (_that) {
+case ApprovalPhase_Requesting() when requesting != null:
+return requesting(_that);case ApprovalPhase_Waiting() when waiting != null:
+return waiting(_that);case ApprovalPhase_Compare() when compare != null:
+return compare(_that);case ApprovalPhase_Unlocking() when unlocking != null:
+return unlocking(_that);case ApprovalPhase_Approved() when approved != null:
+return approved(_that);case ApprovalPhase_NoDevices() when noDevices != null:
+return noDevices(_that);case ApprovalPhase_Cancelled() when cancelled != null:
+return cancelled(_that);case ApprovalPhase_Expired() when expired != null:
+return expired(_that);case ApprovalPhase_Failed() when failed != null:
+return failed(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  requesting,TResult Function()?  waiting,TResult Function()?  compare,TResult Function()?  unlocking,TResult Function()?  approved,TResult Function()?  noDevices,TResult Function()?  cancelled,TResult Function()?  expired,TResult Function( String message)?  failed,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case ApprovalPhase_Requesting() when requesting != null:
+return requesting();case ApprovalPhase_Waiting() when waiting != null:
+return waiting();case ApprovalPhase_Compare() when compare != null:
+return compare();case ApprovalPhase_Unlocking() when unlocking != null:
+return unlocking();case ApprovalPhase_Approved() when approved != null:
+return approved();case ApprovalPhase_NoDevices() when noDevices != null:
+return noDevices();case ApprovalPhase_Cancelled() when cancelled != null:
+return cancelled();case ApprovalPhase_Expired() when expired != null:
+return expired();case ApprovalPhase_Failed() when failed != null:
+return failed(_that.message);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  requesting,required TResult Function()  waiting,required TResult Function()  compare,required TResult Function()  unlocking,required TResult Function()  approved,required TResult Function()  noDevices,required TResult Function()  cancelled,required TResult Function()  expired,required TResult Function( String message)  failed,}) {final _that = this;
+switch (_that) {
+case ApprovalPhase_Requesting():
+return requesting();case ApprovalPhase_Waiting():
+return waiting();case ApprovalPhase_Compare():
+return compare();case ApprovalPhase_Unlocking():
+return unlocking();case ApprovalPhase_Approved():
+return approved();case ApprovalPhase_NoDevices():
+return noDevices();case ApprovalPhase_Cancelled():
+return cancelled();case ApprovalPhase_Expired():
+return expired();case ApprovalPhase_Failed():
+return failed(_that.message);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  requesting,TResult? Function()?  waiting,TResult? Function()?  compare,TResult? Function()?  unlocking,TResult? Function()?  approved,TResult? Function()?  noDevices,TResult? Function()?  cancelled,TResult? Function()?  expired,TResult? Function( String message)?  failed,}) {final _that = this;
+switch (_that) {
+case ApprovalPhase_Requesting() when requesting != null:
+return requesting();case ApprovalPhase_Waiting() when waiting != null:
+return waiting();case ApprovalPhase_Compare() when compare != null:
+return compare();case ApprovalPhase_Unlocking() when unlocking != null:
+return unlocking();case ApprovalPhase_Approved() when approved != null:
+return approved();case ApprovalPhase_NoDevices() when noDevices != null:
+return noDevices();case ApprovalPhase_Cancelled() when cancelled != null:
+return cancelled();case ApprovalPhase_Expired() when expired != null:
+return expired();case ApprovalPhase_Failed() when failed != null:
+return failed(_that.message);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class ApprovalPhase_Requesting extends ApprovalPhase {
+  const ApprovalPhase_Requesting(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ApprovalPhase_Requesting);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ApprovalPhase.requesting()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ApprovalPhase_Waiting extends ApprovalPhase {
+  const ApprovalPhase_Waiting(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ApprovalPhase_Waiting);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ApprovalPhase.waiting()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ApprovalPhase_Compare extends ApprovalPhase {
+  const ApprovalPhase_Compare(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ApprovalPhase_Compare);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ApprovalPhase.compare()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ApprovalPhase_Unlocking extends ApprovalPhase {
+  const ApprovalPhase_Unlocking(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ApprovalPhase_Unlocking);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ApprovalPhase.unlocking()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ApprovalPhase_Approved extends ApprovalPhase {
+  const ApprovalPhase_Approved(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ApprovalPhase_Approved);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ApprovalPhase.approved()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ApprovalPhase_NoDevices extends ApprovalPhase {
+  const ApprovalPhase_NoDevices(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ApprovalPhase_NoDevices);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ApprovalPhase.noDevices()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ApprovalPhase_Cancelled extends ApprovalPhase {
+  const ApprovalPhase_Cancelled(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ApprovalPhase_Cancelled);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ApprovalPhase.cancelled()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ApprovalPhase_Expired extends ApprovalPhase {
+  const ApprovalPhase_Expired(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ApprovalPhase_Expired);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ApprovalPhase.expired()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ApprovalPhase_Failed extends ApprovalPhase {
+  const ApprovalPhase_Failed({required this.message}): super._();
+  
+
+ final  String message;
+
+/// Create a copy of ApprovalPhase
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ApprovalPhase_FailedCopyWith<ApprovalPhase_Failed> get copyWith => _$ApprovalPhase_FailedCopyWithImpl<ApprovalPhase_Failed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ApprovalPhase_Failed&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,message);
+
+@override
+String toString() {
+  return 'ApprovalPhase.failed(message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ApprovalPhase_FailedCopyWith<$Res> implements $ApprovalPhaseCopyWith<$Res> {
+  factory $ApprovalPhase_FailedCopyWith(ApprovalPhase_Failed value, $Res Function(ApprovalPhase_Failed) _then) = _$ApprovalPhase_FailedCopyWithImpl;
+@useResult
+$Res call({
+ String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$ApprovalPhase_FailedCopyWithImpl<$Res>
+    implements $ApprovalPhase_FailedCopyWith<$Res> {
+  _$ApprovalPhase_FailedCopyWithImpl(this._self, this._then);
+
+  final ApprovalPhase_Failed _self;
+  final $Res Function(ApprovalPhase_Failed) _then;
+
+/// Create a copy of ApprovalPhase
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
+  return _then(ApprovalPhase_Failed(
+message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+mixin _$CommentPlacement {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CommentPlacement);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'CommentPlacement()';
+}
+
+
+}
+
+/// @nodoc
+class $CommentPlacementCopyWith<$Res>  {
+$CommentPlacementCopyWith(CommentPlacement _, $Res Function(CommentPlacement) __);
+}
+
+
+/// Adds pattern-matching-related methods to [CommentPlacement].
+extension CommentPlacementPatterns on CommentPlacement {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( CommentPlacement_Anchored value)?  anchored,TResult Function( CommentPlacement_Orphaned value)?  orphaned,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case CommentPlacement_Anchored() when anchored != null:
+return anchored(_that);case CommentPlacement_Orphaned() when orphaned != null:
+return orphaned(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( CommentPlacement_Anchored value)  anchored,required TResult Function( CommentPlacement_Orphaned value)  orphaned,}){
+final _that = this;
+switch (_that) {
+case CommentPlacement_Anchored():
+return anchored(_that);case CommentPlacement_Orphaned():
+return orphaned(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( CommentPlacement_Anchored value)?  anchored,TResult? Function( CommentPlacement_Orphaned value)?  orphaned,}){
+final _that = this;
+switch (_that) {
+case CommentPlacement_Anchored() when anchored != null:
+return anchored(_that);case CommentPlacement_Orphaned() when orphaned != null:
+return orphaned(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( int start,  int end)?  anchored,TResult Function( int at)?  orphaned,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case CommentPlacement_Anchored() when anchored != null:
+return anchored(_that.start,_that.end);case CommentPlacement_Orphaned() when orphaned != null:
+return orphaned(_that.at);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( int start,  int end)  anchored,required TResult Function( int at)  orphaned,}) {final _that = this;
+switch (_that) {
+case CommentPlacement_Anchored():
+return anchored(_that.start,_that.end);case CommentPlacement_Orphaned():
+return orphaned(_that.at);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( int start,  int end)?  anchored,TResult? Function( int at)?  orphaned,}) {final _that = this;
+switch (_that) {
+case CommentPlacement_Anchored() when anchored != null:
+return anchored(_that.start,_that.end);case CommentPlacement_Orphaned() when orphaned != null:
+return orphaned(_that.at);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class CommentPlacement_Anchored extends CommentPlacement {
+  const CommentPlacement_Anchored({required this.start, required this.end}): super._();
+  
+
+ final  int start;
+ final  int end;
+
+/// Create a copy of CommentPlacement
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$CommentPlacement_AnchoredCopyWith<CommentPlacement_Anchored> get copyWith => _$CommentPlacement_AnchoredCopyWithImpl<CommentPlacement_Anchored>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CommentPlacement_Anchored&&(identical(other.start, start) || other.start == start)&&(identical(other.end, end) || other.end == end));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,start,end);
+
+@override
+String toString() {
+  return 'CommentPlacement.anchored(start: $start, end: $end)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $CommentPlacement_AnchoredCopyWith<$Res> implements $CommentPlacementCopyWith<$Res> {
+  factory $CommentPlacement_AnchoredCopyWith(CommentPlacement_Anchored value, $Res Function(CommentPlacement_Anchored) _then) = _$CommentPlacement_AnchoredCopyWithImpl;
+@useResult
+$Res call({
+ int start, int end
+});
+
+
+
+
+}
+/// @nodoc
+class _$CommentPlacement_AnchoredCopyWithImpl<$Res>
+    implements $CommentPlacement_AnchoredCopyWith<$Res> {
+  _$CommentPlacement_AnchoredCopyWithImpl(this._self, this._then);
+
+  final CommentPlacement_Anchored _self;
+  final $Res Function(CommentPlacement_Anchored) _then;
+
+/// Create a copy of CommentPlacement
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? start = null,Object? end = null,}) {
+  return _then(CommentPlacement_Anchored(
+start: null == start ? _self.start : start // ignore: cast_nullable_to_non_nullable
+as int,end: null == end ? _self.end : end // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class CommentPlacement_Orphaned extends CommentPlacement {
+  const CommentPlacement_Orphaned({required this.at}): super._();
+  
+
+ final  int at;
+
+/// Create a copy of CommentPlacement
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$CommentPlacement_OrphanedCopyWith<CommentPlacement_Orphaned> get copyWith => _$CommentPlacement_OrphanedCopyWithImpl<CommentPlacement_Orphaned>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CommentPlacement_Orphaned&&(identical(other.at, at) || other.at == at));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,at);
+
+@override
+String toString() {
+  return 'CommentPlacement.orphaned(at: $at)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $CommentPlacement_OrphanedCopyWith<$Res> implements $CommentPlacementCopyWith<$Res> {
+  factory $CommentPlacement_OrphanedCopyWith(CommentPlacement_Orphaned value, $Res Function(CommentPlacement_Orphaned) _then) = _$CommentPlacement_OrphanedCopyWithImpl;
+@useResult
+$Res call({
+ int at
+});
+
+
+
+
+}
+/// @nodoc
+class _$CommentPlacement_OrphanedCopyWithImpl<$Res>
+    implements $CommentPlacement_OrphanedCopyWith<$Res> {
+  _$CommentPlacement_OrphanedCopyWithImpl(this._self, this._then);
+
+  final CommentPlacement_Orphaned _self;
+  final $Res Function(CommentPlacement_Orphaned) _then;
+
+/// Create a copy of CommentPlacement
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? at = null,}) {
+  return _then(CommentPlacement_Orphaned(
+at: null == at ? _self.at : at // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$EditCommand {
 
 
@@ -3354,6 +4576,300 @@ String toString() {
 
 
 /// @nodoc
+mixin _$PersonLookup {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PersonLookup);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'PersonLookup()';
+}
+
+
+}
+
+/// @nodoc
+class $PersonLookupCopyWith<$Res>  {
+$PersonLookupCopyWith(PersonLookup _, $Res Function(PersonLookup) __);
+}
+
+
+/// Adds pattern-matching-related methods to [PersonLookup].
+extension PersonLookupPatterns on PersonLookup {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PersonLookup_Found value)?  found,TResult Function( PersonLookup_Changed value)?  changed,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case PersonLookup_Found() when found != null:
+return found(_that);case PersonLookup_Changed() when changed != null:
+return changed(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PersonLookup_Found value)  found,required TResult Function( PersonLookup_Changed value)  changed,}){
+final _that = this;
+switch (_that) {
+case PersonLookup_Found():
+return found(_that);case PersonLookup_Changed():
+return changed(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PersonLookup_Found value)?  found,TResult? Function( PersonLookup_Changed value)?  changed,}){
+final _that = this;
+switch (_that) {
+case PersonLookup_Found() when found != null:
+return found(_that);case PersonLookup_Changed() when changed != null:
+return changed(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( PersonRow field0)?  found,TResult Function( PersonRow? pinned,  PersonRow offered)?  changed,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case PersonLookup_Found() when found != null:
+return found(_that.field0);case PersonLookup_Changed() when changed != null:
+return changed(_that.pinned,_that.offered);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( PersonRow field0)  found,required TResult Function( PersonRow? pinned,  PersonRow offered)  changed,}) {final _that = this;
+switch (_that) {
+case PersonLookup_Found():
+return found(_that.field0);case PersonLookup_Changed():
+return changed(_that.pinned,_that.offered);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( PersonRow field0)?  found,TResult? Function( PersonRow? pinned,  PersonRow offered)?  changed,}) {final _that = this;
+switch (_that) {
+case PersonLookup_Found() when found != null:
+return found(_that.field0);case PersonLookup_Changed() when changed != null:
+return changed(_that.pinned,_that.offered);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class PersonLookup_Found extends PersonLookup {
+  const PersonLookup_Found(this.field0): super._();
+  
+
+ final  PersonRow field0;
+
+/// Create a copy of PersonLookup
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PersonLookup_FoundCopyWith<PersonLookup_Found> get copyWith => _$PersonLookup_FoundCopyWithImpl<PersonLookup_Found>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PersonLookup_Found&&(identical(other.field0, field0) || other.field0 == field0));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,field0);
+
+@override
+String toString() {
+  return 'PersonLookup.found(field0: $field0)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PersonLookup_FoundCopyWith<$Res> implements $PersonLookupCopyWith<$Res> {
+  factory $PersonLookup_FoundCopyWith(PersonLookup_Found value, $Res Function(PersonLookup_Found) _then) = _$PersonLookup_FoundCopyWithImpl;
+@useResult
+$Res call({
+ PersonRow field0
+});
+
+
+
+
+}
+/// @nodoc
+class _$PersonLookup_FoundCopyWithImpl<$Res>
+    implements $PersonLookup_FoundCopyWith<$Res> {
+  _$PersonLookup_FoundCopyWithImpl(this._self, this._then);
+
+  final PersonLookup_Found _self;
+  final $Res Function(PersonLookup_Found) _then;
+
+/// Create a copy of PersonLookup
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? field0 = null,}) {
+  return _then(PersonLookup_Found(
+null == field0 ? _self.field0 : field0 // ignore: cast_nullable_to_non_nullable
+as PersonRow,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PersonLookup_Changed extends PersonLookup {
+  const PersonLookup_Changed({this.pinned, required this.offered}): super._();
+  
+
+ final  PersonRow? pinned;
+ final  PersonRow offered;
+
+/// Create a copy of PersonLookup
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PersonLookup_ChangedCopyWith<PersonLookup_Changed> get copyWith => _$PersonLookup_ChangedCopyWithImpl<PersonLookup_Changed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PersonLookup_Changed&&(identical(other.pinned, pinned) || other.pinned == pinned)&&(identical(other.offered, offered) || other.offered == offered));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,pinned,offered);
+
+@override
+String toString() {
+  return 'PersonLookup.changed(pinned: $pinned, offered: $offered)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PersonLookup_ChangedCopyWith<$Res> implements $PersonLookupCopyWith<$Res> {
+  factory $PersonLookup_ChangedCopyWith(PersonLookup_Changed value, $Res Function(PersonLookup_Changed) _then) = _$PersonLookup_ChangedCopyWithImpl;
+@useResult
+$Res call({
+ PersonRow? pinned, PersonRow offered
+});
+
+
+
+
+}
+/// @nodoc
+class _$PersonLookup_ChangedCopyWithImpl<$Res>
+    implements $PersonLookup_ChangedCopyWith<$Res> {
+  _$PersonLookup_ChangedCopyWithImpl(this._self, this._then);
+
+  final PersonLookup_Changed _self;
+  final $Res Function(PersonLookup_Changed) _then;
+
+/// Create a copy of PersonLookup
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? pinned = freezed,Object? offered = null,}) {
+  return _then(PersonLookup_Changed(
+pinned: freezed == pinned ? _self.pinned : pinned // ignore: cast_nullable_to_non_nullable
+as PersonRow?,offered: null == offered ? _self.offered : offered // ignore: cast_nullable_to_non_nullable
+as PersonRow,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$PreviewLink {
 
 
@@ -4164,6 +5680,603 @@ String toString() {
 
 
 /// @nodoc
+mixin _$ProviderEvent {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ProviderEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ProviderEvent()';
+}
+
+
+}
+
+/// @nodoc
+class $ProviderEventCopyWith<$Res>  {
+$ProviderEventCopyWith(ProviderEvent _, $Res Function(ProviderEvent) __);
+}
+
+
+/// Adds pattern-matching-related methods to [ProviderEvent].
+extension ProviderEventPatterns on ProviderEvent {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ProviderEvent_OpenPage value)?  openPage,TResult Function( ProviderEvent_ShowCode value)?  showCode,TResult Function( ProviderEvent_ClosePage value)?  closePage,TResult Function( ProviderEvent_NeedsUsername value)?  needsUsername,TResult Function( ProviderEvent_Finished value)?  finished,TResult Function( ProviderEvent_Failed value)?  failed,TResult Function( ProviderEvent_Cancelled value)?  cancelled,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case ProviderEvent_OpenPage() when openPage != null:
+return openPage(_that);case ProviderEvent_ShowCode() when showCode != null:
+return showCode(_that);case ProviderEvent_ClosePage() when closePage != null:
+return closePage(_that);case ProviderEvent_NeedsUsername() when needsUsername != null:
+return needsUsername(_that);case ProviderEvent_Finished() when finished != null:
+return finished(_that);case ProviderEvent_Failed() when failed != null:
+return failed(_that);case ProviderEvent_Cancelled() when cancelled != null:
+return cancelled(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ProviderEvent_OpenPage value)  openPage,required TResult Function( ProviderEvent_ShowCode value)  showCode,required TResult Function( ProviderEvent_ClosePage value)  closePage,required TResult Function( ProviderEvent_NeedsUsername value)  needsUsername,required TResult Function( ProviderEvent_Finished value)  finished,required TResult Function( ProviderEvent_Failed value)  failed,required TResult Function( ProviderEvent_Cancelled value)  cancelled,}){
+final _that = this;
+switch (_that) {
+case ProviderEvent_OpenPage():
+return openPage(_that);case ProviderEvent_ShowCode():
+return showCode(_that);case ProviderEvent_ClosePage():
+return closePage(_that);case ProviderEvent_NeedsUsername():
+return needsUsername(_that);case ProviderEvent_Finished():
+return finished(_that);case ProviderEvent_Failed():
+return failed(_that);case ProviderEvent_Cancelled():
+return cancelled(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ProviderEvent_OpenPage value)?  openPage,TResult? Function( ProviderEvent_ShowCode value)?  showCode,TResult? Function( ProviderEvent_ClosePage value)?  closePage,TResult? Function( ProviderEvent_NeedsUsername value)?  needsUsername,TResult? Function( ProviderEvent_Finished value)?  finished,TResult? Function( ProviderEvent_Failed value)?  failed,TResult? Function( ProviderEvent_Cancelled value)?  cancelled,}){
+final _that = this;
+switch (_that) {
+case ProviderEvent_OpenPage() when openPage != null:
+return openPage(_that);case ProviderEvent_ShowCode() when showCode != null:
+return showCode(_that);case ProviderEvent_ClosePage() when closePage != null:
+return closePage(_that);case ProviderEvent_NeedsUsername() when needsUsername != null:
+return needsUsername(_that);case ProviderEvent_Finished() when finished != null:
+return finished(_that);case ProviderEvent_Failed() when failed != null:
+return failed(_that);case ProviderEvent_Cancelled() when cancelled != null:
+return cancelled(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String url,  String? callbackScheme)?  openPage,TResult Function( String userCode,  String verificationUri)?  showCode,TResult Function()?  closePage,TResult Function( String suggested)?  needsUsername,TResult Function( AccountState field0)?  finished,TResult Function( String message)?  failed,TResult Function()?  cancelled,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case ProviderEvent_OpenPage() when openPage != null:
+return openPage(_that.url,_that.callbackScheme);case ProviderEvent_ShowCode() when showCode != null:
+return showCode(_that.userCode,_that.verificationUri);case ProviderEvent_ClosePage() when closePage != null:
+return closePage();case ProviderEvent_NeedsUsername() when needsUsername != null:
+return needsUsername(_that.suggested);case ProviderEvent_Finished() when finished != null:
+return finished(_that.field0);case ProviderEvent_Failed() when failed != null:
+return failed(_that.message);case ProviderEvent_Cancelled() when cancelled != null:
+return cancelled();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String url,  String? callbackScheme)  openPage,required TResult Function( String userCode,  String verificationUri)  showCode,required TResult Function()  closePage,required TResult Function( String suggested)  needsUsername,required TResult Function( AccountState field0)  finished,required TResult Function( String message)  failed,required TResult Function()  cancelled,}) {final _that = this;
+switch (_that) {
+case ProviderEvent_OpenPage():
+return openPage(_that.url,_that.callbackScheme);case ProviderEvent_ShowCode():
+return showCode(_that.userCode,_that.verificationUri);case ProviderEvent_ClosePage():
+return closePage();case ProviderEvent_NeedsUsername():
+return needsUsername(_that.suggested);case ProviderEvent_Finished():
+return finished(_that.field0);case ProviderEvent_Failed():
+return failed(_that.message);case ProviderEvent_Cancelled():
+return cancelled();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String url,  String? callbackScheme)?  openPage,TResult? Function( String userCode,  String verificationUri)?  showCode,TResult? Function()?  closePage,TResult? Function( String suggested)?  needsUsername,TResult? Function( AccountState field0)?  finished,TResult? Function( String message)?  failed,TResult? Function()?  cancelled,}) {final _that = this;
+switch (_that) {
+case ProviderEvent_OpenPage() when openPage != null:
+return openPage(_that.url,_that.callbackScheme);case ProviderEvent_ShowCode() when showCode != null:
+return showCode(_that.userCode,_that.verificationUri);case ProviderEvent_ClosePage() when closePage != null:
+return closePage();case ProviderEvent_NeedsUsername() when needsUsername != null:
+return needsUsername(_that.suggested);case ProviderEvent_Finished() when finished != null:
+return finished(_that.field0);case ProviderEvent_Failed() when failed != null:
+return failed(_that.message);case ProviderEvent_Cancelled() when cancelled != null:
+return cancelled();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class ProviderEvent_OpenPage extends ProviderEvent {
+  const ProviderEvent_OpenPage({required this.url, this.callbackScheme}): super._();
+  
+
+ final  String url;
+ final  String? callbackScheme;
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ProviderEvent_OpenPageCopyWith<ProviderEvent_OpenPage> get copyWith => _$ProviderEvent_OpenPageCopyWithImpl<ProviderEvent_OpenPage>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ProviderEvent_OpenPage&&(identical(other.url, url) || other.url == url)&&(identical(other.callbackScheme, callbackScheme) || other.callbackScheme == callbackScheme));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,url,callbackScheme);
+
+@override
+String toString() {
+  return 'ProviderEvent.openPage(url: $url, callbackScheme: $callbackScheme)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ProviderEvent_OpenPageCopyWith<$Res> implements $ProviderEventCopyWith<$Res> {
+  factory $ProviderEvent_OpenPageCopyWith(ProviderEvent_OpenPage value, $Res Function(ProviderEvent_OpenPage) _then) = _$ProviderEvent_OpenPageCopyWithImpl;
+@useResult
+$Res call({
+ String url, String? callbackScheme
+});
+
+
+
+
+}
+/// @nodoc
+class _$ProviderEvent_OpenPageCopyWithImpl<$Res>
+    implements $ProviderEvent_OpenPageCopyWith<$Res> {
+  _$ProviderEvent_OpenPageCopyWithImpl(this._self, this._then);
+
+  final ProviderEvent_OpenPage _self;
+  final $Res Function(ProviderEvent_OpenPage) _then;
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? url = null,Object? callbackScheme = freezed,}) {
+  return _then(ProviderEvent_OpenPage(
+url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
+as String,callbackScheme: freezed == callbackScheme ? _self.callbackScheme : callbackScheme // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ProviderEvent_ShowCode extends ProviderEvent {
+  const ProviderEvent_ShowCode({required this.userCode, required this.verificationUri}): super._();
+  
+
+ final  String userCode;
+ final  String verificationUri;
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ProviderEvent_ShowCodeCopyWith<ProviderEvent_ShowCode> get copyWith => _$ProviderEvent_ShowCodeCopyWithImpl<ProviderEvent_ShowCode>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ProviderEvent_ShowCode&&(identical(other.userCode, userCode) || other.userCode == userCode)&&(identical(other.verificationUri, verificationUri) || other.verificationUri == verificationUri));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,userCode,verificationUri);
+
+@override
+String toString() {
+  return 'ProviderEvent.showCode(userCode: $userCode, verificationUri: $verificationUri)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ProviderEvent_ShowCodeCopyWith<$Res> implements $ProviderEventCopyWith<$Res> {
+  factory $ProviderEvent_ShowCodeCopyWith(ProviderEvent_ShowCode value, $Res Function(ProviderEvent_ShowCode) _then) = _$ProviderEvent_ShowCodeCopyWithImpl;
+@useResult
+$Res call({
+ String userCode, String verificationUri
+});
+
+
+
+
+}
+/// @nodoc
+class _$ProviderEvent_ShowCodeCopyWithImpl<$Res>
+    implements $ProviderEvent_ShowCodeCopyWith<$Res> {
+  _$ProviderEvent_ShowCodeCopyWithImpl(this._self, this._then);
+
+  final ProviderEvent_ShowCode _self;
+  final $Res Function(ProviderEvent_ShowCode) _then;
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? userCode = null,Object? verificationUri = null,}) {
+  return _then(ProviderEvent_ShowCode(
+userCode: null == userCode ? _self.userCode : userCode // ignore: cast_nullable_to_non_nullable
+as String,verificationUri: null == verificationUri ? _self.verificationUri : verificationUri // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ProviderEvent_ClosePage extends ProviderEvent {
+  const ProviderEvent_ClosePage(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ProviderEvent_ClosePage);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ProviderEvent.closePage()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ProviderEvent_NeedsUsername extends ProviderEvent {
+  const ProviderEvent_NeedsUsername({required this.suggested}): super._();
+  
+
+ final  String suggested;
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ProviderEvent_NeedsUsernameCopyWith<ProviderEvent_NeedsUsername> get copyWith => _$ProviderEvent_NeedsUsernameCopyWithImpl<ProviderEvent_NeedsUsername>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ProviderEvent_NeedsUsername&&(identical(other.suggested, suggested) || other.suggested == suggested));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,suggested);
+
+@override
+String toString() {
+  return 'ProviderEvent.needsUsername(suggested: $suggested)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ProviderEvent_NeedsUsernameCopyWith<$Res> implements $ProviderEventCopyWith<$Res> {
+  factory $ProviderEvent_NeedsUsernameCopyWith(ProviderEvent_NeedsUsername value, $Res Function(ProviderEvent_NeedsUsername) _then) = _$ProviderEvent_NeedsUsernameCopyWithImpl;
+@useResult
+$Res call({
+ String suggested
+});
+
+
+
+
+}
+/// @nodoc
+class _$ProviderEvent_NeedsUsernameCopyWithImpl<$Res>
+    implements $ProviderEvent_NeedsUsernameCopyWith<$Res> {
+  _$ProviderEvent_NeedsUsernameCopyWithImpl(this._self, this._then);
+
+  final ProviderEvent_NeedsUsername _self;
+  final $Res Function(ProviderEvent_NeedsUsername) _then;
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? suggested = null,}) {
+  return _then(ProviderEvent_NeedsUsername(
+suggested: null == suggested ? _self.suggested : suggested // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ProviderEvent_Finished extends ProviderEvent {
+  const ProviderEvent_Finished(this.field0): super._();
+  
+
+ final  AccountState field0;
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ProviderEvent_FinishedCopyWith<ProviderEvent_Finished> get copyWith => _$ProviderEvent_FinishedCopyWithImpl<ProviderEvent_Finished>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ProviderEvent_Finished&&(identical(other.field0, field0) || other.field0 == field0));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,field0);
+
+@override
+String toString() {
+  return 'ProviderEvent.finished(field0: $field0)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ProviderEvent_FinishedCopyWith<$Res> implements $ProviderEventCopyWith<$Res> {
+  factory $ProviderEvent_FinishedCopyWith(ProviderEvent_Finished value, $Res Function(ProviderEvent_Finished) _then) = _$ProviderEvent_FinishedCopyWithImpl;
+@useResult
+$Res call({
+ AccountState field0
+});
+
+
+$AccountStateCopyWith<$Res> get field0;
+
+}
+/// @nodoc
+class _$ProviderEvent_FinishedCopyWithImpl<$Res>
+    implements $ProviderEvent_FinishedCopyWith<$Res> {
+  _$ProviderEvent_FinishedCopyWithImpl(this._self, this._then);
+
+  final ProviderEvent_Finished _self;
+  final $Res Function(ProviderEvent_Finished) _then;
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? field0 = null,}) {
+  return _then(ProviderEvent_Finished(
+null == field0 ? _self.field0 : field0 // ignore: cast_nullable_to_non_nullable
+as AccountState,
+  ));
+}
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$AccountStateCopyWith<$Res> get field0 {
+  
+  return $AccountStateCopyWith<$Res>(_self.field0, (value) {
+    return _then(_self.copyWith(field0: value));
+  });
+}
+}
+
+/// @nodoc
+
+
+class ProviderEvent_Failed extends ProviderEvent {
+  const ProviderEvent_Failed({required this.message}): super._();
+  
+
+ final  String message;
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ProviderEvent_FailedCopyWith<ProviderEvent_Failed> get copyWith => _$ProviderEvent_FailedCopyWithImpl<ProviderEvent_Failed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ProviderEvent_Failed&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,message);
+
+@override
+String toString() {
+  return 'ProviderEvent.failed(message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ProviderEvent_FailedCopyWith<$Res> implements $ProviderEventCopyWith<$Res> {
+  factory $ProviderEvent_FailedCopyWith(ProviderEvent_Failed value, $Res Function(ProviderEvent_Failed) _then) = _$ProviderEvent_FailedCopyWithImpl;
+@useResult
+$Res call({
+ String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$ProviderEvent_FailedCopyWithImpl<$Res>
+    implements $ProviderEvent_FailedCopyWith<$Res> {
+  _$ProviderEvent_FailedCopyWithImpl(this._self, this._then);
+
+  final ProviderEvent_Failed _self;
+  final $Res Function(ProviderEvent_Failed) _then;
+
+/// Create a copy of ProviderEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
+  return _then(ProviderEvent_Failed(
+message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ProviderEvent_Cancelled extends ProviderEvent {
+  const ProviderEvent_Cancelled(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ProviderEvent_Cancelled);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ProviderEvent.cancelled()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
 mixin _$SaveState {
 
 
@@ -4895,6 +7008,378 @@ class _$SearchScope_NotebookCopyWithImpl<$Res>
   return _then(SearchScope_Notebook(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+mixin _$SyncAccount {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SyncAccount);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'SyncAccount()';
+}
+
+
+}
+
+/// @nodoc
+class $SyncAccountCopyWith<$Res>  {
+$SyncAccountCopyWith(SyncAccount _, $Res Function(SyncAccount) __);
+}
+
+
+/// Adds pattern-matching-related methods to [SyncAccount].
+extension SyncAccountPatterns on SyncAccount {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SyncAccount_SignedOut value)?  signedOut,TResult Function( SyncAccount_SignedIn value)?  signedIn,TResult Function( SyncAccount_Locked value)?  locked,TResult Function( SyncAccount_SessionEnded value)?  sessionEnded,TResult Function( SyncAccount_Busy value)?  busy,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case SyncAccount_SignedOut() when signedOut != null:
+return signedOut(_that);case SyncAccount_SignedIn() when signedIn != null:
+return signedIn(_that);case SyncAccount_Locked() when locked != null:
+return locked(_that);case SyncAccount_SessionEnded() when sessionEnded != null:
+return sessionEnded(_that);case SyncAccount_Busy() when busy != null:
+return busy(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SyncAccount_SignedOut value)  signedOut,required TResult Function( SyncAccount_SignedIn value)  signedIn,required TResult Function( SyncAccount_Locked value)  locked,required TResult Function( SyncAccount_SessionEnded value)  sessionEnded,required TResult Function( SyncAccount_Busy value)  busy,}){
+final _that = this;
+switch (_that) {
+case SyncAccount_SignedOut():
+return signedOut(_that);case SyncAccount_SignedIn():
+return signedIn(_that);case SyncAccount_Locked():
+return locked(_that);case SyncAccount_SessionEnded():
+return sessionEnded(_that);case SyncAccount_Busy():
+return busy(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SyncAccount_SignedOut value)?  signedOut,TResult? Function( SyncAccount_SignedIn value)?  signedIn,TResult? Function( SyncAccount_Locked value)?  locked,TResult? Function( SyncAccount_SessionEnded value)?  sessionEnded,TResult? Function( SyncAccount_Busy value)?  busy,}){
+final _that = this;
+switch (_that) {
+case SyncAccount_SignedOut() when signedOut != null:
+return signedOut(_that);case SyncAccount_SignedIn() when signedIn != null:
+return signedIn(_that);case SyncAccount_Locked() when locked != null:
+return locked(_that);case SyncAccount_SessionEnded() when sessionEnded != null:
+return sessionEnded(_that);case SyncAccount_Busy() when busy != null:
+return busy(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  signedOut,TResult Function()?  signedIn,TResult Function()?  locked,TResult Function()?  sessionEnded,TResult Function( AccountStep field0)?  busy,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case SyncAccount_SignedOut() when signedOut != null:
+return signedOut();case SyncAccount_SignedIn() when signedIn != null:
+return signedIn();case SyncAccount_Locked() when locked != null:
+return locked();case SyncAccount_SessionEnded() when sessionEnded != null:
+return sessionEnded();case SyncAccount_Busy() when busy != null:
+return busy(_that.field0);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  signedOut,required TResult Function()  signedIn,required TResult Function()  locked,required TResult Function()  sessionEnded,required TResult Function( AccountStep field0)  busy,}) {final _that = this;
+switch (_that) {
+case SyncAccount_SignedOut():
+return signedOut();case SyncAccount_SignedIn():
+return signedIn();case SyncAccount_Locked():
+return locked();case SyncAccount_SessionEnded():
+return sessionEnded();case SyncAccount_Busy():
+return busy(_that.field0);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  signedOut,TResult? Function()?  signedIn,TResult? Function()?  locked,TResult? Function()?  sessionEnded,TResult? Function( AccountStep field0)?  busy,}) {final _that = this;
+switch (_that) {
+case SyncAccount_SignedOut() when signedOut != null:
+return signedOut();case SyncAccount_SignedIn() when signedIn != null:
+return signedIn();case SyncAccount_Locked() when locked != null:
+return locked();case SyncAccount_SessionEnded() when sessionEnded != null:
+return sessionEnded();case SyncAccount_Busy() when busy != null:
+return busy(_that.field0);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class SyncAccount_SignedOut extends SyncAccount {
+  const SyncAccount_SignedOut(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SyncAccount_SignedOut);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'SyncAccount.signedOut()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class SyncAccount_SignedIn extends SyncAccount {
+  const SyncAccount_SignedIn(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SyncAccount_SignedIn);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'SyncAccount.signedIn()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class SyncAccount_Locked extends SyncAccount {
+  const SyncAccount_Locked(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SyncAccount_Locked);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'SyncAccount.locked()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class SyncAccount_SessionEnded extends SyncAccount {
+  const SyncAccount_SessionEnded(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SyncAccount_SessionEnded);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'SyncAccount.sessionEnded()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class SyncAccount_Busy extends SyncAccount {
+  const SyncAccount_Busy(this.field0): super._();
+  
+
+ final  AccountStep field0;
+
+/// Create a copy of SyncAccount
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SyncAccount_BusyCopyWith<SyncAccount_Busy> get copyWith => _$SyncAccount_BusyCopyWithImpl<SyncAccount_Busy>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SyncAccount_Busy&&(identical(other.field0, field0) || other.field0 == field0));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,field0);
+
+@override
+String toString() {
+  return 'SyncAccount.busy(field0: $field0)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SyncAccount_BusyCopyWith<$Res> implements $SyncAccountCopyWith<$Res> {
+  factory $SyncAccount_BusyCopyWith(SyncAccount_Busy value, $Res Function(SyncAccount_Busy) _then) = _$SyncAccount_BusyCopyWithImpl;
+@useResult
+$Res call({
+ AccountStep field0
+});
+
+
+
+
+}
+/// @nodoc
+class _$SyncAccount_BusyCopyWithImpl<$Res>
+    implements $SyncAccount_BusyCopyWith<$Res> {
+  _$SyncAccount_BusyCopyWithImpl(this._self, this._then);
+
+  final SyncAccount_Busy _self;
+  final $Res Function(SyncAccount_Busy) _then;
+
+/// Create a copy of SyncAccount
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? field0 = null,}) {
+  return _then(SyncAccount_Busy(
+null == field0 ? _self.field0 : field0 // ignore: cast_nullable_to_non_nullable
+as AccountStep,
   ));
 }
 

@@ -11,33 +11,46 @@ import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/library_index_status.dart';
 import 'package:kanso/core/models/data/load_status.dart';
 import 'package:kanso/core/models/data/preferences.dart';
+import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 
 import 'close_bloc_later.dart';
 import 'fixture_about_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_sync_repository.dart';
+import 'seeded_account_blocs.dart';
 import 'seeded_appearance_bloc.dart';
+import 'sync_settings_blocs.dart';
 
 /// The BLoCs the settings screens read, read: the version of the app
-/// (0.1.0, build 3) and a sync status, by default no account. The
-/// appearance is the golden helper's.
+/// (0.1.0, build 3), the account and a sync status, by default no account.
+/// The appearance is the golden helper's.
 class SettingsBlocs {
-  SettingsBlocs._(this.about, this.sync, this.index, this.defaultNotebook);
+  SettingsBlocs._(
+    this.about,
+    this.sync,
+    this.account,
+    this.index,
+    this.defaultNotebook,
+  );
 
   final AboutBloc about;
   final SyncStatusBloc sync;
+  final SeededAccountBloc account;
 
   /// The notebooks of the mock library.
   final LibraryIndexBloc index;
   final DefaultNotebookBloc defaultNotebook;
 
-  /// Makes them and waits until they have read.
+  /// Makes them and waits until they have read. The account is [account],
+  /// by default none.
   static Future<SettingsBlocs> start({
     SyncStatus status = signedOutStatus,
+    AccountState account = const AccountState.signedOut(),
     FixtureLibraryRepository? library,
     Preferences preferences = const Preferences(),
   }) async {
@@ -74,7 +87,9 @@ class SettingsBlocs {
     for (var turn = 0; turn < 10; turn++) {
       await Future<void>.value();
     }
-    return SettingsBlocs._(about, sync, index, defaultNotebook);
+    final seeded = SeededAccountBloc(AccountBlocState(account: account));
+    closeBlocLater(seeded);
+    return SettingsBlocs._(about, sync, seeded, index, defaultNotebook);
   }
 
   /// Providers of them, to put above a screen, including one that is a
@@ -82,6 +97,8 @@ class SettingsBlocs {
   List<BlocProvider<dynamic>> get providers => <BlocProvider<dynamic>>[
     BlocProvider<AboutBloc>.value(value: about),
     BlocProvider<SyncStatusBloc>.value(value: sync),
+    BlocProvider<SyncSettingsBloc>.value(value: startedSyncSettingsBloc()),
+    BlocProvider<AccountBloc>.value(value: account),
     BlocProvider<LibraryIndexBloc>.value(value: index),
     BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
   ];

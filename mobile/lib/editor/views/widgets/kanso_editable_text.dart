@@ -41,6 +41,7 @@ class KansoEditableText extends EditableText {
     super.scrollController,
     super.onChanged,
     super.undoController,
+    super.readOnly,
   }) : super(
          maxLines: null,
          minLines: 1,

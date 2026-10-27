@@ -10,6 +10,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart' show addTearDown;
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/library_index_status.dart';
+import 'package:kanso/core/models/data/load_status.dart';
 import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/models/repos/abs/haptics_repository.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
@@ -25,6 +26,10 @@ import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/models/data/search_status.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
+import 'package:kanso/sharing/state/comments/comments_bloc.dart';
+import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
+import 'package:kanso/sharing/state/shared_note_status/shared_note_status_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/shell/state/note_creation/note_creation_bloc.dart';
 import 'package:kanso/tasks/models/data/tasks_status.dart';
@@ -33,9 +38,11 @@ import 'package:kanso/tasks/state/tasks/tasks_bloc.dart';
 import 'close_bloc_later.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_renderer_repository.dart';
+import 'fixture_shared_notes_repository.dart';
 import 'fixture_sync_repository.dart';
 import 'library_fixtures.dart';
 import 'seeded_appearance_bloc.dart';
+import 'sync_settings_blocs.dart';
 
 /// Runs [body] with the clock at [mockNow], the time of the mock content.
 Future<T> atMockNow<T>(Future<T> Function() body) =>
@@ -64,6 +71,8 @@ class BrowseBlocs {
     this.syncRepository,
     this.listNavigation,
     this.libraryPane,
+    this.shared,
+    this.invitations,
     this.creation,
     this.defaultNotebook,
   );
@@ -78,6 +87,11 @@ class BrowseBlocs {
   final NoteCreationBloc creation;
   final DefaultNotebookBloc defaultNotebook;
   final FixtureSyncRepository syncRepository;
+
+  /// The shared notes (see [FixtureSharedNotesRepository]) and the app's
+  /// invitations over them, started.
+  final FixtureSharedNotesRepository shared;
+  final InvitationsBloc invitations;
   final FixtureRendererRepository renderer = FixtureRendererRepository();
   final RecordingHaptics haptics = RecordingHaptics();
   final MemoryNotePlaceRepository places = MemoryNotePlaceRepository();
@@ -96,6 +110,7 @@ class BrowseBlocs {
   static Future<BrowseBlocs> start([
     FixtureLibraryRepository? library,
     FixtureSyncRepository? syncRepository,
+    FixtureSharedNotesRepository? shared,
   ]) async {
     final fixture = library ?? FixtureLibraryRepository();
     addTearDown(() => unawaited(fixture.close()));
@@ -120,6 +135,13 @@ class BrowseBlocs {
     final libraryPane = LibraryPaneBloc();
     closeBlocLater(listNavigation);
     closeBlocLater(libraryPane);
+    final sharedNotes = shared ?? FixtureSharedNotesRepository();
+    final invitations = InvitationsBloc(sharedNotes)
+      ..add(const InvitationsEvent.started());
+    closeBlocLater(invitations);
+    await invitations.stream.firstWhere(
+      (state) => state.status != LoadStatus.loading,
+    );
     final creation = NoteCreationBloc(
       fixture,
       MemoryNotePlaceRepository(),
@@ -138,6 +160,8 @@ class BrowseBlocs {
       account,
       listNavigation,
       libraryPane,
+      sharedNotes,
+      invitations,
       creation,
       defaultNotebook,
     );
@@ -226,14 +250,20 @@ class BrowseBlocs {
     NoteBloc? note,
     SearchBloc? search,
     TasksBloc? tasks,
+    CommentsBloc? comments,
+    SharedNoteStatusBloc? status,
   }) {
     return MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<LibraryIndexBloc>.value(value: index),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
         BlocProvider<SyncStatusBloc>.value(value: sync),
+        BlocProvider<SyncSettingsBloc>.value(
+          value: startedSyncSettingsBloc(syncRepository),
+        ),
         BlocProvider<ListNavigationBloc>.value(value: listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: libraryPane),
+        BlocProvider<InvitationsBloc>.value(value: invitations),
         BlocProvider<UndoNoticeBloc>.value(value: undoNotice),
         BlocProvider<NoteCreationBloc>.value(value: creation),
         BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
@@ -241,6 +271,9 @@ class BrowseBlocs {
         if (note != null) BlocProvider<NoteBloc>.value(value: note),
         if (search != null) BlocProvider<SearchBloc>.value(value: search),
         if (tasks != null) BlocProvider<TasksBloc>.value(value: tasks),
+        if (comments != null) BlocProvider<CommentsBloc>.value(value: comments),
+        if (status != null)
+          BlocProvider<SharedNoteStatusBloc>.value(value: status),
       ],
       child: child,
     );

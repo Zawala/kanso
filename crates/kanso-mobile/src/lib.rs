@@ -30,6 +30,18 @@
 //!   source, fits a theme (the built-in ones are in, as the desktop has
 //!   them, and source can be colored in any of them) and draws math and
 //!   diagrams.
+//! - [`AccountHandle`] (`library.account()`) signs in and up with every
+//!   way the server offers (password, passkey, Apple, Google, GitHub),
+//!   opens a locked account with the password, another device or the
+//!   recovery key, and asks the binding question.
+//!   [`AccountSettings`] (`library.account_settings()`) is the account's
+//!   page, and [`Approvals`] (`library.approvals()`) the requests of other
+//!   devices this phone may approve.
+//! - [`SharedNotes`] (`library.shared()`) shares notes with other accounts
+//!   and keeps an open shared note live.
+//! - [`Gallery`] (`library.gallery()`) lists and installs the gallery's
+//!   themes, checked as the desktop checks them: the signed index, then
+//!   each file's pinned hash.
 //! - [`background`] is the sync that runs with no app: the code behind the
 //!   C entry `kanso_background_sync` that `mobile/rust` exports.
 //! - [`diagnostics`] has the version, the TLS check and the panic probe.
@@ -45,35 +57,66 @@
 //! Secrets (the session, the data key) are kept by Rust in the platform's
 //! store ([`secrets`]), never handed to the shell.
 
+mod account;
+mod account_methods;
+mod account_model;
+mod account_provider;
+mod account_runtime;
+mod account_settings;
+mod approvals;
+mod approver_model;
 pub mod background;
 mod backup;
 pub mod boundary;
 mod builtin_themes;
+mod comments_model;
 pub mod diagnostics;
 mod editing;
 mod errors;
+mod gallery;
+mod gallery_model;
+mod gallery_net;
+mod gallery_store;
 mod icons;
 mod library;
 mod locks;
 mod matching;
 mod model;
 mod notes;
+pub mod passkey_bridge;
+mod passkey_flow;
 mod preview;
+mod provider_loopback;
 mod renderer;
+mod schedule;
 pub mod secrets;
+mod sharing;
+mod sharing_model;
 mod stream;
+mod sync_model;
+mod sync_words;
 mod syncing;
 mod tasks;
 mod theme_tokens;
 mod undo;
 
+pub use account::AccountHandle;
+pub use account_model::*;
+pub use account_settings::AccountSettings;
+pub use approvals::Approvals;
+pub use comments_model::*;
 pub use editing::EditorSession;
 pub use errors::KansoError;
+pub use gallery::Gallery;
+pub use gallery_model::*;
 pub use library::Library;
 pub use locks::LockSession;
 pub use model::*;
 pub use renderer::Renderer;
+pub use sharing::SharedNotes;
+pub use sharing_model::*;
 pub use stream::Sink;
+pub use sync_model::*;
 pub use syncing::SyncHandle;
 
 /// Where secrets live: the seam the Keychain, the Keystore and the tests'

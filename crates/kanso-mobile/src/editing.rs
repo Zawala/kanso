@@ -28,6 +28,16 @@
 //! [`EditorSession::use_theirs`] (which keeps the typed text in history).
 //! Changes made elsewhere to a note with no unsaved typing just reload it.
 //!
+//! # Shared notes
+//!
+//! While a shared note's live room is open, its text reaches the library
+//! only through the room's merge (`SharedNotes::editor_merge`), as on the
+//! desktop: when typing pauses, and as soon as the room says other people's
+//! edits are waiting. The session takes the merged text in without moving
+//! the caret; typing that came while the merge ran is made again on top of
+//! it and merged next time. Taking other people's text starts the history
+//! over, and the shell is sent [`EditorEvent::Reloaded`].
+//!
 //! # Locked notes
 //!
 //! A session on a locked note works while the note is open. When the lock
@@ -43,6 +53,8 @@ use std::ops::Range;
 use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::time::{Duration, Instant};
 
+use kanso_collab::engine::rebase;
+use kanso_collab::{EditorMerge, apply_splices, remap, splices};
 use kanso_core::model::{LOCK_FIELD, TRASH_BOOK_ID};
 use kanso_core::properties;
 use kanso_core::{DocType, Note, now_ms};
@@ -55,11 +67,13 @@ use kanso_engine::links::{self, LinkAtTarget, WikiIndex};
 use kanso_engine::lock::LockView;
 use kanso_engine::saving::{Autosave, has_text, same_content, text_caught_up, writes_the_same};
 use kanso_engine::text::Utf16Index;
+use kanso_engine::theme::CURSOR_COLOURS;
 use kanso_store::{Change, Origin, Put, StoreError};
 use zeroize::Zeroize;
 
 use crate::boundary::{guard, held};
 use crate::builtin_themes;
+use crate::comments_model::CommentPlacement;
 use crate::errors::KansoError;
 use crate::library::{Inner, Library};
 use crate::model::{
@@ -68,6 +82,8 @@ use crate::model::{
     Property, Range16, Replacement, RunBatch, SaveState, TextChange,
 };
 use crate::notes::property_row;
+use crate::sharing::SharedNotes;
+use crate::sharing_model::CursorMark;
 use crate::stream::Listeners;
 
 /// How long the titles for completion are kept before they are read again
@@ -129,7 +145,7 @@ impl Editors {
         sessions.push(Arc::downgrade(session));
     }
 
-    fn wake(&self) {
+    pub(crate) fn wake(&self) {
         *held(&self.wake.generation) += 1;
         self.wake.changed.notify_all();
     }
@@ -392,14 +408,18 @@ impl EditorSession {
     /// snapshot), or names units outside the text. An offset inside a
     /// surrogate pair is taken to mean the whole character.
     pub fn apply(&self, change: TextChange) -> Result<EditOutcome, KansoError> {
-        guard(|| self.shared.run(|st, _| self.shared.type_in(st, change)))
+        guard(|| {
+            let outcome = self.shared.run(|st, _| self.shared.type_in(st, change))?;
+            self.tell_caret(None);
+            Ok(outcome)
+        })
     }
 
     /// The selection changed with no change to the text. Hot path. Says what
     /// is under the caret.
     pub fn select(&self, selection: Range16, composing: bool) -> Result<EditorContext, KansoError> {
         guard(|| {
-            self.shared.run(|st, _| {
+            let context = self.shared.run(|st, _| {
                 st.selection = st.bytes(selection);
                 if st.composing && !composing {
                     st.history.close_step();
@@ -407,6 +427,62 @@ impl EditorSession {
                 st.composing = composing;
                 st.history.selection_changed(&st.selection);
                 Ok(st.context())
+            })?;
+            self.tell_caret(Some(selection));
+            Ok(context)
+        })
+    }
+
+    /// Tells the note's room where the caret is, for the others to see: the
+    /// end of `selection` the person moves, or the end of the selection the
+    /// session has. Nothing for a note that isn't open live.
+    fn tell_caret(&self, selection: Option<Range16>) {
+        let sharing = self.shared.sharing();
+        if !sharing.merges(&self.shared.id) {
+            return;
+        }
+        let Ok((anchor, head)) = self.shared.run(|st, _| {
+            let hidden = st.hidden.len();
+            let at = |units: u32| hidden + st.index.utf16_to_byte(&st.text, units as usize);
+            Ok(match selection {
+                Some(selection) => (at(selection.start), at(selection.end)),
+                None => (hidden + st.selection.start, hidden + st.selection.end),
+            })
+        }) else {
+            return;
+        };
+        sharing.set_caret(&self.shared.id, anchor, head);
+    }
+
+    /// Other people's carets and selections in the note, in UTF-16 units of
+    /// the visible text, with their colours, as the desktop draws them. None
+    /// for a note that isn't open live; a caret in the front matter is at
+    /// the start.
+    pub fn remote_cursors(&self) -> Result<Vec<CursorMark>, KansoError> {
+        guard(|| {
+            let cursors = self.shared.sharing().cursors(&self.shared.id);
+            if cursors.is_empty() {
+                return Ok(Vec::new());
+            }
+            self.shared.run(|st, _| {
+                let place =
+                    |byte: u32| visible_units(&st.text, &st.index, st.hidden.len(), byte as usize);
+                Ok(cursors
+                    .iter()
+                    .map(|cursor| {
+                        let (anchor, head) = (place(cursor.anchor), place(cursor.head));
+                        let (light, dark) =
+                            CURSOR_COLOURS[cursor.colour as usize % CURSOR_COLOURS.len()];
+                        CursorMark {
+                            name: cursor.name.clone(),
+                            caret: head,
+                            start: anchor.min(head),
+                            end: anchor.max(head),
+                            light: light.0,
+                            dark: dark.0,
+                        }
+                    })
+                    .collect())
             })
         })
     }
@@ -595,6 +671,80 @@ impl EditorSession {
         })
     }
 
+    /// Comments on the selected words of a shared note, the desktop's
+    /// Comment on Selection: the typing goes into the room first, so the
+    /// words are the ones everyone has. Answers with the new comment's ID;
+    /// refused in the desktop's words with no words selected, for a note
+    /// that isn't shared, or for a role that may only read.
+    pub fn comment_on_selection(&self, body: String) -> Result<String, KansoError> {
+        guard(|| {
+            self.flush()?;
+            let (start, end) = self.shared.run(|st, _| {
+                let before = units_of(&st.hidden, st.hidden.len());
+                let selection = st.range16(&st.selection);
+                Ok((before + selection.start, before + selection.end))
+            })?;
+            self.shared
+                .sharing()
+                .add_comment(self.shared.id.clone(), start, end, body)
+        })
+    }
+
+    /// The words the note's open comments are on, in UTF-16 units of the
+    /// visible text, to tint as the desktop does. None for a note that
+    /// isn't shared, and none for comments whose words were deleted.
+    pub fn comment_marks(&self) -> Result<Vec<Range16>, KansoError> {
+        guard(|| {
+            let Ok(comments) = self.shared.sharing().comments(self.shared.id.clone()) else {
+                return Ok(Vec::new());
+            };
+            self.shared.run(|st, _| {
+                let before = units_of(&st.hidden, st.hidden.len());
+                let len = st.index.len_utf16() as u32;
+                Ok(comments
+                    .iter()
+                    .filter(|row| !row.resolved)
+                    .filter_map(|row| match row.placement {
+                        CommentPlacement::Anchored { start, end } => {
+                            let start = start.saturating_sub(before).min(len);
+                            let end = end.saturating_sub(before).min(len);
+                            (start < end).then_some(Range16 { start, end })
+                        }
+                        CommentPlacement::Orphaned { .. } => None,
+                    })
+                    .collect())
+            })
+        })
+    }
+
+    /// Selects the words comment `comment_id` is on (where they were, for
+    /// one whose words were deleted) and answers with the selection, in
+    /// UTF-16 units of the visible text; `None` when there is no such
+    /// comment.
+    pub fn select_comment(&self, comment_id: String) -> Result<Option<Range16>, KansoError> {
+        guard(|| {
+            let Ok(comments) = self.shared.sharing().comments(self.shared.id.clone()) else {
+                return Ok(None);
+            };
+            let Some(row) = comments.into_iter().find(|row| row.id == comment_id) else {
+                return Ok(None);
+            };
+            self.shared.run(|st, _| {
+                let before = units_of(&st.hidden, st.hidden.len());
+                let (start, end) = match row.placement {
+                    CommentPlacement::Anchored { start, end } => (start, end),
+                    CommentPlacement::Orphaned { at } => (at, at),
+                };
+                let selection = st.bytes(Range16 {
+                    start: start.saturating_sub(before),
+                    end: end.saturating_sub(before),
+                });
+                st.selection = selection;
+                Ok(Some(st.range16(&st.selection)))
+            })
+        })
+    }
+
     /// Keeps the typed text over the change made elsewhere. Theirs stays in
     /// the note's history; a deleted note comes back.
     pub fn keep_mine(&self) -> Result<SaveState, KansoError> {
@@ -746,6 +896,7 @@ impl State {
             },
             properties: self.properties(),
             version: self.version,
+            selection: self.range16(&self.selection),
             history: self.history_state(),
             save: self.save.clone(),
         }
@@ -1222,6 +1373,18 @@ impl Shared {
 }
 
 /// UTF-16 units in `line[..byte]`.
+/// A byte offset of a note's whole body as UTF-16 units of `text`, the
+/// body after its `hidden` bytes of front matter: the start for one in the
+/// front matter, the end for one past the text, and the start of the
+/// character for one inside it.
+fn visible_units(text: &str, index: &Utf16Index, hidden: usize, byte: usize) -> u32 {
+    let mut at = byte.saturating_sub(hidden).min(text.len());
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    index.byte_to_utf16(text, at) as u32
+}
+
 fn units_of(line: &str, byte: usize) -> u32 {
     kanso_engine::text::byte_to_utf16(line, byte) as u32
 }
@@ -1235,8 +1398,12 @@ fn note_of(insert: &str) -> Option<String> {
 // MARK: Saving
 
 impl Shared {
-    /// Saves the typing that is due at `now`. Says when the next is due.
+    /// Saves the typing that is due at `now`, or merges what waits in the
+    /// note's live room. Says when the next save is due.
     fn autosave_step(&self, now: Instant) -> Option<Instant> {
+        let sharing = self.sharing();
+        let merging = sharing.merges(&self.id);
+        let waiting = merging && sharing.edits_waiting(&self.id);
         {
             let mut st = held(&self.state);
             if st.end.is_some() || st.closing {
@@ -1246,7 +1413,7 @@ impl Shared {
                 st.autosave.saved();
                 return None;
             }
-            if !st.autosave.due(now) {
+            if !waiting && !st.autosave.due(now) {
                 return st.autosave.deadline();
             }
             st.autosave.saved();
@@ -1254,13 +1421,123 @@ impl Shared {
         let mut events = Vec::new();
         {
             let _gate = held(&self.gate);
-            let job = self.prepare_save(&mut held(&self.state), true);
-            if let Some(job) = job {
-                self.write(job, &mut events);
+            if !(merging && self.merge(&mut events)) {
+                let job = self.prepare_save(&mut held(&self.state), true);
+                if let Some(job) = job {
+                    self.write(job, &mut events);
+                }
             }
         }
         self.send(events);
         held(&self.state).autosave.deadline()
+    }
+
+    fn sharing(&self) -> SharedNotes {
+        SharedNotes {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Merges the session's text with the note's live room: the library
+    /// gets the merge, and the session takes what other people wrote. The
+    /// gate is held. Says whether the note had a room to merge through (a
+    /// note without one is saved as any other).
+    fn merge(&self, events: &mut Vec<EditorEvent>) -> bool {
+        let sent = {
+            let mut st = held(&self.state);
+            // A locked note is never shared; a question about a change
+            // made elsewhere waits for its answer.
+            if st.end.is_some() || st.closing || st.incoming.is_some() || st.lock != LockView::Plain
+            {
+                return false;
+            }
+            st.writing = true;
+            (st.title.clone(), st.full_body())
+        };
+        let merged = self.sharing().editor_merge(&self.id, &sent.0, &sent.1);
+        let mut st = held(&self.state);
+        st.writing = false;
+        let had_room = match merged {
+            Ok(Some(merge)) => {
+                self.take_merge(&mut st, events, &sent, &merge);
+                true
+            }
+            Ok(None) => false,
+            Err(err) => {
+                fail(&mut st, events, format!("Couldn't save: {err}"));
+                true
+            }
+        };
+        for change in std::mem::take(&mut st.deferred) {
+            self.absorb_change(&mut st, events, &change);
+        }
+        had_room
+    }
+
+    /// Puts a merge of `sent` in the session; the desktop editor's
+    /// `collab_apply`. The caret and the selection stay with their text.
+    fn take_merge(
+        &self,
+        st: &mut State,
+        events: &mut Vec<EditorEvent>,
+        sent: &(String, String),
+        merge: &EditorMerge,
+    ) {
+        let now = (st.title.clone(), st.full_body());
+        let typed_since = now != *sent;
+        let (title_edits, body_edits) = if typed_since {
+            (
+                splices(&now.0, &rebase(&sent.0, &now.0, &merge.title_text)),
+                splices(&now.1, &rebase(&sent.1, &now.1, &merge.body_text)),
+            )
+        } else {
+            (merge.title.clone(), merge.body.clone())
+        };
+        // The library has the merge now, under a new revision.
+        if let Ok(Some(mut latest)) = self.inner.store.note(&self.id) {
+            held(&self.inner.keys).reveal(&mut latest, Some(&self.inner.store));
+            st.note = latest;
+        }
+        if !title_edits.is_empty() || !body_edits.is_empty() {
+            let (mut title, mut body) = now;
+            apply_splices(&mut title, &title_edits);
+            apply_splices(&mut body, &body_edits);
+            let before = st.hidden.len();
+            let start = remap(before + st.selection.start, &body_edits);
+            let end = remap(before + st.selection.end, &body_edits);
+            let (hidden, text) = split_front(&body);
+            let place = |at: usize| {
+                let mut at = at.saturating_sub(hidden.len()).min(text.len());
+                while !text.is_char_boundary(at) {
+                    at -= 1;
+                }
+                at
+            };
+            st.selection = place(start).min(place(end))..place(start).max(place(end));
+            st.title = title;
+            st.hidden = hidden;
+            st.text = text;
+            st.index = Utf16Index::new(&st.text);
+            st.composing = false;
+            st.history.clear();
+            st.version += 1;
+            events.push(EditorEvent::Reloaded {
+                snapshot: st.snapshot(),
+            });
+        }
+        if typed_since {
+            st.save = SaveState::Pending;
+            st.autosave.changed(Instant::now());
+            self.inner.editors.wake();
+        } else {
+            let rev = st.note.rev.clone().unwrap_or_default();
+            let at_ms = now_ms();
+            st.save = SaveState::Saved {
+                rev: rev.clone(),
+                at_ms,
+            };
+            events.push(EditorEvent::Saved { rev, at_ms });
+        }
     }
 
     /// The write that saves the title and text if they changed since the
@@ -1484,6 +1761,11 @@ impl Shared {
     /// The gate is held.
     fn flush_gated(&self, events: &mut Vec<EditorEvent>) {
         held(&self.state).autosave.saved();
+        // A shared note in its room is saved by merging.
+        if self.sharing().merges(&self.id) && self.merge(events) {
+            Self::settle_pending(&mut held(&self.state));
+            return;
+        }
         // Another writer can win the race between reading and writing; try
         // again on top of its version.
         for _ in 0..3 {
@@ -1981,5 +2263,45 @@ mod tests {
             SaveState::Conflict { deleted: false }
         );
         assert!(events.contains(&EditorEvent::Incoming { deleted: false }));
+    }
+
+    #[test]
+    fn a_caret_is_placed_in_the_text_after_the_front_matter() {
+        let text = "Alpha 😀 beta";
+        let index = Utf16Index::new(text);
+        // 4 bytes of front matter: the text starts at byte 4.
+        assert_eq!(visible_units(text, &index, 4, 0), 0);
+        assert_eq!(visible_units(text, &index, 4, 4 + 6), 6);
+        // Inside the emoji: its start. After it: two units on.
+        assert_eq!(visible_units(text, &index, 4, 4 + 8), 6);
+        assert_eq!(visible_units(text, &index, 4, 4 + 10), 8);
+        assert_eq!(visible_units(text, &index, 4, 1000), 13);
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+
+        /// Wherever someone's caret is, it lands on a character of the
+        /// visible text, at the units the text before it takes.
+        #[test]
+        fn prop_a_caret_lands_on_a_character_of_the_text(
+            text in "[a-zé😀\u{301}\n]{0,24}",
+            hidden in 0usize..12,
+            byte in 0usize..120,
+        ) {
+            let index = Utf16Index::new(&text);
+            let units = visible_units(&text, &index, hidden, byte) as usize;
+            let total = text.encode_utf16().count();
+            proptest::prop_assert!(units <= total);
+            // The oracle: count the units of the text up to where it lands.
+            let mut at = byte.saturating_sub(hidden).min(text.len());
+            while !text.is_char_boundary(at) {
+                at -= 1;
+            }
+            proptest::prop_assert_eq!(units, text[..at].encode_utf16().count());
+            // Further on in the body is never earlier in the text.
+            let next = visible_units(&text, &index, hidden, byte + 1) as usize;
+            proptest::prop_assert!(next >= units);
+        }
     }
 }

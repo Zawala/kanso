@@ -22,9 +22,11 @@ circle-check
 circle-dot
 circle-pause
 circle-question-mark
+circle-user
 circle-x
 clock recent
 cloud
+copy
 download
 ellipsis
 external-link
@@ -48,6 +50,7 @@ lock
 lock-open
 log-out
 menu
+message-square
 monitor
 moon
 notebook notebook
@@ -62,7 +65,10 @@ scan-face
 search
 settings
 shapes
+share-2
 shield
+shield-alert
+shield-check
 sparkles
 star
 sun
@@ -71,4 +77,5 @@ trash trash
 type
 undo-2
 user
+users
 x

@@ -25,6 +25,7 @@ class PropertiesSection extends StatefulWidget {
     required this.onSet,
     required this.onRemove,
     this.failed = false,
+    this.readOnly = false,
     super.key,
   });
 
@@ -44,6 +45,10 @@ class PropertiesSection extends StatefulWidget {
 
   /// Whether the last change did not work.
   final bool failed;
+
+  /// Whether the properties may be read and not changed: they open and
+  /// close, and nothing is added.
+  final bool readOnly;
 
   @override
   State<PropertiesSection> createState() => _PropertiesSectionState();
@@ -83,16 +88,19 @@ class _PropertiesSectionState extends State<PropertiesSection> {
         ),
         if (widget.open) ...<Widget>[
           for (var i = 0; i < widget.properties.length; i++)
-            PropertyRow(
+            IgnorePointer(
               // A row is its place in the front matter.
               key: ValueKey<(int, String)>((i, widget.properties[i].key)),
-              property: widget.properties[i],
-              onSubmitted: (value) => widget.onSet(
-                widget.properties[i].key,
-                value,
-                index: i,
+              ignoring: widget.readOnly,
+              child: PropertyRow(
+                property: widget.properties[i],
+                onSubmitted: (value) => widget.onSet(
+                  widget.properties[i].key,
+                  value,
+                  index: i,
+                ),
+                onRemove: () => widget.onRemove(i),
               ),
-              onRemove: () => widget.onRemove(i),
             ),
           if (widget.failed)
             Padding(
@@ -107,46 +115,47 @@ class _PropertiesSectionState extends State<PropertiesSection> {
                 ),
               ),
             ),
-          ValueListenableBuilder<bool>(
-            valueListenable: adding,
-            builder: (context, isAdding, _) {
-              if (isAdding) {
-                return NewPropertyRow(
-                  onAdd: (key, value) {
-                    adding.value = false;
-                    widget.onSet(key, value);
-                  },
-                  onCancel: () => adding.value = false,
-                );
-              }
-              return Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: KansoPressable(
-                  onTap: () => adding.value = true,
-                  child: SizedBox(
-                    height: KansoSizes.touchTarget,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        KansoIcon(
-                          KansoIcons.plus,
-                          size: KansoSizes.iconSmall,
-                          color: colors.accent,
-                        ),
-                        const SizedBox(width: KansoSpacing.xs),
-                        Text(
-                          l10n.propertiesAdd,
-                          style: context.typography.label.copyWith(
+          if (!widget.readOnly)
+            ValueListenableBuilder<bool>(
+              valueListenable: adding,
+              builder: (context, isAdding, _) {
+                if (isAdding) {
+                  return NewPropertyRow(
+                    onAdd: (key, value) {
+                      adding.value = false;
+                      widget.onSet(key, value);
+                    },
+                    onCancel: () => adding.value = false,
+                  );
+                }
+                return Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: KansoPressable(
+                    onTap: () => adding.value = true,
+                    child: SizedBox(
+                      height: KansoSizes.touchTarget,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          KansoIcon(
+                            KansoIcons.plus,
+                            size: KansoSizes.iconSmall,
                             color: colors.accent,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: KansoSpacing.xs),
+                          Text(
+                            l10n.propertiesAdd,
+                            style: context.typography.label.copyWith(
+                              color: colors.accent,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
         ],
       ],
     );

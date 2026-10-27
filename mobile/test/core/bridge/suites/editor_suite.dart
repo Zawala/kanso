@@ -330,6 +330,28 @@ void editorSuite(OpenLibrary open) {
       expect(await locks.unlock(password: lockPassword), isTrue);
       expect((await library.note(id: id)).body, 'TYPED the SECRETWORDS');
     });
+
+    test('a note shared with nobody has no comments or other people in '
+        'it, and nothing to comment on', () async {
+      final library = await open();
+      final id = await makeNote(library, 'Plan', 'hello world');
+      final editor = await library.edit(id: id);
+
+      expect(await editor.commentMarks(), isEmpty);
+      expect(await editor.remoteCursors(), isEmpty);
+      expect(await editor.selectComment(commentId: 'c'), isNull);
+      editor.select(
+        selection: const Range16(start: 0, end: 5),
+        composing: false,
+      );
+      await expectLater(
+        editor.commentOnSelection(body: 'Why?'),
+        throwsA(isA<KansoError>()),
+      );
+      // The refusal leaves the text as it was.
+      expect((await editor.snapshot()).text, 'hello world');
+      await editor.close();
+    });
   });
 }
 
