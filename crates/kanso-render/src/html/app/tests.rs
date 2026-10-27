@@ -249,6 +249,136 @@ fn task_boxes_are_links_numbered_by_the_task_list() {
     assert!(css.contains("padding:15px"), "15 + 15 + 15 is 45 points");
 }
 
+/// The boxes of `markdown` as the preview reads it (front matter is a block of
+/// its own there), numbered by the note's task list.
+fn boxes(markdown: &str) -> Vec<TaskBox> {
+    let mut options = markdown::ParseOptions::gfm();
+    options.constructs.frontmatter = true;
+    let root = crate::markdown_safe::to_mdast(markdown, &options).unwrap();
+    task_boxes(&root, markdown, &slots(markdown))
+}
+
+/// The line `toggle_task(markdown, slot)` changes, if it changes one.
+fn toggled_line(markdown: &str, slot: usize) -> Option<usize> {
+    let after = kanso_core::tasks::toggle_task(markdown, slot)?;
+    let mut changed = markdown
+        .split('\n')
+        .zip(after.split('\n'))
+        .enumerate()
+        .filter(|(_, (before, after))| before != after)
+        .map(|(line, _)| line);
+    let line = changed.next()?;
+    changed.next().is_none().then_some(line)
+}
+
+#[test]
+fn task_boxes_know_their_place_in_the_task_list() {
+    let md =
+        "- [ ] one\n  - [x] two\n- [ ] three\n\n```\n- [ ] not a task\n```\n\n1. [ ] numbered\n";
+    let found = boxes(md);
+    assert_eq!(
+        found
+            .iter()
+            .map(|b| (md[b.offset..].lines().next().unwrap(), b.slot))
+            .collect::<Vec<_>>(),
+        [
+            ("- [ ] one", Some(0)),
+            ("- [x] two", Some(1)),
+            ("- [ ] three", Some(2)),
+            ("1. [ ] numbered", Some(3)),
+        ]
+    );
+    assert_eq!(
+        found.iter().map(|b| b.checked).collect::<Vec<_>>(),
+        [false, true, false, false]
+    );
+}
+
+#[test]
+fn task_boxes_skip_front_matter_and_indented_code() {
+    // The line scan counts both; the tree draws neither as a task, so the
+    // real task is the third in the list.
+    let md = "---\ntags:\n  - [ ] yaml\n---\n\npara\n\n    - [ ] code\n\n- [ ] real\n";
+    let found = boxes(md);
+    assert_eq!(found.len(), 1);
+    assert_eq!(&md[found[0].offset..], "- [ ] real\n");
+    assert_eq!(found[0].slot, Some(2));
+    assert_eq!(toggled_line(md, 2), Some(found[0].line as usize));
+}
+
+#[test]
+fn task_boxes_in_crlf_notes_keep_their_place() {
+    let md = "- [ ] a\r\n- [x] b\r\n\r\n```\r\n- [ ] code\r\n```\r\n\r\n- [ ] c\r\n";
+    let found = boxes(md);
+    assert_eq!(
+        found.iter().map(|b| b.slot).collect::<Vec<_>>(),
+        [Some(0), Some(1), Some(2)]
+    );
+    for b in &found {
+        assert_eq!(toggled_line(md, b.slot.unwrap()), Some(b.line as usize));
+    }
+}
+
+#[test]
+fn task_boxes_with_a_lone_carriage_return_have_no_place() {
+    let found = boxes("a\r- [ ] x\r- [ ] y\n");
+    assert!(!found.is_empty());
+    assert!(found.iter().all(|b| b.slot.is_none()));
+}
+
+#[test]
+fn task_boxes_the_line_scan_does_not_see_have_no_place() {
+    // The inner box starts mid-line, where the task list doesn't look, so
+    // the next line's task is the list's first.
+    let found = boxes("- - [ ] x\n- [ ] y\n");
+    assert_eq!(
+        found.iter().map(|b| b.slot).collect::<Vec<_>>(),
+        [None, Some(0)]
+    );
+}
+
+#[test]
+fn tasks_sharing_a_line_are_not_told_apart() {
+    // The task list has one slot to a line, so two tasks of the tree on one
+    // line can't each be given it.
+    let task = |offset, line| TaskNode {
+        offset,
+        line,
+        checked: false,
+    };
+    let slots = [TaskSlot {
+        line: 0,
+        checked: false,
+    }];
+    assert_eq!(match_slots(&[task(0, 0), task(6, 0)], &slots), [None, None]);
+    assert_eq!(match_slots(&[task(0, 0)], &slots), [Some(0)]);
+}
+
+proptest! {
+    /// Agreement: whatever a note is made of, a box that has a place is the
+    /// task `toggle_task` changes at that place, and on its own line.
+    #[test]
+    fn prop_a_box_with_a_place_is_the_task_that_toggles(
+        lines in prop::collection::vec(
+            prop_oneof![
+                Just("- [ ] open"), Just("- [x] done"), Just("  - [ ] nested"),
+                Just("1. [X] numbered"), Just("> - [ ] quoted"), Just("```"), Just("~~~"),
+                Just("    - [ ] indented"), Just("- not a task"), Just("---"), Just(""),
+                Just("text"),
+            ],
+            0..14,
+        ),
+        eol in prop_oneof![Just("\n"), Just("\r\n")],
+    ) {
+        let md: String = lines.iter().map(|line| format!("{line}{eol}")).collect();
+        for b in boxes(&md) {
+            if let Some(slot) = b.slot {
+                prop_assert_eq!(toggled_line(&md, slot), Some(b.line as usize), "{:?}", md);
+            }
+        }
+    }
+}
+
 #[test]
 fn boxes_the_task_list_does_not_name_stay_plain() {
     // No slots: nothing to number by.

@@ -224,10 +224,20 @@ fn unique_slugs(texts: &[String]) -> Vec<String> {
 /// boxes, in document order.
 pub(super) struct Facts {
     headings: Vec<(u8, String)>,
-    /// `(line, checked)` of each task item, the line 0-based.
-    tasks: Vec<(u32, bool)>,
+    /// Each task item.
+    tasks: Vec<TaskNode>,
     /// The start offset and text of each code block (fenced or indented).
     codes: Vec<(usize, String)>,
+}
+
+/// A task item of the Markdown syntax tree.
+#[derive(Clone, Copy, Debug)]
+struct TaskNode {
+    /// Where the item starts (its list marker), in bytes.
+    offset: usize,
+    /// The line it is on, 0-based.
+    line: u32,
+    checked: bool,
 }
 
 impl Facts {
@@ -254,9 +264,11 @@ pub(super) fn facts(root: &Node) -> Facts {
             }
             Node::ListItem(item) => {
                 if let (Some(checked), Some(position)) = (item.checked, &item.position) {
-                    facts
-                        .tasks
-                        .push((position.start.line.saturating_sub(1) as u32, checked));
+                    facts.tasks.push(TaskNode {
+                        offset: position.start.offset,
+                        line: position.start.line.saturating_sub(1) as u32,
+                        checked,
+                    });
                 }
             }
             _ => {}
@@ -418,6 +430,64 @@ pub(super) fn has_lone_cr(text: &str) -> bool {
         .any(|(i, &b)| b == b'\r' && bytes.get(i + 1) != Some(&b'\n'))
 }
 
+/// The slot of `slots` each task of the tree is, in the tree's order, or
+/// `None` where the tree and the slots don't agree on it: no slot is on its
+/// line and ticked the same way, or another task of the tree shares its line
+/// (`- [ ] - [ ] x`), which the slots, one to a line, can't tell apart.
+fn match_slots(tasks: &[TaskNode], slots: &[TaskSlot]) -> Vec<Option<usize>> {
+    tasks
+        .iter()
+        .map(|task| {
+            let alone = tasks.iter().filter(|other| other.line == task.line).count() == 1;
+            alone
+                .then(|| {
+                    slots
+                        .iter()
+                        .position(|slot| slot.line == task.line && slot.checked == task.checked)
+                })
+                .flatten()
+        })
+        .collect()
+}
+
+/// A task box of a note, as its syntax tree has it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TaskBox {
+    /// Where its list item starts (the list marker), in bytes of the note.
+    pub offset: usize,
+    /// The line it is on, 0-based.
+    pub line: u32,
+    pub checked: bool,
+    /// Its place among the note's task slots (`kanso_core::tasks::task_items`,
+    /// so the index `toggle_task` takes), or `None` when that can't be known
+    /// with certainty. A box without one must not be ticked.
+    pub slot: Option<usize>,
+}
+
+/// The task boxes of the note whose syntax tree is `root`, in document
+/// order, each with its place in `slots` where the tree and the slots agree
+/// on it (the rule the page's linked boxes follow). A note with a lone
+/// carriage return, which Markdown counts as a line end and the slots do not,
+/// has no slots to give. Pure.
+pub fn task_boxes(root: &Node, source: &str, slots: &[TaskSlot]) -> Vec<TaskBox> {
+    let tasks = facts(root).tasks;
+    let matched = if has_lone_cr(source) {
+        vec![None; tasks.len()]
+    } else {
+        match_slots(&tasks, slots)
+    };
+    tasks
+        .iter()
+        .zip(matched)
+        .map(|(task, slot)| TaskBox {
+            offset: task.offset,
+            line: task.line,
+            checked: task.checked,
+            slot,
+        })
+        .collect()
+}
+
 /// Each task box of the page as a link carrying the box's place in `slots`
 /// (the n-th is `kanso-task:n`). A box the tree and the slots don't agree on
 /// stays a plain box.
@@ -428,16 +498,15 @@ fn link_task_boxes(html: &str, facts: &Facts, slots: &[TaskSlot]) -> String {
     }
     let mut out = String::with_capacity(html.len() + facts.tasks.len() * 96);
     let mut rest = html;
-    for &(line, checked) in &facts.tasks {
+    let matched = match_slots(&facts.tasks, slots);
+    for (task, slot) in facts.tasks.iter().zip(matched) {
+        let checked = task.checked;
         let Some(at) = rest.find(BOX) else { break };
         let Some(len) = rest[at..].find("/>") else {
             break;
         };
         let input = &rest[at..at + len + 2];
         out.push_str(&rest[..at]);
-        let slot = slots
-            .iter()
-            .position(|slot| slot.line == line && slot.checked == checked);
         match slot {
             Some(n) if input.contains("checked=\"\"") == checked => {
                 let (class, state) = if checked {
