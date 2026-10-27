@@ -311,7 +311,7 @@ Plain text for both stores is in `mobile/store/` (`mobile/store/README.md` expla
 file, the limits and the screenshot plan). The sizes are checked on every run of this
 workflow (`scripts/mobile-store-check.sh`). The pictures for every required size, the Play
 feature graphic and the 512 × 512 icon are rendered from the golden-test harness by
-`scripts/mobile-store-render.sh`, on every Android build; they are the
+`scripts/mobile-store-render.sh`, in every iOS build job (macOS, where the goldens are made); they are the
 `kanso-store-pictures-…` artifact. The text describes the app as designed in #48; trim
 it to what has shipped before submitting (the table in `mobile/store/README.md` ties each claim
 to its build step).
