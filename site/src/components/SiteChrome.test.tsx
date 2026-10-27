@@ -7,7 +7,7 @@
 import "../test/router";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { RELEASES_URL, REPOSITORY_URL } from "../lib/release";
+import { REPOSITORY_URL } from "../lib/release";
 import { SiteFooter, SiteHeader, Wordmark } from "./SiteChrome";
 
 const setScroll = (y: number) => {
@@ -31,6 +31,7 @@ describe("SiteHeader", () => {
   it("has the main navigation links", () => {
     render(<SiteHeader />);
     const nav = within(screen.getByRole("navigation", { name: "Main" }));
+    expect(nav.getByRole("link", { name: "Help" })).toHaveAttribute("href", "/help");
     expect(nav.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
     expect(nav.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", REPOSITORY_URL);
     expect(nav.getByRole("link", { name: "Download" })).toHaveAttribute("href", "/download");
@@ -64,7 +65,8 @@ describe("SiteFooter", () => {
     const nav = within(screen.getByRole("navigation", { name: "Footer" }));
     expect(nav.getByRole("link", { name: "Download" })).toHaveAttribute("href", "/download");
     expect(nav.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
-    expect(nav.getByRole("link", { name: "Release notes" })).toHaveAttribute("href", RELEASES_URL);
+    expect(nav.getByRole("link", { name: "Release notes" })).toHaveAttribute("href", "/releases");
+    expect(nav.getByRole("link", { name: "Help" })).toHaveAttribute("href", "/help");
     expect(nav.getByRole("link", { name: "Source code" })).toHaveAttribute("href", REPOSITORY_URL);
     expect(screen.getByRole("contentinfo")).toHaveTextContent("AGPL");
   });

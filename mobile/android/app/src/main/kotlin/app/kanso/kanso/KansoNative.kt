@@ -20,4 +20,31 @@ object KansoNative {
 
     @JvmStatic
     external fun init(context: Context)
+
+    /**
+     * A biometric check's answer for the ticket waiting on [ticket]
+     * (`mobile/rust/src/biometric.rs`). [status]: 0 ok ([secret] is the
+     * 32-byte biometric secret), 1 cancelled, 2 invalidated, 3 unavailable,
+     * 4 failed. Returns 1 taken, 0 nobody waits, -1 the secret did not open
+     * the kept keys, -5 a fault. Never throws; the secret is never logged.
+     */
+    @JvmStatic
+    external fun biometricAnswer(ticket: Long, status: Int, secret: ByteArray?): Int
+
+    /**
+     * The sync that runs with no app, for the WorkManager job: syncs the
+     * library file at [path] within [budgetMs] and returns the code of
+     * `mobile/rust/src/background.rs` (0 or 1 done, negative a reason).
+     * Never throws.
+     */
+    @JvmStatic
+    external fun backgroundSync(path: String, budgetMs: Int): Int
+
+    /**
+     * A passkey sheet's answer for the ceremony waiting on [ticket]
+     * (`mobile/rust/src/passkey.rs`): 1 taken, 0 nobody waits, -5 a fault.
+     * Never throws; the answer is never logged.
+     */
+    @JvmStatic
+    external fun passkeyAnswer(ticket: Long, json: String): Int
 }

@@ -1,5 +1,6 @@
 //! Android's side of the library: the native method the app calls once, as
-//! the process starts.
+//! the process starts, and the two the plugins call for the background sync
+//! and the passkey sheet.
 //!
 //! # The contract with Kotlin
 //!
@@ -9,12 +10,23 @@
 //! object KansoNative {
 //!     /** Hands the library the app's Context. Idempotent. */
 //!     @JvmStatic external fun init(context: android.content.Context)
+//!
+//!     /** The sync that runs with no app; the codes of `background.rs`. */
+//!     @JvmStatic external fun backgroundSync(path: String, budgetMs: Int): Int
+//!
+//!     /** A passkey sheet's answer; the codes of `passkey.rs`. */
+//!     @JvmStatic external fun passkeyAnswer(ticket: Long, json: String): Int
 //! }
 //! ```
 //!
-//! A static native method `init(Context)` of the class
-//! `app.kanso.kanso.KansoNative`, found by the JVM under the exported name
-//! `Java_app_kanso_kanso_KansoNative_init`. The app calls it from
+//! Static native methods of the class `app.kanso.kanso.KansoNative`, found by
+//! the JVM under the exported names `Java_app_kanso_kanso_KansoNative_init`,
+//! `..._backgroundSync` and `..._passkeyAnswer`. The last two never throw and
+//! never unwind into the JVM: a path or text the JVM can't give, a panic, or a
+//! budget below zero is answered with `-5` (the budget with `0`). Neither
+//! logs its arguments.
+//!
+//! `init` is the one the app calls from `Application.onCreate`. The app calls it from
 //! `Application.onCreate`, after `System.loadLibrary("kanso_mobile_bridge")`,
 //! with `applicationContext`. That is the only place it can be done in the
 //! background too: WorkManager runs jobs in the app's process, after
@@ -40,8 +52,13 @@
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use jni::objects::{JClass, JObject};
+use std::ffi::CString;
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
+use jni::objects::{JByteArray, JClass, JObject, JString};
+use jni::sys::{jint, jlong};
 use jni::{Env, EnvUnowned};
+use zeroize::Zeroize;
 
 /// Set once the verifier and the Keystore bridge are set up.
 static DONE: AtomicBool = AtomicBool::new(false);
@@ -83,4 +100,84 @@ fn setup(env: &mut Env, context: JObject) -> Result<(), InitError> {
     kanso_tls::init_android(env, context).map_err(|err| InitError(err.to_string()))?;
     DONE.store(true, Ordering::Release);
     Ok(())
+}
+
+/// `KansoNative.biometricAnswer(ticket: Long, status: Int, secret: ByteArray?): Int`:
+/// the native lock plugin's answer to a biometric check, handed to
+/// [`crate::biometric::kanso_biometric_answer`]'s logic. `secret` is the
+/// platform's 32-byte secret when `status` is `0`, else `null`; the copy
+/// made here is zeroed before returning. The caller zeroes its own.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_kanso_kanso_KansoNative_biometricAnswer<'caller>(
+    mut unowned: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    ticket: jlong,
+    status: jint,
+    secret: JByteArray<'caller>,
+) -> jint {
+    unowned
+        .with_env(|env| -> Result<jint, jni::errors::Error> {
+            let mut bytes = if secret.is_null() {
+                None
+            } else {
+                Some(env.convert_byte_array(&secret)?)
+            };
+            let ticket = u64::from_ne_bytes(ticket.to_ne_bytes());
+            let answer = crate::biometric::answer_with(ticket, status, bytes.as_deref());
+            if let Some(bytes) = bytes.as_mut() {
+                bytes.zeroize();
+            }
+            Ok(answer)
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+/// The sync with no app, for WorkManager (`background::kanso_background_sync`).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_kanso_kanso_KansoNative_backgroundSync<'caller>(
+    mut unowned: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    path: JString<'caller>,
+    budget_ms: jint,
+) -> jint {
+    unowned
+        .with_env(|env| -> Result<jint, jni::errors::Error> {
+            let caught = catch_unwind(AssertUnwindSafe(|| {
+                let Ok(path) = path.try_to_string(env) else {
+                    return crate::passkey::INTERNAL;
+                };
+                let Ok(path) = CString::new(path) else {
+                    return crate::passkey::INTERNAL;
+                };
+                let budget = u32::try_from(budget_ms).unwrap_or(0);
+                // SAFETY: a NUL-terminated string that outlives the call.
+                unsafe { crate::background::kanso_background_sync(path.as_ptr(), budget) }
+            }));
+            Ok(caught.unwrap_or(crate::passkey::INTERNAL))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
+}
+
+/// A passkey sheet's answer (`passkey::deliver`).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_kanso_kanso_KansoNative_passkeyAnswer<'caller>(
+    mut unowned: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    ticket: jlong,
+    json: JString<'caller>,
+) -> jint {
+    unowned
+        .with_env(|env| -> Result<jint, jni::errors::Error> {
+            let caught = catch_unwind(AssertUnwindSafe(|| {
+                let Ok(ticket) = u64::try_from(ticket) else {
+                    return crate::passkey::INTERNAL;
+                };
+                let Ok(json) = json.try_to_string(env) else {
+                    return crate::passkey::INTERNAL;
+                };
+                crate::passkey::deliver(ticket, &json)
+            }));
+            Ok(caught.unwrap_or(crate::passkey::INTERNAL))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
 }
