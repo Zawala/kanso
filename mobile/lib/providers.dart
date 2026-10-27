@@ -13,7 +13,9 @@ import 'core/state/sync_status/sync_status_bloc.dart';
 import 'crash/state/crash_reports/crash_reports_bloc.dart';
 import 'injection.dart';
 import 'settings/state/backup_notice/backup_notice_bloc.dart';
+import 'settings/state/default_notebook/default_notebook_bloc.dart';
 import 'shell/state/library_pane/library_pane_bloc.dart';
+import 'shell/state/note_creation/note_creation_bloc.dart';
 
 /// The BLoCs the whole app shares, above the [child].
 ///
@@ -46,6 +48,11 @@ class AppProviders extends StatelessWidget {
           create: (_) =>
               getIt<BackupNoticeBloc>()..add(const BackupNoticeEvent.started()),
         ),
+        BlocProvider<DefaultNotebookBloc>(
+          create: (_) =>
+              getIt<DefaultNotebookBloc>()
+                ..add(const DefaultNotebookEvent.started()),
+        ),
         BlocProvider<CrashReportsBloc>(
           create: (_) =>
               getIt<CrashReportsBloc>()..add(const CrashReportsEvent.started()),
@@ -55,6 +62,9 @@ class AppProviders extends StatelessWidget {
         ),
         BlocProvider<LibraryPaneBloc>(
           create: (_) => getIt<LibraryPaneBloc>(),
+        ),
+        BlocProvider<NoteCreationBloc>(
+          create: (_) => getIt<NoteCreationBloc>(),
         ),
         BlocProvider<NavigationHistoryBloc>(
           create: (_) => getIt<NavigationHistoryBloc>(),
