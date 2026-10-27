@@ -70,9 +70,7 @@ class ShareMadeLink extends StatelessWidget {
                     icon: KansoIcons.share,
                     variant: KansoButtonVariant.secondary,
                     onPressed: () => bloc.add(
-                      ShareNoteEvent.linkSent(
-                        origin: originOf(buttonContext),
-                      ),
+                      ShareNoteEvent.linkSent(origin: originOf(buttonContext)),
                     ),
                   );
                 },

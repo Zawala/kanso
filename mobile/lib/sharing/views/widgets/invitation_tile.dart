@@ -42,10 +42,7 @@ class InvitationTile extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              KansoIcon(
-                KansoIcons.users,
-                color: context.colors.textSecondary,
-              ),
+              KansoIcon(KansoIcons.users, color: context.colors.textSecondary),
               const SizedBox(width: KansoSpacing.sm),
               Expanded(
                 child: Column(

@@ -50,9 +50,7 @@ abstract interface class AccountRepository {
 
   /// The provider's page ended at [callbackUrl] (Apple), or was dismissed
   /// (null).
-  Future<Either<ApplicationError, Unit>> providerPageEnded(
-    String? callbackUrl,
-  );
+  Future<Either<ApplicationError, Unit>> providerPageEnded(String? callbackUrl);
 
   Future<Either<ApplicationError, Unit>> cancelProvider();
 

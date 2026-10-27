@@ -33,7 +33,5 @@ abstract interface class GalleryRepository {
   Stream<String> themeChanges();
 
   /// The tokens of the installed colour theme [id].
-  Future<Either<ApplicationError, ThemeTokens>> installedThemeTokens(
-    String id,
-  );
+  Future<Either<ApplicationError, ThemeTokens>> installedThemeTokens(String id);
 }

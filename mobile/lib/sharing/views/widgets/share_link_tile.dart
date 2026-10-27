@@ -32,10 +32,7 @@ class ShareLinkTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final days = daysUntil(
-      link.expiresMs,
-      clock.now().millisecondsSinceEpoch,
-    );
+    final days = daysUntil(link.expiresMs, clock.now().millisecondsSinceEpoch);
     return Row(
       children: <Widget>[
         KansoIcon(

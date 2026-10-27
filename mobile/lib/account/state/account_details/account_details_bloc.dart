@@ -104,10 +104,7 @@ class AccountDetailsBloc
     emit(_busy(AccountTask.revokeDevice));
     final result = await _settings.revokeDevice(event.deviceId);
     emit(
-      _afterDetails(
-        result,
-        AccountNotice.deviceSignedOut(name: name ?? ''),
-      ),
+      _afterDetails(result, AccountNotice.deviceSignedOut(name: name ?? '')),
     );
   }
 
@@ -229,9 +226,7 @@ class AccountDetailsBloc
             linked = true;
           case ProviderEvent_Failed(:final message):
             emit(
-              state.copyWith(
-                error: ApplicationError.invalid(message: message),
-              ),
+              state.copyWith(error: ApplicationError.invalid(message: message)),
             );
           case ProviderEvent_OpenPage():
           case ProviderEvent_ClosePage():

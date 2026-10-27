@@ -170,9 +170,7 @@ class NotePane extends StatelessWidget {
                                     final note = state.note;
                                     return switch (state.status) {
                                       NoteScreenStatus.loading =>
-                                        NoteLoadingPane(
-                                          gutter: gutter,
-                                        ),
+                                        NoteLoadingPane(gutter: gutter),
                                       NoteScreenStatus.ready
                                           when note != null =>
                                         NoteBody(

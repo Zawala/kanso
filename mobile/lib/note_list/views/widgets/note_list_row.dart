@@ -69,16 +69,12 @@ class NoteListRow extends StatelessWidget {
       (list) => list.state.inTrash,
     );
     void pin() => bloc.add(
-      NoteListEvent.changeRequested(
-        const NoteChange.togglePin(),
-        <String>[row.id],
-      ),
+      NoteListEvent.changeRequested(const NoteChange.togglePin(), <String>[
+        row.id,
+      ]),
     );
     void trash() => bloc.add(
-      NoteListEvent.changeRequested(
-        const NoteChange.trash(),
-        <String>[row.id],
-      ),
+      NoteListEvent.changeRequested(const NoteChange.trash(), <String>[row.id]),
     );
     return KansoSwipeActions(
       id: row.id,
@@ -98,11 +94,8 @@ class NoteListRow extends StatelessWidget {
           icon: KansoIcons.notebook,
           label: l10n.noteListMove,
           background: colors.warning,
-          onPressed: () => MoveSheet.show(
-            context,
-            bloc: bloc,
-            ids: <String>[row.id],
-          ),
+          onPressed: () =>
+              MoveSheet.show(context, bloc: bloc, ids: <String>[row.id]),
         ),
         if (!inTrash)
           KansoSwipeAction(

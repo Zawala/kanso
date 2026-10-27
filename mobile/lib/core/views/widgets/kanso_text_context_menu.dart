@@ -46,20 +46,14 @@ class KansoTextContextMenu extends StatelessWidget {
     final buttons = <(String, VoidCallback)>[
       ...extra,
       if (state.cutEnabled)
-        (
-          l10n.menuCut,
-          () => state.cutSelection(SelectionChangedCause.toolbar),
-        ),
+        (l10n.menuCut, () => state.cutSelection(SelectionChangedCause.toolbar)),
       if (state.copyEnabled)
         (
           l10n.menuCopy,
           () => state.copySelection(SelectionChangedCause.toolbar),
         ),
       if (state.pasteEnabled)
-        (
-          l10n.menuPaste,
-          () => state.pasteText(SelectionChangedCause.toolbar),
-        ),
+        (l10n.menuPaste, () => state.pasteText(SelectionChangedCause.toolbar)),
       if (everythingNotSelected(state))
         (
           l10n.menuSelectAll,

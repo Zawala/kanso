@@ -30,10 +30,7 @@ class SharedNoteStatusBloc
   SharedNoteStatusBloc(this._shared) : super(const SharedNoteStatusState()) {
     on<SharedNoteStatusEvent>(
       (event, emit) => switch (event) {
-        SharedNoteStatusStartedEvent(:final noteId) => _onStarted(
-          noteId,
-          emit,
-        ),
+        SharedNoteStatusStartedEvent(:final noteId) => _onStarted(noteId, emit),
         SharedNoteStatusRefreshedEvent() => _load(emit),
         SharedNoteStatusProblemsDismissedEvent() => _onDismissed(emit),
       },

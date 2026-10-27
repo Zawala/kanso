@@ -102,19 +102,15 @@ class ThemePickerPane extends StatelessWidget {
                               actions: <Widget>[
                                 KansoButton(
                                   label: l10n.retry,
-                                  onPressed: () =>
-                                      context.read<ThemePickerBloc>().add(
-                                        const ThemePickerEvent.started(),
-                                      ),
+                                  onPressed: () => context
+                                      .read<ThemePickerBloc>()
+                                      .add(const ThemePickerEvent.started()),
                                 ),
                               ],
                             ),
                           ),
                           LoadStatus.ready => InstalledThemeRow(
-                            themes: themesInUseFirst(
-                              picker.themes,
-                              selection,
-                            ),
+                            themes: themesInUseFirst(picker.themes, selection),
                             selection: selection,
                           ),
                         };

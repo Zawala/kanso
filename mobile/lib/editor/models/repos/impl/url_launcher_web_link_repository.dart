@@ -24,10 +24,7 @@ class UrlLauncherWebLinkRepository implements WebLinkRepository {
       );
     }
     try {
-      final opened = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
       return opened
           ? const Right<ApplicationError, Unit>(unit)
           : const Left<ApplicationError, Unit>(

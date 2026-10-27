@@ -170,21 +170,19 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
         final file = await _library.attachment(id);
         file.fold(
           (error) => emit(state.copyWith(notice: error)),
-          (file) => emit(
-            state.copyWith(action: PreviewAction.showAttachment(file)),
-          ),
+          (file) =>
+              emit(state.copyWith(action: PreviewAction.showAttachment(file))),
         );
       case PreviewLink_Task(:final index):
         await _tick(index, emit);
       case PreviewLink_CopyCode(:final index):
         final code = await _renderer.codeBlock(noteId, index);
-        await code.fold(
-          (error) async => emit(state.copyWith(notice: error)),
-          (code) async {
-            emit(state.copyWith(action: PreviewAction.copyCode(index, code)));
-            await _haptics.selection();
-          },
-        );
+        await code.fold((error) async => emit(state.copyWith(notice: error)), (
+          code,
+        ) async {
+          emit(state.copyWith(action: PreviewAction.copyCode(index, code)));
+          await _haptics.selection();
+        });
       case PreviewLink_Due() || PreviewLink_Nothing():
         break;
     }

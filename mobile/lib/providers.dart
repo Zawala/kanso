@@ -89,9 +89,7 @@ class AppProviders extends StatelessWidget {
         BlocProvider<ListNavigationBloc>(
           create: (_) => getIt<ListNavigationBloc>(),
         ),
-        BlocProvider<LibraryPaneBloc>(
-          create: (_) => getIt<LibraryPaneBloc>(),
-        ),
+        BlocProvider<LibraryPaneBloc>(create: (_) => getIt<LibraryPaneBloc>()),
         BlocProvider<NoteCreationBloc>(
           create: (_) => getIt<NoteCreationBloc>(),
         ),

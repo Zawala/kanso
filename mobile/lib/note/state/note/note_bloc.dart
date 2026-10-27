@@ -213,10 +213,7 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
       end: body.length,
       themeId: themeId,
     );
-    return sourceLines(
-      body,
-      runs.getOrElse(() => const <StyledRun>[]),
-    );
+    return sourceLines(body, runs.getOrElse(() => const <StyledRun>[]));
   }
 
   @override

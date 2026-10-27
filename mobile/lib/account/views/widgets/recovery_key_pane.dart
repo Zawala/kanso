@@ -58,9 +58,8 @@ class RecoveryKeyPane extends StatelessWidget {
                   actions: <Widget>[
                     KansoButton(
                       label: l10n.accountRetry,
-                      onPressed: () => bloc.add(
-                        const RecoveryKeyEvent.started(),
-                      ),
+                      onPressed: () =>
+                          bloc.add(const RecoveryKeyEvent.started()),
                     ),
                   ],
                 ),
