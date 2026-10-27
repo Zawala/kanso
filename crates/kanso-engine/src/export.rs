@@ -620,7 +620,17 @@ mod tests {
             let meta = kanso_import::library::frontmatter::meta(front);
             prop_assert_eq!(meta.title.as_deref(), Some(title.as_str()));
             prop_assert!(meta.tags.iter().any(|t| t == &tag), "{:?}", meta.tags);
-            prop_assert!(meta.tags.iter().any(|t| t == &user_tag), "{:?}", meta.tags);
+            // YAML types some tag text: an all-digit tag such as `00` reads
+            // as the number zero, and `true` as a boolean. The parser is the
+            // desktop's, so the contract here is that every tag as Kanso
+            // reads it comes back, not every byte the user typed.
+            let user_tags = super::tags_from(kanso_core::properties::get(
+                &kanso_core::properties::parse(&body),
+                "tags",
+            ));
+            for kept in &user_tags {
+                prop_assert!(meta.tags.iter().any(|t| t == kept), "{:?}", meta.tags);
+            }
             let expected_status = (status != kanso_core::NoteStatus::None).then_some(status);
             prop_assert_eq!(meta.status, expected_status);
             prop_assert_eq!(meta.pinned, pinned);
