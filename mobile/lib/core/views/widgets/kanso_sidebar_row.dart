@@ -17,7 +17,9 @@ import 'kanso_pressable.dart';
 /// count and, for a notebook, a chevron into it.
 ///
 /// 40 points tall; [selected] fills it with the sidebar's active colour.
-/// [depth] indents a notebook inside another.
+/// [depth] indents a notebook inside another. A notebook with others inside
+/// it shows [foldOpen] instead of the chevron: an arrow that opens or folds
+/// them, tapped on its own.
 class KansoSidebarRow extends StatelessWidget {
   const KansoSidebarRow({
     required this.label,
@@ -29,6 +31,9 @@ class KansoSidebarRow extends StatelessWidget {
     this.chevron = false,
     this.depth = 0,
     this.locked = false,
+    this.foldOpen,
+    this.onFold,
+    this.wash,
     this.onTap,
     this.onLongPress,
     super.key,
@@ -49,6 +54,17 @@ class KansoSidebarRow extends StatelessWidget {
 
   /// Whether the notebook is locked: a lock is drawn after its label.
   final bool locked;
+
+  /// Whether the notebooks inside this one show, for the arrow that opens
+  /// and folds them; null when there are none inside.
+  final bool? foldOpen;
+
+  /// What a tap on that arrow does.
+  final VoidCallback? onFold;
+
+  /// A notebook's colour, washing the row as the desktop does: light while
+  /// resting, stronger while [selected].
+  final Color? wash;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
@@ -63,6 +79,8 @@ class KansoSidebarRow extends StatelessWidget {
     final head = leading;
     final total = count;
     final pill = badge;
+    final fold = foldOpen;
+    final tint = wash;
     return KansoPressable(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -75,7 +93,9 @@ class KansoSidebarRow extends StatelessWidget {
             end: KansoSpacing.sm,
           ),
           decoration: BoxDecoration(
-            color: selected ? colors.sidebarActive : null,
+            color: tint == null
+                ? (selected ? colors.sidebarActive : null)
+                : tint.withValues(alpha: selected ? 0.34 : 0.16),
             borderRadius: KansoRadii.smallBorder,
           ),
           child: Row(
@@ -120,7 +140,21 @@ class KansoSidebarRow extends StatelessWidget {
                   style: typography.secondary.copyWith(color: colors.textMuted),
                 ),
               ],
-              if (chevron) ...<Widget>[
+              if (fold != null) ...<Widget>[
+                const SizedBox(width: KansoSpacing.xxs),
+                KansoPressable(
+                  onTap: onFold,
+                  semanticLabel: label,
+                  child: Padding(
+                    padding: const EdgeInsets.all(KansoSpacing.xxs),
+                    child: KansoIcon(
+                      fold ? KansoIcons.chevronDown : KansoIcons.chevronRight,
+                      size: KansoSizes.iconSmall,
+                      color: colors.textMuted,
+                    ),
+                  ),
+                ),
+              ] else if (chevron) ...<Widget>[
                 const SizedBox(width: KansoSpacing.xs),
                 KansoIcon(
                   KansoIcons.chevronRight,

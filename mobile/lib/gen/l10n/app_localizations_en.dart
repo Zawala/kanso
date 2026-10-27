@@ -33,6 +33,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get libraryTrash => 'Trash';
 
   @override
+  String get libraryStatuses => 'Status';
+
+  @override
   String get openSettings => 'Settings';
 
   @override
@@ -531,6 +534,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get emptyTagMessage => 'Notes with this tag will appear in this list.';
+
+  @override
+  String emptyStatusTitle(String status) {
+    return 'No notes marked $status';
+  }
+
+  @override
+  String get emptyStatusMessage =>
+      'Notes with this status will appear in this list.';
 
   @override
   String get emptyNarrowedTitle => 'No notes match';
@@ -3093,4 +3105,160 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get replaceProblemSearch => 'The notes couldn’t be searched.';
+
+  @override
+  String get libraryNewSubNotebook => 'New Sub-notebook';
+
+  @override
+  String get libraryRenameNotebook => 'Rename…';
+
+  @override
+  String get libraryChangeNotebookIcon => 'Change Icon…';
+
+  @override
+  String get libraryChangeNotebookColor => 'Change Color…';
+
+  @override
+  String get libraryDeleteNotebook => 'Delete Notebook…';
+
+  @override
+  String libraryDeleteNotebookTitle(Object name) {
+    return 'Delete “$name”?';
+  }
+
+  @override
+  String get libraryDeleteNotebookMessage =>
+      'Its notes and the notes in its sub-notebooks move to the trash.';
+
+  @override
+  String get libraryRenameNotebookTitle => 'Rename Notebook';
+
+  @override
+  String get libraryNotebookNameHint => 'Name';
+
+  @override
+  String get librarySaveAction => 'Save';
+
+  @override
+  String get libraryDeleteAction => 'Delete';
+
+  @override
+  String get libraryChangeIconTitle => 'Change Icon';
+
+  @override
+  String get libraryIconSearchHint => 'Search icons';
+
+  @override
+  String get libraryIconDefault => 'Default';
+
+  @override
+  String get libraryChangeColorTitle => 'Change Color';
+
+  @override
+  String get libraryColorHexHint => 'Hex, such as #2185d0';
+
+  @override
+  String get libraryColorDefault => 'No color';
+
+  @override
+  String get libraryColorInvalid => 'That isn’t a color.';
+
+  @override
+  String get libraryNewTag => 'New Tag';
+
+  @override
+  String get libraryCreateTag => 'Create';
+
+  @override
+  String get libraryTagNameHint => 'Name';
+
+  @override
+  String get libraryRenameTagTitle => 'Rename Tag';
+
+  @override
+  String get libraryRenameTag => 'Rename…';
+
+  @override
+  String get libraryTagColor => 'Color';
+
+  @override
+  String get libraryDeleteTag => 'Delete Tag…';
+
+  @override
+  String libraryDeleteTagTitle(Object name) {
+    return 'Delete the tag “$name”?';
+  }
+
+  @override
+  String get libraryDeleteTagMessage =>
+      'Notes keep their content; the tag is removed from them.';
+
+  @override
+  String get libraryEmptyTrash => 'Empty Trash…';
+
+  @override
+  String libraryEmptyTrashTitle(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count notes',
+      one: '1 note',
+    );
+    return 'Delete $_temp0 in the trash permanently?';
+  }
+
+  @override
+  String get libraryEmptyTrashMessage => 'They can’t be restored afterwards.';
+
+  @override
+  String get libraryEmptyTrashConfirm => 'Empty Trash';
+
+  @override
+  String get libraryActionFailed => 'That didn’t work. Try again.';
+
+  @override
+  String get noteActionPin => 'Pin Note';
+
+  @override
+  String get noteActionUnpin => 'Unpin Note';
+
+  @override
+  String get noteActionDuplicate => 'Duplicate';
+
+  @override
+  String get noteActionCopyLink => 'Copy Note Link';
+
+  @override
+  String get noteActionCopyKansoLink => 'Copy Kanso Link';
+
+  @override
+  String get noteActionStatus => 'Status';
+
+  @override
+  String get noteActionMoveToTrash => 'Move to Trash';
+
+  @override
+  String get noteActionRestore => 'Restore';
+
+  @override
+  String get noteActionDeleteForever => 'Delete Forever';
+
+  @override
+  String get noteActionDeleteForeverTitle => 'Delete this note forever?';
+
+  @override
+  String get noteActionDeleteForeverMessage =>
+      'It can’t be restored afterwards.';
+
+  @override
+  String get noteActionMore => 'More';
+
+  @override
+  String get noteActionLinkCopied => 'Link copied.';
+
+  @override
+  String get libraryTagsMore => 'More';
+
+  @override
+  String get libraryTagsFewer => 'Fewer';
 }

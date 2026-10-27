@@ -50,6 +50,14 @@ class EmptyPlacePane extends StatelessWidget {
               l10n.emptyNotebookMessage,
             ),
             ListPlace_Tag() => (l10n.emptyTagTitle(name), l10n.emptyTagMessage),
+            ListPlace_TagPath() => (
+              l10n.emptyTagTitle(name),
+              l10n.emptyTagMessage,
+            ),
+            ListPlace_Status() => (
+              l10n.emptyStatusTitle(name),
+              l10n.emptyStatusMessage,
+            ),
           };
     final bringingNotesIn = !narrowed && place is ListPlace_All;
     return KansoEmptyState(

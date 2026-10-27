@@ -339,6 +339,27 @@ class Changed {
           message == other.message;
 }
 
+class ColorChoice {
+  final String name;
+  final int rgb;
+
+  const ColorChoice({
+    required this.name,
+    required this.rgb,
+  });
+
+  @override
+  int get hashCode => name.hashCode ^ rgb.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ColorChoice &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          rgb == other.rgb;
+}
+
 class ColorRow {
   final String name;
   final int rgb;
@@ -510,6 +531,27 @@ class CompletionItem {
 enum CompletionKind {
   wiki,
   tag,
+}
+
+class CopiedLink {
+  final String text;
+  final String message;
+
+  const CopiedLink({
+    required this.text,
+    required this.message,
+  });
+
+  @override
+  int get hashCode => text.hashCode ^ message.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CopiedLink &&
+          runtimeType == other.runtimeType &&
+          text == other.text &&
+          message == other.message;
 }
 
 class CursorMark {
@@ -923,6 +965,30 @@ class ExportedPage {
           fileName == other.fileName;
 }
 
+class FoldState {
+  final List<String> open;
+  final String? foldedAt;
+  final List<String> folded;
+
+  const FoldState({
+    required this.open,
+    this.foldedAt,
+    required this.folded,
+  });
+
+  @override
+  int get hashCode => open.hashCode ^ foldedAt.hashCode ^ folded.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FoldState &&
+          runtimeType == other.runtimeType &&
+          open == other.open &&
+          foldedAt == other.foldedAt &&
+          folded == other.folded;
+}
+
 enum FormatKind {
   bold,
   italic,
@@ -1113,6 +1179,27 @@ class Hit {
           row == other.row &&
           titleRanges == other.titleRanges &&
           snippetRanges == other.snippetRanges;
+}
+
+class IconChoice {
+  final String name;
+  final String label;
+
+  const IconChoice({
+    required this.name,
+    required this.label,
+  });
+
+  @override
+  int get hashCode => name.hashCode ^ label.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is IconChoice &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          label == other.label;
 }
 
 class IconThemeRow {
@@ -1422,17 +1509,23 @@ class LibraryOverview {
   final int pinned;
   final int recent;
   final int trash;
+  final List<StatusCount> byStatus;
 
   const LibraryOverview({
     required this.all,
     required this.pinned,
     required this.recent,
     required this.trash,
+    required this.byStatus,
   });
 
   @override
   int get hashCode =>
-      all.hashCode ^ pinned.hashCode ^ recent.hashCode ^ trash.hashCode;
+      all.hashCode ^
+      pinned.hashCode ^
+      recent.hashCode ^
+      trash.hashCode ^
+      byStatus.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1442,7 +1535,8 @@ class LibraryOverview {
           all == other.all &&
           pinned == other.pinned &&
           recent == other.recent &&
-          trash == other.trash;
+          trash == other.trash &&
+          byStatus == other.byStatus;
 }
 
 @freezed
@@ -1494,6 +1588,12 @@ sealed class ListPlace with _$ListPlace {
   const factory ListPlace.tag({
     required String id,
   }) = ListPlace_Tag;
+  const factory ListPlace.status({
+    required String status,
+  }) = ListPlace_Status;
+  const factory ListPlace.tagPath({
+    required String path,
+  }) = ListPlace_TagPath;
   const factory ListPlace.trash() = ListPlace_Trash;
 }
 
@@ -1841,6 +1941,17 @@ sealed class NoteChange with _$NoteChange {
     required String notebookId,
   }) = NoteChange_Move;
   const factory NoteChange.trash() = NoteChange_Trash;
+  const factory NoteChange.setStatus({
+    required String status,
+  }) = NoteChange_SetStatus;
+  const factory NoteChange.addTag({
+    required String tagId,
+  }) = NoteChange_AddTag;
+  const factory NoteChange.removeTag({
+    required String tagId,
+  }) = NoteChange_RemoveTag;
+  const factory NoteChange.restore() = NoteChange_Restore;
+  const factory NoteChange.deleteForever() = NoteChange_DeleteForever;
 }
 
 class NoteHistory {
@@ -2084,6 +2195,7 @@ class NotebookRow {
   final String? color;
   final NotebookRole? role;
   final int depth;
+  final bool hasChildren;
 
   const NotebookRow({
     required this.id,
@@ -2095,6 +2207,7 @@ class NotebookRow {
     this.color,
     this.role,
     required this.depth,
+    required this.hasChildren,
   });
 
   @override
@@ -2107,7 +2220,8 @@ class NotebookRow {
       icon.hashCode ^
       color.hashCode ^
       role.hashCode ^
-      depth.hashCode;
+      depth.hashCode ^
+      hasChildren.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -2122,7 +2236,8 @@ class NotebookRow {
           icon == other.icon &&
           color == other.color &&
           role == other.role &&
-          depth == other.depth;
+          depth == other.depth &&
+          hasChildren == other.hasChildren;
 }
 
 class OpenedDocuments {
@@ -3122,6 +3237,48 @@ class SpanRow {
           tokens == other.tokens;
 }
 
+class StatusChoice {
+  final String status;
+  final String label;
+
+  const StatusChoice({
+    required this.status,
+    required this.label,
+  });
+
+  @override
+  int get hashCode => status.hashCode ^ label.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StatusChoice &&
+          runtimeType == other.runtimeType &&
+          status == other.status &&
+          label == other.label;
+}
+
+class StatusCount {
+  final String status;
+  final int count;
+
+  const StatusCount({
+    required this.status,
+    required this.count,
+  });
+
+  @override
+  int get hashCode => status.hashCode ^ count.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StatusCount &&
+          runtimeType == other.runtimeType &&
+          status == other.status &&
+          count == other.count;
+}
+
 class StyledRun {
   final Range16 range;
   final int? color;
@@ -3459,6 +3616,30 @@ class TableRow {
           cells == other.cells;
 }
 
+class TagPlaces {
+  final List<TagRow> chips;
+  final bool more;
+  final List<TagTreeRow> tree;
+
+  const TagPlaces({
+    required this.chips,
+    required this.more,
+    required this.tree,
+  });
+
+  @override
+  int get hashCode => chips.hashCode ^ more.hashCode ^ tree.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TagPlaces &&
+          runtimeType == other.runtimeType &&
+          chips == other.chips &&
+          more == other.more &&
+          tree == other.tree;
+}
+
 class TagRow {
   final String id;
   final String name;
@@ -3485,6 +3666,49 @@ class TagRow {
           name == other.name &&
           color == other.color &&
           count == other.count;
+}
+
+class TagTreeRow {
+  final String path;
+  final String label;
+  final String? tagId;
+  final int count;
+  final int depth;
+  final bool parent;
+  final bool open;
+
+  const TagTreeRow({
+    required this.path,
+    required this.label,
+    this.tagId,
+    required this.count,
+    required this.depth,
+    required this.parent,
+    required this.open,
+  });
+
+  @override
+  int get hashCode =>
+      path.hashCode ^
+      label.hashCode ^
+      tagId.hashCode ^
+      count.hashCode ^
+      depth.hashCode ^
+      parent.hashCode ^
+      open.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TagTreeRow &&
+          runtimeType == other.runtimeType &&
+          path == other.path &&
+          label == other.label &&
+          tagId == other.tagId &&
+          count == other.count &&
+          depth == other.depth &&
+          parent == other.parent &&
+          open == other.open;
 }
 
 class TaskBoard {
@@ -3738,4 +3962,28 @@ sealed class Ticked with _$Ticked {
   }) = Ticked_Changed;
   const factory Ticked.unchanged() = Ticked_Unchanged;
   const factory Ticked.missing() = Ticked_Missing;
+}
+
+class VisibleNotebook {
+  final NotebookRow row;
+  final bool open;
+  final bool parent;
+
+  const VisibleNotebook({
+    required this.row,
+    required this.open,
+    required this.parent,
+  });
+
+  @override
+  int get hashCode => row.hashCode ^ open.hashCode ^ parent.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is VisibleNotebook &&
+          runtimeType == other.runtimeType &&
+          row == other.row &&
+          open == other.open &&
+          parent == other.parent;
 }

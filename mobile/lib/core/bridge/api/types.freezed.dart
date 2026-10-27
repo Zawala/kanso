@@ -3689,7 +3689,7 @@ extension ListPlacePatterns on ListPlace {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ListPlace_All value)?  all,TResult Function( ListPlace_Pinned value)?  pinned,TResult Function( ListPlace_Recent value)?  recent,TResult Function( ListPlace_Notebook value)?  notebook,TResult Function( ListPlace_Tag value)?  tag,TResult Function( ListPlace_Trash value)?  trash,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ListPlace_All value)?  all,TResult Function( ListPlace_Pinned value)?  pinned,TResult Function( ListPlace_Recent value)?  recent,TResult Function( ListPlace_Notebook value)?  notebook,TResult Function( ListPlace_Tag value)?  tag,TResult Function( ListPlace_Status value)?  status,TResult Function( ListPlace_TagPath value)?  tagPath,TResult Function( ListPlace_Trash value)?  trash,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case ListPlace_All() when all != null:
@@ -3697,7 +3697,9 @@ return all(_that);case ListPlace_Pinned() when pinned != null:
 return pinned(_that);case ListPlace_Recent() when recent != null:
 return recent(_that);case ListPlace_Notebook() when notebook != null:
 return notebook(_that);case ListPlace_Tag() when tag != null:
-return tag(_that);case ListPlace_Trash() when trash != null:
+return tag(_that);case ListPlace_Status() when status != null:
+return status(_that);case ListPlace_TagPath() when tagPath != null:
+return tagPath(_that);case ListPlace_Trash() when trash != null:
 return trash(_that);case _:
   return orElse();
 
@@ -3716,7 +3718,7 @@ return trash(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ListPlace_All value)  all,required TResult Function( ListPlace_Pinned value)  pinned,required TResult Function( ListPlace_Recent value)  recent,required TResult Function( ListPlace_Notebook value)  notebook,required TResult Function( ListPlace_Tag value)  tag,required TResult Function( ListPlace_Trash value)  trash,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ListPlace_All value)  all,required TResult Function( ListPlace_Pinned value)  pinned,required TResult Function( ListPlace_Recent value)  recent,required TResult Function( ListPlace_Notebook value)  notebook,required TResult Function( ListPlace_Tag value)  tag,required TResult Function( ListPlace_Status value)  status,required TResult Function( ListPlace_TagPath value)  tagPath,required TResult Function( ListPlace_Trash value)  trash,}){
 final _that = this;
 switch (_that) {
 case ListPlace_All():
@@ -3724,7 +3726,9 @@ return all(_that);case ListPlace_Pinned():
 return pinned(_that);case ListPlace_Recent():
 return recent(_that);case ListPlace_Notebook():
 return notebook(_that);case ListPlace_Tag():
-return tag(_that);case ListPlace_Trash():
+return tag(_that);case ListPlace_Status():
+return status(_that);case ListPlace_TagPath():
+return tagPath(_that);case ListPlace_Trash():
 return trash(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
@@ -3739,7 +3743,7 @@ return trash(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ListPlace_All value)?  all,TResult? Function( ListPlace_Pinned value)?  pinned,TResult? Function( ListPlace_Recent value)?  recent,TResult? Function( ListPlace_Notebook value)?  notebook,TResult? Function( ListPlace_Tag value)?  tag,TResult? Function( ListPlace_Trash value)?  trash,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ListPlace_All value)?  all,TResult? Function( ListPlace_Pinned value)?  pinned,TResult? Function( ListPlace_Recent value)?  recent,TResult? Function( ListPlace_Notebook value)?  notebook,TResult? Function( ListPlace_Tag value)?  tag,TResult? Function( ListPlace_Status value)?  status,TResult? Function( ListPlace_TagPath value)?  tagPath,TResult? Function( ListPlace_Trash value)?  trash,}){
 final _that = this;
 switch (_that) {
 case ListPlace_All() when all != null:
@@ -3747,7 +3751,9 @@ return all(_that);case ListPlace_Pinned() when pinned != null:
 return pinned(_that);case ListPlace_Recent() when recent != null:
 return recent(_that);case ListPlace_Notebook() when notebook != null:
 return notebook(_that);case ListPlace_Tag() when tag != null:
-return tag(_that);case ListPlace_Trash() when trash != null:
+return tag(_that);case ListPlace_Status() when status != null:
+return status(_that);case ListPlace_TagPath() when tagPath != null:
+return tagPath(_that);case ListPlace_Trash() when trash != null:
 return trash(_that);case _:
   return null;
 
@@ -3765,14 +3771,16 @@ return trash(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  all,TResult Function()?  pinned,TResult Function()?  recent,TResult Function( String id)?  notebook,TResult Function( String id)?  tag,TResult Function()?  trash,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  all,TResult Function()?  pinned,TResult Function()?  recent,TResult Function( String id)?  notebook,TResult Function( String id)?  tag,TResult Function( String status)?  status,TResult Function( String path)?  tagPath,TResult Function()?  trash,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case ListPlace_All() when all != null:
 return all();case ListPlace_Pinned() when pinned != null:
 return pinned();case ListPlace_Recent() when recent != null:
 return recent();case ListPlace_Notebook() when notebook != null:
 return notebook(_that.id);case ListPlace_Tag() when tag != null:
-return tag(_that.id);case ListPlace_Trash() when trash != null:
+return tag(_that.id);case ListPlace_Status() when status != null:
+return status(_that.status);case ListPlace_TagPath() when tagPath != null:
+return tagPath(_that.path);case ListPlace_Trash() when trash != null:
 return trash();case _:
   return orElse();
 
@@ -3791,14 +3799,16 @@ return trash();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  all,required TResult Function()  pinned,required TResult Function()  recent,required TResult Function( String id)  notebook,required TResult Function( String id)  tag,required TResult Function()  trash,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  all,required TResult Function()  pinned,required TResult Function()  recent,required TResult Function( String id)  notebook,required TResult Function( String id)  tag,required TResult Function( String status)  status,required TResult Function( String path)  tagPath,required TResult Function()  trash,}) {final _that = this;
 switch (_that) {
 case ListPlace_All():
 return all();case ListPlace_Pinned():
 return pinned();case ListPlace_Recent():
 return recent();case ListPlace_Notebook():
 return notebook(_that.id);case ListPlace_Tag():
-return tag(_that.id);case ListPlace_Trash():
+return tag(_that.id);case ListPlace_Status():
+return status(_that.status);case ListPlace_TagPath():
+return tagPath(_that.path);case ListPlace_Trash():
 return trash();}
 }
 /// A variant of `when` that fallback to returning `null`
@@ -3813,14 +3823,16 @@ return trash();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  all,TResult? Function()?  pinned,TResult? Function()?  recent,TResult? Function( String id)?  notebook,TResult? Function( String id)?  tag,TResult? Function()?  trash,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  all,TResult? Function()?  pinned,TResult? Function()?  recent,TResult? Function( String id)?  notebook,TResult? Function( String id)?  tag,TResult? Function( String status)?  status,TResult? Function( String path)?  tagPath,TResult? Function()?  trash,}) {final _that = this;
 switch (_that) {
 case ListPlace_All() when all != null:
 return all();case ListPlace_Pinned() when pinned != null:
 return pinned();case ListPlace_Recent() when recent != null:
 return recent();case ListPlace_Notebook() when notebook != null:
 return notebook(_that.id);case ListPlace_Tag() when tag != null:
-return tag(_that.id);case ListPlace_Trash() when trash != null:
+return tag(_that.id);case ListPlace_Status() when status != null:
+return status(_that.status);case ListPlace_TagPath() when tagPath != null:
+return tagPath(_that.path);case ListPlace_Trash() when trash != null:
 return trash();case _:
   return null;
 
@@ -4050,6 +4062,138 @@ class _$ListPlace_TagCopyWithImpl<$Res>
 @pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
   return _then(ListPlace_Tag(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ListPlace_Status extends ListPlace {
+  const ListPlace_Status({required this.status}): super._();
+  
+
+ final  String status;
+
+/// Create a copy of ListPlace
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ListPlace_StatusCopyWith<ListPlace_Status> get copyWith => _$ListPlace_StatusCopyWithImpl<ListPlace_Status>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ListPlace_Status&&(identical(other.status, status) || other.status == status));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,status);
+
+@override
+String toString() {
+  return 'ListPlace.status(status: $status)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ListPlace_StatusCopyWith<$Res> implements $ListPlaceCopyWith<$Res> {
+  factory $ListPlace_StatusCopyWith(ListPlace_Status value, $Res Function(ListPlace_Status) _then) = _$ListPlace_StatusCopyWithImpl;
+@useResult
+$Res call({
+ String status
+});
+
+
+
+
+}
+/// @nodoc
+class _$ListPlace_StatusCopyWithImpl<$Res>
+    implements $ListPlace_StatusCopyWith<$Res> {
+  _$ListPlace_StatusCopyWithImpl(this._self, this._then);
+
+  final ListPlace_Status _self;
+  final $Res Function(ListPlace_Status) _then;
+
+/// Create a copy of ListPlace
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? status = null,}) {
+  return _then(ListPlace_Status(
+status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class ListPlace_TagPath extends ListPlace {
+  const ListPlace_TagPath({required this.path}): super._();
+  
+
+ final  String path;
+
+/// Create a copy of ListPlace
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$ListPlace_TagPathCopyWith<ListPlace_TagPath> get copyWith => _$ListPlace_TagPathCopyWithImpl<ListPlace_TagPath>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ListPlace_TagPath&&(identical(other.path, path) || other.path == path));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,path);
+
+@override
+String toString() {
+  return 'ListPlace.tagPath(path: $path)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $ListPlace_TagPathCopyWith<$Res> implements $ListPlaceCopyWith<$Res> {
+  factory $ListPlace_TagPathCopyWith(ListPlace_TagPath value, $Res Function(ListPlace_TagPath) _then) = _$ListPlace_TagPathCopyWithImpl;
+@useResult
+$Res call({
+ String path
+});
+
+
+
+
+}
+/// @nodoc
+class _$ListPlace_TagPathCopyWithImpl<$Res>
+    implements $ListPlace_TagPathCopyWith<$Res> {
+  _$ListPlace_TagPathCopyWithImpl(this._self, this._then);
+
+  final ListPlace_TagPath _self;
+  final $Res Function(ListPlace_TagPath) _then;
+
+/// Create a copy of ListPlace
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? path = null,}) {
+  return _then(ListPlace_TagPath(
+path: null == path ? _self.path : path // ignore: cast_nullable_to_non_nullable
 as String,
   ));
 }
@@ -4687,13 +4831,18 @@ extension NoteChangePatterns on NoteChange {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( NoteChange_TogglePin value)?  togglePin,TResult Function( NoteChange_Move value)?  move,TResult Function( NoteChange_Trash value)?  trash,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( NoteChange_TogglePin value)?  togglePin,TResult Function( NoteChange_Move value)?  move,TResult Function( NoteChange_Trash value)?  trash,TResult Function( NoteChange_SetStatus value)?  setStatus,TResult Function( NoteChange_AddTag value)?  addTag,TResult Function( NoteChange_RemoveTag value)?  removeTag,TResult Function( NoteChange_Restore value)?  restore,TResult Function( NoteChange_DeleteForever value)?  deleteForever,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case NoteChange_TogglePin() when togglePin != null:
 return togglePin(_that);case NoteChange_Move() when move != null:
 return move(_that);case NoteChange_Trash() when trash != null:
-return trash(_that);case _:
+return trash(_that);case NoteChange_SetStatus() when setStatus != null:
+return setStatus(_that);case NoteChange_AddTag() when addTag != null:
+return addTag(_that);case NoteChange_RemoveTag() when removeTag != null:
+return removeTag(_that);case NoteChange_Restore() when restore != null:
+return restore(_that);case NoteChange_DeleteForever() when deleteForever != null:
+return deleteForever(_that);case _:
   return orElse();
 
 }
@@ -4711,13 +4860,18 @@ return trash(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( NoteChange_TogglePin value)  togglePin,required TResult Function( NoteChange_Move value)  move,required TResult Function( NoteChange_Trash value)  trash,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( NoteChange_TogglePin value)  togglePin,required TResult Function( NoteChange_Move value)  move,required TResult Function( NoteChange_Trash value)  trash,required TResult Function( NoteChange_SetStatus value)  setStatus,required TResult Function( NoteChange_AddTag value)  addTag,required TResult Function( NoteChange_RemoveTag value)  removeTag,required TResult Function( NoteChange_Restore value)  restore,required TResult Function( NoteChange_DeleteForever value)  deleteForever,}){
 final _that = this;
 switch (_that) {
 case NoteChange_TogglePin():
 return togglePin(_that);case NoteChange_Move():
 return move(_that);case NoteChange_Trash():
-return trash(_that);}
+return trash(_that);case NoteChange_SetStatus():
+return setStatus(_that);case NoteChange_AddTag():
+return addTag(_that);case NoteChange_RemoveTag():
+return removeTag(_that);case NoteChange_Restore():
+return restore(_that);case NoteChange_DeleteForever():
+return deleteForever(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -4731,13 +4885,18 @@ return trash(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( NoteChange_TogglePin value)?  togglePin,TResult? Function( NoteChange_Move value)?  move,TResult? Function( NoteChange_Trash value)?  trash,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( NoteChange_TogglePin value)?  togglePin,TResult? Function( NoteChange_Move value)?  move,TResult? Function( NoteChange_Trash value)?  trash,TResult? Function( NoteChange_SetStatus value)?  setStatus,TResult? Function( NoteChange_AddTag value)?  addTag,TResult? Function( NoteChange_RemoveTag value)?  removeTag,TResult? Function( NoteChange_Restore value)?  restore,TResult? Function( NoteChange_DeleteForever value)?  deleteForever,}){
 final _that = this;
 switch (_that) {
 case NoteChange_TogglePin() when togglePin != null:
 return togglePin(_that);case NoteChange_Move() when move != null:
 return move(_that);case NoteChange_Trash() when trash != null:
-return trash(_that);case _:
+return trash(_that);case NoteChange_SetStatus() when setStatus != null:
+return setStatus(_that);case NoteChange_AddTag() when addTag != null:
+return addTag(_that);case NoteChange_RemoveTag() when removeTag != null:
+return removeTag(_that);case NoteChange_Restore() when restore != null:
+return restore(_that);case NoteChange_DeleteForever() when deleteForever != null:
+return deleteForever(_that);case _:
   return null;
 
 }
@@ -4754,12 +4913,17 @@ return trash(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  togglePin,TResult Function( String notebookId)?  move,TResult Function()?  trash,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  togglePin,TResult Function( String notebookId)?  move,TResult Function()?  trash,TResult Function( String status)?  setStatus,TResult Function( String tagId)?  addTag,TResult Function( String tagId)?  removeTag,TResult Function()?  restore,TResult Function()?  deleteForever,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case NoteChange_TogglePin() when togglePin != null:
 return togglePin();case NoteChange_Move() when move != null:
 return move(_that.notebookId);case NoteChange_Trash() when trash != null:
-return trash();case _:
+return trash();case NoteChange_SetStatus() when setStatus != null:
+return setStatus(_that.status);case NoteChange_AddTag() when addTag != null:
+return addTag(_that.tagId);case NoteChange_RemoveTag() when removeTag != null:
+return removeTag(_that.tagId);case NoteChange_Restore() when restore != null:
+return restore();case NoteChange_DeleteForever() when deleteForever != null:
+return deleteForever();case _:
   return orElse();
 
 }
@@ -4777,12 +4941,17 @@ return trash();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  togglePin,required TResult Function( String notebookId)  move,required TResult Function()  trash,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  togglePin,required TResult Function( String notebookId)  move,required TResult Function()  trash,required TResult Function( String status)  setStatus,required TResult Function( String tagId)  addTag,required TResult Function( String tagId)  removeTag,required TResult Function()  restore,required TResult Function()  deleteForever,}) {final _that = this;
 switch (_that) {
 case NoteChange_TogglePin():
 return togglePin();case NoteChange_Move():
 return move(_that.notebookId);case NoteChange_Trash():
-return trash();}
+return trash();case NoteChange_SetStatus():
+return setStatus(_that.status);case NoteChange_AddTag():
+return addTag(_that.tagId);case NoteChange_RemoveTag():
+return removeTag(_that.tagId);case NoteChange_Restore():
+return restore();case NoteChange_DeleteForever():
+return deleteForever();}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -4796,12 +4965,17 @@ return trash();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  togglePin,TResult? Function( String notebookId)?  move,TResult? Function()?  trash,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  togglePin,TResult? Function( String notebookId)?  move,TResult? Function()?  trash,TResult? Function( String status)?  setStatus,TResult? Function( String tagId)?  addTag,TResult? Function( String tagId)?  removeTag,TResult? Function()?  restore,TResult? Function()?  deleteForever,}) {final _that = this;
 switch (_that) {
 case NoteChange_TogglePin() when togglePin != null:
 return togglePin();case NoteChange_Move() when move != null:
 return move(_that.notebookId);case NoteChange_Trash() when trash != null:
-return trash();case _:
+return trash();case NoteChange_SetStatus() when setStatus != null:
+return setStatus(_that.status);case NoteChange_AddTag() when addTag != null:
+return addTag(_that.tagId);case NoteChange_RemoveTag() when removeTag != null:
+return removeTag(_that.tagId);case NoteChange_Restore() when restore != null:
+return restore();case NoteChange_DeleteForever() when deleteForever != null:
+return deleteForever();case _:
   return null;
 
 }
@@ -4931,6 +5105,268 @@ int get hashCode => runtimeType.hashCode;
 @override
 String toString() {
   return 'NoteChange.trash()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class NoteChange_SetStatus extends NoteChange {
+  const NoteChange_SetStatus({required this.status}): super._();
+  
+
+ final  String status;
+
+/// Create a copy of NoteChange
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NoteChange_SetStatusCopyWith<NoteChange_SetStatus> get copyWith => _$NoteChange_SetStatusCopyWithImpl<NoteChange_SetStatus>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteChange_SetStatus&&(identical(other.status, status) || other.status == status));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,status);
+
+@override
+String toString() {
+  return 'NoteChange.setStatus(status: $status)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NoteChange_SetStatusCopyWith<$Res> implements $NoteChangeCopyWith<$Res> {
+  factory $NoteChange_SetStatusCopyWith(NoteChange_SetStatus value, $Res Function(NoteChange_SetStatus) _then) = _$NoteChange_SetStatusCopyWithImpl;
+@useResult
+$Res call({
+ String status
+});
+
+
+
+
+}
+/// @nodoc
+class _$NoteChange_SetStatusCopyWithImpl<$Res>
+    implements $NoteChange_SetStatusCopyWith<$Res> {
+  _$NoteChange_SetStatusCopyWithImpl(this._self, this._then);
+
+  final NoteChange_SetStatus _self;
+  final $Res Function(NoteChange_SetStatus) _then;
+
+/// Create a copy of NoteChange
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? status = null,}) {
+  return _then(NoteChange_SetStatus(
+status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NoteChange_AddTag extends NoteChange {
+  const NoteChange_AddTag({required this.tagId}): super._();
+  
+
+ final  String tagId;
+
+/// Create a copy of NoteChange
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NoteChange_AddTagCopyWith<NoteChange_AddTag> get copyWith => _$NoteChange_AddTagCopyWithImpl<NoteChange_AddTag>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteChange_AddTag&&(identical(other.tagId, tagId) || other.tagId == tagId));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,tagId);
+
+@override
+String toString() {
+  return 'NoteChange.addTag(tagId: $tagId)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NoteChange_AddTagCopyWith<$Res> implements $NoteChangeCopyWith<$Res> {
+  factory $NoteChange_AddTagCopyWith(NoteChange_AddTag value, $Res Function(NoteChange_AddTag) _then) = _$NoteChange_AddTagCopyWithImpl;
+@useResult
+$Res call({
+ String tagId
+});
+
+
+
+
+}
+/// @nodoc
+class _$NoteChange_AddTagCopyWithImpl<$Res>
+    implements $NoteChange_AddTagCopyWith<$Res> {
+  _$NoteChange_AddTagCopyWithImpl(this._self, this._then);
+
+  final NoteChange_AddTag _self;
+  final $Res Function(NoteChange_AddTag) _then;
+
+/// Create a copy of NoteChange
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? tagId = null,}) {
+  return _then(NoteChange_AddTag(
+tagId: null == tagId ? _self.tagId : tagId // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NoteChange_RemoveTag extends NoteChange {
+  const NoteChange_RemoveTag({required this.tagId}): super._();
+  
+
+ final  String tagId;
+
+/// Create a copy of NoteChange
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NoteChange_RemoveTagCopyWith<NoteChange_RemoveTag> get copyWith => _$NoteChange_RemoveTagCopyWithImpl<NoteChange_RemoveTag>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteChange_RemoveTag&&(identical(other.tagId, tagId) || other.tagId == tagId));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,tagId);
+
+@override
+String toString() {
+  return 'NoteChange.removeTag(tagId: $tagId)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NoteChange_RemoveTagCopyWith<$Res> implements $NoteChangeCopyWith<$Res> {
+  factory $NoteChange_RemoveTagCopyWith(NoteChange_RemoveTag value, $Res Function(NoteChange_RemoveTag) _then) = _$NoteChange_RemoveTagCopyWithImpl;
+@useResult
+$Res call({
+ String tagId
+});
+
+
+
+
+}
+/// @nodoc
+class _$NoteChange_RemoveTagCopyWithImpl<$Res>
+    implements $NoteChange_RemoveTagCopyWith<$Res> {
+  _$NoteChange_RemoveTagCopyWithImpl(this._self, this._then);
+
+  final NoteChange_RemoveTag _self;
+  final $Res Function(NoteChange_RemoveTag) _then;
+
+/// Create a copy of NoteChange
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? tagId = null,}) {
+  return _then(NoteChange_RemoveTag(
+tagId: null == tagId ? _self.tagId : tagId // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class NoteChange_Restore extends NoteChange {
+  const NoteChange_Restore(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteChange_Restore);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'NoteChange.restore()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class NoteChange_DeleteForever extends NoteChange {
+  const NoteChange_DeleteForever(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteChange_DeleteForever);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'NoteChange.deleteForever()';
 }
 
 

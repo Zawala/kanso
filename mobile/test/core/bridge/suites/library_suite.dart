@@ -835,5 +835,220 @@ void librarySuite(OpenLibrary open) {
         throwsA(isA<KansoError_NotFound>()),
       );
     });
+
+    test('notebooks take an icon and a color, and are renamed', () async {
+      final library = await open();
+      final work = await library.createNotebook(name: 'Work');
+
+      expect(KansoLibrary.notebookIcons(query: ''), isNotEmpty);
+      expect(
+        KansoLibrary.notebookIcons(query: 'fold').map((icon) => icon.name),
+        contains('folder'),
+      );
+      expect(KansoLibrary.notebookColors(), isNotEmpty);
+      expect(KansoLibrary.tagColors().first.name, 'default');
+      expect(KansoLibrary.parseColor(text: '#FA0'), '#ffaa00');
+      expect(KansoLibrary.parseColor(text: '  #2185D0 '), '#2185d0');
+      expect(KansoLibrary.parseColor(text: 'blue'), isNull);
+      expect(
+        KansoLibrary.statuses().map((status) => status.status),
+        <String>['none', 'active', 'onHold', 'completed', 'dropped'],
+      );
+
+      await library.setNotebookIcon(id: work.id, icon: 'folder');
+      await library.setNotebookColor(id: work.id, color: '#2185D0');
+      var books = await library.notebooks();
+      expect(books.single.icon, 'folder');
+      expect(books.single.color, '#2185d0');
+      await library.setNotebookIcon(id: work.id);
+      await library.setNotebookColor(id: work.id);
+      books = await library.notebooks();
+      expect((books.single.icon, books.single.color), (null, null));
+      await expectLater(
+        library.setNotebookIcon(id: work.id, icon: 'nonsense'),
+        throwsA(isA<KansoError_Invalid>()),
+      );
+      await expectLater(
+        library.setNotebookColor(id: work.id, color: 'blue'),
+        throwsA(isA<KansoError_Invalid>()),
+      );
+
+      await library.renameNotebook(id: work.id, name: 'Studio');
+      expect((await library.notebooks()).single.name, 'Studio');
+      await expectLater(
+        library.renameNotebook(id: work.id, name: '  '),
+        throwsA(isA<KansoError_Invalid>()),
+      );
+      await expectLater(
+        library.renameNotebook(id: 'book:nope', name: 'Nope'),
+        throwsA(isA<KansoError_NotFound>()),
+      );
+    });
+
+    test('tags are made, renamed, coloured and deleted', () async {
+      final library = await open();
+      final tag = await library.createTag(name: ' Errand ');
+      expect(tag.name, 'Errand');
+      await library.renameTag(id: tag.id, name: 'Errands');
+      expect((await library.tags()).single.name, 'Errands');
+      await library.setTagColor(id: tag.id, color: 'red');
+      expect((await library.tags()).single.color, isNot(0));
+      await expectLater(
+        library.setTagColor(id: tag.id, color: 'mauve'),
+        throwsA(isA<KansoError_Invalid>()),
+      );
+      await expectLater(
+        library.createTag(name: ' '),
+        throwsA(isA<KansoError_Invalid>()),
+      );
+      await library.deleteTag(id: tag.id);
+      expect(await library.tags(), isEmpty);
+      await expectLater(
+        library.deleteTag(id: tag.id),
+        throwsA(isA<KansoError_NotFound>()),
+      );
+    });
+
+    test('a note is copied, linked and deleted for good', () async {
+      final library = await open();
+      final note = await makeNote(library, 'Plans', 'body');
+      final copy = await library.duplicate(id: note);
+      expect(copy.id, isNot(note));
+      expect((await library.note(id: copy.id)).title, contains('Plans'));
+
+      final wiki = await library.noteLink(id: note, kanso: false);
+      expect(wiki.text, '[[Plans]]');
+      expect(wiki.message, 'Link copied.');
+      final kanso = await library.noteLink(id: note, kanso: true);
+      expect(kanso.text, contains('Plans'));
+      expect(kanso.message, 'Link copied.');
+
+      await library.change(
+        ids: <String>[note],
+        change: const NoteChange.setStatus(status: 'completed'),
+      );
+      final done = (await library.list(query: everyNote)).rows
+          .firstWhere((row) => row.id == note);
+      expect(done.status, 'completed');
+
+      await library.change(
+        ids: <String>[copy.id],
+        change: const NoteChange.trash(),
+      );
+      await library.change(
+        ids: <String>[copy.id],
+        change: const NoteChange.restore(),
+      );
+      expect(
+        (await library.list(query: everyNote)).rows.map((row) => row.id),
+        contains(copy.id),
+      );
+      final doomedCopy = await makeNote(library, 'Doomed copy', 'x');
+      await library.change(
+        ids: <String>[doomedCopy],
+        change: const NoteChange.trash(),
+      );
+      await library.change(
+        ids: <String>[doomedCopy],
+        change: const NoteChange.deleteForever(),
+      );
+      expect(
+        (await library.list(query: trashedNotes)).rows.map((row) => row.id),
+        isNot(contains(doomedCopy)),
+      );
+      expect(
+        (await library.list(query: everyNote)).rows.map((row) => row.id),
+        isNot(contains(doomedCopy)),
+      );
+
+      final doomed = await makeNote(library, 'Doomed', 'x');
+      await library.change(
+        ids: <String>[doomed],
+        change: const NoteChange.trash(),
+      );
+      expect(await library.emptyTrash(), greaterThanOrEqualTo(1));
+      expect((await library.overview()).trash, 0);
+    });
+
+    test('the sidebar folds notebooks and lists the tags', () async {
+      final library = await open();
+      final garden = await library.createNotebook(name: 'Garden');
+      final bed = await library.createNotebook(
+        name: 'Bed',
+        parentId: garden.id,
+      );
+      await makeNote(library, 'Seed', '#veg');
+
+      const closed = FoldState(open: <String>[], folded: <String>[]);
+      var rows = await library.visibleNotebooks(folds: closed);
+      expect(rows.map((row) => row.row.id), <String>[garden.id]);
+      expect(rows.single.parent, isTrue);
+      expect(rows.single.open, isFalse);
+
+      // A tap on the arrow opens it; another folds it again.
+      final opened = await library.toggleFold(folds: closed, id: garden.id);
+      expect(opened.open, contains(garden.id));
+      rows = await library.visibleNotebooks(folds: opened);
+      expect(rows.map((row) => row.row.id), <String>[garden.id, bed.id]);
+      expect(rows.first.open, isTrue);
+      final folded = await library.toggleFold(folds: opened, id: garden.id);
+      expect(folded.open, isNot(contains(garden.id)));
+      expect(
+        (await library.visibleNotebooks(folds: folded)).map(
+          (row) => row.row.id,
+        ),
+        <String>[garden.id],
+      );
+
+      // The notebook showing keeps the ones around it open.
+      final around = await library.visibleNotebooks(
+        folds: closed,
+        showing: bed.id,
+      );
+      expect(around.map((row) => row.row.id), <String>[garden.id, bed.id]);
+
+      // A leaf tag sits in the chips; nested names fold into a tree.
+      var places = await library.tagPlaces(
+        all: true,
+        openPaths: const <String>[],
+      );
+      expect(places.chips.map((tag) => tag.name), <String>['veg']);
+      expect(places.more, isFalse);
+      expect(places.tree, isEmpty);
+      final veg = places.chips.single;
+
+      // The selected tag's ID keeps its chip when only a few show.
+      places = await library.tagPlaces(
+        all: false,
+        openPaths: const <String>[],
+        selected: veg.id,
+      );
+      expect(places.chips.map((tag) => tag.id), contains(veg.id));
+
+      // A name that nests another tag becomes a level; the rows below it
+      // show once the level opens.
+      await library.createTag(name: 'veg/salad');
+      places = await library.tagPlaces(all: true, openPaths: const <String>[]);
+      expect(places.tree.map((row) => row.path), <String>['veg']);
+      expect(places.tree.single.open, isFalse);
+      expect(places.tree.single.parent, isTrue);
+      expect(places.tree.single.count, 1);
+      // Nesting moves a tag out of the chips: it lists in the tree instead.
+      expect(places.chips, isEmpty);
+      places = await library.tagPlaces(
+        all: true,
+        openPaths: const <String>['veg'],
+      );
+      expect(places.tree.map((row) => row.path), <String>['veg', 'veg/salad']);
+      expect(places.tree.first.open, isTrue);
+      expect(places.tree.last.open, isFalse);
+      expect(places.tree.last.tagId, isNotNull);
+
+      await library.deleteNotebook(id: garden.id);
+      expect(
+        (await library.notebooks()).map((book) => book.id),
+        isNot(contains(bed.id)),
+      );
+    });
   });
 }

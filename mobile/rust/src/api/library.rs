@@ -5,10 +5,11 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    AttachmentFile, CaptureOutcome, Changed, DropsSaved, Hit, ImportEvent, KansoError, Library,
-    LibraryOverview, ListQuery, LocalTime, NewNote, NoteChange, NoteList, NoteView, NotebookRow,
-    OpenedDocuments, OpenedFile, Property, Saved, SearchScope, Share, Table, TagRow, TaskBoard,
-    TaskListQuery, Ticked,
+    AttachmentFile, CaptureOutcome, Changed, ColorChoice, CopiedLink, DropsSaved, FoldState, Hit,
+    IconChoice, ImportEvent, KansoError, Library, LibraryOverview, ListQuery, LocalTime, NewNote,
+    NoteChange, NoteList, NoteView, NotebookRow, OpenedDocuments, OpenedFile, Property, Saved,
+    SearchScope, Share, StatusChoice, Table, TagPlaces, TagRow, TaskBoard, TaskListQuery, Ticked,
+    VisibleNotebook,
 };
 // A note's history, Replace in all notes and the backups.
 use kanso_mobile::{
@@ -257,6 +258,125 @@ impl KansoLibrary {
     pub fn delete_backup(&self, path: String) -> Result<(), KansoError> {
         self.0.delete_backup(&path)
     }
+    /// The statuses a note can have, and what the desktop calls them.
+    #[frb(sync)]
+    pub fn statuses() -> Vec<StatusChoice> {
+        Library::statuses()
+    }
+
+    /// Deletes every note in the trash for good; says how many.
+    pub fn empty_trash(&self) -> Result<u32, KansoError> {
+        self.0.empty_trash()
+    }
+
+    /// Copies note `id` as the desktop does; returns the copy.
+    pub fn duplicate(&self, id: String) -> Result<Saved, KansoError> {
+        self.0.duplicate(&id)
+    }
+
+    /// The wiki-link to note `id` to paste elsewhere, and what to say.
+    pub fn note_link(&self, id: String, kanso: bool) -> Result<CopiedLink, KansoError> {
+        self.0.note_link(&id, kanso)
+    }
+
+    /// The notebook rows that show with `folds` applied, around the notebook
+    /// showing.
+    pub fn visible_notebooks(
+        &self,
+        folds: FoldState,
+        showing: Option<String>,
+    ) -> Result<Vec<VisibleNotebook>, KansoError> {
+        self.0.visible_notebooks(folds, showing)
+    }
+
+    /// The folds after a tap on notebook `id`'s arrow.
+    pub fn toggle_fold(
+        &self,
+        folds: FoldState,
+        id: String,
+        showing: Option<String>,
+    ) -> Result<FoldState, KansoError> {
+        self.0.toggle_fold(folds, id, showing)
+    }
+
+    /// The sidebar's tag chips and nested tag tree.
+    pub fn tag_places(
+        &self,
+        all: bool,
+        selected: Option<String>,
+        open_paths: Vec<String>,
+        showing: Option<String>,
+    ) -> Result<TagPlaces, KansoError> {
+        self.0.tag_places(all, selected, open_paths, showing)
+    }
+
+    /// Renames notebook `id`; names needn't be unique.
+    pub fn rename_notebook(&self, id: String, name: String) -> Result<(), KansoError> {
+        self.0.rename_notebook(&id, name)
+    }
+
+    /// Deletes notebook `id` and the notebooks inside it, as the desktop
+    /// does; its notes and anything under its lock need opening first.
+    pub fn delete_notebook(&self, id: String) -> Result<(), KansoError> {
+        self.0.delete_notebook(&id)
+    }
+
+    /// Sets notebook `id`'s icon to the Lucide icon named `icon`, or takes
+    /// its own icon away with null.
+    pub fn set_notebook_icon(&self, id: String, icon: Option<String>) -> Result<(), KansoError> {
+        self.0.set_notebook_icon(&id, icon)
+    }
+
+    /// Sets notebook `id`'s colour to `color` (`#RRGGBB`), or takes its own
+    /// colour away with null.
+    pub fn set_notebook_color(&self, id: String, color: Option<String>) -> Result<(), KansoError> {
+        self.0.set_notebook_color(&id, color)
+    }
+
+    /// Names a tag `name`, making it; returns the tag.
+    pub fn create_tag(&self, name: String) -> Result<TagRow, KansoError> {
+        self.0.create_tag(name)
+    }
+
+    /// Renames tag `id`; names needn't be unique.
+    pub fn rename_tag(&self, id: String, name: String) -> Result<(), KansoError> {
+        self.0.rename_tag(&id, name)
+    }
+
+    /// Deletes tag `id`, and takes it off the notes that had it.
+    pub fn delete_tag(&self, id: String) -> Result<(), KansoError> {
+        self.0.delete_tag(&id)
+    }
+
+    /// Sets tag `id`'s colour to `color` (`red`, `default`, ...).
+    pub fn set_tag_color(&self, id: String, color: String) -> Result<(), KansoError> {
+        self.0.set_tag_color(&id, color)
+    }
+
+    /// The notebook icons matching `query`, in the catalogue's order.
+    #[frb(sync)]
+    pub fn notebook_icons(query: String) -> Vec<IconChoice> {
+        Library::notebook_icons(query)
+    }
+
+    /// The notebook colours the desktop offers.
+    #[frb(sync)]
+    pub fn notebook_colors() -> Vec<ColorChoice> {
+        Library::notebook_colors()
+    }
+
+    /// The tag colours the desktop offers.
+    #[frb(sync)]
+    pub fn tag_colors() -> Vec<ColorChoice> {
+        Library::tag_colors()
+    }
+
+    /// `#RRGGBB` for `text`, or null when it isn't a colour.
+    #[frb(sync)]
+    pub fn parse_color(text: String) -> Option<String> {
+        Library::parse_color(text)
+    }
+
     #[frb(sync)]
     pub fn locks(&self) -> KansoLocks {
         KansoLocks::new(self.0.locks())

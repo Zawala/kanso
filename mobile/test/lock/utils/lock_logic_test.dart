@@ -23,7 +23,7 @@ NotebookRow book(String id, {String? parent, bool locked = false}) =>
       parentId: parent,
       count: 0,
       locked: locked,
-      depth: 0,
+      depth: 0, hasChildren: false,
     );
 
 void main() {

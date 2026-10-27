@@ -39,7 +39,7 @@ NotebookRow notebookRow(
     count: count,
     locked: locked,
     role: role,
-    depth: depth,
+    depth: depth, hasChildren: false,
   );
 }
 
@@ -175,7 +175,7 @@ const LibraryOverview mockOverview = LibraryOverview(
   all: 142,
   pinned: 3,
   recent: 11,
-  trash: 4,
+  trash: 4, byStatus: <StatusCount>[],
 );
 
 /// A row of a list, with the facts the mock list shows.

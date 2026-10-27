@@ -113,12 +113,17 @@ void main() {
       expect(find.text('Recent'), findsOneWidget);
       expect(find.text('Work'), findsOneWidget);
       expect(find.text('31'), findsOneWidget);
+      expect(find.text('Tasks'), findsOneWidget);
       // The tags are below the fold of a phone's library.
       await tester.scrollUntilVisible(find.text('idea'), 120);
       expect(find.text('idea'), findsOneWidget);
-      expect(find.text('Trash', skipOffstage: false), findsOneWidget);
-      expect(find.text('4', skipOffstage: false), findsOneWidget);
-      expect(find.text('Tasks'), findsOneWidget);
+      // So is the Trash, at the foot of the pane.
+      await tester.scrollUntilVisible(
+        find.text('Trash', skipOffstage: false),
+        120,
+      );
+      expect(find.text('Trash'), findsOneWidget);
+      expect(find.text('4'), findsOneWidget);
       // There is no Templates notebook in this library.
       expect(find.text('Templates'), findsNothing);
     });
@@ -229,7 +234,18 @@ void main() {
         ),
         size: const Size(393, 1400),
       );
-      expect(_selection(tester)['idea'], isTrue);
+      // A tag is a chip, not a row: its selection is told to a screen
+      // reader rather than drawn as a sidebar row.
+      expect(
+        tester
+            .widgetList<Semantics>(find.byType(Semantics))
+            .any(
+              (widget) =>
+                  (widget.properties.selected ?? false) &&
+                  widget.properties.label == '#idea',
+            ),
+        isTrue,
+      );
       await tester.pumpWidget(const SizedBox.shrink());
       await pumpRouted(
         tester,
@@ -374,7 +390,7 @@ void main() {
         all: 150,
         pinned: 3,
         recent: 11,
-        trash: 4,
+        trash: 4, byStatus: <StatusCount>[],
       );
       library.changeStream.add(<String>['note:new']);
       await tester.pump(const Duration(milliseconds: 150));
