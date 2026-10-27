@@ -207,7 +207,7 @@ extension KansoLocationAny on Any {
     },
   );
 
-  /// Any place or search, with or without a note open.
+  /// Any place, search or the tasks, with or without a note open.
   Generator<BrowseLocation> get browseLocation => combine6(
     this.bool,
     listPlace,
@@ -231,6 +231,8 @@ extension KansoLocationAny on Any {
               notebookId: scope == SearchScopeKind.notebook ? id : null,
               noteId: noteId,
             )
+          : query.length == 5
+          ? BrowseLocation.tasks(noteId: noteId)
           : BrowseLocation.place(place, noteId: noteId);
     },
   );

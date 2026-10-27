@@ -21,6 +21,7 @@ class NoteListTopBar extends StatelessWidget {
     this.subtitle,
     this.onSearch,
     this.onOptions,
+    this.optionsLabel,
     super.key,
   });
 
@@ -28,6 +29,9 @@ class NoteListTopBar extends StatelessWidget {
   final String? subtitle;
   final VoidCallback? onSearch;
   final VoidCallback? onOptions;
+
+  /// What a screen reader calls the options button; "More" when null.
+  final String? optionsLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +57,7 @@ class NoteListTopBar extends StatelessWidget {
           ),
         KansoIconButton(
           icon: KansoIcons.ellipsis,
-          semanticLabel: l10n.noteListMore,
+          semanticLabel: optionsLabel ?? l10n.noteListMore,
           onPressed: onOptions,
         ),
       ],

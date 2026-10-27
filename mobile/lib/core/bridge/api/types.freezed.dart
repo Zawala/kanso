@@ -2444,10 +2444,10 @@ return missing(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String rev,  int undo)?  changed,TResult Function()?  unchanged,TResult Function()?  missing,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String rev,  int undo,  String message)?  changed,TResult Function()?  unchanged,TResult Function()?  missing,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case Ticked_Changed() when changed != null:
-return changed(_that.rev,_that.undo);case Ticked_Unchanged() when unchanged != null:
+return changed(_that.rev,_that.undo,_that.message);case Ticked_Unchanged() when unchanged != null:
 return unchanged();case Ticked_Missing() when missing != null:
 return missing();case _:
   return orElse();
@@ -2467,10 +2467,10 @@ return missing();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String rev,  int undo)  changed,required TResult Function()  unchanged,required TResult Function()  missing,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String rev,  int undo,  String message)  changed,required TResult Function()  unchanged,required TResult Function()  missing,}) {final _that = this;
 switch (_that) {
 case Ticked_Changed():
-return changed(_that.rev,_that.undo);case Ticked_Unchanged():
+return changed(_that.rev,_that.undo,_that.message);case Ticked_Unchanged():
 return unchanged();case Ticked_Missing():
 return missing();}
 }
@@ -2486,10 +2486,10 @@ return missing();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String rev,  int undo)?  changed,TResult? Function()?  unchanged,TResult? Function()?  missing,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String rev,  int undo,  String message)?  changed,TResult? Function()?  unchanged,TResult? Function()?  missing,}) {final _that = this;
 switch (_that) {
 case Ticked_Changed() when changed != null:
-return changed(_that.rev,_that.undo);case Ticked_Unchanged() when unchanged != null:
+return changed(_that.rev,_that.undo,_that.message);case Ticked_Unchanged() when unchanged != null:
 return unchanged();case Ticked_Missing() when missing != null:
 return missing();case _:
   return null;
@@ -2503,11 +2503,12 @@ return missing();case _:
 
 
 class Ticked_Changed extends Ticked {
-  const Ticked_Changed({required this.rev, required this.undo}): super._();
+  const Ticked_Changed({required this.rev, required this.undo, required this.message}): super._();
   
 
  final  String rev;
  final  int undo;
+ final  String message;
 
 /// Create a copy of Ticked
 /// with the given fields replaced by the non-null parameter values.
@@ -2519,16 +2520,16 @@ $Ticked_ChangedCopyWith<Ticked_Changed> get copyWith => _$Ticked_ChangedCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Ticked_Changed&&(identical(other.rev, rev) || other.rev == rev)&&(identical(other.undo, undo) || other.undo == undo));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Ticked_Changed&&(identical(other.rev, rev) || other.rev == rev)&&(identical(other.undo, undo) || other.undo == undo)&&(identical(other.message, message) || other.message == message));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,rev,undo);
+int get hashCode => Object.hash(runtimeType,rev,undo,message);
 
 @override
 String toString() {
-  return 'Ticked.changed(rev: $rev, undo: $undo)';
+  return 'Ticked.changed(rev: $rev, undo: $undo, message: $message)';
 }
 
 
@@ -2539,7 +2540,7 @@ abstract mixin class $Ticked_ChangedCopyWith<$Res> implements $TickedCopyWith<$R
   factory $Ticked_ChangedCopyWith(Ticked_Changed value, $Res Function(Ticked_Changed) _then) = _$Ticked_ChangedCopyWithImpl;
 @useResult
 $Res call({
- String rev, int undo
+ String rev, int undo, String message
 });
 
 
@@ -2556,11 +2557,12 @@ class _$Ticked_ChangedCopyWithImpl<$Res>
 
 /// Create a copy of Ticked
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? rev = null,Object? undo = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? rev = null,Object? undo = null,Object? message = null,}) {
   return _then(Ticked_Changed(
 rev: null == rev ? _self.rev : rev // ignore: cast_nullable_to_non_nullable
 as String,undo: null == undo ? _self.undo : undo // ignore: cast_nullable_to_non_nullable
-as int,
+as int,message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
   ));
 }
 

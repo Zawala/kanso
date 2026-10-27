@@ -12,6 +12,7 @@ import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/licences/licences_bloc.dart';
+import 'package:kanso/tasks/state/tasks/tasks_bloc.dart';
 import 'package:kanso/themes/state/theme_picker/theme_picker_bloc.dart';
 
 import 'browse_blocs.dart';
@@ -44,6 +45,12 @@ void registerPageBlocs(
       haptics,
       undoNotice,
     ),
+  );
+  if (getIt.isRegistered<TasksBloc>()) {
+    getIt.unregister<TasksBloc>();
+  }
+  getIt.registerFactory<TasksBloc>(
+    () => TasksBloc(library, haptics, undoNotice),
   );
   if (getIt.isRegistered<NoteBloc>()) {
     getIt.unregister<NoteBloc>();

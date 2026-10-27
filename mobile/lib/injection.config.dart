@@ -54,6 +54,7 @@ import 'settings/state/about/about_bloc.dart' as _i380;
 import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
 import 'settings/state/licences/licences_bloc.dart' as _i570;
 import 'shell/state/library_pane/library_pane_bloc.dart' as _i612;
+import 'tasks/state/tasks/tasks_bloc.dart' as _i470;
 import 'themes/state/theme_picker/theme_picker_bloc.dart' as _i149;
 
 const String _development = 'development';
@@ -184,6 +185,13 @@ extension GetItInjectableX on _i174.GetIt {
       () => _i351.NoteListBloc(
         gh<_i38.LibraryRepository>(),
         gh<_i384.PreferencesRepository>(),
+        gh<_i1056.HapticsRepository>(),
+        gh<_i985.UndoNoticeBloc>(),
+      ),
+    );
+    gh.factory<_i470.TasksBloc>(
+      () => _i470.TasksBloc(
+        gh<_i38.LibraryRepository>(),
         gh<_i1056.HapticsRepository>(),
         gh<_i985.UndoNoticeBloc>(),
       ),

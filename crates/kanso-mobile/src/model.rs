@@ -221,8 +221,13 @@ pub struct Changed {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ticked {
     /// The note was written with revision `rev`; `undo` is the ticket that
-    /// takes the tick back (`Library::undo`).
-    Changed { rev: String, undo: u64 },
+    /// takes the tick back (`Library::undo`); `message` is what the notice
+    /// says, like the desktop's ("Ticked off “Call Sam”").
+    Changed {
+        rev: String,
+        undo: u64,
+        message: String,
+    },
     /// The task already was that way.
     Unchanged,
     /// The task isn't in the note any more: its text changed since it was

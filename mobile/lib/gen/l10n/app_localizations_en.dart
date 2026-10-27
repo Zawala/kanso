@@ -657,4 +657,98 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get backupNoticeOk => 'OK';
+
+  @override
+  String get libraryTasks => 'Tasks';
+
+  @override
+  String libraryTasksOverdue(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count overdue tasks',
+      one: '1 overdue task',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String tasksCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tasks',
+      one: '1 task',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tasksFilter => 'Filter tasks';
+
+  @override
+  String get tasksFilterTitle => 'Filter tasks';
+
+  @override
+  String get tasksAllNotebooks => 'All notebooks';
+
+  @override
+  String get tasksShowCompleted => 'Show Completed';
+
+  @override
+  String get tasksNotebooksHeader => 'Notebook';
+
+  @override
+  String get tasksEmptyTitle => 'No tasks yet';
+
+  @override
+  String get tasksEmptyMessage =>
+      'Write “- [ ] Call Sam @2026-10-25” in any note, and it shows here.';
+
+  @override
+  String tasksEmptyNotebookTitle(String notebook) {
+    return 'No tasks in $notebook';
+  }
+
+  @override
+  String get tasksAllDoneTitle => 'All done';
+
+  @override
+  String get tasksAllDoneMessage => 'Every task is ticked off.';
+
+  @override
+  String get tasksLoading => 'Loading tasks';
+
+  @override
+  String get tasksFailedTitle => 'The tasks didn\'t load';
+
+  @override
+  String get tasksFailedMessage =>
+      'Something went wrong reading the tasks on this device. Try again.';
+
+  @override
+  String get tasksMoved =>
+      'That task changed in its note. The list is up to date now.';
+
+  @override
+  String get tasksChangeFailed => 'Couldn\'t change the task. Try again.';
+
+  @override
+  String get tasksTickOff => 'Tick off';
+
+  @override
+  String get tasksTickBack => 'Mark not done';
+
+  @override
+  String get tasksOpenNote => 'Open note';
+
+  @override
+  String tasksRowContext(String note, String notebook) {
+    return '$note · $notebook';
+  }
+
+  @override
+  String tasksRowDue(String due) {
+    return 'Due $due';
+  }
 }

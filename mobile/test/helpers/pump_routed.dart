@@ -41,6 +41,8 @@ Future<GoRouter> pumpRouted(
       GoRoute(path: '/notebooks/:id/note/:noteId', builder: empty),
       GoRoute(path: '/tags/:id/note/:noteId', builder: empty),
       GoRoute(path: '/search/note/:id', builder: empty),
+      GoRoute(path: '/tasks', builder: empty),
+      GoRoute(path: '/tasks/note/:id', builder: empty),
       GoRoute(path: '/pinned', builder: empty),
       GoRoute(path: '/recent', builder: empty),
       GoRoute(path: '/trash', builder: empty),

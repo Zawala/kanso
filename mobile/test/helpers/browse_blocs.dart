@@ -24,6 +24,8 @@ import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/models/data/search_status.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
+import 'package:kanso/tasks/models/data/tasks_status.dart';
+import 'package:kanso/tasks/state/tasks/tasks_bloc.dart';
 
 import 'close_bloc_later.dart';
 import 'fixture_library_repository.dart';
@@ -143,6 +145,20 @@ class BrowseBlocs {
     return bloc;
   }
 
+  /// The Tasks place, read; or only made when [read] is false, so that it
+  /// is still loading.
+  Future<TasksBloc> tasksOf({bool read = true}) async {
+    final bloc = TasksBloc(library, haptics, undoNotice);
+    closeBlocLater(bloc);
+    if (read) {
+      bloc.add(const TasksEvent.started());
+      await bloc.stream.firstWhere(
+        (state) => state.status != TasksStatus.loading,
+      );
+    }
+    return bloc;
+  }
+
   /// The note [id], read and highlighted in [themeId]; or only made when
   /// [read] is false, so that it is still loading.
   Future<NoteBloc> noteOf(
@@ -182,13 +198,14 @@ class BrowseBlocs {
     return bloc;
   }
 
-  /// [child] with these BLoCs above it, and [list], [note] and [search] if
-  /// given.
+  /// [child] with these BLoCs above it, and [list], [note], [search] and
+  /// [tasks] if given.
   Widget provide(
     Widget child, {
     NoteListBloc? list,
     NoteBloc? note,
     SearchBloc? search,
+    TasksBloc? tasks,
   }) {
     return MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
@@ -201,6 +218,7 @@ class BrowseBlocs {
         if (list != null) BlocProvider<NoteListBloc>.value(value: list),
         if (note != null) BlocProvider<NoteBloc>.value(value: note),
         if (search != null) BlocProvider<SearchBloc>.value(value: search),
+        if (tasks != null) BlocProvider<TasksBloc>.value(value: tasks),
       ],
       child: child,
     );

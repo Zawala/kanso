@@ -169,7 +169,11 @@ pub struct _TaskBoard {
 
 #[frb(mirror(Ticked))]
 pub enum _Ticked {
-    Changed { rev: String, undo: u64 },
+    Changed {
+        rev: String,
+        undo: u64,
+        message: String,
+    },
     Unchanged,
     Missing,
 }
