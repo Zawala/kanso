@@ -204,6 +204,25 @@ pub fn spans(text: &str, range: Range<usize>) -> Vec<Span> {
     PARSERS.with(|parsers| assemble(text, range, &mut *parsers.borrow_mut()))
 }
 
+/// The spans of `code` as the content of a fenced block whose info string is
+/// `lang` (any spelling [`grammar`] knows), or `None` when no grammar is
+/// Kanso's for it. The offsets are `code`'s own bytes, on character
+/// boundaries; like [`spans`] they are sorted, not overlapping and never
+/// empty.
+///
+/// It is what the engine gives the content of such a fence in a note, minus
+/// the Markdown around it: the code is parsed as a text of its own, with the
+/// grammar's highlight query alone, so a fence's spans are the ones this
+/// returns under the block's own [`Token::CodeBlock`]. A web page uses it to
+/// color the code it shows.
+pub fn code_spans(lang: &str, code: &str) -> Option<Vec<Span>> {
+    thread_local! {
+        static PARSERS: std::cell::RefCell<block::Parsers> = std::cell::RefCell::default();
+    }
+    let grammar = registry::get(grammar(lang)?)?;
+    Some(PARSERS.with(|parsers| block::code_spans(&mut parsers.borrow_mut(), grammar, code)))
+}
+
 /// Where the blocks of a note get their spans from.
 trait Blocks {
     /// Whether the block parses without a syntax error.

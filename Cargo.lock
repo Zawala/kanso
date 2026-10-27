@@ -4552,10 +4552,13 @@ dependencies = [
 name = "kanso-engine"
 version = "0.8.4"
 dependencies = [
+ "anyhow",
  "base64 0.22.1",
  "chrono",
  "fastrand",
  "kanso-core",
+ "kanso-import",
+ "kanso-render",
  "kanso-store",
  "kanso-sync",
  "proptest",

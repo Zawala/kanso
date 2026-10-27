@@ -4,8 +4,8 @@ use std::ops::Range;
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 
-use super::{Highlighter, Span, Token, blocks, spans, whole_document_spans};
-use crate::strategies::markdown::{calm_notes, notes};
+use super::{Highlighter, Span, Token, blocks, code_spans, spans, whole_document_spans};
+use crate::strategies::markdown::{LANGUAGES, calm_notes, notes, valid_code};
 use crate::theme::file::{CAPTURES, SYNTAX_KEYS, TokenStyle};
 use crate::theme::{Rgb, style};
 
@@ -731,4 +731,95 @@ proptest! {
             prop_assert!(range.start <= start && range.end >= end);
         }
     }
+}
+
+/// The tokens over each byte of `text` given `spans`.
+fn tokens_by_byte(len: usize, spans: &[Span], shift: usize) -> Vec<Vec<Token>> {
+    let mut out = vec![Vec::new(); len];
+    for span in spans {
+        for byte in span.range.clone() {
+            if let Some(slot) = out.get_mut(byte.wrapping_sub(shift)) {
+                *slot = span.tokens.clone();
+            }
+        }
+    }
+    out
+}
+
+/// Valid code, or the first lines of it, in a language.
+fn some_code() -> impl Strategy<Value = (&'static str, String)> {
+    (
+        proptest::sample::select(LANGUAGES.to_vec()),
+        any::<prop::sample::Index>(),
+        any::<prop::sample::Index>(),
+    )
+        .prop_map(|(language, pick, cut)| {
+            let snippets = valid_code(language);
+            let snippet = snippets[pick.index(snippets.len())];
+            let lines: Vec<&str> = snippet.split_inclusive('\n').collect();
+            let keep = 1 + cut.index(lines.len());
+            (language, lines[..keep].concat())
+        })
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    /// The spans of a piece of code are sorted, not overlapping, never
+    /// empty, with a token each, inside the code and on character
+    /// boundaries, whatever the text is.
+    #[test]
+    fn prop_code_spans_are_well_formed(
+        language in proptest::sample::select(LANGUAGES.to_vec()),
+        code in "[a-z0-9é日🙂 (){}\\[\\]\"'`#*<>=;:,.\\n-]{0,60}",
+    ) {
+        let spans = code_spans(language, &code).expect("a grammar");
+        let mut at = 0;
+        for span in &spans {
+            prop_assert!(span.range.start < span.range.end);
+            prop_assert!(span.range.start >= at);
+            prop_assert!(span.range.end <= code.len());
+            prop_assert!(code.is_char_boundary(span.range.start));
+            prop_assert!(code.is_char_boundary(span.range.end));
+            prop_assert!(!span.tokens.is_empty());
+            at = span.range.end;
+        }
+    }
+
+    /// Code is colored as the content of a fence in a note is, under the
+    /// fence's own token: the note's spans over the code are the code's,
+    /// each with the block's token before them.
+    #[test]
+    fn prop_code_spans_are_a_fences_spans((language, code) in some_code()) {
+        let note = format!("```{language}\n{code}```\n");
+        let shift = language.len() + 4;
+        let in_note = spans(&note, 0..note.len());
+        let of_note = tokens_by_byte(code.len(), &in_note, shift);
+        let of_code = tokens_by_byte(
+            code.len(),
+            &code_spans(language, &code).expect("a grammar"),
+            0,
+        );
+        for (byte, (note, code)) in of_note.iter().zip(&of_code).enumerate() {
+            let mut expected = vec![Token::CodeBlock];
+            expected.extend(code.iter().copied());
+            prop_assert_eq!(note, &expected, "byte {} of {:?} in {}", byte, code, language);
+        }
+    }
+}
+
+#[test]
+fn code_spans_know_the_fences_spellings() {
+    let code = "fn main() { let x = 1; }\n";
+    let rust = code_spans("rust", code).unwrap();
+    assert!(
+        rust.iter()
+            .any(|span| span.tokens.contains(&Token::Keyword))
+    );
+    for alias in ["rs", "RUST", "rust,ignore", "{.rust}"] {
+        assert_eq!(code_spans(alias, code), Some(rust.clone()), "{alias}");
+    }
+    assert_eq!(code_spans("dart", code), None);
+    assert_eq!(code_spans("", code), None);
+    assert_eq!(code_spans("rust", ""), Some(Vec::new()));
 }

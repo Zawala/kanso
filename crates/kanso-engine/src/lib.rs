@@ -27,6 +27,12 @@
 //! component library compiles in, with the same queries, and a test in
 //! `kanso-app` holds the two to the same colors on a corpus of notes.
 //!
+//! Notes leave the app from here too. [`export`] writes a library as
+//! Markdown files and makes a note's web page, in the faces and code colors
+//! the preview is set in; [`publish`] decides what the Publish sheet shows,
+//! says what went wrong in plain words, and publishes a note or a notebook
+//! at a link. The desktop and the mobile app make the same page.
+//!
 //! Nothing here opens a window, reads a clock of its own or touches the
 //! system's secret store: the caller passes the time, and secrets go through
 //! [`Secrets`].
@@ -38,12 +44,14 @@ pub mod account;
 pub mod batch;
 pub mod daily;
 pub mod edit;
+pub mod export;
 pub mod fuzzy;
 #[cfg(feature = "highlight")]
 pub mod highlight;
 pub mod links;
 pub mod list;
 pub mod lock;
+pub mod publish;
 #[cfg(any(test, feature = "test-support"))]
 pub mod strategies;
 pub mod sync;

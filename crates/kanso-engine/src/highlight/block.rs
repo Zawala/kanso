@@ -177,41 +177,83 @@ fn injected_items(
 
     let mut items = Vec::new();
     for layer in &layers {
-        let Some(highlights) = layer.grammar.highlights() else {
-            continue;
-        };
-        let mut cursor = QueryCursor::new();
-        let mut matches = cursor.matches(
-            &highlights.query,
-            layer.tree.root_node(),
-            layer.text.as_bytes(),
-        );
-        // Within a layer, a capture that starts inside the one before it is
-        // dropped, unless its pattern allows overlap.
-        let mut last_end = 0usize;
-        while let Some(found) = matches.next() {
-            let overlap = highlights
-                .query
-                .property_settings(found.pattern_index)
-                .iter()
-                .any(|property| property.key.as_ref() == "highlight.allow-overlap");
-            for capture in found.captures {
-                let range =
-                    capture.node.start_byte() + layer.start..capture.node.end_byte() + layer.start;
-                if !overlap && range.start < last_end {
-                    continue;
-                }
-                if !overlap {
-                    last_end = range.end;
-                }
-                items.push(Item {
-                    token: highlights.tokens[capture.index as usize],
-                    range,
-                });
+        items.extend(layer_items(
+            layer.grammar,
+            &layer.tree,
+            layer.text,
+            layer.start,
+        ));
+    }
+    items
+}
+
+/// The captures of one layer: `text` parsed as `tree` with `grammar`'s
+/// highlight query, at offset `start` of the block it sits in. Within a
+/// layer, a capture that starts inside the one before it is dropped, unless
+/// its pattern allows overlap.
+fn layer_items(grammar: &'static Grammar, tree: &Tree, text: &str, start: usize) -> Vec<Item> {
+    let Some(highlights) = grammar.highlights() else {
+        return Vec::new();
+    };
+    let mut items = Vec::new();
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(&highlights.query, tree.root_node(), text.as_bytes());
+    let mut last_end = 0usize;
+    while let Some(found) = matches.next() {
+        let overlap = highlights
+            .query
+            .property_settings(found.pattern_index)
+            .iter()
+            .any(|property| property.key.as_ref() == "highlight.allow-overlap");
+        for capture in found.captures {
+            let range = capture.node.start_byte() + start..capture.node.end_byte() + start;
+            if !overlap && range.start < last_end + start {
+                continue;
             }
+            if !overlap {
+                last_end = range.end - start;
+            }
+            items.push(Item {
+                token: highlights.tokens[capture.index as usize],
+                range,
+            });
         }
     }
     items
+}
+
+/// The spans of `code` as the content of a fenced block in `grammar`:
+/// parsed as a text of its own, with the grammar's highlight query alone,
+/// as an injected layer is. Offsets are `code`'s own.
+pub(super) fn code_spans(
+    parsers: &mut Parsers,
+    grammar: &'static Grammar,
+    code: &str,
+) -> Vec<Span> {
+    // A fence's content is injected only when it is non-empty and within the
+    // limit.
+    if code.is_empty() || code.len() > MAX_INJECTION_BYTES {
+        return Vec::new();
+    }
+    let Some(tree) = parsers.parse(grammar, code) else {
+        return Vec::new();
+    };
+    let items: Vec<(Range<usize>, Token)> = layer_items(grammar, &tree, code, 0)
+        .into_iter()
+        .filter_map(|item| {
+            let token = item.token?;
+            let mut start = item.range.start.min(code.len());
+            let mut end = item.range.end.min(code.len());
+            while !code.is_char_boundary(start) {
+                start -= 1;
+            }
+            while !code.is_char_boundary(end) {
+                end += 1;
+            }
+            (start < end).then_some((start..end, token))
+        })
+        .collect();
+    flatten(&items)
 }
 
 /// The layers the host's injection query asks for: a language per fence, the

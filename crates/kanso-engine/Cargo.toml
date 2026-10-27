@@ -7,12 +7,16 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# `export` and `publish` fail with context (export.rs).
+anyhow.workspace = true
 # Google's PKCE challenge (account/provider.rs).
 base64.workspace = true
 # The recovery-key file's date and the resume time (account/words.rs).
 chrono.workspace = true
 fastrand.workspace = true
 kanso-core.workspace = true
+# A note's web page (`export`, `publish`): the same HTML on every platform.
+kanso-render.workspace = true
 kanso-store.workspace = true
 # Without the desktop Keychain: secrets go through the `Secrets` trait.
 kanso-sync = { path = "../kanso-sync", default-features = false }
@@ -93,6 +97,8 @@ code-grammars = [
 test-support = ["dep:proptest"]
 
 [dev-dependencies]
+# An export read back by the importer (export.rs).
+kanso-import.workspace = true
 proptest.workspace = true
 tempfile.workspace = true
 # A store that refuses a write, to test a binding that fails.

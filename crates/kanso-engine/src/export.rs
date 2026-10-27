@@ -1,8 +1,13 @@
-//! Markdown export: one `.md` file per note in folders named after its
-//! notebooks, attachments in `_attachments/`, and in-app links rewritten to
-//! relative paths so the export reads well in any Markdown editor. Files
-//! already in the chosen folder are never replaced; new ones get numbered
-//! names instead.
+//! Exporting notes: as Markdown files, one `.md` per note in folders named
+//! after its notebooks, attachments in `_attachments/`, and in-app links
+//! rewritten to relative paths so the export reads well in any Markdown
+//! editor (files already in the chosen folder are never replaced; new ones
+//! get numbered names instead), and as web pages (`page`), which the apps
+//! save as HTML or print to PDF and which `publish` seals at a link.
+//!
+//! The desktop and the mobile app call the same code, so a page looks the
+//! same wherever it was made. `style` has the faces and code colors a page
+//! is set in.
 
 use std::collections::{HashMap, HashSet};
 use std::io::Write as _;
@@ -13,7 +18,14 @@ use kanso_core::links::{FILE_LINK_PREFIX, LINK_SCHEME, NOTE_LINK_PREFIX};
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::properties::{self, Value};
 use kanso_core::{Book, Note, NoteStatus};
+use kanso_render::Palette;
 use kanso_store::{SearchParams, Store};
+
+mod model;
+mod style;
+
+pub use model::{CodeColors, ExportReport, PageStyle};
+pub use style::code_for_page;
 
 const MAX_NAME_CHARS: usize = 100;
 const ATTACHMENTS_DIR: &str = "_attachments";
@@ -227,8 +239,24 @@ fn insert_before_close(out: &mut String, line: &str) {
     }
 }
 
+/// `YYYY-MM-DD` in UTC, as an export's front matter dates a note.
+fn format_date(ms: i64) -> String {
+    let days = ms.div_euclid(86_400_000);
+    // Civil-from-days (Howard Hinnant).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
 fn iso_time(ms: i64) -> String {
-    let date = crate::note_list::format_date(ms);
+    let date = format_date(ms);
     let secs = ms.div_euclid(1000).rem_euclid(86_400);
     format!(
         "{date}T{:02}:{:02}:{:02}Z",
@@ -247,7 +275,7 @@ fn book_dirs(books: &[Book]) -> HashMap<String, PathBuf> {
         .entry(None)
         .or_default()
         .insert(ATTACHMENTS_DIR.to_lowercase());
-    for (_, book) in crate::library::book_tree(books) {
+    for (_, book) in crate::list::notebook_tree(books) {
         let parent = book.parent_book_id.clone().filter(|p| dirs.contains_key(p));
         let parent_dir = parent.as_ref().map(|p| dirs[p].clone()).unwrap_or_default();
         let name = unique_name(
@@ -258,15 +286,6 @@ fn book_dirs(books: &[Book]) -> HashMap<String, PathBuf> {
         dirs.insert(book.id.clone(), parent_dir.join(name));
     }
     dirs
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct ExportReport {
-    pub notes: usize,
-    pub attachments: usize,
-    /// Locked notes left out: their text is only sealed, and an export is
-    /// plain text.
-    pub locked: usize,
 }
 
 /// Writes notes into `root`. With `only`, just those notes (and their
@@ -408,10 +427,75 @@ fn write_new(path: &Path, data: &[u8]) -> anyhow::Result<()> {
         .with_context(|| format!("writing {}", path.display()))
 }
 
+/// The page for a note: its title and body, in `palette` and `style`, with
+/// its attachments read from `store` and its query views drawn. Blocks while
+/// math and diagrams are drawn.
+pub fn page(
+    store: &Store,
+    title: &str,
+    body: &str,
+    palette: &Palette,
+    self_id: Option<&str>,
+    style: &PageStyle,
+) -> String {
+    let body = with_queries(store, body, self_id);
+    page_without_queries(store, title, &body, palette, style)
+}
+
+/// The page as it was before query views: a `query` fence stays code.
+pub fn page_without_queries(
+    store: &Store,
+    title: &str,
+    body: &str,
+    palette: &Palette,
+    style: &PageStyle,
+) -> String {
+    let attachments = |id: &str| {
+        store
+            .attachment(id)
+            .ok()
+            .flatten()
+            .map(|(content_type, attachment)| (content_type, attachment.data))
+    };
+    kanso_render::html::page_with(title, body, palette, &attachments, &style.options())
+}
+
+/// `body` with each query fence drawn as the table it makes.
+pub fn with_queries(store: &Store, body: &str, self_id: Option<&str>) -> String {
+    // Most pages have no query: don't read every note to find that out.
+    if !kanso_core::query_view::contains_query(body) {
+        return body.to_owned();
+    }
+    let Ok(rows) = store.query_view_notes() else {
+        return body.to_owned();
+    };
+    let notes: Vec<kanso_core::query_view::ViewNote> = rows
+        .into_iter()
+        .map(kanso_core::query_view::ViewNote::from)
+        .collect();
+    kanso_core::query_view::render_export(body, &notes, self_id)
+}
+
+/// A file name for the note's export.
+pub fn file_name(title: &str, extension: &str) -> String {
+    format!("{}.{extension}", sanitize_file_name(title))
+}
+
+/// The colors to print in: `palette` when it is light, else Kanso's light
+/// theme.
+pub fn print_palette(palette: Palette) -> Palette {
+    if palette.dark {
+        Palette::LIGHT
+    } else {
+        palette
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_link, export, export_text, relative_path, rewrite_links, sanitize_file_name,
+        PageStyle, Palette, encode_link, export, export_text, file_name, format_date, page,
+        page_without_queries, print_palette, relative_path, rewrite_links, sanitize_file_name,
         unique_name,
     };
     use kanso_core::DocType;
@@ -658,6 +742,105 @@ mod tests {
         assert!(tree.contains_key(Path::new("_Attachments 2/pic.md")));
     }
 
+    #[test]
+    fn a_note_exports_with_its_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("k.db")).unwrap();
+        let id = store
+            .put(
+                DocType::File,
+                json!({
+                    "name": "cat.png",
+                    "contentType": "image/png",
+                    "_attachments": {"index": {"content_type": "image/png", "data": "iVBORw=="}},
+                }),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let body = format!("Area $\\pi r^2$.\n\n![cat](inkdrop://{id})\n");
+        let html = page(
+            &store,
+            "Circles",
+            &body,
+            &Palette::DARK,
+            None,
+            &PageStyle::default(),
+        );
+        assert!(html.contains("<title>Circles</title>"));
+        assert!(html.contains("src=\"data:image/png;base64,"));
+        assert!(html.contains("kanso-math"));
+        assert!(!html.contains("<script"));
+    }
+
+    #[test]
+    fn a_page_draws_query_views() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().join("q.db")).unwrap();
+        let book = store
+            .put(
+                DocType::Book,
+                json!({"name": "Clients"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        let note = |title: &str, body: &str| {
+            store
+                .put(
+                    DocType::Note,
+                    json!({"title": title, "body": body, "bookId": book}),
+                    Put::Upsert,
+                    Origin::Ui,
+                )
+                .unwrap()
+                .id
+        };
+        note("Ana", "---\nclient: Acme\n---\n# Ana\n");
+        // Sealed by hand: the store won't take text beside a lock.
+        store
+            .put(
+                DocType::Note,
+                json!({"_id": "note:sealed", "title": "Sealed", "body": "",
+                       "bookId": book, "kansoLock": {"salt": "s", "nonce": "n", "data": "d"}}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap();
+        let self_id = note("Self", "```query\nfrom: has:client\ncolumns: client\n```\n");
+        let body = "```query\nfrom: has:client\ncolumns: client\n```\n";
+        let style = PageStyle::default();
+        let html = page(&store, "Self", body, &Palette::DARK, Some(&self_id), &style);
+        assert!(html.contains("<table>"), "{html}");
+        assert!(html.contains("Ana"), "{html}");
+        assert!(html.contains("Acme"), "{html}");
+        assert!(!html.contains("Sealed"), "{html}");
+        assert!(!html.contains("Self</td>"), "{html}");
+        assert!(
+            page_without_queries(&store, "Self", body, &Palette::DARK, &style)
+                .contains("language-query")
+        );
+    }
+
+    #[test]
+    fn pdfs_print_in_light_colors() {
+        assert_eq!(print_palette(Palette::DARK), Palette::LIGHT);
+        assert_eq!(print_palette(Palette::LIGHT), Palette::LIGHT);
+        let sepia = Palette {
+            background: kanso_render::Rgb(0xF4ECD8),
+            ..Palette::LIGHT
+        };
+        assert_eq!(print_palette(sepia), sepia);
+    }
+
+    #[test]
+    fn dates_are_utc_calendar_days() {
+        assert_eq!(format_date(0), "1970-01-01");
+        assert_eq!(format_date(951_782_400_000), "2000-02-29");
+    }
+
     fn config() -> ProptestConfig {
         ProptestConfig {
             cases: 256,
@@ -776,6 +959,39 @@ mod tests {
             }
             prop_assert_eq!(report.notes, notes.len());
             prop_assert_eq!(after.len(), before.len() + notes.len());
+        }
+
+        /// Invariant: an export's file name is safe on every platform and
+        /// ends in its extension.
+        #[test]
+        fn prop_file_names_are_safe(title in "\\PC{0,80}") {
+            let name = file_name(&title, "html");
+            prop_assert!(name.ends_with(".html"));
+            prop_assert!(!name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']));
+        }
+
+        /// Oracle: stepping from the epoch a day at a time gives the same
+        /// calendar day as the closed formula.
+        #[test]
+        fn prop_format_date_matches_day_stepping(days in -800i64..80_000) {
+            let (mut y, mut m, mut d) = (1970i64, 1i64, 1i64);
+            let leap = |y: i64| (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+            let length = |y: i64, m: i64| match m {
+                2 => 28 + i64::from(leap(y)),
+                4 | 6 | 9 | 11 => 30,
+                _ => 31,
+            };
+            let step = if days >= 0 { 1 } else { -1 };
+            for _ in 0..days.abs() {
+                if step == 1 {
+                    d += 1;
+                    if d > length(y, m) { d = 1; m += 1; if m > 12 { m = 1; y += 1; } }
+                } else {
+                    d -= 1;
+                    if d < 1 { m -= 1; if m < 1 { m = 12; y -= 1; } d = length(y, m); }
+                }
+            }
+            prop_assert_eq!(format_date(days * 86_400_000 + 3_600_000), format!("{y:04}-{m:02}-{d:02}"));
         }
 
         /// Invariant: an encoded link has no character that ends a link target.
