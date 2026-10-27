@@ -45,6 +45,7 @@ class KansoIconButton extends StatelessWidget {
     return KansoPressable(
       onTap: onPressed,
       semanticLabel: semanticLabel,
+      scale: KansoEffects.pressScale,
       child: SizedBox.square(
         dimension: KansoSizes.touchTarget,
         child: Center(

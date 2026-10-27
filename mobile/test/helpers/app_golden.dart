@@ -6,10 +6,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 
+import 'account_blocs.dart';
 import 'browse_blocs.dart';
+import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_renderer_repository.dart';
+import 'fixture_shared_notes_repository.dart';
+import 'fixture_sync_repository.dart';
 import 'golden.dart';
 import 'kanso_viewport.dart';
 import 'pump_browse_app.dart';
@@ -24,9 +30,13 @@ import 'pump_browse_app.dart';
 /// [interact] then runs, once per platform, on the settled app, to open a
 /// sheet or a note, or to start a selection.
 ///
-/// [library] makes the mock library for each platform, so a test can fail
-/// or hold back what it answers; [backupNotice] makes the backup notice's
-/// BLoC. The clock is the mock content's (see [atMockNow]).
+/// [library] and [renderer] make the mock library and the renderer for each
+/// platform, so a test can fail or hold back what they answer; [appearance]
+/// is what the app starts showing (a theme, an icon theme); [accounts] makes
+/// the account screens' BLoCs for each platform; [backupNotice] makes the
+/// backup notice's BLoC; [shared] and [gallery] make the shared notes and
+/// the theme gallery the app reads. The clock is the mock content's (see
+/// [atMockNow]).
 Future<void> expectAppGoldenOnBothPlatforms(
   WidgetTester tester, {
   required String name,
@@ -34,7 +44,13 @@ Future<void> expectAppGoldenOnBothPlatforms(
   required Brightness brightness,
   String at = '/notes',
   FixtureLibraryRepository Function()? library,
+  FixtureRendererRepository Function()? renderer,
+  AppearanceState appearance = const AppearanceState(),
   Future<BackupNoticeBloc> Function()? backupNotice,
+  FixtureSharedNotesRepository Function()? shared,
+  FixtureGalleryRepository Function()? gallery,
+  AccountBlocs Function()? accounts,
+  FixtureSyncRepository Function()? sync,
   Future<void> Function(WidgetTester tester, BrowseApp app)? interact,
 }) async {
   tester.platformDispatcher
@@ -66,10 +82,16 @@ Future<void> expectAppGoldenOnBothPlatforms(
           viewport.size,
           at: at,
           library: library?.call(),
+          renderer: renderer?.call(),
+          appearance: appearance,
           devicePixelRatio: viewport.devicePixelRatio,
           safeArea: viewport.safeArea,
           tabletDevice: viewport.tablet,
           backupNotice: backupNotice == null ? null : await backupNotice(),
+          shared: shared?.call(),
+          gallery: gallery?.call(),
+          accounts: accounts?.call(),
+          sync: sync?.call(),
         );
         if (interact != null) {
           await interact(tester, app);

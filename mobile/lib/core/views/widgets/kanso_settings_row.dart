@@ -84,9 +84,7 @@ class KansoSettingsRow extends StatelessWidget {
               if (note != null) ...<Widget>[
                 const SizedBox(width: KansoSpacing.xs),
                 ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: valueMaxWidth,
-                  ),
+                  constraints: const BoxConstraints(maxWidth: valueMaxWidth),
                   child: Text(
                     note,
                     maxLines: 1,
