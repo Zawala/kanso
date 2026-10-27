@@ -12,6 +12,7 @@ import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
+import '../../../core/views/widgets/kanso_sheet_group.dart';
 import '../../../lock/state/lock_status/lock_status_bloc.dart';
 import 'notebook_lock_actions.dart';
 
@@ -76,16 +77,21 @@ class NotebookActionsSheet extends StatelessWidget {
             style: context.typography.barTitle,
           ),
         ),
-        for (final action in actions)
-          KansoSettingsRow(
-            icon: action.icon,
-            label: action.label,
-            danger: action.destructive,
-            onTap: () {
-              Navigator.of(context).pop();
-              action.onTap();
-            },
-          ),
+        KansoSheetGroup(
+          dividerIndent: KansoSettingsRow.iconInset,
+          children: <Widget>[
+            for (final action in actions)
+              KansoSettingsRow(
+                icon: action.icon,
+                label: action.label,
+                danger: action.destructive,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  action.onTap();
+                },
+              ),
+          ],
+        ),
         const SizedBox(height: KansoSpacing.sm),
       ],
     );

@@ -66,6 +66,7 @@ class BiometricOfferSheet extends StatelessWidget {
               ? l10n.settingsBiometricsFailed(method)
               : null,
           primaryLabel: l10n.lockOfferAccept(method),
+          cancelLabel: l10n.lockOfferDecline,
           working: state.status == BiometricsStatus.working,
           onPrimary: () => context.read<BiometricsBloc>().add(
             BiometricsEvent.turnedOn(l10n.biometricReasonEnroll),

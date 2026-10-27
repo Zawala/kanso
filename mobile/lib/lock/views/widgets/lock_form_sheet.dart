@@ -26,6 +26,7 @@ class LockFormSheet extends StatelessWidget {
     this.working = false,
     this.danger = false,
     this.onCancel,
+    this.cancelLabel,
     super.key,
   });
 
@@ -43,6 +44,9 @@ class LockFormSheet extends StatelessWidget {
 
   /// What Cancel does; closing the sheet when null.
   final VoidCallback? onCancel;
+
+  /// The label of the way out; Cancel when null.
+  final String? cancelLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -93,7 +97,7 @@ class LockFormSheet extends StatelessWidget {
           ),
           const SizedBox(height: KansoSpacing.xs),
           KansoButton(
-            label: l10n.lockCancel,
+            label: cancelLabel ?? l10n.lockCancel,
             variant: KansoButtonVariant.quiet,
             onPressed: working
                 ? null

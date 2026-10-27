@@ -40,11 +40,11 @@ class _NotebookUnlockGateState extends State<NotebookUnlockGate> {
 
   @override
   Widget build(BuildContext context) {
+    // Read here: a provider's create may not depend on the localizations.
+    final reason = context.l10n.biometricReasonUnlock;
     return BlocProvider<UnlockBloc>(
-      create: (context) => getIt<UnlockBloc>()
-        ..add(
-          UnlockEvent.gateOpened(target, context.l10n.biometricReasonUnlock),
-        ),
+      create: (_) =>
+          getIt<UnlockBloc>()..add(UnlockEvent.gateOpened(target, reason)),
       child: BlocListener<UnlockBloc, UnlockState>(
         listenWhen: (before, after) => before.status != after.status,
         listener: (context, state) {
