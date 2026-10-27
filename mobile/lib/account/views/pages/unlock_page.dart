@@ -27,12 +27,13 @@ class UnlockPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final info = context.read<AccountBloc>().state.locked;
+    final deviceName = deviceNameOf(context);
     return BlocProvider<UnlockBloc>(
       create: (context) => getIt<UnlockBloc>()
         ..add(
           UnlockEvent.started(
             resumeApproval: info?.approvalPending ?? false,
-            deviceName: deviceNameOf(context),
+            deviceName: deviceName,
           ),
         ),
       child: MultiBlocListener(

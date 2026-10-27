@@ -11,7 +11,9 @@ import 'package:kanso/core/configs/kanso_layout.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
+import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/device_approval/device_approval_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
@@ -118,7 +120,10 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<BackupNoticeBloc>.value(
             value: backupNotice ?? hiddenBackupNoticeBloc(),
           ),
-          ...accountBlocs.providers,
+          BlocProvider<AccountBloc>.value(value: accountBlocs.account),
+          BlocProvider<DeviceApprovalBloc>.value(
+            value: accountBlocs.approval,
+          ),
         ],
         child: App(router: kansoRouter),
       ),

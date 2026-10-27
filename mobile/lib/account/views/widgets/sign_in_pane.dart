@@ -15,6 +15,7 @@ import '../../../core/views/widgets/kanso_field_controllers.dart';
 import '../../../core/views/widgets/kanso_inline_message.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
 import '../../../core/views/widgets/kanso_or_divider.dart';
+import '../../../core/views/widgets/kanso_pressable.dart';
 import '../../../core/views/widgets/kanso_text_field.dart';
 import '../../models/data/form_problem.dart';
 import '../../models/data/sign_in_action.dart';
@@ -113,10 +114,18 @@ class SignInPane extends StatelessWidget {
                             : null,
                       ),
                       const SizedBox(height: KansoSpacing.xs),
-                      KansoButton(
-                        label: l10n.accountForgotPassword,
-                        variant: KansoButtonVariant.quiet,
-                        onPressed: idle ? () => onRecover(state.server) : null,
+                      KansoPressable(
+                        onTap: idle ? () => onRecover(state.server) : null,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: KansoSpacing.sm,
+                          ),
+                          child: Text(
+                            l10n.accountForgotPassword,
+                            textAlign: TextAlign.center,
+                            style: context.typography.label,
+                          ),
+                        ),
                       ),
                     ]
                   : <Widget>[

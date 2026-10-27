@@ -29,7 +29,11 @@ class RecoveryKeyPage extends StatelessWidget {
             ..add(RecoveryKeyEvent.started(key: recoveryKey)),
       child: BlocListener<RecoveryKeyBloc, RecoveryKeyState>(
         listenWhen: (before, after) => !before.done && after.done,
-        listener: (context, state) => context.pop(),
+        listener: (context, state) {
+          if (context.canPop()) {
+            context.pop();
+          }
+        },
         child: Scaffold(
           backgroundColor: context.colors.app,
           body: const RecoveryKeyPane(),
