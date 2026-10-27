@@ -18,9 +18,8 @@ class PluginAuthSessionRepository implements AuthSessionRepository {
   Future<Either<ApplicationError, String?>> open(
     String url, {
     String? callbackScheme,
-  }) => attempt(
-    () => KansoAuthSession.open(url, callbackScheme: callbackScheme),
-  );
+  }) =>
+      attempt(() => KansoAuthSession.open(url, callbackScheme: callbackScheme));
 
   @override
   Future<Either<ApplicationError, Unit>> close() => attempt(() async {

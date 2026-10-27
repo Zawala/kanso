@@ -4,16 +4,19 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/configs/kanso_effects.dart';
 import '../../../core/configs/kanso_icons.dart';
+import '../../../core/configs/kanso_radii.dart';
 import '../../../core/configs/kanso_shadows.dart';
 import '../../../core/configs/kanso_sizes.dart';
+import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_icon.dart';
 import '../../../core/views/widgets/kanso_pressable.dart';
 
-/// The round button afloat in the corner of a phone's note list that starts
-/// a new note. Its shadow is warm and soft so it lifts off the list
-/// without a grey smudge.
+/// The capsule that makes a new note, afloat at the foot of a phone's list:
+/// the plus and "New note" on the button colour, centred, with a soft
+/// shadow under it.
 class NewNoteButton extends StatelessWidget {
   const NewNoteButton({required this.onPressed, super.key});
 
@@ -22,22 +25,33 @@ class NewNoteButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final label = context.l10n.noteListNewNote;
     return KansoPressable(
       onTap: onPressed,
-      semanticLabel: context.l10n.noteListNewNote,
+      semanticLabel: label,
+      scale: KansoEffects.pressScale,
       child: Container(
-        width: KansoSizes.floatingButton,
         height: KansoSizes.floatingButton,
-        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: KansoSpacing.lg),
         decoration: BoxDecoration(
           color: colors.button,
-          shape: BoxShape.circle,
+          borderRadius: KansoRadii.pillBorder,
           boxShadow: KansoShadows.raised(Theme.brightnessOf(context)),
         ),
-        child: KansoIcon(
-          KansoIcons.plus,
-          size: KansoSizes.icon + 4,
-          color: colors.buttonText,
+        child: ExcludeSemantics(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              KansoIcon(KansoIcons.plus, color: colors.buttonText),
+              const SizedBox(width: KansoSpacing.xs),
+              Text(
+                label,
+                style: context.typography.listTitle.copyWith(
+                  color: colors.buttonText,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

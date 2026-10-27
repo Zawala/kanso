@@ -10,6 +10,7 @@ import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/list_options.dart';
 import 'package:kanso/core/views/widgets/kanso_bottom_sheet.dart';
 import 'package:kanso/core/views/widgets/kanso_drawer.dart';
+import 'package:kanso/core/views/widgets/kanso_large_title.dart';
 import 'package:kanso/core/views/widgets/kanso_scrim.dart';
 import 'package:kanso/core/views/widgets/kanso_skeleton.dart';
 import 'package:kanso/core/views/widgets/kanso_top_bar.dart';
@@ -142,7 +143,7 @@ void main() {
       );
       expect(
         find.descendant(
-          of: find.byType(KansoTopBar),
+          of: find.byType(KansoLargeTitle),
           matching: find.text('#idea'),
         ),
         findsOneWidget,

@@ -94,11 +94,8 @@ class _PropertiesSectionState extends State<PropertiesSection> {
               ignoring: widget.readOnly,
               child: PropertyRow(
                 property: widget.properties[i],
-                onSubmitted: (value) => widget.onSet(
-                  widget.properties[i].key,
-                  value,
-                  index: i,
-                ),
+                onSubmitted: (value) =>
+                    widget.onSet(widget.properties[i].key, value, index: i),
                 onRemove: () => widget.onRemove(i),
               ),
             ),
@@ -109,9 +106,7 @@ class _PropertiesSectionState extends State<PropertiesSection> {
                 liveRegion: true,
                 child: Text(
                   l10n.propertiesFailed,
-                  style: context.typography.meta.copyWith(
-                    color: colors.danger,
-                  ),
+                  style: context.typography.meta.copyWith(color: colors.danger),
                 ),
               ),
             ),

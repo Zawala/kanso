@@ -52,10 +52,7 @@ class ApprovalWaitPane extends StatelessWidget {
         const SizedBox(height: KansoSpacing.md),
         Semantics(
           liveRegion: true,
-          child: Text(
-            l10n.approvalPhase(phase),
-            style: typography.heading2,
-          ),
+          child: Text(l10n.approvalPhase(phase), style: typography.heading2),
         ),
         if (code != null && !ended) ...<Widget>[
           const SizedBox(height: KansoSpacing.md),

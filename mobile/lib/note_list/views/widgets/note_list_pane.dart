@@ -10,6 +10,7 @@ import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/application_error.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_large_title.dart';
 import '../../../shell/models/data/note_creation_failure.dart';
 import '../../../shell/state/note_creation/note_creation_bloc.dart';
 import '../../state/note_list/note_list_bloc.dart';
@@ -87,24 +88,34 @@ class NoteListPane extends StatelessWidget {
                     },
                     child: Stack(
                       children: <Widget>[
-                        Column(
-                          children: <Widget>[
-                            NoteListBar(
-                              state: state,
-                              index: index,
-                              newNote: beside ? newNote : null,
-                            ),
-                            Expanded(
-                              child: NoteListBody(
+                        KansoLargeTitleScroll(
+                          builder: (context, collapsed) => Column(
+                            children: <Widget>[
+                              NoteListBar(
                                 state: state,
                                 index: index,
-                                openNoteId: openNoteId,
-                                bottomClearance: floating
-                                    ? floatingClearance - KansoSpacing.md
-                                    : 0,
+                                newNote: beside ? newNote : null,
+                                // A phone's list has its title large, above
+                                // the notes, until it scrolls away.
+                                titleShown:
+                                    floating &&
+                                        NoteListBody.showsLargeTitle(state)
+                                    ? collapsed
+                                    : null,
                               ),
-                            ),
-                          ],
+                              Expanded(
+                                child: NoteListBody(
+                                  largeTitle: floating,
+                                  state: state,
+                                  index: index,
+                                  openNoteId: openNoteId,
+                                  bottomClearance: floating
+                                      ? floatingClearance - KansoSpacing.md
+                                      : 0,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                         if (floating) ...<Widget>[
                           PositionedDirectional(
@@ -130,9 +141,12 @@ class NoteListPane extends StatelessWidget {
                             ),
                           ),
                           PositionedDirectional(
-                            end: KansoSpacing.md,
+                            start: 0,
+                            end: 0,
                             bottom: bottom + KansoSpacing.md,
-                            child: NewNoteButton(onPressed: newNote),
+                            child: Center(
+                              child: NewNoteButton(onPressed: newNote),
+                            ),
                           ),
                         ],
                         if (message != null)

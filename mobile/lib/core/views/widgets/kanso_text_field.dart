@@ -123,16 +123,16 @@ class _KansoTextFieldState extends State<KansoTextField>
                 ? colors.danger
                 : focused
                 ? colors.accent
-                : colors.fill;
+                : colors.divider;
             return Opacity(
               opacity: widget.enabled ? 1 : KansoEffects.disabled,
               child: Container(
-                height: KansoSizes.searchField,
+                height: KansoSizes.field,
                 padding: const EdgeInsets.symmetric(
                   horizontal: KansoSpacing.sm,
                 ),
                 decoration: BoxDecoration(
-                  color: colors.fill,
+                  color: colors.elevated,
                   borderRadius: KansoRadii.mediumBorder,
                   border: Border.all(
                     color: outline,

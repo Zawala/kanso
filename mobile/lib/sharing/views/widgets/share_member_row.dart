@@ -75,10 +75,7 @@ class ShareMemberRow extends StatelessWidget {
                     onRemoved: onRemoved,
                   ),
           )
-        : Text(
-            l10n.shareRoleName(member.role),
-            style: typography.secondary,
-          );
+        : Text(l10n.shareRoleName(member.role), style: typography.secondary);
     return Opacity(
       opacity: tone == MemberTone.gone ? 0.5 : 1,
       child: Padding(

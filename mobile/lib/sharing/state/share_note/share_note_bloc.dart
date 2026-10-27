@@ -183,10 +183,7 @@ class ShareNoteBloc extends Bloc<ShareNoteEvent, ShareNoteState> {
     );
   }
 
-  Future<void> _onInvited(
-    String username,
-    Emitter<ShareNoteState> emit,
-  ) async {
+  Future<void> _onInvited(String username, Emitter<ShareNoteState> emit) async {
     if (state.busy) {
       return;
     }
@@ -330,10 +327,7 @@ class ShareNoteBloc extends Bloc<ShareNoteEvent, ShareNoteState> {
         (lookup) => switch (lookup) {
           PersonLookup_Changed(:final pinned, :final offered) => state.copyWith(
             busy: false,
-            prompt: SharePrompt.keyChanged(
-              offered: offered,
-              pinned: pinned,
-            ),
+            prompt: SharePrompt.keyChanged(offered: offered, pinned: pinned),
           ),
           // The keys are the pinned ones: nothing to review.
           PersonLookup_Found() => state.copyWith(busy: false),

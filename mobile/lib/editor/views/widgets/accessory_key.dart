@@ -21,10 +21,7 @@ class AccessoryKey extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     super.key,
-  }) : assert(
-         (icon == null) != (glyph == null),
-         'Give an icon or a glyph.',
-       );
+  }) : assert((icon == null) != (glyph == null), 'Give an icon or a glyph.');
 
   final String semanticLabel;
   final KansoIcons? icon;

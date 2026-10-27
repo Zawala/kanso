@@ -60,10 +60,7 @@ class ShareReadyView extends StatelessWidget {
           Text(l10n.shareIntro, style: typography.body)
         else if (info.myRole != ShareRole.owner)
           Text(
-            l10n.shareSharedWithYou(
-              info.owner,
-              l10n.shareAccess(info.myRole),
-            ),
+            l10n.shareSharedWithYou(info.owner, l10n.shareAccess(info.myRole)),
             style: typography.body,
           ),
         if (manage) ...<Widget>[
@@ -97,12 +94,10 @@ class ShareReadyView extends StatelessWidget {
                 key: ValueKey<String>('request-${request.accountId}'),
                 request: request,
                 busy: state.busy,
-                onApprove: () => bloc.add(
-                  ShareNoteEvent.requestApproved(request.accountId),
-                ),
-                onDecline: () => bloc.add(
-                  ShareNoteEvent.requestDeclined(request.accountId),
-                ),
+                onApprove: () =>
+                    bloc.add(ShareNoteEvent.requestApproved(request.accountId)),
+                onDecline: () =>
+                    bloc.add(ShareNoteEvent.requestDeclined(request.accountId)),
               ),
           ],
           if (manage) ...<Widget>[

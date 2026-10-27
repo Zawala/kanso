@@ -73,9 +73,7 @@ class RustLibraryRepository implements LibraryRepository {
   Future<Either<ApplicationError, NotebookRow>> createNotebook(
     String name, {
     String? parentId,
-  }) => attempt(
-    () => _library.createNotebook(name: name, parentId: parentId),
-  );
+  }) => attempt(() => _library.createNotebook(name: name, parentId: parentId));
 
   @override
   Future<Either<ApplicationError, List<TagRow>>> tags() =>
@@ -86,9 +84,7 @@ class RustLibraryRepository implements LibraryRepository {
     String text, {
     SearchScope scope = const SearchScope.all(),
     int limit = 50,
-  }) => attempt(
-    () => _library.search(text: text, scope: scope, limit: limit),
-  );
+  }) => attempt(() => _library.search(text: text, scope: scope, limit: limit));
 
   @override
   Future<Either<ApplicationError, List<Property>>> properties(String id) =>

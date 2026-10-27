@@ -105,9 +105,7 @@ class KansoSidebarRow extends StatelessWidget {
                 const SizedBox(width: KansoSpacing.xs),
                 Text(
                   '$total',
-                  style: typography.secondary.copyWith(
-                    color: colors.textMuted,
-                  ),
+                  style: typography.secondary.copyWith(color: colors.textMuted),
                 ),
               ],
               if (chevron) ...<Widget>[
