@@ -121,6 +121,21 @@ class SettingsPane extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: KansoSpacing.lg),
+                KansoGroupedSection(
+                  title: l10n.settingsPrivacy,
+                  footer: l10n.settingsPrivacyFooter,
+                  dividerIndent: iconInset,
+                  children: <Widget>[
+                    KansoSettingsRow(
+                      icon: KansoIcons.shield,
+                      label: l10n.crashReportsTitle,
+                      chevron: true,
+                      onTap: () =>
+                          context.push(KansoRoutes.settingsCrashReports),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: KansoSpacing.lg),
                 BlocBuilder<AboutBloc, AboutState>(
                   builder: (context, about) {
                     final version = about.version;
@@ -135,9 +150,15 @@ class SettingsPane extends StatelessWidget {
                               version == null ||
                                   about.status != LoadStatus.ready
                               ? null
-                              : l10n.settingsVersionValue(
+                              : version.patch == null
+                              ? l10n.settingsVersionValue(
                                   version.version,
                                   version.build,
+                                )
+                              : l10n.settingsVersionPatchValue(
+                                  version.version,
+                                  version.build,
+                                  version.patch!,
                                 ),
                         ),
                         KansoSettingsRow(
@@ -146,6 +167,22 @@ class SettingsPane extends StatelessWidget {
                           external: true,
                           onTap: () => context.read<AboutBloc>().add(
                             const AboutEvent.websiteOpened(),
+                          ),
+                        ),
+                        KansoSettingsRow(
+                          icon: KansoIcons.fileText,
+                          label: l10n.settingsReleaseNotes,
+                          external: true,
+                          onTap: () => context.read<AboutBloc>().add(
+                            const AboutEvent.releaseNotesOpened(),
+                          ),
+                        ),
+                        KansoSettingsRow(
+                          icon: KansoIcons.circleHelp,
+                          label: l10n.settingsHelp,
+                          external: true,
+                          onTap: () => context.read<AboutBloc>().add(
+                            const AboutEvent.helpOpened(),
                           ),
                         ),
                         KansoSettingsRow(

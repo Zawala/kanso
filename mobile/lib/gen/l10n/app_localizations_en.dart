@@ -183,6 +183,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsWebsite => 'Website';
 
   @override
+  String get settingsReleaseNotes => 'Release notes';
+
+  @override
+  String get settingsHelp => 'Help';
+
+  @override
   String get settingsLicences => 'Licences';
 
   @override
@@ -654,4 +660,101 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get backupNoticeOk => 'OK';
+
+  @override
+  String settingsVersionPatchValue(String version, String build, int patch) {
+    return '$version ($build), patch $patch';
+  }
+
+  @override
+  String get settingsPrivacy => 'Privacy';
+
+  @override
+  String get settingsPrivacyFooter =>
+      'Kanso sends a crash report only when you choose to.';
+
+  @override
+  String get crashReportsTitle => 'Crash reports';
+
+  @override
+  String get crashReportsLoading => 'Loading crash reports';
+
+  @override
+  String get crashReportsEmptyTitle => 'No crash reports';
+
+  @override
+  String get crashReportsEmptyMessage =>
+      'If Kanso closes unexpectedly, a report waits here until you decide whether to send it.';
+
+  @override
+  String get crashReportsIntro =>
+      'A report holds only where in Kanso’s code something went wrong. It never holds note text, titles or file names. Nothing is sent unless you send it.';
+
+  @override
+  String get crashReportsSendAll => 'Send all';
+
+  @override
+  String crashReportSubtitle(String day, String kind) {
+    return '$day · $kind';
+  }
+
+  @override
+  String get crashReportSend => 'Send';
+
+  @override
+  String get crashReportDelete => 'Delete';
+
+  @override
+  String get crashReportShow => 'Show report';
+
+  @override
+  String get crashReportHide => 'Hide report';
+
+  @override
+  String get crashReportSending => 'Sending…';
+
+  @override
+  String get crashKindDart => 'App';
+
+  @override
+  String get crashKindIosNative => 'iOS';
+
+  @override
+  String get crashKindAndroidNative => 'Android native';
+
+  @override
+  String get crashKindAndroidAnr => 'Android not responding';
+
+  @override
+  String get crashKindAndroidJvm => 'Android';
+
+  @override
+  String get crashNoticeTitle => 'Kanso closed unexpectedly';
+
+  @override
+  String get crashNoticeMessage =>
+      'Send a crash report? It holds only where in Kanso’s code it happened, never note text, titles or file names.';
+
+  @override
+  String get crashNoticeSend => 'Send';
+
+  @override
+  String get crashNoticeDiscard => 'Don’t send';
+
+  @override
+  String get crashOutcomeSent => 'Report sent. Thank you.';
+
+  @override
+  String get crashOutcomeRejected => 'The report couldn’t be sent.';
+
+  @override
+  String get crashOutcomeTryLater =>
+      'Too many reports just now. Try again later.';
+
+  @override
+  String get crashOutcomeUnreachable =>
+      'Couldn’t reach Kanso. Try again later.';
+
+  @override
+  String get crashReportsFailedMessage => 'The crash reports couldn’t be read.';
 }

@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../crash/views/pages/crash_reports_page.dart';
 import '../../design/views/pages/design_gallery_page.dart';
 import '../../note/views/pages/note_page.dart';
 import '../../note/views/widgets/no_note_selected_pane.dart';
@@ -161,6 +162,13 @@ class KansoRouter {
                   pageBuilder: (context, state) => CupertinoPage<void>(
                     key: state.pageKey,
                     child: const LicencesPage(),
+                  ),
+                ),
+                GoRoute(
+                  path: 'crash-reports',
+                  pageBuilder: (context, state) => CupertinoPage<void>(
+                    key: state.pageKey,
+                    child: const CrashReportsPage(),
                   ),
                 ),
               ],

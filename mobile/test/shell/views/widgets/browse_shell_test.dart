@@ -23,6 +23,7 @@ import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_drawer_scope.dart';
 import 'package:kanso/core/views/widgets/kanso_sheet.dart';
 import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
+import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/note/views/pages/note_page.dart';
 import 'package:kanso/note/views/widgets/no_note_selected_pane.dart';
 import 'package:kanso/note_list/views/pages/note_list_page.dart';
@@ -33,6 +34,7 @@ import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/shell/views/widgets/library_navigation.dart';
 
 import '../../../helpers/browse_blocs.dart';
+import '../../../helpers/crash_samples.dart';
 import '../../../helpers/register_page_blocs.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 
@@ -75,6 +77,7 @@ Future<GoRouter> _pump(
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
+        BlocProvider<CrashReportsBloc>.value(value: quietCrashReportsBloc()),
       ],
       child: App(router: kansoRouter),
     ),

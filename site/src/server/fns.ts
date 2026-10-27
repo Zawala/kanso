@@ -8,7 +8,9 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import { type Platform, detectPlatform } from "../lib/platform";
 import type { Release } from "../lib/release";
+import type { ReleaseNote } from "../lib/releases";
 import { latestRelease, runtimeDeps } from "./release";
+import { recentReleases } from "./releases";
 
 export interface SiteData {
   readonly release: Release | null;
@@ -20,4 +22,9 @@ export const getSiteData = createServerFn({ method: "GET" }).handler(
     release: await latestRelease(runtimeDeps()),
     platform: detectPlatform(getRequestHeader("user-agent"), getRequestHeader("sec-ch-ua-platform")),
   }),
+);
+
+/** The recent releases for the release notes page; null when GitHub can't be reached. */
+export const getReleaseNotes = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ReleaseNote[] | null> => recentReleases(runtimeDeps()),
 );

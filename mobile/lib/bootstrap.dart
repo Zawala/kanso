@@ -11,6 +11,8 @@ import 'core/models/data/appearance_status.dart';
 import 'core/router/kanso_router.dart';
 import 'core/state/appearance/appearance_bloc.dart';
 import 'core/utils/license_registration.dart';
+import 'crash/models/repos/abs/crash_report_repository.dart';
+import 'crash/utils/crash_capture.dart';
 import 'injection.dart';
 import 'providers.dart';
 
@@ -22,6 +24,11 @@ Future<void> bootstrap(AppEnvironment environment) async {
   // before anything opens a note library.
   await KansoCore.init();
   await configureDependencies(environment.injectableName);
+  // Dart errors are kept as scrubbed crash reports; integration tests keep
+  // the framework's own handlers so a failure still fails the test.
+  if (environment != AppEnvironment.integration) {
+    installCrashCapture(getIt<CrashReportRepository>());
+  }
   // The saved themes and fonts are read before the first frame, so the app
   // never flashes the default look.
   final appearance = getIt<AppearanceBloc>()

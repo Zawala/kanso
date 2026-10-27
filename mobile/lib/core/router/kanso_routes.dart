@@ -40,6 +40,7 @@ abstract final class KansoRoutes {
   static const String settingsTheme = '/settings/theme';
   static const String settingsFonts = '/settings/fonts';
   static const String settingsLicences = '/settings/licences';
+  static const String settingsCrashReports = '/settings/crash-reports';
 
   /// The design gallery: in the development environment only.
   static const String design = '/design';
