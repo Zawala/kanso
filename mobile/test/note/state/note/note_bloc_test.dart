@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/utils/source_lines.dart';
+import 'package:kanso/note/models/data/new_note_start.dart';
 import 'package:kanso/note/models/data/note_mode.dart';
 import 'package:kanso/note/models/data/note_place.dart';
 import 'package:kanso/note/models/data/note_screen_status.dart';
@@ -446,6 +447,7 @@ void main() {
         final bloc = await started();
         expect(bloc.state.mode, NoteMode.edit);
         expect(bloc.state.openedNew, isTrue);
+        expect(bloc.state.startInText, isFalse);
         final again = build()
           ..add(const NoteEvent.started(MockIds.syncDesign, 'kanso-light'));
         addTearDown(again.close);
@@ -454,6 +456,14 @@ void main() {
         );
         expect(again.state.mode, NoteMode.preview);
         expect(again.state.openedNew, isFalse);
+      });
+
+      test('a note made for its text opens in the body', () async {
+        places.markOpenedNew(MockIds.syncDesign, start: NewNoteStart.text);
+        final bloc = await started();
+        expect(bloc.state.mode, NoteMode.edit);
+        expect(bloc.state.openedNew, isTrue);
+        expect(bloc.state.startInText, isTrue);
       });
 
       test('edit with a tap names the caret in the whole body', () async {

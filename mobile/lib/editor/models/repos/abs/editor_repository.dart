@@ -56,6 +56,11 @@ abstract interface class EditorDocument {
   /// Redoes the last undone step; null when there is none.
   Either<ApplicationError, EditOutcome?> redo();
 
+  /// Stores [file], an image or a PDF, and puts it in the text over the
+  /// selection as a paragraph of its own. An [InvalidError] that says why
+  /// for a locked note or a file that is neither.
+  Future<Either<ApplicationError, EditOutcome>> attach(ShareFile file);
+
   /// The title changed.
   Either<ApplicationError, Unit> setTitle(String title);
 

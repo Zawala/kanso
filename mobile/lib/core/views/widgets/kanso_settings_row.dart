@@ -43,6 +43,10 @@ class KansoSettingsRow extends StatelessWidget {
   /// The widest a value may grow before it is cut short.
   static const double valueMaxWidth = 220;
 
+  /// Where the label of a row with an icon starts, for the hairlines
+  /// between such rows.
+  static const double iconInset = 48;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;

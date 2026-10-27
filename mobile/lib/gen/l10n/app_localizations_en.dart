@@ -2236,4 +2236,298 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sharedProblemsDismiss => 'Dismiss';
+
+  @override
+  String get dailyNoteLoading => 'Opening today’s note';
+
+  @override
+  String get dailyNoteFailedTitle => 'Today’s note didn’t open';
+
+  @override
+  String get dailyNoteFailedMessage =>
+      'Something went wrong opening today’s note on this phone. Try again.';
+
+  @override
+  String get captureTakePhoto => 'Take photo';
+
+  @override
+  String get captureChoosePhotos => 'Choose photos';
+
+  @override
+  String get captureAttachPdf => 'Attach PDF';
+
+  @override
+  String get captureImageLink => 'Image link';
+
+  @override
+  String get captureAttachFailed => 'Couldn\'t attach that file.';
+
+  @override
+  String lockedMessage(int minutes) {
+    return 'Unlock it to read and edit. It locks again after $minutes minutes or when you leave Kanso.';
+  }
+
+  @override
+  String lockedUnlockWith(String method) {
+    return 'Unlock with $method';
+  }
+
+  @override
+  String get lockedUsePassword => 'Use password';
+
+  @override
+  String lockedBiometricFailed(String method) {
+    return '$method didn\'t work. Use your lock password instead.';
+  }
+
+  @override
+  String lockedInvalidated(String method) {
+    return 'Your biometrics changed, so $method no longer opens locked notes. Use your lock password, then turn $method on again in Settings.';
+  }
+
+  @override
+  String get biometricFaceId => 'Face ID';
+
+  @override
+  String get biometricTouchId => 'Touch ID';
+
+  @override
+  String get biometricOpticId => 'Optic ID';
+
+  @override
+  String get biometricFingerprint => 'fingerprint';
+
+  @override
+  String get biometricFace => 'face unlock';
+
+  @override
+  String get biometricIris => 'iris unlock';
+
+  @override
+  String get biometricGeneric => 'biometrics';
+
+  @override
+  String get biometricReasonUnlock => 'Unlock your locked notes';
+
+  @override
+  String get biometricReasonEnroll =>
+      'Use it to unlock your locked notes on this device';
+
+  @override
+  String get lockFieldPassword => 'Lock password';
+
+  @override
+  String get lockFieldPasswordHint => 'At least 8 characters.';
+
+  @override
+  String get lockFieldAgain => 'Type it again';
+
+  @override
+  String get lockFieldCurrent => 'Current lock password';
+
+  @override
+  String get lockFieldNew => 'New lock password';
+
+  @override
+  String get lockCancel => 'Cancel';
+
+  @override
+  String get lockWrongPassword => 'That isn\'t the lock password.';
+
+  @override
+  String get lockMismatch => 'The passwords don\'t match.';
+
+  @override
+  String get lockNewMismatch => 'The new passwords don\'t match.';
+
+  @override
+  String get lockTooShort => 'The lock password needs at least 8 characters.';
+
+  @override
+  String get lockActionFailed => 'That didn\'t work. Try again.';
+
+  @override
+  String get lockUnlockNoteTitle => 'Unlock note';
+
+  @override
+  String get lockUnlockNotebookTitle => 'Unlock notebook';
+
+  @override
+  String lockUnlockNotebookMessage(String name) {
+    return '“$name” is locked. Its notes open with your lock password.';
+  }
+
+  @override
+  String get lockUnlockButton => 'Unlock';
+
+  @override
+  String get lockSetTitle => 'Set a lock password';
+
+  @override
+  String get lockSetMessage =>
+      'Locked notes open with this password, on this device and any other that syncs with it. Kanso can\'t recover it: forget it, and the notes locked with it can\'t be read.';
+
+  @override
+  String get lockSetButton => 'Lock';
+
+  @override
+  String get lockNoteMenu => 'Lock note…';
+
+  @override
+  String get lockNoteAskTitle => 'Lock note';
+
+  @override
+  String get lockNoteConfirmTitle => 'Lock this note?';
+
+  @override
+  String get lockNoteConfirmMessage =>
+      'Its text is sealed and its earlier versions are deleted. It stays open until the locked notes lock again.';
+
+  @override
+  String get lockNotebookAskTitle => 'Lock notebook';
+
+  @override
+  String get lockNotebookConfirmTitle => 'Lock this notebook?';
+
+  @override
+  String get lockNotebookConfirmMessage =>
+      'Every note in it is sealed, and new notes added to it are sealed too.';
+
+  @override
+  String get lockNotebookMenu => 'Lock Notebook…';
+
+  @override
+  String get lockRemoveNoteMenu => 'Remove lock…';
+
+  @override
+  String get lockRemoveNotebookMenu => 'Remove Notebook Lock…';
+
+  @override
+  String get lockUnlockNotebookMenu => 'Unlock notebook…';
+
+  @override
+  String get lockNowMenu => 'Lock notes now';
+
+  @override
+  String get lockRemoveNoteTitle => 'Remove the lock?';
+
+  @override
+  String get lockRemoveNoteMessage =>
+      'The note\'s text is kept as plain text again: search, backlinks, tasks and the local API can read it.';
+
+  @override
+  String get lockRemoveNotebookTitle => 'Remove the notebook\'s lock?';
+
+  @override
+  String get lockRemoveNotebookMessage =>
+      'The notes in it are kept as plain text again: search, backlinks, tasks and the local API can read them.';
+
+  @override
+  String get lockRemoveButton => 'Remove Lock';
+
+  @override
+  String get lockRemoveClosed => 'Unlock the notes first, then try again.';
+
+  @override
+  String get lockMoreMenu => 'More';
+
+  @override
+  String get lockMoreTitle => 'Note actions';
+
+  @override
+  String get lockNotebookMenuTitle => 'Notebook actions';
+
+  @override
+  String get noteRowLocked => 'Locked';
+
+  @override
+  String get noteRowUnlocked => 'Unlocked';
+
+  @override
+  String get noteListUnlocked => 'Unlocked';
+
+  @override
+  String get settingsLockedNotes => 'Locked notes';
+
+  @override
+  String settingsUnlockWith(String method) {
+    return 'Unlock with $method';
+  }
+
+  @override
+  String get settingsLockAfter => 'Lock after';
+
+  @override
+  String settingsTenMinutes(int minutes) {
+    return '$minutes minutes';
+  }
+
+  @override
+  String get settingsChangeLockPassword => 'Change lock password…';
+
+  @override
+  String get settingsLockNow => 'Lock notes now';
+
+  @override
+  String settingsBiometricsClosed(String method) {
+    return 'Unlock a locked note with your lock password first, then turn on $method.';
+  }
+
+  @override
+  String settingsBiometricsOn(String method) {
+    return '$method now unlocks your locked notes on this device.';
+  }
+
+  @override
+  String get settingsBiometricsOff =>
+      'Locked notes open with the lock password again on this device.';
+
+  @override
+  String settingsBiometricsFailed(String method) {
+    return '$method could not be turned on.';
+  }
+
+  @override
+  String get lockChangeTitle => 'Change lock password';
+
+  @override
+  String get lockChangeMessage =>
+      'Every locked note is sealed again with the new password. Kanso can\'t recover it.';
+
+  @override
+  String get lockChangeButton => 'Change';
+
+  @override
+  String lockChangeKept(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count locked notes or notebooks didn\'t open with the current password and kept it.',
+      one:
+          '1 locked note or notebook didn\'t open with the current password and kept it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String lockOfferTitle(String method) {
+    return 'Use $method?';
+  }
+
+  @override
+  String lockOfferMessage(String method) {
+    return 'Use $method to unlock your locked notes on this device? The password still works, and other devices need it.';
+  }
+
+  @override
+  String lockOfferAccept(String method) {
+    return 'Use $method';
+  }
+
+  @override
+  String get lockOfferDecline => 'Not now';
+
+  @override
+  String get lockDone => 'Done';
 }

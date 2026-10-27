@@ -42,6 +42,10 @@ class FakeEditorDocument implements EditorDocument {
   /// `completion`, `setProperty`, `removeProperty`, `snapshot`) fail with.
   final Map<String, ApplicationError> failures = <String, ApplicationError>{};
 
+  /// What attaching the file with a given name fails with.
+  final Map<String, ApplicationError> attachFailures =
+      <String, ApplicationError>{};
+
   /// What the next completion is, once, for a test that changes it between
   /// calls.
   Future<Completion?> Function()? completionBuilder;
@@ -255,6 +259,39 @@ class FakeEditorDocument implements EditorDocument {
 
   @override
   Stream<EditorEvent> events() => cancelableStream(events_.stream);
+
+  /// The names of the files attached, in turn.
+  final List<String> attachedFiles = <String>[];
+
+  /// Attaching appends `![](inkdrop://file:<name>)` to the text, as a
+  /// paragraph of its own, or fails with the call's failure.
+  @override
+  Future<Either<ApplicationError, EditOutcome>> attach(ShareFile file) async {
+    calls.add('attach ${file.name}');
+    final refused = attachFailures[file.name];
+    if (refused != null) {
+      return Left<ApplicationError, EditOutcome>(refused);
+    }
+    final failure = failed<EditOutcome>('attach');
+    if (failure != null) {
+      return failure;
+    }
+    attachedFiles.add(file.name);
+    final start = text.length;
+    final block =
+        '${text.isEmpty ? '' : '\n\n'}![](inkdrop://file:${file.name})';
+    text = '$text$block';
+    version++;
+    history = const HistoryState(canUndo: true, canRedo: false);
+    return Right(
+      EditOutcome(
+        version: version,
+        replace: Replacement(start: start, end: start, text: block),
+        selection: Range16(start: text.length, end: text.length),
+        history: history,
+      ),
+    );
+  }
 
   /// The words the note's comments are on.
   List<Range16> marks = const <Range16>[];

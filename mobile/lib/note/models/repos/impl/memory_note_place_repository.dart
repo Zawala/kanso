@@ -6,6 +6,7 @@ import 'dart:collection';
 
 import 'package:injectable/injectable.dart';
 
+import '../../data/new_note_start.dart';
 import '../../data/note_place.dart';
 import '../abs/note_place_repository.dart';
 
@@ -17,7 +18,7 @@ class MemoryNotePlaceRepository implements NotePlaceRepository {
 
   final LinkedHashMap<String, NotePlace> places =
       LinkedHashMap<String, NotePlace>();
-  final Set<String> newNotes = <String>{};
+  final Map<String, NewNoteStart> newNotes = <String, NewNoteStart>{};
 
   @override
   NotePlace? placeOf(String noteId) {
@@ -46,10 +47,10 @@ class MemoryNotePlaceRepository implements NotePlaceRepository {
   }
 
   @override
-  void markOpenedNew(String noteId) {
-    newNotes.add(noteId);
+  void markOpenedNew(String noteId, {NewNoteStart start = NewNoteStart.title}) {
+    newNotes[noteId] = start;
   }
 
   @override
-  bool takeOpenedNew(String noteId) => newNotes.remove(noteId);
+  NewNoteStart? takeOpenedNew(String noteId) => newNotes.remove(noteId);
 }

@@ -16,6 +16,7 @@ import 'core/views/widgets/kanso_icon_set_scope.dart';
 import 'core/views/widgets/layout_class_reporter.dart';
 import 'crash/views/widgets/crash_notice_host.dart';
 import 'gen/l10n/app_localizations.dart';
+import 'lock/views/widgets/lock_lifecycle_host.dart';
 import 'settings/views/widgets/backup_notice_host.dart';
 
 /// The Kanso app: the themes chosen (drawn from the theme files' tokens),
@@ -56,8 +57,10 @@ class App extends StatelessWidget {
               notifier: router.layoutClass,
               child: ForegroundReporter(
                 child: CrashNoticeHost(
-                  child: BackupNoticeHost(
-                    child: DeviceApprovalHost(child: child!),
+                  child: LockLifecycleHost(
+                    child: BackupNoticeHost(
+                      child: DeviceApprovalHost(child: child!),
+                    ),
                   ),
                 ),
               ),

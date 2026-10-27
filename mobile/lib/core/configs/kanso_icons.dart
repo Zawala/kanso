@@ -19,6 +19,7 @@ enum KansoIcons {
   book('book'),
   bookOpen('book-open'),
   calendar('calendar'),
+  camera('camera'),
   check('check'),
   chevronDown('chevron-down'),
   chevronLeft('chevron-left'),

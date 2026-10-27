@@ -112,6 +112,10 @@ class RustEditorDocument implements EditorDocument {
   Stream<EditorEvent> events() => cancelableStream(_editor.events());
 
   @override
+  Future<Either<ApplicationError, EditOutcome>> attach(ShareFile file) =>
+      attempt(() => _editor.attach(file: file));
+
+  @override
   Future<Either<ApplicationError, String>> commentOnSelection(String body) =>
       attempt(() => _editor.commentOnSelection(body: body));
 

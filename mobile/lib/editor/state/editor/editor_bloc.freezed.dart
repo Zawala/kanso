@@ -52,7 +52,7 @@ extension EditorEventPatterns on EditorEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( EditorStartedEvent value)?  started,TResult Function( EditorSignalReceivedEvent value)?  signalReceived,TResult Function( EditorEditedEvent value)?  edited,TResult Function( EditorCaretMovedEvent value)?  caretMoved,TResult Function( EditorCompletionDismissedEvent value)?  completionDismissed,TResult Function( EditorPropertiesToggledEvent value)?  propertiesToggled,TResult Function( EditorPropertySetEvent value)?  propertySet,TResult Function( EditorPropertyRemovedEvent value)?  propertyRemoved,TResult Function( EditorKeepMineRequestedEvent value)?  keepMineRequested,TResult Function( EditorUseTheirsRequestedEvent value)?  useTheirsRequested,TResult Function( EditorFlushRequestedEvent value)?  flushRequested,TResult Function( EditorLifecycleChangedEvent value)?  lifecycleChanged,TResult Function( EditorLinkOpenRequestedEvent value)?  linkOpenRequested,TResult Function( EditorDestinationHandledEvent value)?  destinationHandled,TResult Function( EditorClosedEvent value)?  closed,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( EditorStartedEvent value)?  started,TResult Function( EditorSignalReceivedEvent value)?  signalReceived,TResult Function( EditorEditedEvent value)?  edited,TResult Function( EditorCaretMovedEvent value)?  caretMoved,TResult Function( EditorCompletionDismissedEvent value)?  completionDismissed,TResult Function( EditorPropertiesToggledEvent value)?  propertiesToggled,TResult Function( EditorPropertySetEvent value)?  propertySet,TResult Function( EditorPropertyRemovedEvent value)?  propertyRemoved,TResult Function( EditorKeepMineRequestedEvent value)?  keepMineRequested,TResult Function( EditorUseTheirsRequestedEvent value)?  useTheirsRequested,TResult Function( EditorFlushRequestedEvent value)?  flushRequested,TResult Function( EditorLifecycleChangedEvent value)?  lifecycleChanged,TResult Function( EditorLinkOpenRequestedEvent value)?  linkOpenRequested,TResult Function( EditorDestinationHandledEvent value)?  destinationHandled,TResult Function( EditorClosedEvent value)?  closed,TResult Function( EditorAttachRequestedEvent value)?  attachRequested,TResult Function( EditorAttachNoticeDismissedEvent value)?  attachNoticeDismissed,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case EditorStartedEvent() when started != null:
@@ -70,7 +70,9 @@ return flushRequested(_that);case EditorLifecycleChangedEvent() when lifecycleCh
 return lifecycleChanged(_that);case EditorLinkOpenRequestedEvent() when linkOpenRequested != null:
 return linkOpenRequested(_that);case EditorDestinationHandledEvent() when destinationHandled != null:
 return destinationHandled(_that);case EditorClosedEvent() when closed != null:
-return closed(_that);case _:
+return closed(_that);case EditorAttachRequestedEvent() when attachRequested != null:
+return attachRequested(_that);case EditorAttachNoticeDismissedEvent() when attachNoticeDismissed != null:
+return attachNoticeDismissed(_that);case _:
   return orElse();
 
 }
@@ -88,7 +90,7 @@ return closed(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( EditorStartedEvent value)  started,required TResult Function( EditorSignalReceivedEvent value)  signalReceived,required TResult Function( EditorEditedEvent value)  edited,required TResult Function( EditorCaretMovedEvent value)  caretMoved,required TResult Function( EditorCompletionDismissedEvent value)  completionDismissed,required TResult Function( EditorPropertiesToggledEvent value)  propertiesToggled,required TResult Function( EditorPropertySetEvent value)  propertySet,required TResult Function( EditorPropertyRemovedEvent value)  propertyRemoved,required TResult Function( EditorKeepMineRequestedEvent value)  keepMineRequested,required TResult Function( EditorUseTheirsRequestedEvent value)  useTheirsRequested,required TResult Function( EditorFlushRequestedEvent value)  flushRequested,required TResult Function( EditorLifecycleChangedEvent value)  lifecycleChanged,required TResult Function( EditorLinkOpenRequestedEvent value)  linkOpenRequested,required TResult Function( EditorDestinationHandledEvent value)  destinationHandled,required TResult Function( EditorClosedEvent value)  closed,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( EditorStartedEvent value)  started,required TResult Function( EditorSignalReceivedEvent value)  signalReceived,required TResult Function( EditorEditedEvent value)  edited,required TResult Function( EditorCaretMovedEvent value)  caretMoved,required TResult Function( EditorCompletionDismissedEvent value)  completionDismissed,required TResult Function( EditorPropertiesToggledEvent value)  propertiesToggled,required TResult Function( EditorPropertySetEvent value)  propertySet,required TResult Function( EditorPropertyRemovedEvent value)  propertyRemoved,required TResult Function( EditorKeepMineRequestedEvent value)  keepMineRequested,required TResult Function( EditorUseTheirsRequestedEvent value)  useTheirsRequested,required TResult Function( EditorFlushRequestedEvent value)  flushRequested,required TResult Function( EditorLifecycleChangedEvent value)  lifecycleChanged,required TResult Function( EditorLinkOpenRequestedEvent value)  linkOpenRequested,required TResult Function( EditorDestinationHandledEvent value)  destinationHandled,required TResult Function( EditorClosedEvent value)  closed,required TResult Function( EditorAttachRequestedEvent value)  attachRequested,required TResult Function( EditorAttachNoticeDismissedEvent value)  attachNoticeDismissed,}){
 final _that = this;
 switch (_that) {
 case EditorStartedEvent():
@@ -106,7 +108,9 @@ return flushRequested(_that);case EditorLifecycleChangedEvent():
 return lifecycleChanged(_that);case EditorLinkOpenRequestedEvent():
 return linkOpenRequested(_that);case EditorDestinationHandledEvent():
 return destinationHandled(_that);case EditorClosedEvent():
-return closed(_that);}
+return closed(_that);case EditorAttachRequestedEvent():
+return attachRequested(_that);case EditorAttachNoticeDismissedEvent():
+return attachNoticeDismissed(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -120,7 +124,7 @@ return closed(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( EditorStartedEvent value)?  started,TResult? Function( EditorSignalReceivedEvent value)?  signalReceived,TResult? Function( EditorEditedEvent value)?  edited,TResult? Function( EditorCaretMovedEvent value)?  caretMoved,TResult? Function( EditorCompletionDismissedEvent value)?  completionDismissed,TResult? Function( EditorPropertiesToggledEvent value)?  propertiesToggled,TResult? Function( EditorPropertySetEvent value)?  propertySet,TResult? Function( EditorPropertyRemovedEvent value)?  propertyRemoved,TResult? Function( EditorKeepMineRequestedEvent value)?  keepMineRequested,TResult? Function( EditorUseTheirsRequestedEvent value)?  useTheirsRequested,TResult? Function( EditorFlushRequestedEvent value)?  flushRequested,TResult? Function( EditorLifecycleChangedEvent value)?  lifecycleChanged,TResult? Function( EditorLinkOpenRequestedEvent value)?  linkOpenRequested,TResult? Function( EditorDestinationHandledEvent value)?  destinationHandled,TResult? Function( EditorClosedEvent value)?  closed,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( EditorStartedEvent value)?  started,TResult? Function( EditorSignalReceivedEvent value)?  signalReceived,TResult? Function( EditorEditedEvent value)?  edited,TResult? Function( EditorCaretMovedEvent value)?  caretMoved,TResult? Function( EditorCompletionDismissedEvent value)?  completionDismissed,TResult? Function( EditorPropertiesToggledEvent value)?  propertiesToggled,TResult? Function( EditorPropertySetEvent value)?  propertySet,TResult? Function( EditorPropertyRemovedEvent value)?  propertyRemoved,TResult? Function( EditorKeepMineRequestedEvent value)?  keepMineRequested,TResult? Function( EditorUseTheirsRequestedEvent value)?  useTheirsRequested,TResult? Function( EditorFlushRequestedEvent value)?  flushRequested,TResult? Function( EditorLifecycleChangedEvent value)?  lifecycleChanged,TResult? Function( EditorLinkOpenRequestedEvent value)?  linkOpenRequested,TResult? Function( EditorDestinationHandledEvent value)?  destinationHandled,TResult? Function( EditorClosedEvent value)?  closed,TResult? Function( EditorAttachRequestedEvent value)?  attachRequested,TResult? Function( EditorAttachNoticeDismissedEvent value)?  attachNoticeDismissed,}){
 final _that = this;
 switch (_that) {
 case EditorStartedEvent() when started != null:
@@ -138,7 +142,9 @@ return flushRequested(_that);case EditorLifecycleChangedEvent() when lifecycleCh
 return lifecycleChanged(_that);case EditorLinkOpenRequestedEvent() when linkOpenRequested != null:
 return linkOpenRequested(_that);case EditorDestinationHandledEvent() when destinationHandled != null:
 return destinationHandled(_that);case EditorClosedEvent() when closed != null:
-return closed(_that);case _:
+return closed(_that);case EditorAttachRequestedEvent() when attachRequested != null:
+return attachRequested(_that);case EditorAttachNoticeDismissedEvent() when attachNoticeDismissed != null:
+return attachNoticeDismissed(_that);case _:
   return null;
 
 }
@@ -155,7 +161,7 @@ return closed(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String noteId)?  started,TResult Function( EditorSignal signal)?  signalReceived,TResult Function()?  edited,TResult Function( EditorContext context)?  caretMoved,TResult Function()?  completionDismissed,TResult Function()?  propertiesToggled,TResult Function( String key,  String value,  int? index)?  propertySet,TResult Function( int index)?  propertyRemoved,TResult Function()?  keepMineRequested,TResult Function()?  useTheirsRequested,TResult Function( FlushReason reason)?  flushRequested,TResult Function( AppLifecycleState lifecycle)?  lifecycleChanged,TResult Function( LinkTarget target)?  linkOpenRequested,TResult Function()?  destinationHandled,TResult Function()?  closed,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String noteId)?  started,TResult Function( EditorSignal signal)?  signalReceived,TResult Function()?  edited,TResult Function( EditorContext context)?  caretMoved,TResult Function()?  completionDismissed,TResult Function()?  propertiesToggled,TResult Function( String key,  String value,  int? index)?  propertySet,TResult Function( int index)?  propertyRemoved,TResult Function()?  keepMineRequested,TResult Function()?  useTheirsRequested,TResult Function( FlushReason reason)?  flushRequested,TResult Function( AppLifecycleState lifecycle)?  lifecycleChanged,TResult Function( LinkTarget target)?  linkOpenRequested,TResult Function()?  destinationHandled,TResult Function()?  closed,TResult Function( MediaSource source)?  attachRequested,TResult Function()?  attachNoticeDismissed,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case EditorStartedEvent() when started != null:
 return started(_that.noteId);case EditorSignalReceivedEvent() when signalReceived != null:
@@ -172,7 +178,9 @@ return flushRequested(_that.reason);case EditorLifecycleChangedEvent() when life
 return lifecycleChanged(_that.lifecycle);case EditorLinkOpenRequestedEvent() when linkOpenRequested != null:
 return linkOpenRequested(_that.target);case EditorDestinationHandledEvent() when destinationHandled != null:
 return destinationHandled();case EditorClosedEvent() when closed != null:
-return closed();case _:
+return closed();case EditorAttachRequestedEvent() when attachRequested != null:
+return attachRequested(_that.source);case EditorAttachNoticeDismissedEvent() when attachNoticeDismissed != null:
+return attachNoticeDismissed();case _:
   return orElse();
 
 }
@@ -190,7 +198,7 @@ return closed();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String noteId)  started,required TResult Function( EditorSignal signal)  signalReceived,required TResult Function()  edited,required TResult Function( EditorContext context)  caretMoved,required TResult Function()  completionDismissed,required TResult Function()  propertiesToggled,required TResult Function( String key,  String value,  int? index)  propertySet,required TResult Function( int index)  propertyRemoved,required TResult Function()  keepMineRequested,required TResult Function()  useTheirsRequested,required TResult Function( FlushReason reason)  flushRequested,required TResult Function( AppLifecycleState lifecycle)  lifecycleChanged,required TResult Function( LinkTarget target)  linkOpenRequested,required TResult Function()  destinationHandled,required TResult Function()  closed,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String noteId)  started,required TResult Function( EditorSignal signal)  signalReceived,required TResult Function()  edited,required TResult Function( EditorContext context)  caretMoved,required TResult Function()  completionDismissed,required TResult Function()  propertiesToggled,required TResult Function( String key,  String value,  int? index)  propertySet,required TResult Function( int index)  propertyRemoved,required TResult Function()  keepMineRequested,required TResult Function()  useTheirsRequested,required TResult Function( FlushReason reason)  flushRequested,required TResult Function( AppLifecycleState lifecycle)  lifecycleChanged,required TResult Function( LinkTarget target)  linkOpenRequested,required TResult Function()  destinationHandled,required TResult Function()  closed,required TResult Function( MediaSource source)  attachRequested,required TResult Function()  attachNoticeDismissed,}) {final _that = this;
 switch (_that) {
 case EditorStartedEvent():
 return started(_that.noteId);case EditorSignalReceivedEvent():
@@ -207,7 +215,9 @@ return flushRequested(_that.reason);case EditorLifecycleChangedEvent():
 return lifecycleChanged(_that.lifecycle);case EditorLinkOpenRequestedEvent():
 return linkOpenRequested(_that.target);case EditorDestinationHandledEvent():
 return destinationHandled();case EditorClosedEvent():
-return closed();}
+return closed();case EditorAttachRequestedEvent():
+return attachRequested(_that.source);case EditorAttachNoticeDismissedEvent():
+return attachNoticeDismissed();}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -221,7 +231,7 @@ return closed();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String noteId)?  started,TResult? Function( EditorSignal signal)?  signalReceived,TResult? Function()?  edited,TResult? Function( EditorContext context)?  caretMoved,TResult? Function()?  completionDismissed,TResult? Function()?  propertiesToggled,TResult? Function( String key,  String value,  int? index)?  propertySet,TResult? Function( int index)?  propertyRemoved,TResult? Function()?  keepMineRequested,TResult? Function()?  useTheirsRequested,TResult? Function( FlushReason reason)?  flushRequested,TResult? Function( AppLifecycleState lifecycle)?  lifecycleChanged,TResult? Function( LinkTarget target)?  linkOpenRequested,TResult? Function()?  destinationHandled,TResult? Function()?  closed,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String noteId)?  started,TResult? Function( EditorSignal signal)?  signalReceived,TResult? Function()?  edited,TResult? Function( EditorContext context)?  caretMoved,TResult? Function()?  completionDismissed,TResult? Function()?  propertiesToggled,TResult? Function( String key,  String value,  int? index)?  propertySet,TResult? Function( int index)?  propertyRemoved,TResult? Function()?  keepMineRequested,TResult? Function()?  useTheirsRequested,TResult? Function( FlushReason reason)?  flushRequested,TResult? Function( AppLifecycleState lifecycle)?  lifecycleChanged,TResult? Function( LinkTarget target)?  linkOpenRequested,TResult? Function()?  destinationHandled,TResult? Function()?  closed,TResult? Function( MediaSource source)?  attachRequested,TResult? Function()?  attachNoticeDismissed,}) {final _that = this;
 switch (_that) {
 case EditorStartedEvent() when started != null:
 return started(_that.noteId);case EditorSignalReceivedEvent() when signalReceived != null:
@@ -238,7 +248,9 @@ return flushRequested(_that.reason);case EditorLifecycleChangedEvent() when life
 return lifecycleChanged(_that.lifecycle);case EditorLinkOpenRequestedEvent() when linkOpenRequested != null:
 return linkOpenRequested(_that.target);case EditorDestinationHandledEvent() when destinationHandled != null:
 return destinationHandled();case EditorClosedEvent() when closed != null:
-return closed();case _:
+return closed();case EditorAttachRequestedEvent() when attachRequested != null:
+return attachRequested(_that.source);case EditorAttachNoticeDismissedEvent() when attachNoticeDismissed != null:
+return attachNoticeDismissed();case _:
   return null;
 
 }
@@ -729,6 +741,70 @@ String toString() {
 
 
 /// @nodoc
+
+
+class EditorAttachRequestedEvent implements EditorEvent {
+  const EditorAttachRequestedEvent(this.source);
+  
+
+ final  MediaSource source;
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is EditorAttachRequestedEvent&&(identical(other.source, source) || other.source == source));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,source);
+
+@override
+String toString() {
+  return 'EditorEvent.attachRequested(source: $source)';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class EditorAttachNoticeDismissedEvent implements EditorEvent {
+  const EditorAttachNoticeDismissedEvent();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is EditorAttachNoticeDismissedEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'EditorEvent.attachNoticeDismissed()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
 mixin _$EditorState {
 
 /// The note being edited.
@@ -746,7 +822,10 @@ mixin _$EditorState {
 /// to; it says so with `destinationHandled` when it has.
  EditorDestination? get destination;/// Why a link could not be opened.
  ApplicationError? get linkError;/// How many times the field must take the text of [snapshot] again.
- int get reloadSeq;/// Why opening failed, while [status] is failed.
+ int get reloadSeq;/// The change the last attachment made, for the field to take; a new
+/// one each time [attachSeq] goes up.
+ EditOutcome? get attached; int get attachSeq;/// Why things could not be attached, one each, until it is dismissed.
+ List<ApplicationError> get attachProblems;/// Why opening failed, while [status] is failed.
  ApplicationError? get error;
 /// Create a copy of EditorState
 /// with the given fields replaced by the non-null parameter values.
@@ -758,16 +837,16 @@ $EditorStateCopyWith<EditorState> get copyWith => _$EditorStateCopyWithImpl<Edit
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is EditorState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.status, status) || other.status == status)&&(identical(other.document, document) || other.document == document)&&(identical(other.snapshot, snapshot) || other.snapshot == snapshot)&&(identical(other.save, save) || other.save == save)&&const DeepCollectionEquality().equals(other.properties, properties)&&(identical(other.propertiesOpen, propertiesOpen) || other.propertiesOpen == propertiesOpen)&&(identical(other.propertyError, propertyError) || other.propertyError == propertyError)&&(identical(other.context, context) || other.context == context)&&(identical(other.completion, completion) || other.completion == completion)&&(identical(other.destination, destination) || other.destination == destination)&&(identical(other.linkError, linkError) || other.linkError == linkError)&&(identical(other.reloadSeq, reloadSeq) || other.reloadSeq == reloadSeq)&&(identical(other.error, error) || other.error == error));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is EditorState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.status, status) || other.status == status)&&(identical(other.document, document) || other.document == document)&&(identical(other.snapshot, snapshot) || other.snapshot == snapshot)&&(identical(other.save, save) || other.save == save)&&const DeepCollectionEquality().equals(other.properties, properties)&&(identical(other.propertiesOpen, propertiesOpen) || other.propertiesOpen == propertiesOpen)&&(identical(other.propertyError, propertyError) || other.propertyError == propertyError)&&(identical(other.context, context) || other.context == context)&&(identical(other.completion, completion) || other.completion == completion)&&(identical(other.destination, destination) || other.destination == destination)&&(identical(other.linkError, linkError) || other.linkError == linkError)&&(identical(other.reloadSeq, reloadSeq) || other.reloadSeq == reloadSeq)&&(identical(other.attached, attached) || other.attached == attached)&&(identical(other.attachSeq, attachSeq) || other.attachSeq == attachSeq)&&const DeepCollectionEquality().equals(other.attachProblems, attachProblems)&&(identical(other.error, error) || other.error == error));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,noteId,status,document,snapshot,save,const DeepCollectionEquality().hash(properties),propertiesOpen,propertyError,context,completion,destination,linkError,reloadSeq,error);
+int get hashCode => Object.hash(runtimeType,noteId,status,document,snapshot,save,const DeepCollectionEquality().hash(properties),propertiesOpen,propertyError,context,completion,destination,linkError,reloadSeq,attached,attachSeq,const DeepCollectionEquality().hash(attachProblems),error);
 
 @override
 String toString() {
-  return 'EditorState(noteId: $noteId, status: $status, document: $document, snapshot: $snapshot, save: $save, properties: $properties, propertiesOpen: $propertiesOpen, propertyError: $propertyError, context: $context, completion: $completion, destination: $destination, linkError: $linkError, reloadSeq: $reloadSeq, error: $error)';
+  return 'EditorState(noteId: $noteId, status: $status, document: $document, snapshot: $snapshot, save: $save, properties: $properties, propertiesOpen: $propertiesOpen, propertyError: $propertyError, context: $context, completion: $completion, destination: $destination, linkError: $linkError, reloadSeq: $reloadSeq, attached: $attached, attachSeq: $attachSeq, attachProblems: $attachProblems, error: $error)';
 }
 
 
@@ -778,7 +857,7 @@ abstract mixin class $EditorStateCopyWith<$Res>  {
   factory $EditorStateCopyWith(EditorState value, $Res Function(EditorState) _then) = _$EditorStateCopyWithImpl;
 @useResult
 $Res call({
- String noteId, EditorStatus status, EditorDocument? document, EditorSnapshot? snapshot, SaveState? save, List<Property> properties, bool propertiesOpen, ApplicationError? propertyError, EditorContext? context, Completion? completion, EditorDestination? destination, ApplicationError? linkError, int reloadSeq, ApplicationError? error
+ String noteId, EditorStatus status, EditorDocument? document, EditorSnapshot? snapshot, SaveState? save, List<Property> properties, bool propertiesOpen, ApplicationError? propertyError, EditorContext? context, Completion? completion, EditorDestination? destination, ApplicationError? linkError, int reloadSeq, EditOutcome? attached, int attachSeq, List<ApplicationError> attachProblems, ApplicationError? error
 });
 
 
@@ -795,7 +874,7 @@ class _$EditorStateCopyWithImpl<$Res>
 
 /// Create a copy of EditorState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? noteId = null,Object? status = null,Object? document = freezed,Object? snapshot = freezed,Object? save = freezed,Object? properties = null,Object? propertiesOpen = null,Object? propertyError = freezed,Object? context = freezed,Object? completion = freezed,Object? destination = freezed,Object? linkError = freezed,Object? reloadSeq = null,Object? error = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? noteId = null,Object? status = null,Object? document = freezed,Object? snapshot = freezed,Object? save = freezed,Object? properties = null,Object? propertiesOpen = null,Object? propertyError = freezed,Object? context = freezed,Object? completion = freezed,Object? destination = freezed,Object? linkError = freezed,Object? reloadSeq = null,Object? attached = freezed,Object? attachSeq = null,Object? attachProblems = null,Object? error = freezed,}) {
   return _then(_self.copyWith(
 noteId: null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
 as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
@@ -810,7 +889,10 @@ as EditorContext?,completion: freezed == completion ? _self.completion : complet
 as Completion?,destination: freezed == destination ? _self.destination : destination // ignore: cast_nullable_to_non_nullable
 as EditorDestination?,linkError: freezed == linkError ? _self.linkError : linkError // ignore: cast_nullable_to_non_nullable
 as ApplicationError?,reloadSeq: null == reloadSeq ? _self.reloadSeq : reloadSeq // ignore: cast_nullable_to_non_nullable
-as int,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
+as int,attached: freezed == attached ? _self.attached : attached // ignore: cast_nullable_to_non_nullable
+as EditOutcome?,attachSeq: null == attachSeq ? _self.attachSeq : attachSeq // ignore: cast_nullable_to_non_nullable
+as int,attachProblems: null == attachProblems ? _self.attachProblems : attachProblems // ignore: cast_nullable_to_non_nullable
+as List<ApplicationError>,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
 as ApplicationError?,
   ));
 }
@@ -956,10 +1038,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String noteId,  EditorStatus status,  EditorDocument? document,  EditorSnapshot? snapshot,  SaveState? save,  List<Property> properties,  bool propertiesOpen,  ApplicationError? propertyError,  EditorContext? context,  Completion? completion,  EditorDestination? destination,  ApplicationError? linkError,  int reloadSeq,  ApplicationError? error)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String noteId,  EditorStatus status,  EditorDocument? document,  EditorSnapshot? snapshot,  SaveState? save,  List<Property> properties,  bool propertiesOpen,  ApplicationError? propertyError,  EditorContext? context,  Completion? completion,  EditorDestination? destination,  ApplicationError? linkError,  int reloadSeq,  EditOutcome? attached,  int attachSeq,  List<ApplicationError> attachProblems,  ApplicationError? error)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _EditorState() when $default != null:
-return $default(_that.noteId,_that.status,_that.document,_that.snapshot,_that.save,_that.properties,_that.propertiesOpen,_that.propertyError,_that.context,_that.completion,_that.destination,_that.linkError,_that.reloadSeq,_that.error);case _:
+return $default(_that.noteId,_that.status,_that.document,_that.snapshot,_that.save,_that.properties,_that.propertiesOpen,_that.propertyError,_that.context,_that.completion,_that.destination,_that.linkError,_that.reloadSeq,_that.attached,_that.attachSeq,_that.attachProblems,_that.error);case _:
   return orElse();
 
 }
@@ -977,10 +1059,10 @@ return $default(_that.noteId,_that.status,_that.document,_that.snapshot,_that.sa
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String noteId,  EditorStatus status,  EditorDocument? document,  EditorSnapshot? snapshot,  SaveState? save,  List<Property> properties,  bool propertiesOpen,  ApplicationError? propertyError,  EditorContext? context,  Completion? completion,  EditorDestination? destination,  ApplicationError? linkError,  int reloadSeq,  ApplicationError? error)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String noteId,  EditorStatus status,  EditorDocument? document,  EditorSnapshot? snapshot,  SaveState? save,  List<Property> properties,  bool propertiesOpen,  ApplicationError? propertyError,  EditorContext? context,  Completion? completion,  EditorDestination? destination,  ApplicationError? linkError,  int reloadSeq,  EditOutcome? attached,  int attachSeq,  List<ApplicationError> attachProblems,  ApplicationError? error)  $default,) {final _that = this;
 switch (_that) {
 case _EditorState():
-return $default(_that.noteId,_that.status,_that.document,_that.snapshot,_that.save,_that.properties,_that.propertiesOpen,_that.propertyError,_that.context,_that.completion,_that.destination,_that.linkError,_that.reloadSeq,_that.error);case _:
+return $default(_that.noteId,_that.status,_that.document,_that.snapshot,_that.save,_that.properties,_that.propertiesOpen,_that.propertyError,_that.context,_that.completion,_that.destination,_that.linkError,_that.reloadSeq,_that.attached,_that.attachSeq,_that.attachProblems,_that.error);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -997,10 +1079,10 @@ return $default(_that.noteId,_that.status,_that.document,_that.snapshot,_that.sa
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String noteId,  EditorStatus status,  EditorDocument? document,  EditorSnapshot? snapshot,  SaveState? save,  List<Property> properties,  bool propertiesOpen,  ApplicationError? propertyError,  EditorContext? context,  Completion? completion,  EditorDestination? destination,  ApplicationError? linkError,  int reloadSeq,  ApplicationError? error)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String noteId,  EditorStatus status,  EditorDocument? document,  EditorSnapshot? snapshot,  SaveState? save,  List<Property> properties,  bool propertiesOpen,  ApplicationError? propertyError,  EditorContext? context,  Completion? completion,  EditorDestination? destination,  ApplicationError? linkError,  int reloadSeq,  EditOutcome? attached,  int attachSeq,  List<ApplicationError> attachProblems,  ApplicationError? error)?  $default,) {final _that = this;
 switch (_that) {
 case _EditorState() when $default != null:
-return $default(_that.noteId,_that.status,_that.document,_that.snapshot,_that.save,_that.properties,_that.propertiesOpen,_that.propertyError,_that.context,_that.completion,_that.destination,_that.linkError,_that.reloadSeq,_that.error);case _:
+return $default(_that.noteId,_that.status,_that.document,_that.snapshot,_that.save,_that.properties,_that.propertiesOpen,_that.propertyError,_that.context,_that.completion,_that.destination,_that.linkError,_that.reloadSeq,_that.attached,_that.attachSeq,_that.attachProblems,_that.error);case _:
   return null;
 
 }
@@ -1012,7 +1094,7 @@ return $default(_that.noteId,_that.status,_that.document,_that.snapshot,_that.sa
 
 
 class _EditorState implements EditorState {
-  const _EditorState({this.noteId = '', this.status = EditorStatus.opening, this.document, this.snapshot, this.save, final  List<Property> properties = const <Property>[], this.propertiesOpen = false, this.propertyError, this.context, this.completion, this.destination, this.linkError, this.reloadSeq = 0, this.error}): _properties = properties;
+  const _EditorState({this.noteId = '', this.status = EditorStatus.opening, this.document, this.snapshot, this.save, final  List<Property> properties = const <Property>[], this.propertiesOpen = false, this.propertyError, this.context, this.completion, this.destination, this.linkError, this.reloadSeq = 0, this.attached, this.attachSeq = 0, final  List<ApplicationError> attachProblems = const <ApplicationError>[], this.error}): _properties = properties,_attachProblems = attachProblems;
   
 
 /// The note being edited.
@@ -1050,6 +1132,19 @@ class _EditorState implements EditorState {
 @override final  ApplicationError? linkError;
 /// How many times the field must take the text of [snapshot] again.
 @override@JsonKey() final  int reloadSeq;
+/// The change the last attachment made, for the field to take; a new
+/// one each time [attachSeq] goes up.
+@override final  EditOutcome? attached;
+@override@JsonKey() final  int attachSeq;
+/// Why things could not be attached, one each, until it is dismissed.
+ final  List<ApplicationError> _attachProblems;
+/// Why things could not be attached, one each, until it is dismissed.
+@override@JsonKey() List<ApplicationError> get attachProblems {
+  if (_attachProblems is EqualUnmodifiableListView) return _attachProblems;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_attachProblems);
+}
+
 /// Why opening failed, while [status] is failed.
 @override final  ApplicationError? error;
 
@@ -1063,16 +1158,16 @@ _$EditorStateCopyWith<_EditorState> get copyWith => __$EditorStateCopyWithImpl<_
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _EditorState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.status, status) || other.status == status)&&(identical(other.document, document) || other.document == document)&&(identical(other.snapshot, snapshot) || other.snapshot == snapshot)&&(identical(other.save, save) || other.save == save)&&const DeepCollectionEquality().equals(other._properties, _properties)&&(identical(other.propertiesOpen, propertiesOpen) || other.propertiesOpen == propertiesOpen)&&(identical(other.propertyError, propertyError) || other.propertyError == propertyError)&&(identical(other.context, context) || other.context == context)&&(identical(other.completion, completion) || other.completion == completion)&&(identical(other.destination, destination) || other.destination == destination)&&(identical(other.linkError, linkError) || other.linkError == linkError)&&(identical(other.reloadSeq, reloadSeq) || other.reloadSeq == reloadSeq)&&(identical(other.error, error) || other.error == error));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _EditorState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.status, status) || other.status == status)&&(identical(other.document, document) || other.document == document)&&(identical(other.snapshot, snapshot) || other.snapshot == snapshot)&&(identical(other.save, save) || other.save == save)&&const DeepCollectionEquality().equals(other._properties, _properties)&&(identical(other.propertiesOpen, propertiesOpen) || other.propertiesOpen == propertiesOpen)&&(identical(other.propertyError, propertyError) || other.propertyError == propertyError)&&(identical(other.context, context) || other.context == context)&&(identical(other.completion, completion) || other.completion == completion)&&(identical(other.destination, destination) || other.destination == destination)&&(identical(other.linkError, linkError) || other.linkError == linkError)&&(identical(other.reloadSeq, reloadSeq) || other.reloadSeq == reloadSeq)&&(identical(other.attached, attached) || other.attached == attached)&&(identical(other.attachSeq, attachSeq) || other.attachSeq == attachSeq)&&const DeepCollectionEquality().equals(other._attachProblems, _attachProblems)&&(identical(other.error, error) || other.error == error));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,noteId,status,document,snapshot,save,const DeepCollectionEquality().hash(_properties),propertiesOpen,propertyError,context,completion,destination,linkError,reloadSeq,error);
+int get hashCode => Object.hash(runtimeType,noteId,status,document,snapshot,save,const DeepCollectionEquality().hash(_properties),propertiesOpen,propertyError,context,completion,destination,linkError,reloadSeq,attached,attachSeq,const DeepCollectionEquality().hash(_attachProblems),error);
 
 @override
 String toString() {
-  return 'EditorState(noteId: $noteId, status: $status, document: $document, snapshot: $snapshot, save: $save, properties: $properties, propertiesOpen: $propertiesOpen, propertyError: $propertyError, context: $context, completion: $completion, destination: $destination, linkError: $linkError, reloadSeq: $reloadSeq, error: $error)';
+  return 'EditorState(noteId: $noteId, status: $status, document: $document, snapshot: $snapshot, save: $save, properties: $properties, propertiesOpen: $propertiesOpen, propertyError: $propertyError, context: $context, completion: $completion, destination: $destination, linkError: $linkError, reloadSeq: $reloadSeq, attached: $attached, attachSeq: $attachSeq, attachProblems: $attachProblems, error: $error)';
 }
 
 
@@ -1083,7 +1178,7 @@ abstract mixin class _$EditorStateCopyWith<$Res> implements $EditorStateCopyWith
   factory _$EditorStateCopyWith(_EditorState value, $Res Function(_EditorState) _then) = __$EditorStateCopyWithImpl;
 @override @useResult
 $Res call({
- String noteId, EditorStatus status, EditorDocument? document, EditorSnapshot? snapshot, SaveState? save, List<Property> properties, bool propertiesOpen, ApplicationError? propertyError, EditorContext? context, Completion? completion, EditorDestination? destination, ApplicationError? linkError, int reloadSeq, ApplicationError? error
+ String noteId, EditorStatus status, EditorDocument? document, EditorSnapshot? snapshot, SaveState? save, List<Property> properties, bool propertiesOpen, ApplicationError? propertyError, EditorContext? context, Completion? completion, EditorDestination? destination, ApplicationError? linkError, int reloadSeq, EditOutcome? attached, int attachSeq, List<ApplicationError> attachProblems, ApplicationError? error
 });
 
 
@@ -1100,7 +1195,7 @@ class __$EditorStateCopyWithImpl<$Res>
 
 /// Create a copy of EditorState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? noteId = null,Object? status = null,Object? document = freezed,Object? snapshot = freezed,Object? save = freezed,Object? properties = null,Object? propertiesOpen = null,Object? propertyError = freezed,Object? context = freezed,Object? completion = freezed,Object? destination = freezed,Object? linkError = freezed,Object? reloadSeq = null,Object? error = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? noteId = null,Object? status = null,Object? document = freezed,Object? snapshot = freezed,Object? save = freezed,Object? properties = null,Object? propertiesOpen = null,Object? propertyError = freezed,Object? context = freezed,Object? completion = freezed,Object? destination = freezed,Object? linkError = freezed,Object? reloadSeq = null,Object? attached = freezed,Object? attachSeq = null,Object? attachProblems = null,Object? error = freezed,}) {
   return _then(_EditorState(
 noteId: null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
 as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
@@ -1115,7 +1210,10 @@ as EditorContext?,completion: freezed == completion ? _self.completion : complet
 as Completion?,destination: freezed == destination ? _self.destination : destination // ignore: cast_nullable_to_non_nullable
 as EditorDestination?,linkError: freezed == linkError ? _self.linkError : linkError // ignore: cast_nullable_to_non_nullable
 as ApplicationError?,reloadSeq: null == reloadSeq ? _self.reloadSeq : reloadSeq // ignore: cast_nullable_to_non_nullable
-as int,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
+as int,attached: freezed == attached ? _self.attached : attached // ignore: cast_nullable_to_non_nullable
+as EditOutcome?,attachSeq: null == attachSeq ? _self.attachSeq : attachSeq // ignore: cast_nullable_to_non_nullable
+as int,attachProblems: null == attachProblems ? _self._attachProblems : attachProblems // ignore: cast_nullable_to_non_nullable
+as List<ApplicationError>,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
 as ApplicationError?,
   ));
 }

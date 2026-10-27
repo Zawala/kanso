@@ -68,4 +68,13 @@ sealed class EditorEvent with _$EditorEvent {
 
   /// The editor is left: save, keeping what was typed, and let go.
   const factory EditorEvent.closed() = EditorClosedEvent;
+
+  /// The person asked to attach what they pick from [source] where the
+  /// caret is.
+  const factory EditorEvent.attachRequested(MediaSource source) =
+      EditorAttachRequestedEvent;
+
+  /// The person has read why something was not attached.
+  const factory EditorEvent.attachNoticeDismissed() =
+      EditorAttachNoticeDismissedEvent;
 }

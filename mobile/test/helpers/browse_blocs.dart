@@ -13,11 +13,15 @@ import 'package:kanso/core/models/data/library_index_status.dart';
 import 'package:kanso/core/models/data/load_status.dart';
 import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/models/repos/abs/haptics_repository.dart';
+import 'package:kanso/core/state/capture_inbox/capture_inbox_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
+import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
+import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
+import 'package:kanso/lock/state/unlock/unlock_bloc.dart';
 import 'package:kanso/note/models/data/note_screen_status.dart';
 import 'package:kanso/note/models/repos/impl/memory_note_place_repository.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
@@ -36,11 +40,16 @@ import 'package:kanso/tasks/models/data/tasks_status.dart';
 import 'package:kanso/tasks/state/tasks/tasks_bloc.dart';
 
 import 'close_bloc_later.dart';
+import 'fake_media_picker_repository.dart';
+import 'fixture_device_lock_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_renderer_repository.dart';
+import 'fixture_session_repository.dart';
 import 'fixture_shared_notes_repository.dart';
 import 'fixture_sync_repository.dart';
 import 'library_fixtures.dart';
+import 'mock_repositories.dart';
+import 'register_lock_blocs.dart';
 import 'seeded_appearance_bloc.dart';
 import 'sync_settings_blocs.dart';
 
@@ -71,10 +80,16 @@ class BrowseBlocs {
     this.syncRepository,
     this.listNavigation,
     this.libraryPane,
+    this.session,
+    this.device,
+    this.lock,
+    this.cover,
+    this.lockPreferences,
     this.shared,
     this.invitations,
     this.creation,
     this.defaultNotebook,
+    this.captureInbox,
   );
 
   /// The mock library (see [FixtureLibraryRepository]).
@@ -86,7 +101,18 @@ class BrowseBlocs {
   final LibraryPaneBloc libraryPane;
   final NoteCreationBloc creation;
   final DefaultNotebookBloc defaultNotebook;
+
+  /// Saves what other apps shared; the lists read its problems.
+  final CaptureInboxBloc captureInbox;
   final FixtureSyncRepository syncRepository;
+
+  /// The lock session, with nothing locked by default, and the
+  /// phone's biometrics (Face ID): see [FixtureSessionRepository].
+  final FixtureSessionRepository session;
+  final FixtureDeviceLockRepository device;
+  final LockStatusBloc lock;
+  final PrivacyCoverBloc cover;
+  final ForgetfulPreferencesRepository lockPreferences;
 
   /// The shared notes (see [FixtureSharedNotesRepository]) and the app's
   /// invitations over them, started.
@@ -111,6 +137,8 @@ class BrowseBlocs {
     FixtureLibraryRepository? library,
     FixtureSyncRepository? syncRepository,
     FixtureSharedNotesRepository? shared,
+    FixtureSessionRepository? session,
+    FixtureDeviceLockRepository? device,
   ]) async {
     final fixture = library ?? FixtureLibraryRepository();
     addTearDown(() => unawaited(fixture.close()));
@@ -135,6 +163,18 @@ class BrowseBlocs {
     final libraryPane = LibraryPaneBloc();
     closeBlocLater(listNavigation);
     closeBlocLater(libraryPane);
+    final lockSession =
+        session ?? FixtureSessionRepository(hasLockPassword: false);
+    final lockDevice = device ?? FixtureDeviceLockRepository();
+    addTearDown(() => unawaited(lockSession.close()));
+    final lock = LockStatusBloc(lockSession, lockDevice)
+      ..add(const LockStatusEvent.started());
+    closeBlocLater(lock);
+    await lock.stream.firstWhere((state) => state.loaded);
+    final lockPreferences = ForgetfulPreferencesRepository();
+    registerLockBlocs(lockSession, lockDevice, lockPreferences);
+    final cover = PrivacyCoverBloc(lockDevice);
+    closeBlocLater(cover);
     final sharedNotes = shared ?? FixtureSharedNotesRepository();
     final invitations = InvitationsBloc(sharedNotes)
       ..add(const InvitationsEvent.started());
@@ -146,12 +186,16 @@ class BrowseBlocs {
       fixture,
       MemoryNotePlaceRepository(),
       ForgetfulPreferencesRepository(),
+      MockCaptureRepository(),
+      FakeMediaPickerRepository(),
     );
     closeBlocLater(creation);
     final defaultNotebook = DefaultNotebookBloc(
       ForgetfulPreferencesRepository(),
     );
     closeBlocLater(defaultNotebook);
+    final captureInbox = CaptureInboxBloc(MockCaptureRepository());
+    closeBlocLater(captureInbox);
     return BrowseBlocs._(
       fixture,
       index,
@@ -160,11 +204,24 @@ class BrowseBlocs {
       account,
       listNavigation,
       libraryPane,
+      lockSession,
+      lockDevice,
+      lock,
+      cover,
+      lockPreferences,
       sharedNotes,
       invitations,
       creation,
       defaultNotebook,
+      captureInbox,
     );
+  }
+
+  /// An unlock BLoC over the fixtures, for a locked note or notebook.
+  UnlockBloc unlockOf() {
+    final bloc = UnlockBloc(session, device, lockPreferences);
+    closeBlocLater(bloc);
+    return bloc;
   }
 
   /// A list of [place], read; or only made when [read] is false, so that it
@@ -249,12 +306,16 @@ class BrowseBlocs {
     NoteListBloc? list,
     NoteBloc? note,
     SearchBloc? search,
+    UnlockBloc? unlock,
     TasksBloc? tasks,
     CommentsBloc? comments,
     SharedNoteStatusBloc? status,
   }) {
     return MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
+        BlocProvider<LockStatusBloc>.value(value: lock),
+        BlocProvider<PrivacyCoverBloc>.value(value: cover),
+        BlocProvider<UnlockBloc>.value(value: unlock ?? unlockOf()),
         BlocProvider<LibraryIndexBloc>.value(value: index),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
         BlocProvider<SyncStatusBloc>.value(value: sync),
@@ -267,6 +328,7 @@ class BrowseBlocs {
         BlocProvider<UndoNoticeBloc>.value(value: undoNotice),
         BlocProvider<NoteCreationBloc>.value(value: creation),
         BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
+        BlocProvider<CaptureInboxBloc>.value(value: captureInbox),
         if (list != null) BlocProvider<NoteListBloc>.value(value: list),
         if (note != null) BlocProvider<NoteBloc>.value(value: note),
         if (search != null) BlocProvider<SearchBloc>.value(value: search),

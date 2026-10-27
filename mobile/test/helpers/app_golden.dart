@@ -11,9 +11,11 @@ import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 
 import 'account_blocs.dart';
 import 'browse_blocs.dart';
+import 'fixture_device_lock_repository.dart';
 import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_renderer_repository.dart';
+import 'fixture_session_repository.dart';
 import 'fixture_shared_notes_repository.dart';
 import 'fixture_sync_repository.dart';
 import 'golden.dart';
@@ -35,7 +37,8 @@ import 'pump_browse_app.dart';
 /// is what the app starts showing (a theme, an icon theme); [accounts] makes
 /// the account screens' BLoCs for each platform; [backupNotice] makes the
 /// backup notice's BLoC; [shared] and [gallery] make the shared notes and
-/// the theme gallery the app reads. The clock is the mock content's (see
+/// the theme gallery the app reads; [session] and [device] make the lock
+/// session and the phone's biometrics. The clock is the mock content's (see
 /// [atMockNow]).
 Future<void> expectAppGoldenOnBothPlatforms(
   WidgetTester tester, {
@@ -51,6 +54,8 @@ Future<void> expectAppGoldenOnBothPlatforms(
   FixtureGalleryRepository Function()? gallery,
   AccountBlocs Function()? accounts,
   FixtureSyncRepository Function()? sync,
+  FixtureSessionRepository Function()? session,
+  FixtureDeviceLockRepository Function()? device,
   Future<void> Function(WidgetTester tester, BrowseApp app)? interact,
 }) async {
   tester.platformDispatcher
@@ -92,6 +97,8 @@ Future<void> expectAppGoldenOnBothPlatforms(
           gallery: gallery?.call(),
           accounts: accounts?.call(),
           sync: sync?.call(),
+          session: session?.call(),
+          device: device?.call(),
         );
         if (interact != null) {
           await interact(tester, app);

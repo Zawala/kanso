@@ -518,6 +518,14 @@ class KansoMarkdownController extends TextEditingController {
     }, _adopt);
   }
 
+  /// Takes a change Rust made apart from the field (an attachment put in
+  /// over the selection), as a command's.
+  void adopt(EditOutcome outcome) {
+    if (!_disposed) {
+      _adopt(outcome);
+    }
+  }
+
   /// Undoes the last step; false when there is none.
   bool undo() {
     return document.undo().fold((error) {

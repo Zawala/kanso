@@ -18,7 +18,9 @@
 //! - [`LockSession`] (`library.locks()`) holds the lock password's keys. A
 //!   locked note's text, snippet, properties, tasks and preview never come
 //!   back while it is closed; only its title and its lock show in a list.
-//!   Keys never cross this edge.
+//!   Keys never cross this edge. Locking a note or a notebook, removing a
+//!   lock, changing the lock password and unlocking with biometrics
+//!   ([`biometrics`]: a ticket the native plugin answers) are here too.
 //! - [`EditorSession`] (`library.edit(id)`) is a note open for editing: the
 //!   text the shell's field shows, with the undo history, the editor's
 //!   commands, the colors of the text, completion, autosave and the
@@ -51,6 +53,10 @@
 //!   can read ([`import::import_sources`], [`import::import_kinds_for`]) and
 //!   opens the files other apps share (`Library::open_documents`). What an
 //!   import writes is announced on [`Library::changes`].
+//! - [`capture`] saves what other apps shared into Kanso: the drops the
+//!   share extension, App Intents and the Android share activity leave in the
+//!   library's `inbox/` folder, each one note in the Inbox. The C entry
+//!   `kanso_capture_inbox` in `mobile/rust` calls it.
 //! - [`diagnostics`] has the version, the TLS check and the panic probe.
 //!
 //! # The edge
@@ -74,8 +80,10 @@ mod approvals;
 mod approver_model;
 pub mod background;
 mod backup;
+pub mod biometrics;
 pub mod boundary;
 mod builtin_themes;
+pub mod capture;
 mod comments_model;
 pub mod diagnostics;
 mod editing;

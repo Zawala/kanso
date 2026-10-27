@@ -28,6 +28,7 @@ class NoteListBar extends StatelessWidget {
     required this.state,
     required this.index,
     this.newNote,
+    this.capture,
     this.titleShown,
     super.key,
   });
@@ -38,6 +39,9 @@ class NoteListBar extends StatelessWidget {
   /// Makes a new note, from a button in the bar; null where the list has a
   /// button afloat over it instead.
   final VoidCallback? newNote;
+
+  /// Offers the camera, photos and PDFs, from holding that button.
+  final VoidCallback? capture;
 
   /// When the title shows, for a list whose large title scrolls with it.
   final ValueListenable<bool>? titleShown;
@@ -71,6 +75,7 @@ class NoteListBar extends StatelessWidget {
     final place = state.place;
     return NoteListTopBar(
       onNewNote: newNote,
+      onNewNoteHeld: capture,
       titleShown: titleShown,
       title: placeTitle(l10n, place, index),
       subtitle: state.status == NoteListStatus.ready

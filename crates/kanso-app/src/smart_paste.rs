@@ -5,22 +5,14 @@
 
 use std::ops::Range;
 
-use kanso_core::links::LINK_SCHEME;
-
 use crate::markdown_edit::Edit;
 
-/// Whether `text` is a single web address.
-pub fn is_url(text: &str) -> bool {
-    let text = text.trim();
-    let rest = text
-        .strip_prefix("https://")
-        .or_else(|| text.strip_prefix("http://"))
-        .or_else(|| text.strip_prefix("mailto:"));
-    rest.is_some_and(|rest| !rest.is_empty() && !rest.contains(char::is_whitespace))
-        || text.starts_with(LINK_SCHEME)
-            && !text.contains(char::is_whitespace)
-            && text.len() > LINK_SCHEME.len()
-}
+// Attaching images, and the address test, live in the engine, which the
+// phones' share sheets use as well.
+pub use kanso_engine::attach::{attach_image, image_markdown, stored_as, too_large};
+pub use kanso_engine::capture::is_url;
+// Shared with the phones' editor, which attaches the same way.
+pub use kanso_engine::edit::block_insert;
 
 /// A web address pasted over selected words on one line makes them a
 /// link: `[words](address)`, with the cursor after it. `None` when the
@@ -113,150 +105,6 @@ pub fn tidy(markdown: &str) -> String {
     out
 }
 
-/// What a pasted or dropped image is stored as: the API's image types as
-/// they are, others converted to PNG.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Stored {
-    /// Kept as it is, with this content type and file extension.
-    AsIs(&'static str, &'static str),
-    /// Decoded and stored as a PNG.
-    Png,
-}
-
-/// How to store an image, from its file extension or format name
-/// (`png`, `jpg`, `tiff`…); `None` when it isn't an image Kanso reads.
-pub fn stored_as(extension: &str) -> Option<Stored> {
-    Some(match extension.to_ascii_lowercase().as_str() {
-        "png" => Stored::AsIs("image/png", "png"),
-        "jpg" | "jpeg" => Stored::AsIs("image/jpeg", "jpg"),
-        "gif" => Stored::AsIs("image/gif", "gif"),
-        "svg" => Stored::AsIs("image/svg+xml", "svg"),
-        "heic" => Stored::AsIs("image/heic", "heic"),
-        "heif" => Stored::AsIs("image/heif", "heif"),
-        "webp" | "bmp" | "tif" | "tiff" | "ico" => Stored::Png,
-        _ => return None,
-    })
-}
-
-/// Stores an image (its bytes, and its extension or format name) as an
-/// attachment, converting what the API doesn't take to PNG. Returns the
-/// attachment's ID (`file:…`), or what to tell the user.
-pub fn attach_image(
-    store: &kanso_store::Store,
-    bytes: &[u8],
-    extension: &str,
-    name: Option<&str>,
-) -> Result<String, String> {
-    use kanso_core::model::MAX_ATTACHMENT_SIZE;
-    use std::borrow::Cow;
-    let Some(kind) = stored_as(extension) else {
-        return Err(
-            "Only images can be attached: PNG, JPEG, GIF, SVG, HEIC, WebP, TIFF or BMP.".into(),
-        );
-    };
-    let (data, content_type, ext) = match kind {
-        Stored::AsIs(content_type, ext) => (Cow::Borrowed(bytes), content_type, ext),
-        Stored::Png => (Cow::Owned(to_png(bytes)?), "image/png", "png"),
-    };
-    if data.len() > MAX_ATTACHMENT_SIZE {
-        return Err(too_large(data.len(), MAX_ATTACHMENT_SIZE));
-    }
-    let stem: String = name
-        .and_then(|n| {
-            std::path::Path::new(n)
-                .file_stem()?
-                .to_str()
-                .map(str::to_owned)
-        })
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "image".into())
-        .chars()
-        .take(100)
-        .collect();
-    use base64::Engine as _;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
-    let doc = serde_json::json!({
-        "name": format!("{stem}.{ext}"),
-        "contentType": content_type,
-        "publicIn": [],
-        "_attachments": {"index": {"content_type": content_type, "data": encoded}},
-    });
-    store
-        .put(
-            kanso_core::DocType::File,
-            doc,
-            kanso_store::Put::Upsert,
-            kanso_store::Origin::Ui,
-        )
-        .map(|written| written.id)
-        .map_err(|err| format!("Couldn't attach the image: {err}"))
-}
-
-/// An image in another format, as a PNG.
-fn to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let image =
-        image::load_from_memory(bytes).map_err(|err| format!("Couldn't read the image: {err}"))?;
-    let mut out = std::io::Cursor::new(Vec::new());
-    image
-        .write_to(&mut out, image::ImageFormat::Png)
-        .map_err(|err| format!("Couldn't convert the image: {err}"))?;
-    Ok(out.into_inner())
-}
-
-/// The Markdown that shows attachment `file_id` (`file:…`).
-pub fn image_markdown(file_id: &str) -> String {
-    format!("![]({LINK_SCHEME}{file_id})")
-}
-
-/// Puts `block` (images, say) over `range` as a paragraph of its own: a
-/// blank line from the text before and after it, so the preview shows it
-/// alone and offers its sizes. The cursor goes after it.
-pub fn block_insert(text: &str, range: Range<usize>, block: &str) -> Edit {
-    let start = range.start.min(text.len());
-    let end = range.end.clamp(start, text.len());
-    let before = &text[..start];
-    let after = &text[end..];
-    let lead = if before.is_empty() || before.ends_with("\n\n") {
-        ""
-    } else if before.ends_with('\n') {
-        "\n"
-    } else {
-        "\n\n"
-    };
-    let trail = if after.is_empty() || after.starts_with("\n\n") {
-        ""
-    } else if after.starts_with('\n') {
-        "\n"
-    } else {
-        "\n\n"
-    };
-    let cursor = start + lead.len() + block.len();
-    Edit {
-        range: start..end,
-        text: format!("{lead}{block}{trail}"),
-        selection: cursor..cursor,
-    }
-}
-
-/// "4.2 MB": a size for a message.
-pub fn megabytes(bytes: usize) -> String {
-    let mb = bytes as f64 / (1024. * 1024.);
-    if mb >= 10. {
-        format!("{mb:.0} MB")
-    } else {
-        format!("{mb:.1} MB")
-    }
-}
-
-/// The notice for an image over the attachment limit.
-pub fn too_large(bytes: usize, limit: usize) -> String {
-    format!(
-        "That image is {}. Attachments can be up to {}.",
-        megabytes(bytes),
-        megabytes(limit)
-    )
-}
-
 /// An `<img>` tag on its own: `<img src="<attachment link>" width="320">`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImgTag {
@@ -336,48 +184,6 @@ mod tests {
     }
 
     #[test]
-    fn blocks_stand_alone() {
-        let image = "![](inkdrop://file:a)";
-        let at = |text: &str, i: usize| block_insert(text, i..i, image).apply(text);
-        assert_eq!(at("", 0), image);
-        assert_eq!(at("words", 5), format!("words\n\n{image}"));
-        assert_eq!(at("words\n", 6), format!("words\n\n{image}"));
-        assert_eq!(at("a b", 1), format!("a\n\n{image}\n\n b"));
-        assert_eq!(at("a\n\nb", 2), format!("a\n\n{image}\n\nb"));
-        let edit = block_insert("ab", 1..1, image);
-        assert_eq!(edit.selection.start, 3 + image.len());
-    }
-
-    proptest! {
-        #![proptest_config(config())]
-        /// The block ends up a paragraph of its own, only newlines are
-        /// added, and the cursor is after it.
-        #[test]
-        fn prop_blocks_are_paragraphs(text in "[a-z\n]{0,12}", i in any::<prop::sample::Index>()) {
-            let image = "![](inkdrop://file:a)";
-            let at = i.index(text.len() + 1);
-            let edit = block_insert(&text, at..at, image);
-            let out = edit.apply(&text);
-            let start = out.find(image).unwrap();
-            let end = start + image.len();
-            prop_assert!(start == 0 || out[..start].ends_with("\n\n"));
-            prop_assert!(end == out.len() || out[end..].starts_with("\n\n"));
-            prop_assert_eq!(edit.selection, end..end);
-            prop_assert_eq!(out.replace(image, "").replace('\n', ""), text.replace('\n', ""));
-        }
-    }
-
-    #[test]
-    fn urls() {
-        assert!(is_url("https://kanso.app"));
-        assert!(is_url("  http://a.b/c?d=e  "));
-        assert!(is_url("inkdrop://note/abc"));
-        assert!(!is_url("https://"));
-        assert!(!is_url("see https://kanso.app"));
-        assert!(!is_url("kanso.app"));
-    }
-
-    #[test]
     fn a_url_over_words_links_them() {
         let edit = link_over_selection("read the docs", 9..13, "https://d.io").unwrap();
         assert_eq!(edit.apply("read the docs"), "read the [docs](https://d.io)");
@@ -414,20 +220,6 @@ mod tests {
     }
 
     #[test]
-    fn image_types() {
-        assert_eq!(stored_as("PNG"), Some(Stored::AsIs("image/png", "png")));
-        assert_eq!(stored_as("jpeg"), Some(Stored::AsIs("image/jpeg", "jpg")));
-        assert_eq!(stored_as("tiff"), Some(Stored::Png));
-        assert_eq!(stored_as("pdf"), None);
-        assert_eq!(image_markdown("file:abc"), "![](inkdrop://file:abc)");
-        assert_eq!(
-            too_large(12 * 1024 * 1024, 10 * 1024 * 1024),
-            "That image is 12 MB. Attachments can be up to 10 MB."
-        );
-        assert_eq!(megabytes(4_404_019), "4.2 MB");
-    }
-
-    #[test]
     fn img_tags() {
         let tag = |src: &str, alt: &str, width| {
             Some(ImgTag {
@@ -447,75 +239,6 @@ mod tests {
         assert_eq!(img_tag("<img src=a.png>"), tag("a.png", "", None));
         assert_eq!(img_tag("<p>x</p>"), None);
         assert_eq!(img_tag("<img data-src=\"a\">"), None);
-    }
-
-    fn store() -> (tempfile::TempDir, kanso_store::Store) {
-        let dir = tempfile::tempdir().unwrap();
-        let store = kanso_store::Store::open(dir.path().join("k.db")).unwrap();
-        (dir, store)
-    }
-
-    /// An image of `w` by `h` pixels encoded as `format`.
-    fn encoded(w: u32, h: u32, seed: u8, format: image::ImageFormat) -> Vec<u8> {
-        let image = image::RgbaImage::from_fn(w, h, |x, y| {
-            image::Rgba([seed.wrapping_add(x as u8), y as u8, seed, 255])
-        });
-        let mut out = std::io::Cursor::new(Vec::new());
-        image::DynamicImage::ImageRgba8(image)
-            .write_to(&mut out, format)
-            .unwrap();
-        out.into_inner()
-    }
-
-    #[test]
-    fn images_become_attachments() {
-        let (_dir, store) = store();
-        let png = encoded(3, 2, 7, image::ImageFormat::Png);
-        let id = attach_image(&store, &png, "png", Some("Screen Shot.png")).unwrap();
-        let (content_type, blob) = store.attachment(&id).unwrap().unwrap();
-        assert_eq!(content_type, "image/png");
-        assert_eq!(blob.data, png);
-        let doc = store.get(&id).unwrap().unwrap();
-        assert_eq!(doc.fields["name"], "Screen Shot.png");
-
-        // TIFF isn't one of the API's types: stored as a PNG of the same picture.
-        let tiff = encoded(4, 5, 9, image::ImageFormat::Tiff);
-        let id = attach_image(&store, &tiff, "tiff", None).unwrap();
-        let (content_type, blob) = store.attachment(&id).unwrap().unwrap();
-        assert_eq!(content_type, "image/png");
-        let back = image::load_from_memory(&blob.data).unwrap().to_rgba8();
-        let original = image::load_from_memory(&tiff).unwrap().to_rgba8();
-        assert_eq!(back, original);
-        assert_eq!(store.get(&id).unwrap().unwrap().fields["name"], "image.png");
-
-        assert!(
-            attach_image(&store, b"%PDF", "pdf", None)
-                .unwrap_err()
-                .contains("Only images")
-        );
-        let big = vec![0u8; 12 * 1024 * 1024 + 1];
-        assert_eq!(
-            attach_image(&store, &big, "png", None).unwrap_err(),
-            "That image is 12 MB. Attachments can be up to 10 MB."
-        );
-    }
-
-    proptest! {
-        #![proptest_config(ProptestConfig { cases: 32, ..config() })]
-
-        /// Round trip: an image in a format Kanso converts comes back as
-        /// the same pixels.
-        #[test]
-        fn prop_converted_images_keep_their_pixels(w in 1u32..12, h in 1u32..12, seed: u8, format in prop::sample::select(vec![
-            (image::ImageFormat::Tiff, "tiff"), (image::ImageFormat::Bmp, "bmp"),
-        ])) {
-            let (_dir, store) = store();
-            let bytes = encoded(w, h, seed, format.0);
-            let id = attach_image(&store, &bytes, format.1, None).unwrap();
-            let (_, blob) = store.attachment(&id).unwrap().unwrap();
-            let back = image::load_from_memory(&blob.data).unwrap().to_rgba8();
-            prop_assert_eq!(back, image::load_from_memory(&bytes).unwrap().to_rgba8());
-        }
     }
 
     proptest! {

@@ -51,6 +51,12 @@
 	<true/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Kanso uses the camera to take a photo for a note.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Kanso adds the photos you choose to your notes.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Kanso uses Face ID to unlock your locked notes.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

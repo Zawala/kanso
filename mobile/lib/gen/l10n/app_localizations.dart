@@ -3927,6 +3927,504 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Dismiss'**
   String get sharedProblemsDismiss;
+
+  /// Shown while today's daily note is found or made.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening today’s note'**
+  String get dailyNoteLoading;
+
+  /// The title of the card shown when today's daily note could not be opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Today’s note didn’t open'**
+  String get dailyNoteFailedTitle;
+
+  /// The message of the card shown when today's daily note could not be opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong opening today’s note on this phone. Try again.'**
+  String get dailyNoteFailedMessage;
+
+  /// The row of the capture sheet that takes a photo with the camera and saves or attaches it.
+  ///
+  /// In en, this message translates to:
+  /// **'Take photo'**
+  String get captureTakePhoto;
+
+  /// The row of the capture sheet that picks photos from the phone's library.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose photos'**
+  String get captureChoosePhotos;
+
+  /// The row of the capture sheet that picks PDFs from the phone's files.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach PDF'**
+  String get captureAttachPdf;
+
+  /// The editor's attach sheet: writes an image's Markdown to fill in by hand.
+  ///
+  /// In en, this message translates to:
+  /// **'Image link'**
+  String get captureImageLink;
+
+  /// Said when a picked file couldn't be attached for a reason the library didn't put in words.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t attach that file.'**
+  String get captureAttachFailed;
+
+  /// Says how a locked note is opened and when it locks.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock it to read and edit. It locks again after {minutes} minutes or when you leave Kanso.'**
+  String lockedMessage(int minutes);
+
+  /// Unlocks a locked note with a biometric; method is Face ID, Touch ID or fingerprint.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock with {method}'**
+  String lockedUnlockWith(String method);
+
+  /// Unlocks a note with the lock password instead.
+  ///
+  /// In en, this message translates to:
+  /// **'Use password'**
+  String get lockedUsePassword;
+
+  /// Said when a biometric check failed.
+  ///
+  /// In en, this message translates to:
+  /// **'{method} didn\'t work. Use your lock password instead.'**
+  String lockedBiometricFailed(String method);
+
+  /// Said when the enrolled biometrics changed.
+  ///
+  /// In en, this message translates to:
+  /// **'Your biometrics changed, so {method} no longer opens locked notes. Use your lock password, then turn {method} on again in Settings.'**
+  String lockedInvalidated(String method);
+
+  /// The name of Face ID.
+  ///
+  /// In en, this message translates to:
+  /// **'Face ID'**
+  String get biometricFaceId;
+
+  /// The name of Touch ID.
+  ///
+  /// In en, this message translates to:
+  /// **'Touch ID'**
+  String get biometricTouchId;
+
+  /// The name of Optic ID.
+  ///
+  /// In en, this message translates to:
+  /// **'Optic ID'**
+  String get biometricOpticId;
+
+  /// The name of fingerprint unlock on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'fingerprint'**
+  String get biometricFingerprint;
+
+  /// The name of face unlock on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'face unlock'**
+  String get biometricFace;
+
+  /// The name of iris unlock on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'iris unlock'**
+  String get biometricIris;
+
+  /// The generic name of biometric unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'biometrics'**
+  String get biometricGeneric;
+
+  /// The text of the biometric prompt that unlocks notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock your locked notes'**
+  String get biometricReasonUnlock;
+
+  /// The text of the biometric prompt that turns biometric unlock on.
+  ///
+  /// In en, this message translates to:
+  /// **'Use it to unlock your locked notes on this device'**
+  String get biometricReasonEnroll;
+
+  /// The label of the lock password field.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock password'**
+  String get lockFieldPassword;
+
+  /// The hint under a new lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'At least 8 characters.'**
+  String get lockFieldPasswordHint;
+
+  /// The label of the field that repeats a password.
+  ///
+  /// In en, this message translates to:
+  /// **'Type it again'**
+  String get lockFieldAgain;
+
+  /// The label of the field for the current lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Current lock password'**
+  String get lockFieldCurrent;
+
+  /// The label of the field for the new lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'New lock password'**
+  String get lockFieldNew;
+
+  /// Closes a lock sheet without doing anything.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get lockCancel;
+
+  /// Said when the lock password is wrong.
+  ///
+  /// In en, this message translates to:
+  /// **'That isn\'t the lock password.'**
+  String get lockWrongPassword;
+
+  /// Said when the two typed passwords differ.
+  ///
+  /// In en, this message translates to:
+  /// **'The passwords don\'t match.'**
+  String get lockMismatch;
+
+  /// Said when the two typed new passwords differ.
+  ///
+  /// In en, this message translates to:
+  /// **'The new passwords don\'t match.'**
+  String get lockNewMismatch;
+
+  /// Said when a new lock password is too short.
+  ///
+  /// In en, this message translates to:
+  /// **'The lock password needs at least 8 characters.'**
+  String get lockTooShort;
+
+  /// Said when a lock action failed for a reason with no better words.
+  ///
+  /// In en, this message translates to:
+  /// **'That didn\'t work. Try again.'**
+  String get lockActionFailed;
+
+  /// The title of the sheet that asks for the lock password to open a note.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock note'**
+  String get lockUnlockNoteTitle;
+
+  /// The title of the sheet that asks for the lock password to open a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock notebook'**
+  String get lockUnlockNotebookTitle;
+
+  /// Says why a notebook asks for the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'“{name}” is locked. Its notes open with your lock password.'**
+  String lockUnlockNotebookMessage(String name);
+
+  /// Opens the locked notes with the password typed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get lockUnlockButton;
+
+  /// The title of the sheet that makes the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a lock password'**
+  String get lockSetTitle;
+
+  /// Explains the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked notes open with this password, on this device and any other that syncs with it. Kanso can\'t recover it: forget it, and the notes locked with it can\'t be read.'**
+  String get lockSetMessage;
+
+  /// Sets the lock password and locks.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock'**
+  String get lockSetButton;
+
+  /// The note menu action that locks the note.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock note…'**
+  String get lockNoteMenu;
+
+  /// The title of the sheet that asks for the lock password to lock a note.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock note'**
+  String get lockNoteAskTitle;
+
+  /// The title of the sheet that confirms locking a note.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock this note?'**
+  String get lockNoteConfirmTitle;
+
+  /// Explains what locking a note does.
+  ///
+  /// In en, this message translates to:
+  /// **'Its text is sealed and its earlier versions are deleted. It stays open until the locked notes lock again.'**
+  String get lockNoteConfirmMessage;
+
+  /// The title of the sheet that asks for the lock password to lock a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock notebook'**
+  String get lockNotebookAskTitle;
+
+  /// The title of the sheet that confirms locking a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock this notebook?'**
+  String get lockNotebookConfirmTitle;
+
+  /// Explains what locking a notebook does.
+  ///
+  /// In en, this message translates to:
+  /// **'Every note in it is sealed, and new notes added to it are sealed too.'**
+  String get lockNotebookConfirmMessage;
+
+  /// The notebook menu action that locks the notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock Notebook…'**
+  String get lockNotebookMenu;
+
+  /// The note menu action that removes the lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove lock…'**
+  String get lockRemoveNoteMenu;
+
+  /// The notebook menu action that removes the lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove Notebook Lock…'**
+  String get lockRemoveNotebookMenu;
+
+  /// The notebook menu action that opens a locked notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock notebook…'**
+  String get lockUnlockNotebookMenu;
+
+  /// Closes every locked note.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock notes now'**
+  String get lockNowMenu;
+
+  /// The title of the sheet that confirms removing a note's lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the lock?'**
+  String get lockRemoveNoteTitle;
+
+  /// Explains what removing a note's lock does.
+  ///
+  /// In en, this message translates to:
+  /// **'The note\'s text is kept as plain text again: search, backlinks, tasks and the local API can read it.'**
+  String get lockRemoveNoteMessage;
+
+  /// The title of the sheet that confirms removing a notebook's lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the notebook\'s lock?'**
+  String get lockRemoveNotebookTitle;
+
+  /// Explains what removing a notebook's lock does.
+  ///
+  /// In en, this message translates to:
+  /// **'The notes in it are kept as plain text again: search, backlinks, tasks and the local API can read them.'**
+  String get lockRemoveNotebookMessage;
+
+  /// Removes the lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove Lock'**
+  String get lockRemoveButton;
+
+  /// Said when a lock can't be removed because the notes are closed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock the notes first, then try again.'**
+  String get lockRemoveClosed;
+
+  /// What the note's menu button does.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get lockMoreMenu;
+
+  /// The title of the note's menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Note actions'**
+  String get lockMoreTitle;
+
+  /// The title of the notebook's menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Notebook actions'**
+  String get lockNotebookMenuTitle;
+
+  /// What a screen reader says of a locked note.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked'**
+  String get noteRowLocked;
+
+  /// What a screen reader says of a locked note that is open.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlocked'**
+  String get noteRowUnlocked;
+
+  /// The line a locked note's row shows while it is open.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlocked'**
+  String get noteListUnlocked;
+
+  /// A section of settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked notes'**
+  String get settingsLockedNotes;
+
+  /// The switch to unlock notes with a biometric.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock with {method}'**
+  String settingsUnlockWith(String method);
+
+  /// How long until the locked notes lock again.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock after'**
+  String get settingsLockAfter;
+
+  /// A number of minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} minutes'**
+  String settingsTenMinutes(int minutes);
+
+  /// Opens the sheet that changes the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Change lock password…'**
+  String get settingsChangeLockPassword;
+
+  /// Closes every locked note.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock notes now'**
+  String get settingsLockNow;
+
+  /// Said when biometrics are turned on while the notes are closed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock a locked note with your lock password first, then turn on {method}.'**
+  String settingsBiometricsClosed(String method);
+
+  /// Said after biometric unlock was turned on.
+  ///
+  /// In en, this message translates to:
+  /// **'{method} now unlocks your locked notes on this device.'**
+  String settingsBiometricsOn(String method);
+
+  /// Said after biometric unlock was turned off.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked notes open with the lock password again on this device.'**
+  String get settingsBiometricsOff;
+
+  /// Said when biometric unlock could not be turned on.
+  ///
+  /// In en, this message translates to:
+  /// **'{method} could not be turned on.'**
+  String settingsBiometricsFailed(String method);
+
+  /// The title of the sheet that changes the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Change lock password'**
+  String get lockChangeTitle;
+
+  /// Explains changing the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Every locked note is sealed again with the new password. Kanso can\'t recover it.'**
+  String get lockChangeMessage;
+
+  /// Changes the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get lockChangeButton;
+
+  /// Says how many locked items kept the old password.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 locked note or notebook didn\'t open with the current password and kept it.} other{{count} locked notes or notebooks didn\'t open with the current password and kept it.}}'**
+  String lockChangeKept(int count);
+
+  /// The title of the offer to turn on biometric unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Use {method}?'**
+  String lockOfferTitle(String method);
+
+  /// The offer to turn on biometric unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Use {method} to unlock your locked notes on this device? The password still works, and other devices need it.'**
+  String lockOfferMessage(String method);
+
+  /// Accepts the offer of biometric unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Use {method}'**
+  String lockOfferAccept(String method);
+
+  /// Declines the offer of biometric unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get lockOfferDecline;
+
+  /// Closes a lock sheet that has told its result.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get lockDone;
 }
 
 class _AppLocalizationsDelegate

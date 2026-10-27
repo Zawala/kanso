@@ -26,6 +26,9 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<AttachmentFile> attachment({required String id});
 
+  /// Saves something shared from inside the app as a note in the Inbox.
+  Future<CaptureOutcome> capture({required Share share});
+
   Future<Changed> change({
     required List<String> ids,
     required NoteChange change,
@@ -95,6 +98,11 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required String body,
   });
 
+  /// Saves every finished shared item waiting in the `inbox` folder as a
+  /// note in the Inbox and removes the folders saved (see
+  /// `mobile/docs/capture.md`).
+  Future<DropsSaved> saveDrops({required String inbox});
+
   Future<List<Hit>> search({
     required String text,
     required SearchScope scope,
@@ -117,6 +125,10 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// The Tasks place: open tasks across the notes, in groups; locked
   /// notes are left out.
   Future<TaskBoard> tasks({required TaskListQuery query});
+
+  /// The ID of today's daily note at the phone's local time `now`, made
+  /// if it isn't there.
+  Future<String> todayNote({required LocalTime now});
 
   /// Ticks (or clears) the `index`-th task box of a note drawn at
   /// `base_rev`.
