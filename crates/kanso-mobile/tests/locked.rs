@@ -295,7 +295,7 @@ proptest! {
                     };
                     // Pinning, trashing and moving between unlocked
                     // notebooks are allowed on a locked note, open or not.
-                    let written = library.change(vec![ids[*i].clone()], change).unwrap();
+                    let written = library.change(vec![ids[*i].clone()], change).unwrap().count;
                     if *kind == 1 {
                         trashed[*i] = true;
                     }
