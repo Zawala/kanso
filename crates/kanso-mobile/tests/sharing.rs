@@ -140,17 +140,18 @@ fn a_note_is_shared_accepted_edited_and_merged_back() {
     });
     let note_id = note(&alice.library, "Plan", "Alpha");
 
-    // Bob must have arrived (published his keys) before he can be found.
-    assert!(matches!(
-        alice
-            .shared()
-            .share(note_id.clone(), vec![("bob".into(), ShareRole::Editor)]),
-        Err(KansoError::Invalid { message }) if message.contains("bob")
-    ));
+    // Signing in published Bob's keys (off the sign-in's thread): he can be
+    // found before he has synced anything.
+    let mut found = None;
+    eventually("bob can be found", || {
+        found = match alice.shared().lookup_person("bob".into()).unwrap() {
+            PersonLookup::Found(person) => Some(person),
+            _ => None,
+        };
+        found.is_some()
+    });
+    let person = found.unwrap();
     assert_eq!(bob.arrive().invitations, 0);
-    let PersonLookup::Found(person) = alice.shared().lookup_person("bob".into()).unwrap() else {
-        panic!("bob's keys are pinned for the first time");
-    };
     assert_eq!(person.username, "bob");
     assert!(!person.verified && !person.fingerprint.is_empty());
     alice.shared().verify_person(person.account_id).unwrap();
@@ -624,4 +625,208 @@ fn an_account_sync_in_front_brings_the_shared_notes_with_it() {
     let event = rx.recv_timeout(Duration::from_secs(10)).unwrap();
     assert_eq!(event.invitations, 1);
     sync.set_foreground(false);
+}
+
+/// Types `text` at the end of the session's visible text, leaving the caret
+/// after it.
+fn type_at_end(session: &kanso_mobile::EditorSession, text: &str) {
+    let snapshot = session.snapshot().unwrap();
+    let end = snapshot.text.encode_utf16().count() as u32;
+    let after = end + text.encode_utf16().count() as u32;
+    session
+        .apply(kanso_mobile::TextChange {
+            base_version: snapshot.version,
+            start: end,
+            end,
+            text: text.into(),
+            selection: kanso_mobile::Range16 {
+                start: after,
+                end: after,
+            },
+            composing: None,
+        })
+        .unwrap();
+}
+
+/// Ticks `session`'s autosave until `check` holds of its snapshot.
+fn ticked_until(
+    session: &kanso_mobile::EditorSession,
+    what: &str,
+    mut check: impl FnMut(&kanso_mobile::EditorSnapshot) -> bool,
+) -> kanso_mobile::EditorSnapshot {
+    let until = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < until {
+        session.tick(Instant::now() + Duration::from_secs(5));
+        let snapshot = session.snapshot().unwrap();
+        if check(&snapshot) {
+            return snapshot;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    panic!("never happened: {what}");
+}
+
+// no-prop-test: two people typing at once through an open editor, waiting
+// for the room; the merge's own properties (rebase, remap) are in
+// kanso-collab.
+#[test]
+fn typing_in_an_open_shared_note_merges_with_the_others_and_keeps_the_caret() {
+    let (_world, alice, bob, note_id, bobs) = shared_pair(ShareRole::Editor);
+    alice.shared().open_live(note_id.clone()).unwrap();
+    bob.shared().open_live(bobs.clone()).unwrap();
+    let session = bob.library.edit(&bobs).unwrap();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    {
+        let events = events.clone();
+        session.events(move |event| {
+            events.lock().unwrap().push(event);
+            true
+        });
+    }
+
+    // Bob types at the end; the room takes it when his typing is saved.
+    type_at_end(&session, " Bob");
+    ticked_until(&session, "Bob's typing is merged", |s| {
+        matches!(s.save, kanso_mobile::SaveState::Saved { .. })
+    });
+    eventually("Alice sees Bob's typing", || {
+        alice.body(&note_id).as_deref() == Some("Alpha Bob")
+    });
+
+    // Alice writes at the start while Bob has typed more and not saved.
+    alice.edit(&note_id, "Hi. Alpha Bob");
+    type_at_end(&session, "!");
+    let merged = ticked_until(&session, "Alice's words reach Bob's editor", |s| {
+        s.text == "Hi. Alpha Bob!"
+    });
+    // Bob's caret stays after his "!", four characters further on.
+    let end = "Hi. Alpha Bob!".encode_utf16().count() as u32;
+    assert_eq!(merged.selection, kanso_mobile::Range16 { start: end, end });
+    // Nobody is asked to choose between versions.
+    assert!(
+        !events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| matches!(event, kanso_mobile::EditorEvent::Incoming { .. })),
+        "a live merge is never a conflict"
+    );
+    eventually("Alice gets Bob's \"!\" too", || {
+        alice.body(&note_id).as_deref() == Some("Hi. Alpha Bob!")
+    });
+    assert_eq!(bob.body(&bobs).as_deref(), Some("Hi. Alpha Bob!"));
+}
+
+// no-prop-test: a room's connection and end, waited for; the status's rows
+// are read straight from the engine, whose properties are in kanso-collab.
+#[test]
+fn the_page_says_the_role_whether_the_room_is_live_and_when_it_ends() {
+    let (_world, alice, bob, note_id, bobs) = shared_pair(ShareRole::Viewer);
+    let loose = note(&bob.library, "Loose", "not shared");
+    assert_eq!(bob.shared().live_status(loose).unwrap(), None);
+
+    // Not open: the role, and nothing live.
+    let status = bob.shared().live_status(bobs.clone()).unwrap().unwrap();
+    assert_eq!(status.role, ShareRole::Viewer);
+    assert!(!status.connected && !status.ended && !status.near_limit);
+    assert!(status.problems.is_empty());
+
+    // Open: the room connects, and says so.
+    let (tx, rx) = mpsc::channel();
+    bob.shared().events(move |event| tx.send(event).is_ok());
+    bob.shared().open_live(bobs.clone()).unwrap();
+    eventually("Bob's room connects", || {
+        bob.shared()
+            .live_status(bobs.clone())
+            .unwrap()
+            .is_some_and(|s| s.connected)
+    });
+    let told = rx.try_iter().any(|event| event.live_notes.contains(&bobs));
+    assert!(told, "the connection was told as a live note");
+    let owner = alice
+        .shared()
+        .live_status(note_id.clone())
+        .unwrap()
+        .unwrap();
+    assert_eq!(owner.role, ShareRole::Owner);
+
+    // Alice stops sharing: Bob's open note is a private copy now.
+    alice.shared().stop(note_id).unwrap();
+    eventually("Bob's room ends", || {
+        bob.shared()
+            .live_status(bobs.clone())
+            .unwrap()
+            .is_some_and(|s| s.ended && !s.connected)
+    });
+}
+
+// no-prop-test: one note grown past its size limit through the room; the
+// limit's arithmetic is `SizeUse::is_near`, tested in kanso-collab.
+#[test]
+fn a_note_near_its_limit_says_so_and_a_refused_edit_is_a_problem() {
+    use kanso_collab::engine::STATE_LIMIT;
+
+    let (_world, alice, _bob, note_id, _bobs) = shared_pair(ShareRole::Editor);
+    alice.shared().open_live(note_id.clone()).unwrap();
+    let status = || {
+        alice
+            .shared()
+            .live_status(note_id.clone())
+            .unwrap()
+            .unwrap()
+    };
+    assert!(!status().near_limit);
+
+    let near = "😀".repeat(1_030_000);
+    assert!(near.len() * 5 >= STATE_LIMIT * 4 && near.len() < STATE_LIMIT);
+    alice.edit(&note_id, &near);
+    eventually("the note is near its limit", || status().near_limit);
+    assert!(status().problems.is_empty());
+
+    let past = format!("{near}{}", "😀".repeat(18_000));
+    alice.edit(&note_id, &past);
+    eventually("the refused edit is a problem", || {
+        status().problems.iter().any(|p| p.contains("size limit"))
+    });
+    alice.shared().dismiss_problems(note_id.clone()).unwrap();
+    assert!(status().problems.is_empty());
+}
+
+// no-prop-test: two open editors and the presence between them, waited
+// for; where a caret lands is `visible_units`, with its property in
+// editing.rs.
+#[test]
+fn each_editor_shows_where_the_others_caret_is() {
+    let (_world, alice, bob, note_id, bobs) = shared_pair(ShareRole::Editor);
+    alice.shared().open_live(note_id.clone()).unwrap();
+    bob.shared().open_live(bobs.clone()).unwrap();
+    let alices = alice.library.edit(&note_id).unwrap();
+    let bobs_session = bob.library.edit(&bobs).unwrap();
+    assert!(bobs_session.remote_cursors().unwrap().is_empty());
+
+    // Alice selects "lph".
+    alices
+        .select(kanso_mobile::Range16 { start: 1, end: 4 }, false)
+        .unwrap();
+    eventually("Bob sees Alice's selection", || {
+        bobs_session
+            .remote_cursors()
+            .unwrap()
+            .iter()
+            .any(|c| c.name == "alice" && c.start == 1 && c.end == 4 && c.caret == 4)
+    });
+    let mark = bobs_session.remote_cursors().unwrap().remove(0);
+    assert_ne!(mark.light, mark.dark, "a colour for each page");
+
+    // She moves her caret to the start.
+    alices
+        .select(kanso_mobile::Range16 { start: 0, end: 0 }, false)
+        .unwrap();
+    eventually("Bob sees her caret move", || {
+        bobs_session
+            .remote_cursors()
+            .unwrap()
+            .iter()
+            .any(|c| c.name == "alice" && c.caret == 0 && c.start == c.end)
+    });
 }

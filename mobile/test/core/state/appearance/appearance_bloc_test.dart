@@ -2,6 +2,8 @@
 // Created 2026-10-25.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'dart:async';
+
 import 'package:bloc_test/bloc_test.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart' show ThemeMode;
@@ -57,6 +59,9 @@ void main() {
     preferences = MockPreferencesRepository();
     renderer = MockRendererRepository();
     gallery = MockGalleryRepository();
+    when(
+      () => gallery.themeChanges(),
+    ).thenAnswer((_) => const Stream<String>.empty());
     // No theme is installed from the gallery unless a test says so.
     when(() => gallery.installedThemeTokens(any())).thenAnswer(
       (_) async => const Left<ApplicationError, ThemeTokens>(
@@ -160,7 +165,9 @@ void main() {
       verify: (bloc) {
         expect(bloc.state.themeMode, ThemeMode.dark);
         verify(() => renderer.builtinThemeTokens('nord')).called(1);
-        verifyNever(() => renderer.builtinThemeTokens('github-light'));
+        // The slot not shown is read too, to know it is still there; it is
+        // read once and kept.
+        verify(() => renderer.builtinThemeTokens('github-light')).called(1);
       },
     );
 
@@ -179,23 +186,6 @@ void main() {
           light: _github,
           dark: _nord,
           status: AppearanceStatus.ready,
-        ),
-      ],
-    );
-
-    blocTest<AppearanceBloc, AppearanceState>(
-      'started with a theme that is gone shows the Kanso one and says failed',
-      setUp: () {
-        saved = const Preferences(
-          themeSelection: ThemeSelection(light: 'gone'),
-        );
-      },
-      build: build,
-      act: (bloc) => bloc.add(const AppearanceEvent.started()),
-      expect: () => <AppearanceState>[
-        AppearanceState(
-          selection: saved.themeSelection,
-          status: AppearanceStatus.failed,
         ),
       ],
     );
@@ -672,12 +662,108 @@ void main() {
       );
 
       blocTest<AppearanceBloc, AppearanceState>(
+        'a removed theme in a slot that is not showing goes back to Kanso’s '
+        'own too, so it is not back when the system’s appearance changes',
+        // Following the system shows the light and dark slots; the fixed
+        // one, for when following stops, holds the removed theme.
+        seed: () => const AppearanceState(
+          selection: ThemeSelection(ui: 'dusk'),
+        ),
+        setUp: () {
+          when(() => gallery.installedThemeTokens('dusk')).thenAnswer(
+            (_) async => const Left<ApplicationError, ThemeTokens>(
+              ApplicationError.notFound(message: 'Removed.'),
+            ),
+          );
+        },
+        build: build,
+        act: (bloc) => bloc.add(const AppearanceEvent.themeChanged('dusk')),
+        verify: (bloc) {
+          expect(bloc.state.selection, const ThemeSelection());
+          expect(saved.themeSelection, const ThemeSelection());
+        },
+      );
+
+      test('a theme the gallery reports changed, wherever it was changed, '
+          'reaches the app', () async {
+        final changes = StreamController<String>.broadcast();
+        addTearDown(changes.close);
+        when(() => gallery.themeChanges()).thenAnswer((_) => changes.stream);
+        when(() => gallery.installedThemeTokens('dusk')).thenAnswer(
+          (_) async => const Left<ApplicationError, ThemeTokens>(
+            ApplicationError.notFound(message: 'Withdrawn.'),
+          ),
+        );
+        saved = const Preferences(
+          themeSelection: ThemeSelection(followSystem: false, ui: 'nord'),
+        );
+        final bloc = build()..add(const AppearanceEvent.started());
+        addTearDown(bloc.close);
+        await bloc.stream.firstWhere(
+          (state) => state.status == AppearanceStatus.ready,
+        );
+        bloc.add(const AppearanceEvent.themePicked('nord', dark: true));
+        // The catalog withdrew a theme in use, and nobody had the picker
+        // open: the gallery alone says so.
+        when(() => renderer.builtinThemeTokens('nord')).thenAnswer(
+          (_) async => const Left<ApplicationError, ThemeTokens>(
+            ApplicationError.notFound(message: 'Gone.'),
+          ),
+        );
+        changes.add('nord');
+        await bloc.stream.firstWhere(
+          (state) => state.selection.ui == ThemeSelection.kansoDark,
+        );
+        expect(saved.themeSelection.ui, ThemeSelection.kansoDark);
+      });
+
+      test('stops listening to the gallery once it is closed', () async {
+        final changes = StreamController<String>.broadcast();
+        addTearDown(changes.close);
+        when(() => gallery.themeChanges()).thenAnswer((_) => changes.stream);
+        final bloc = build();
+        expect(changes.hasListener, isTrue);
+        await bloc.close();
+        expect(changes.hasListener, isFalse);
+      });
+
+      blocTest<AppearanceBloc, AppearanceState>(
         'a theme that is not in use changing changes nothing',
         build: build,
         act: (bloc) => bloc.add(const AppearanceEvent.themeChanged('dusk')),
         expect: () => <AppearanceState>[],
         verify: (_) => verifyNever(() => preferences.update(any())),
       );
+    });
+
+    test('a saved theme that cannot be read at start is Kanso’s own from '
+        'then on, in every slot that held it, and that is saved', () async {
+      saved = const Preferences(
+        themeSelection: ThemeSelection(ui: 'gone', light: 'gone'),
+      );
+      final bloc = build()..add(const AppearanceEvent.started());
+      addTearDown(bloc.close);
+      final ready = await bloc.stream.firstWhere(
+        (state) => state.status != AppearanceStatus.loading,
+      );
+      expect(ready.status, AppearanceStatus.ready);
+      expect(ready.selection, const ThemeSelection());
+      expect(ready.light, KansoPalette.kansoLight);
+      await Future<void>.delayed(Duration.zero);
+      expect(saved.themeSelection, const ThemeSelection());
+    });
+
+    test('a start whose themes all read saves nothing', () async {
+      saved = const Preferences(
+        themeSelection: ThemeSelection(followSystem: false, ui: 'nord'),
+      );
+      final bloc = build()..add(const AppearanceEvent.started());
+      addTearDown(bloc.close);
+      await bloc.stream.firstWhere(
+        (state) => state.status != AppearanceStatus.loading,
+      );
+      await Future<void>.delayed(Duration.zero);
+      verifyNever(() => preferences.update(any()));
     });
 
     test('does not touch what it does not own in the preferences', () async {

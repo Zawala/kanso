@@ -59,6 +59,57 @@ void main() {
       ],
     );
 
+    test('an invitation accepted while a read is on its way does not come '
+        'back with that read', () async {
+      final late = Completer<Either<ApplicationError, List<InvitationRow>>>();
+      var reads = 0;
+      when(shared.invitations).thenAnswer((_) {
+        reads++;
+        return reads == 1
+            ? Future<Either<ApplicationError, List<InvitationRow>>>.value(
+                _ok(<InvitationRow>[first, second]),
+              )
+            : late.future;
+      });
+      when(() => shared.accept('s_1')).thenAnswer((_) async => _ok('n_1'));
+      final bloc = build()..add(const InvitationsEvent.started());
+      addTearDown(bloc.close);
+      await settle();
+      // A sync's news starts a read; the person accepts before it answers.
+      bloc.add(const InvitationsEvent.refreshed());
+      await settle();
+      bloc.add(const InvitationsEvent.accepted('s_1'));
+      await settle();
+      expect(bloc.state.invitations, <InvitationRow>[second]);
+      late.complete(_ok(<InvitationRow>[first, second]));
+      await settle();
+      expect(bloc.state.invitations, <InvitationRow>[second]);
+    });
+
+    test('nor does one declined', () async {
+      final late = Completer<Either<ApplicationError, List<InvitationRow>>>();
+      var reads = 0;
+      when(shared.invitations).thenAnswer((_) {
+        reads++;
+        return reads == 1
+            ? Future<Either<ApplicationError, List<InvitationRow>>>.value(
+                _ok(<InvitationRow>[first, second]),
+              )
+            : late.future;
+      });
+      when(() => shared.decline('s_2')).thenAnswer((_) async => _ok(unit));
+      final bloc = build()..add(const InvitationsEvent.started());
+      addTearDown(bloc.close);
+      await settle();
+      bloc.add(const InvitationsEvent.refreshed());
+      await settle();
+      bloc.add(const InvitationsEvent.declined('s_2'));
+      await settle();
+      late.complete(_ok(<InvitationRow>[first, second]));
+      await settle();
+      expect(bloc.state.invitations, <InvitationRow>[first]);
+    });
+
     blocTest<InvitationsBloc, InvitationsState>(
       'reads them again each time a sync of shared notes reports news',
       setUp: () {
@@ -77,6 +128,7 @@ void main() {
             noteIds: <String>[],
             invitations: 1,
             commentNotes: <String>[],
+            liveNotes: <String>[],
           ),
         );
         await settle();

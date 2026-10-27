@@ -16,6 +16,7 @@ import '../../../helpers/fake_editor_document.dart';
 Future<(FakeEditorDocument, List<LinkTarget>)> _pump(
   WidgetTester tester, {
   LinkTarget? link,
+  VoidCallback? onComment,
 }) async {
   tester.view
     ..physicalSize = const Size(393, 700)
@@ -46,6 +47,7 @@ Future<(FakeEditorDocument, List<LinkTarget>)> _pump(
             state: state,
             document: document,
             onOpen: opened.add,
+            onComment: onComment,
           ),
         ),
       ),
@@ -82,6 +84,24 @@ void main() {
       await _pump(tester);
       expect(find.text('Open link'), findsNothing);
       expect(find.text('Select All'), findsOneWidget);
+    });
+
+    testWidgets('offers Comment on a selection where one may comment', (
+      tester,
+    ) async {
+      var asked = 0;
+      await _pump(tester, onComment: () => asked++);
+      expect(find.text('Comment'), findsOneWidget);
+      await tester.tap(find.text('Comment'));
+      await tester.pump();
+      expect(asked, 1);
+      // The menu closes for the sheet.
+      expect(find.text('Comment'), findsNothing);
+    });
+
+    testWidgets('has no Comment where one may not comment', (tester) async {
+      await _pump(tester);
+      expect(find.text('Comment'), findsNothing);
     });
 
     testWidgets('a link that leads nowhere yet is opened too', (tester) async {

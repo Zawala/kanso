@@ -24,7 +24,9 @@ part 'invitations_state.dart';
 ///
 /// The invitations are read when the app starts and again each time a sync
 /// of shared notes reports news. A note's title is sealed until it is
-/// accepted, so an invitation names only who it is from.
+/// accepted, so an invitation names only who it is from. One that was
+/// accepted or declined here is not shown again, even by a read that began
+/// before it was answered.
 @injectable
 class InvitationsBloc extends Bloc<InvitationsEvent, InvitationsState> {
   InvitationsBloc(this._shared) : super(const InvitationsState()) {
@@ -35,6 +37,9 @@ class InvitationsBloc extends Bloc<InvitationsEvent, InvitationsState> {
   }
 
   final SharedNotesRepository _shared;
+
+  /// The invitations accepted or declined here.
+  final Set<String> _answered = <String>{};
 
   Future<void> _onStarted(
     InvitationsStartedEvent event,
@@ -72,7 +77,10 @@ class InvitationsBloc extends Bloc<InvitationsEvent, InvitationsState> {
         },
         (invitations) => state.copyWith(
           status: LoadStatus.ready,
-          invitations: invitations,
+          invitations: <InvitationRow>[
+            for (final row in invitations)
+              if (!_answered.contains(row.shareId)) row,
+          ],
           signedOut: false,
           problem: null,
         ),
@@ -99,14 +107,17 @@ class InvitationsBloc extends Bloc<InvitationsEvent, InvitationsState> {
       accepted.fold(
         (error) =>
             state.copyWith(working: working, problem: shareProblemOf(error)),
-        (noteId) => state.copyWith(
-          working: working,
-          opened: noteId,
-          invitations: <InvitationRow>[
-            for (final row in state.invitations)
-              if (row.shareId != event.shareId) row,
-          ],
-        ),
+        (noteId) {
+          _answered.add(event.shareId);
+          return state.copyWith(
+            working: working,
+            opened: noteId,
+            invitations: <InvitationRow>[
+              for (final row in state.invitations)
+                if (row.shareId != event.shareId) row,
+            ],
+          );
+        },
       ),
     );
   }
@@ -130,13 +141,16 @@ class InvitationsBloc extends Bloc<InvitationsEvent, InvitationsState> {
       declined.fold(
         (error) =>
             state.copyWith(working: working, problem: shareProblemOf(error)),
-        (_) => state.copyWith(
-          working: working,
-          invitations: <InvitationRow>[
-            for (final row in state.invitations)
-              if (row.shareId != event.shareId) row,
-          ],
-        ),
+        (_) {
+          _answered.add(event.shareId);
+          return state.copyWith(
+            working: working,
+            invitations: <InvitationRow>[
+              for (final row in state.invitations)
+                if (row.shareId != event.shareId) row,
+            ],
+          );
+        },
       ),
     );
   }

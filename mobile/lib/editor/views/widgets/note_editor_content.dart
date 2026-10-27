@@ -2,6 +2,8 @@
 // Created 2026-10-26.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -11,8 +13,12 @@ import '../../../core/bridge/api/types.dart' hide EditorEvent;
 import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/browse_location.dart';
+import '../../../core/utils/context_extensions.dart';
 import '../../../note/models/data/note_mode.dart';
 import '../../../note/state/note/note_bloc.dart';
+import '../../../sharing/state/comments/comments_bloc.dart';
+import '../../../sharing/state/shared_note_status/shared_note_status_bloc.dart';
+import '../../../sharing/views/widgets/comment_compose_sheet.dart';
 import '../../../shell/state/note_creation/note_creation_bloc.dart';
 import '../../models/data/editor_destination.dart';
 import '../../models/data/flush_reason.dart';
@@ -30,6 +36,7 @@ import 'link_context_menu.dart';
 import 'markdown_editor.dart';
 import 'outside_text.dart';
 import 'properties_section.dart';
+import 'remote_carets.dart';
 
 /// The open note's editor: the strips for a change made elsewhere or a
 /// failed save, the title, the properties, and the text, in one page that
@@ -90,6 +97,16 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
   late final AppLifecycleListener lifecycle;
   EditorContext? lastContext;
 
+  /// The note's comments, where the page has them.
+  CommentsBloc? comments;
+
+  /// What the page says of the note's sharing, where it has that.
+  SharedNoteStatusBloc? status;
+
+  /// Whether the note is shared with this account to view or comment on
+  /// only: its title, properties and text are for reading.
+  bool readOnly = false;
+
   // Keeping the place on the screen when the window moves: where in the
   // note, and where on the screen, the page was anchored before it did.
   final Key headerKey = const ValueKey<String>('editor header');
@@ -104,6 +121,17 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
     super.initState();
     editor = context.read<EditorBloc>();
     note = context.read<NoteBloc>();
+    try {
+      comments = context.read<CommentsBloc>();
+    } on ProviderNotFoundException {
+      comments = null;
+    }
+    try {
+      status = context.read<SharedNoteStatusBloc>();
+    } on ProviderNotFoundException {
+      status = null;
+    }
+    readOnly = status?.state.readOnly ?? false;
     final caret = widget.caret;
     int? start;
     if (caret != null) {
@@ -145,6 +173,77 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
         (widget.focusTitle ? titleFocus : textFocus).requestFocus();
       }
     });
+    if (status != null) {
+      unawaited(refreshCursors());
+    }
+    if (comments != null) {
+      unawaited(refreshMarks());
+      final selecting = comments?.state.selecting;
+      if (selecting != null) {
+        unawaited(selectComment(selecting));
+      }
+    }
+  }
+
+  /// Asks the Rust core where the open comments' words are now, to tint.
+  Future<void> refreshMarks() async {
+    final found = await widget.document.commentMarks();
+    if (!mounted) {
+      return;
+    }
+    found.fold((_) {}, (marks) {
+      controller.commentMarks = <TextRange>[
+        for (final mark in marks) TextRange(start: mark.start, end: mark.end),
+      ];
+    });
+  }
+
+  /// Asks the Rust core where other people's cursors are now.
+  Future<void> refreshCursors() async {
+    final found = await widget.document.remoteCursors();
+    if (!mounted) {
+      return;
+    }
+    found.fold((_) {}, (cursors) => controller.remoteCursors = cursors);
+  }
+
+  /// Selects the words comment [commentId] is on, for the person to see.
+  Future<void> selectComment(String commentId) async {
+    comments?.add(const CommentsEvent.selectionHandled());
+    final found = await widget.document.selectComment(commentId);
+    if (!mounted) {
+      return;
+    }
+    found.fold((_) {}, (range) {
+      if (range != null && controller.selectRange(range.start, range.end)) {
+        textFocus.requestFocus();
+      }
+    });
+  }
+
+  /// Comment, from the text menu: asks for the words and puts them on the
+  /// selection.
+  void commentOnSelection() {
+    final bloc = comments;
+    if (bloc == null) {
+      return;
+    }
+    final l10n = context.l10n;
+    unawaited(
+      CommentComposeSheet.show(
+        context,
+        title: l10n.commentNewTitle,
+        action: l10n.commentNewAction,
+        onSend: (words) async {
+          final made = await widget.document.commentOnSelection(words);
+          return made.fold((error) => error.message, (_) {
+            bloc.add(const CommentsEvent.refreshed());
+            unawaited(refreshMarks());
+            return null;
+          });
+        },
+      ),
+    );
   }
 
   /// What is under the caret: told on, unless it is what was told last and
@@ -251,6 +350,9 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
               if (title.text != snapshot.title) {
                 title.text = snapshot.title;
               }
+              if (comments != null) {
+                unawaited(refreshMarks());
+              }
             }
           },
         ),
@@ -281,6 +383,40 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
             }
           },
         ),
+        if (comments case final comments?) ...<BlocListener<dynamic, dynamic>>[
+          BlocListener<CommentsBloc, CommentsState>(
+            bloc: comments,
+            listenWhen: (before, now) =>
+                before.comments != now.comments || before.role != now.role,
+            listener: (context, state) => unawaited(refreshMarks()),
+          ),
+          BlocListener<CommentsBloc, CommentsState>(
+            bloc: comments,
+            listenWhen: (before, now) =>
+                now.selecting != null && before.selecting != now.selecting,
+            listener: (context, state) =>
+                unawaited(selectComment(state.selecting!)),
+          ),
+          BlocListener<EditorBloc, EditorState>(
+            // Saved: where the words are now is the Rust core's to say.
+            listenWhen: (before, now) =>
+                before.save != now.save && now.save is SaveState_Saved,
+            listener: (context, state) => unawaited(refreshMarks()),
+          ),
+        ],
+        if (status case final status?) ...<BlocListener<dynamic, dynamic>>[
+          BlocListener<SharedNoteStatusBloc, SharedNoteStatusState>(
+            bloc: status,
+            listenWhen: (before, now) => before.readOnly != now.readOnly,
+            listener: (context, state) =>
+                setState(() => readOnly = state.readOnly),
+          ),
+          BlocListener<SharedNoteStatusBloc, SharedNoteStatusState>(
+            bloc: status,
+            listenWhen: (before, now) => before.beat != now.beat,
+            listener: (context, state) => unawaited(refreshCursors()),
+          ),
+        ],
         BlocListener<NoteBloc, NoteState>(
           listenWhen: (before, now) => before.themeId != now.themeId,
           listener: (context, state) {
@@ -347,6 +483,7 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                               focusNode: titleFocus,
                               onChanged: onTitleChanged,
                               onSubmitted: focusText,
+                              readOnly: readOnly,
                             ),
                             BlocBuilder<EditorBloc, EditorState>(
                               buildWhen: (before, now) =>
@@ -357,6 +494,7 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                                 properties: state.properties,
                                 open: state.propertiesOpen,
                                 failed: state.propertyError != null,
+                                readOnly: readOnly,
                                 onToggle: () => editor.add(
                                   const EditorEvent.propertiesToggled(),
                                 ),
@@ -410,21 +548,39 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                             controller: controller,
                             editableKey: editableKey,
                             reservedBottom: KansoSizes.touchTarget + 1,
-                            child: MarkdownEditor(
-                              controller: controller,
-                              focusNode: textFocus,
-                              editableKey: editableKey,
-                              // The platform checks what the field holds: a
-                              // window of a long note, never the whole.
-                              spellCheckService: DefaultSpellCheckService(),
-                              menuBuilder: (context, state) => LinkContextMenu(
-                                state: state,
-                                document: widget.document,
-                                windowStart: controller.windowStart,
-                                onOpen: (target) => editor.add(
-                                  EditorEvent.linkOpenRequested(target),
+                            child: Stack(
+                              children: <Widget>[
+                                MarkdownEditor(
+                                  controller: controller,
+                                  focusNode: textFocus,
+                                  editableKey: editableKey,
+                                  readOnly: readOnly,
+                                  // The platform checks what the field holds: a
+                                  // window of a long note, never the whole.
+                                  spellCheckService: DefaultSpellCheckService(),
+                                  menuBuilder: (context, state) =>
+                                      LinkContextMenu(
+                                        state: state,
+                                        document: widget.document,
+                                        windowStart: controller.windowStart,
+                                        onOpen: (target) => editor.add(
+                                          EditorEvent.linkOpenRequested(target),
+                                        ),
+                                        onComment:
+                                            comments?.state.mayComment ?? false
+                                            ? commentOnSelection
+                                            : null,
+                                      ),
                                 ),
-                              ),
+                                // Where the others in a shared note are.
+                                if (status != null)
+                                  Positioned.fill(
+                                    child: RemoteCarets(
+                                      controller: controller,
+                                      editableKey: editableKey,
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ),
@@ -458,7 +614,8 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
             ListenableBuilder(
               listenable: textFocus,
               builder: (context, _) {
-                if (!textFocus.hasFocus) {
+                // Nothing to type in a note for reading.
+                if (!textFocus.hasFocus || readOnly) {
                   return const SizedBox.shrink();
                 }
                 final insets = MediaQuery.viewInsetsOf(context).bottom;

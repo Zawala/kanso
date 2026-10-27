@@ -193,6 +193,7 @@ void main() {
           noteIds: <String>[],
           invitations: 1,
           commentNotes: <String>[],
+          liveNotes: <String>[],
         ),
       );
       await _settle(tester);

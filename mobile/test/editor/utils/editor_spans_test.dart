@@ -137,6 +137,101 @@ void main() {
       );
     });
 
+    test('tints the words comments are on, in code as well', () {
+      const tint = TextStyle(backgroundColor: Color(0x33AA8800));
+      final span = editorSpans(
+        text: 'see `this` here',
+        runs: <EditorRun>[_run(4, 10, color: 0x00FF00, quiet: true)],
+        base: _base,
+        comments: const <TextRange>[
+          TextRange(start: 0, end: 3),
+          TextRange(start: 5, end: 9),
+        ],
+        commentStyle: tint,
+      );
+      final tinted = <String>[
+        for (final child in span.children!)
+          if ((child as TextSpan).style?.backgroundColor ==
+              tint.backgroundColor)
+            child.text!,
+      ];
+      expect(tinted, <String>['see', 'this']);
+      // The colour of the run it is in is kept.
+      final code = span.children!.cast<TextSpan>().firstWhere(
+        (child) => child.text == 'this',
+      );
+      expect(code.style?.color, const Color(0xFF00FF00));
+    });
+
+    test('washes what others selected in their colour, over a comment', () {
+      const ana = Color(0x382F6AAE);
+      const bo = Color(0x382D7A4D);
+      const tint = Color(0x33AA8800);
+      final span = editorSpans(
+        text: 'one two three',
+        runs: const <EditorRun>[],
+        base: _base,
+        comments: const <TextRange>[TextRange(start: 4, end: 13)],
+        commentStyle: const TextStyle(backgroundColor: tint),
+        selections: const <(TextRange, Color)>[
+          (TextRange(start: 0, end: 3), ana),
+          (TextRange(start: 4, end: 7), bo),
+        ],
+      );
+      final washes = <(String, Color?)>[
+        for (final child in span.children!.cast<TextSpan>())
+          (child.text!, child.style?.backgroundColor),
+      ];
+      expect(washes, <(String, Color?)>[
+        ('one', ana),
+        (' ', null),
+        ('two', bo),
+        (' three', tint),
+      ]);
+    });
+
+    Glados3<String, List<EditorRun>, List<TextRange>>(
+      any.written,
+      any.someRuns,
+      any.someRanges,
+      kansoExploreConfig(),
+    ).test('a character is tinted exactly when a comment is on it', (
+      text,
+      runs,
+      ranges,
+    ) {
+      const tint = Color(0x33AA8800);
+      final span = editorSpans(
+        text: text,
+        runs: runs,
+        base: _base,
+        comments: ranges,
+        commentStyle: const TextStyle(backgroundColor: tint),
+      );
+      // Where a range lands inside a surrogate pair, it starts or ends
+      // before it.
+      int snap(int at) {
+        final clamped = at.clamp(0, text.length);
+        return splitsPair(text, clamped) ? clamped - 1 : clamped;
+      }
+
+      var at = 0;
+      for (final child in span.children ?? <InlineSpan>[span]) {
+        final piece = (child as TextSpan).text!;
+        for (var unit = at; unit < at + piece.length; unit++) {
+          final commented = ranges.any(
+            (range) => snap(range.start) <= unit && unit < snap(range.end),
+          );
+          expect(
+            child.style?.backgroundColor == tint,
+            commented,
+            reason: 'unit $unit of "$text"',
+          );
+        }
+        at += piece.length;
+      }
+    });
+
     Glados3<String, List<EditorRun>, List<TextRange>>(
       any.written,
       any.someRuns,

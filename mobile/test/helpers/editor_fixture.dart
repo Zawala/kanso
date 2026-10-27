@@ -13,6 +13,7 @@ import 'package:kanso/editor/views/widgets/kanso_editable_text.dart';
 import 'package:kanso/note/models/data/note_mode.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note/views/widgets/note_pane.dart';
+import 'package:kanso/sharing/state/shared_note_status/shared_note_status_bloc.dart';
 import 'package:kanso/shell/views/widgets/list_note_layout.dart';
 import 'package:kanso/shell/views/widgets/tablet_layout.dart';
 
@@ -61,6 +62,10 @@ class EditorFixture {
   final String noteId;
   final BrowseBlocs blocs;
   final NoteBloc note;
+
+  /// What the page says of the note's sharing, for a note pictured as
+  /// shared.
+  SharedNoteStatusBloc? status;
 
   /// Makes a library with some notebooks and notes to link to, the note to
   /// edit with [body], and opens it for editing.
@@ -126,6 +131,7 @@ class EditorFixture {
       body: NotePane(inPane: false),
     ),
     note: note,
+    status: status,
   );
 
   /// The page as a window of [viewport] has it: the phone's page, or the
@@ -140,6 +146,7 @@ class EditorFixture {
         body: inPanes(viewport, brightness, const NotePane(inPane: true)),
       ),
       note: note,
+      status: status,
     );
   }
 

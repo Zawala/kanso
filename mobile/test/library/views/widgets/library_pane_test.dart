@@ -113,6 +113,8 @@ void main() {
       expect(find.text('Recent'), findsOneWidget);
       expect(find.text('Work'), findsOneWidget);
       expect(find.text('31'), findsOneWidget);
+      // The tags are below the fold of a phone's library.
+      await tester.scrollUntilVisible(find.text('idea'), 120);
       expect(find.text('idea'), findsOneWidget);
       expect(find.text('Trash', skipOffstage: false), findsOneWidget);
       expect(find.text('4', skipOffstage: false), findsOneWidget);

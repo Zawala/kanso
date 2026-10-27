@@ -4,6 +4,8 @@
 
 import 'dart:async';
 
+import 'package:clock/clock.dart';
+
 import 'package:dartz/dartz.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
@@ -277,9 +279,7 @@ class FixtureSharedNotesRepository implements SharedNotesRepository {
           ShareLinkRow(
             id: 'l_${info.links.length + 1}',
             role: role,
-            expiresMs:
-                DateTime(2026, 10, 26, 10, 30).millisecondsSinceEpoch +
-                days * 86400000,
+            expiresMs: clock.now().millisecondsSinceEpoch + days * 86400000,
           ),
         ],
       ),
@@ -445,6 +445,7 @@ class FixtureSharedNotesRepository implements SharedNotesRepository {
         noteIds: <String>[],
         invitations: 0,
         commentNotes: <String>[],
+        liveNotes: <String>[],
       ),
     );
   }
@@ -471,4 +472,150 @@ class FixtureSharedNotesRepository implements SharedNotesRepository {
 
   @override
   Stream<SharedEvent> events() => eventsController.stream;
+
+  /// The comments of each shared note, in the desktop's order.
+  final Map<String, List<CommentRow>> commentLists =
+      <String, List<CommentRow>>{};
+
+  /// When set, a change to a comment fails with it.
+  ApplicationError? commentFailure;
+
+  @override
+  Future<Either<ApplicationError, List<CommentRow>>> comments(
+    String noteId,
+  ) async {
+    calls.add('comments $noteId');
+    if (!shares.containsKey(noteId)) {
+      return _fail(
+        const ApplicationError.invalid(message: 'This note isn’t shared.'),
+      );
+    }
+    return Right<ApplicationError, List<CommentRow>>(
+      List<CommentRow>.of(commentLists[noteId] ?? const <CommentRow>[]),
+    );
+  }
+
+  @override
+  Future<Either<ApplicationError, String>> commentsBand(String noteId) async {
+    final list = commentLists[noteId] ?? const <CommentRow>[];
+    final resolved = list.where((comment) => comment.resolved).length;
+    final open = list.length - resolved;
+    return Right<ApplicationError, String>(
+      <String>[
+        if (open > 0) '$open open',
+        if (resolved > 0) '$resolved resolved',
+      ].join(' · '),
+    );
+  }
+
+  Future<Either<ApplicationError, Unit>> _changeComment(
+    String noteId,
+    String commentId,
+    CommentRow? Function(CommentRow comment) change,
+  ) async {
+    final failure = commentFailure;
+    if (failure != null) {
+      return _fail(failure);
+    }
+    final list = commentLists[noteId] ?? <CommentRow>[];
+    commentLists[noteId] = <CommentRow>[
+      for (final comment in list)
+        if (comment.id != commentId)
+          comment
+        else if (change(comment) case final changed?)
+          changed,
+    ];
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> editComment(
+    String noteId,
+    String commentId,
+    String body,
+  ) {
+    calls.add('editComment $noteId $commentId $body');
+    return _changeComment(
+      noteId,
+      commentId,
+      (comment) => _copy(comment, body: body, editedMs: 1),
+    );
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> deleteComment(
+    String noteId,
+    String commentId,
+  ) {
+    calls.add('deleteComment $noteId $commentId');
+    return _changeComment(noteId, commentId, (_) => null);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> resolveComment(
+    String noteId,
+    String commentId, {
+    required bool resolved,
+  }) {
+    calls.add('resolveComment $noteId $commentId $resolved');
+    return _changeComment(
+      noteId,
+      commentId,
+      (comment) => _copy(comment, resolved: resolved),
+    );
+  }
+
+  /// What each note's page says of its sharing, by note ID.
+  final Map<String, LiveStatus> liveStatuses = <String, LiveStatus>{};
+
+  @override
+  Future<Either<ApplicationError, LiveStatus?>> liveStatus(
+    String noteId,
+  ) async {
+    calls.add('liveStatus $noteId');
+    final refused = _refusal();
+    if (refused != null) {
+      return _fail(refused);
+    }
+    return Right<ApplicationError, LiveStatus?>(liveStatuses[noteId]);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> dismissProblems(String noteId) async {
+    calls.add('dismissProblems $noteId');
+    final status = liveStatuses[noteId];
+    if (status != null) {
+      liveStatuses[noteId] = LiveStatus(
+        role: status.role,
+        connected: status.connected,
+        ended: status.ended,
+        nearLimit: status.nearLimit,
+        problems: const <String>[],
+      );
+    }
+    return const Right<ApplicationError, Unit>(unit);
+  }
 }
+
+CommentRow _copy(
+  CommentRow comment, {
+  String? body,
+  int? editedMs,
+  bool? resolved,
+}) => CommentRow(
+  id: comment.id,
+  author: comment.author,
+  authorName: comment.authorName,
+  body: body ?? comment.body,
+  createdMs: comment.createdMs,
+  editedMs: editedMs ?? comment.editedMs,
+  resolved: resolved ?? comment.resolved,
+  mine: comment.mine,
+  pending: comment.pending,
+  canEdit: comment.canEdit,
+  canDelete: comment.canDelete,
+  canResolve: comment.canResolve,
+  quote: comment.quote,
+  placement: comment.placement,
+  mentions: comment.mentions,
+);

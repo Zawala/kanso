@@ -112,6 +112,43 @@ pub struct SharedEvent {
     /// The notes whose comments changed: someone commented, edited,
     /// resolved or deleted one.
     pub comment_notes: Vec<String>,
+    /// The open notes whose room connected or lost its connection, met a
+    /// problem, or saw someone's cursor move: ask for their
+    /// [`LiveStatus`] and cursors again.
+    pub live_notes: Vec<String>,
+}
+
+/// What the page of a shared note says of its sharing, as the desktop's
+/// footer and banner do.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiveStatus {
+    /// This account's role in the note.
+    pub role: ShareRole,
+    /// The note's room is open and connected.
+    pub connected: bool,
+    /// Sharing ended while the note was open: it is a private copy now,
+    /// edited as any note.
+    pub ended: bool,
+    /// The note uses past 80 % of its size limit.
+    pub near_limit: bool,
+    /// What couldn't be done for the note, in the engine's words, newest
+    /// first, until dismissed.
+    pub problems: Vec<String>,
+}
+
+/// Someone else's caret and selection in the open note, in UTF-16 units of
+/// the editor's text, with the colours it is drawn in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CursorMark {
+    pub name: String,
+    /// Where their caret is.
+    pub caret: u32,
+    /// What they have selected; empty with none.
+    pub start: u32,
+    pub end: u32,
+    /// Their colour on a light page and on a dark one, `0xRRGGBB`.
+    pub light: u32,
+    pub dark: u32,
 }
 
 /// Someone looked up by username, before sharing with them.

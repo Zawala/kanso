@@ -1645,7 +1645,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shareLoading => 'Loading sharing';
 
   @override
-  String get shareLockedNote => 'Locked notes can’t be shared.';
+  String get shareLockedNote =>
+      'Locked notes, and notes in locked notebooks, can’t be shared. Remove the lock first.';
 
   @override
   String get shareSignedOut =>
@@ -1874,6 +1875,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shareVerifyConfirm => 'Mark as verified and invite';
 
   @override
+  String get shareInviteUnverified => 'Invite';
+
+  @override
   String shareKeyChangedIntro(String username) {
     return '$username’s keys changed since you last shared with them. That happens when they set up their account again, and also when someone tries to read what you share. Ask them which fingerprint they see now before you trust it.';
   }
@@ -2075,4 +2079,161 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get joinSentTitle => 'Request sent';
+
+  @override
+  String get timeJustNow => 'just now';
+
+  @override
+  String timeMinutesAgo(int minutes) {
+    return '$minutes min ago';
+  }
+
+  @override
+  String timeHoursAgo(int hours) {
+    return '$hours h ago';
+  }
+
+  @override
+  String get timeToday => 'today';
+
+  @override
+  String get timeYesterday => 'yesterday';
+
+  @override
+  String timeResumeAt(String time) {
+    return 'at $time';
+  }
+
+  @override
+  String timeResumeTomorrow(String time) {
+    return 'tomorrow at $time';
+  }
+
+  @override
+  String timeResumeOn(String day, String time) {
+    return 'on $day at $time';
+  }
+
+  @override
+  String get settingsSyncAutomatically => 'Sync automatically';
+
+  @override
+  String get settingsSyncAutomaticallyDetail =>
+      'In the background, and soon after you edit.';
+
+  @override
+  String get settingsSyncEvery => 'Sync every';
+
+  @override
+  String get settingsSyncEveryTitle => 'Sync every';
+
+  @override
+  String get commentsTitle => 'Comments';
+
+  @override
+  String commentsButton(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Comments, $count open',
+      one: 'Comments, 1 open',
+      zero: 'Comments',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get commentsOrphaned => 'Orphaned';
+
+  @override
+  String get commentsNotShared => 'Comments are for shared notes';
+
+  @override
+  String get commentsNotSharedHint =>
+      'Share this note to talk it over with others.';
+
+  @override
+  String get commentsEmpty => 'No comments yet';
+
+  @override
+  String get commentsEmptyHint => 'Select some words, then choose Comment.';
+
+  @override
+  String get commentsEmptyHintReader =>
+      'Nobody has commented on this note yet.';
+
+  @override
+  String get commentEditedSuffix => ' · Edited';
+
+  @override
+  String get commentSendingSuffix => ' · Sending…';
+
+  @override
+  String get commentResolvedMark => 'Resolved';
+
+  @override
+  String get commentResolve => 'Resolve';
+
+  @override
+  String get commentReopen => 'Reopen';
+
+  @override
+  String get commentEdit => 'Edit';
+
+  @override
+  String get commentDelete => 'Delete';
+
+  @override
+  String get commentDeleteWarning =>
+      'Delete this comment? It goes for everyone in the note.';
+
+  @override
+  String get commentEditTitle => 'Edit comment';
+
+  @override
+  String get commentSave => 'Save';
+
+  @override
+  String get commentNewTitle => 'Comment on the selection';
+
+  @override
+  String get commentNewAction => 'Comment';
+
+  @override
+  String get commentHint => 'Your comment';
+
+  @override
+  String get menuComment => 'Comment';
+
+  @override
+  String get sharedStatusShared => 'Shared';
+
+  @override
+  String get sharedStatusReadOnly => 'Read only';
+
+  @override
+  String get sharedStatusLive => 'Live';
+
+  @override
+  String get sharedStatusOffline => 'Offline';
+
+  @override
+  String get sharedStatusNearLimit => 'Near this shared note\'s size limit';
+
+  @override
+  String get sharedStatusPrivateCopy => 'Private copy · No longer shared';
+
+  @override
+  String sharedProblemsMore(String message, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more',
+      one: '1 more',
+    );
+    return '$message ($_temp0)';
+  }
+
+  @override
+  String get sharedProblemsDismiss => 'Dismiss';
 }

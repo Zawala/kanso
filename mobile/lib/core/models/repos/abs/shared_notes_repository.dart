@@ -117,4 +117,41 @@ abstract interface class SharedNotesRepository {
 
   /// What each sync of shared notes finds that is news.
   Stream<SharedEvent> events();
+
+  /// The comments on the shared note [noteId], those on words still in the
+  /// text in text order, then the ones whose words were deleted; a note
+  /// that isn't shared is refused.
+  Future<Either<ApplicationError, List<CommentRow>>> comments(String noteId);
+
+  /// "2 open · 1 resolved", empty with none.
+  Future<Either<ApplicationError, String>> commentsBand(String noteId);
+
+  /// Changes the words of one of this account's comments.
+  Future<Either<ApplicationError, Unit>> editComment(
+    String noteId,
+    String commentId,
+    String body,
+  );
+
+  /// Deletes one of this account's comments, for everyone in the note.
+  Future<Either<ApplicationError, Unit>> deleteComment(
+    String noteId,
+    String commentId,
+  );
+
+  /// Resolves a comment, or opens it again.
+  Future<Either<ApplicationError, Unit>> resolveComment(
+    String noteId,
+    String commentId, {
+    required bool resolved,
+  });
+
+  /// What the page of shared note [noteId] says of its sharing: its role,
+  /// whether its room is live, whether it ended, how near its size limit it
+  /// is and what couldn't be done for it. Null for a note that isn't
+  /// shared.
+  Future<Either<ApplicationError, LiveStatus?>> liveStatus(String noteId);
+
+  /// Forgets what couldn't be done for shared note [noteId].
+  Future<Either<ApplicationError, Unit>> dismissProblems(String noteId);
 }

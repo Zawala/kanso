@@ -11,21 +11,21 @@ use flutter_rust_bridge::frb;
 pub use kanso_mobile::{
     AccountDetails, AccountState, AccountStep, ApprovalPhase, ApprovalPrompt, ApprovalWait,
     AttachmentFile, BindingAnswer, BindingQuestion, BuiltinTheme, Changed, ColorRow,
-    CommentPlacement, CommentRow, Completion, CompletionItem, CompletionKind, DateField, DeviceRow,
-    DiagramKind, DiagramRenderer, DueTone, EditCommand, EditOutcome, EditorContext, EditorEvent,
-    EditorRun, EditorSnapshot, FormatKind, GalleryColors, GalleryItem, GalleryKind, HistoryState,
-    Hit, IconThemeRow, InvitationRow, JoinRow, KansoError, LibraryOverview, LinkTarget,
-    LinkedProviderRow, ListPlace, ListQuery, ListShape, LockEvent, LockReason, LockState,
-    LockedInfo, MemberRow, MentionSpan, NewNote, NoteChange, NoteList, NoteRow, NoteView,
-    NotebookRole, NotebookRow, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind,
-    PasskeyRow, PersonLookup, PersonRow, PreviewLink, PreviewOptions, PromptState, Property,
-    PropertyKind, ProviderEvent, ProviderKind, QuotaLimit, Range16, RecoveryKeyText, Replacement,
-    RunBatch, SaveState, Saved, SearchScope, ServerInfo, ServerMethods, ShareInfo, ShareLinkRow,
-    ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow, StyledRun, SvgRow,
-    SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow,
-    SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagRow, TaskBoard,
-    TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange, ThemeTokens, ThemedIcon,
-    Ticked,
+    CommentPlacement, CommentRow, Completion, CompletionItem, CompletionKind, CursorMark,
+    DateField, DeviceRow, DiagramKind, DiagramRenderer, DueTone, EditCommand, EditOutcome,
+    EditorContext, EditorEvent, EditorRun, EditorSnapshot, FormatKind, GalleryColors, GalleryItem,
+    GalleryKind, HistoryState, Hit, IconThemeRow, InvitationRow, JoinRow, KansoError,
+    LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveStatus,
+    LockEvent, LockReason, LockState, LockedInfo, MemberRow, MentionSpan, NewNote, NoteChange,
+    NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto, PasskeyFailure,
+    PasskeyRequest, PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow, PreviewLink,
+    PreviewOptions, PromptState, Property, PropertyKind, ProviderEvent, ProviderKind, QuotaLimit,
+    Range16, RecoveryKeyText, Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo,
+    ServerMethods, ShareInfo, ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp,
+    SortKey, SpanRow, StyledRun, SvgRow, SyncAccount, SyncIntervalOption, SyncPhase,
+    SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone,
+    SyntaxStyleRow, Table, TableRow, TagRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery,
+    TaskSection, TextChange, ThemeTokens, ThemedIcon, Ticked,
 };
 
 #[frb(mirror(KansoError))]
@@ -796,6 +796,26 @@ pub struct _SharedEvent {
     pub note_ids: Vec<String>,
     pub invitations: u32,
     pub comment_notes: Vec<String>,
+    pub live_notes: Vec<String>,
+}
+
+#[frb(mirror(LiveStatus))]
+pub struct _LiveStatus {
+    pub role: ShareRole,
+    pub connected: bool,
+    pub ended: bool,
+    pub near_limit: bool,
+    pub problems: Vec<String>,
+}
+
+#[frb(mirror(CursorMark))]
+pub struct _CursorMark {
+    pub name: String,
+    pub caret: u32,
+    pub start: u32,
+    pub end: u32,
+    pub light: u32,
+    pub dark: u32,
 }
 
 #[frb(mirror(PersonRow))]
@@ -943,6 +963,7 @@ pub struct _EditorSnapshot {
     pub lock: LockState,
     pub properties: Vec<Property>,
     pub version: u64,
+    pub selection: Range16,
     pub history: HistoryState,
     pub save: SaveState,
 }

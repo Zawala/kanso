@@ -81,3 +81,40 @@ InvitationRow invitationRow(
 }) {
   return InvitationRow(shareId: shareId, from: from, role: role, atMs: atMs);
 }
+
+/// A comment [id] by [author] saying [body], on the words [quote] at
+/// [start]..[end], or orphaned there when [orphaned].
+CommentRow commentRow(
+  String id, {
+  String author = 'bo',
+  String body = 'Why this?',
+  String quote = 'Alpha',
+  int start = 0,
+  int end = 5,
+  bool orphaned = false,
+  bool resolved = false,
+  bool mine = false,
+  bool mayComment = true,
+  int createdMs = 0,
+  int? editedMs,
+  bool pending = false,
+  List<MentionSpan> mentions = const <MentionSpan>[],
+}) => CommentRow(
+  id: id,
+  author: 'a_$author',
+  authorName: author,
+  body: body,
+  createdMs: createdMs,
+  editedMs: editedMs,
+  resolved: resolved,
+  mine: mine,
+  pending: pending,
+  canEdit: mayComment && mine,
+  canDelete: mayComment && mine,
+  canResolve: mayComment,
+  quote: quote,
+  placement: orphaned
+      ? CommentPlacement.orphaned(at: start)
+      : CommentPlacement.anchored(start: start, end: end),
+  mentions: mentions,
+);

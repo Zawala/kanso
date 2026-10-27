@@ -11,10 +11,12 @@ import 'package:kanso/editor/views/widgets/kanso_editable_text.dart';
 import 'package:kanso/editor/views/widgets/markdown_editor.dart';
 import 'package:kanso/editor/views/widgets/properties_row.dart';
 import 'package:kanso/editor/views/widgets/property_row.dart';
+import 'package:kanso/sharing/state/shared_note_status/shared_note_status_bloc.dart';
 
 import '../../../helpers/editor_fixture.dart';
 import '../../../helpers/editor_golden_helpers.dart';
 import '../../../helpers/fake_editor_document.dart';
+import '../../../helpers/fixture_shared_notes_repository.dart';
 import '../../../helpers/golden.dart';
 import '../../../helpers/kanso_viewport.dart';
 
@@ -59,6 +61,65 @@ void main() {
             viewport: viewport,
             brightness: brightness,
             interact: fixture.settle,
+          );
+        });
+
+        testWidgets('a shared note to view, with others in it', (
+          tester,
+        ) async {
+          final fixture = await EditorFixture.open(
+            tester,
+            brightness: brightness,
+          );
+          final shared = FixtureSharedNotesRepository()
+            ..liveStatuses[fixture.noteId] = const core.LiveStatus(
+              role: core.ShareRole.viewer,
+              connected: true,
+              ended: false,
+              nearLimit: false,
+              problems: <String>[
+                'Kanso couldn’t send your comment. It will try again.',
+              ],
+            );
+          final status = SharedNoteStatusBloc(shared)
+            ..add(SharedNoteStatusEvent.started(fixture.noteId));
+          addTearDown(status.close);
+          fixture.status = status;
+          await expectGoldenOnBothPlatforms(
+            tester,
+            fixture.inViewport(viewport, brightness),
+            name: '${viewport.slug}_shared_viewer_$name',
+            viewport: viewport,
+            brightness: brightness,
+            interact: (tester) async {
+              await fixture.settle(tester);
+              // Ana has "a device" selected; Bo's caret is after "conflict".
+              final controller =
+                  (find.byType(MarkdownEditor).evaluate().single.widget
+                          as MarkdownEditor)
+                      .controller;
+              final device = controller.noteText.indexOf('a device');
+              final conflict = controller.noteText.indexOf('conflict') + 8;
+              controller.remoteCursors = <core.CursorMark>[
+                core.CursorMark(
+                  name: 'ana',
+                  caret: device + 8,
+                  start: device,
+                  end: device + 8,
+                  light: 0x2F6AAE,
+                  dark: 0x7FB0EC,
+                ),
+                core.CursorMark(
+                  name: 'bo',
+                  caret: conflict,
+                  start: conflict,
+                  end: conflict,
+                  light: 0xA6531A,
+                  dark: 0xEDA160,
+                ),
+              ];
+              await tester.pump();
+            },
           );
         });
 

@@ -25,9 +25,15 @@ sealed class ShareNoteEvent with _$ShareNoteEvent {
   const factory ShareNoteEvent.fingerprintConfirmed() =
       ShareNoteFingerprintConfirmedEvent;
 
+  /// The person in a verify prompt is invited without their fingerprint
+  /// being compared: it stays unverified.
+  const factory ShareNoteEvent.invitedUnverified() =
+      ShareNoteInvitedUnverifiedEvent;
+
   /// The person trusts the new keys of the person in a key-changed prompt,
-  /// having compared the fingerprint: pin them, then invite them if they
-  /// were being invited.
+  /// having compared the fingerprint: pin them, then, if they were being
+  /// invited, ask for the new fingerprint to be compared as for someone
+  /// new.
   const factory ShareNoteEvent.newKeyAccepted() = ShareNoteNewKeyAcceptedEvent;
 
   /// The prompt was left: nobody is invited, nothing is trusted.

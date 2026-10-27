@@ -55,7 +55,7 @@ extension ShareNoteEventPatterns on ShareNoteEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ShareNoteStartedEvent value)?  started,TResult Function( ShareNoteRetriedEvent value)?  retried,TResult Function( ShareNoteInviteRoleChosenEvent value)?  inviteRoleChosen,TResult Function( ShareNoteInvitedEvent value)?  invited,TResult Function( ShareNoteFingerprintConfirmedEvent value)?  fingerprintConfirmed,TResult Function( ShareNoteNewKeyAcceptedEvent value)?  newKeyAccepted,TResult Function( ShareNotePromptDismissedEvent value)?  promptDismissed,TResult Function( ShareNoteKeyReviewedEvent value)?  keyReviewed,TResult Function( ShareNoteMemberRoleChangedEvent value)?  memberRoleChanged,TResult Function( ShareNoteMemberRemovedEvent value)?  memberRemoved,TResult Function( ShareNoteRequestApprovedEvent value)?  requestApproved,TResult Function( ShareNoteRequestDeclinedEvent value)?  requestDeclined,TResult Function( ShareNoteLinkRoleChosenEvent value)?  linkRoleChosen,TResult Function( ShareNoteLinkDaysChosenEvent value)?  linkDaysChosen,TResult Function( ShareNoteLinkMadeEvent value)?  linkMade,TResult Function( ShareNoteLinkCancelledEvent value)?  linkCancelled,TResult Function( ShareNoteLinkCopiedEvent value)?  linkCopied,TResult Function( ShareNoteLinkSentEvent value)?  linkSent,TResult Function( ShareNoteEndAskedEvent value)?  endAsked,TResult Function( ShareNoteEndDismissedEvent value)?  endDismissed,TResult Function( ShareNoteEndConfirmedEvent value)?  endConfirmed,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ShareNoteStartedEvent value)?  started,TResult Function( ShareNoteRetriedEvent value)?  retried,TResult Function( ShareNoteInviteRoleChosenEvent value)?  inviteRoleChosen,TResult Function( ShareNoteInvitedEvent value)?  invited,TResult Function( ShareNoteFingerprintConfirmedEvent value)?  fingerprintConfirmed,TResult Function( ShareNoteInvitedUnverifiedEvent value)?  invitedUnverified,TResult Function( ShareNoteNewKeyAcceptedEvent value)?  newKeyAccepted,TResult Function( ShareNotePromptDismissedEvent value)?  promptDismissed,TResult Function( ShareNoteKeyReviewedEvent value)?  keyReviewed,TResult Function( ShareNoteMemberRoleChangedEvent value)?  memberRoleChanged,TResult Function( ShareNoteMemberRemovedEvent value)?  memberRemoved,TResult Function( ShareNoteRequestApprovedEvent value)?  requestApproved,TResult Function( ShareNoteRequestDeclinedEvent value)?  requestDeclined,TResult Function( ShareNoteLinkRoleChosenEvent value)?  linkRoleChosen,TResult Function( ShareNoteLinkDaysChosenEvent value)?  linkDaysChosen,TResult Function( ShareNoteLinkMadeEvent value)?  linkMade,TResult Function( ShareNoteLinkCancelledEvent value)?  linkCancelled,TResult Function( ShareNoteLinkCopiedEvent value)?  linkCopied,TResult Function( ShareNoteLinkSentEvent value)?  linkSent,TResult Function( ShareNoteEndAskedEvent value)?  endAsked,TResult Function( ShareNoteEndDismissedEvent value)?  endDismissed,TResult Function( ShareNoteEndConfirmedEvent value)?  endConfirmed,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case ShareNoteStartedEvent() when started != null:
@@ -63,7 +63,8 @@ return started(_that);case ShareNoteRetriedEvent() when retried != null:
 return retried(_that);case ShareNoteInviteRoleChosenEvent() when inviteRoleChosen != null:
 return inviteRoleChosen(_that);case ShareNoteInvitedEvent() when invited != null:
 return invited(_that);case ShareNoteFingerprintConfirmedEvent() when fingerprintConfirmed != null:
-return fingerprintConfirmed(_that);case ShareNoteNewKeyAcceptedEvent() when newKeyAccepted != null:
+return fingerprintConfirmed(_that);case ShareNoteInvitedUnverifiedEvent() when invitedUnverified != null:
+return invitedUnverified(_that);case ShareNoteNewKeyAcceptedEvent() when newKeyAccepted != null:
 return newKeyAccepted(_that);case ShareNotePromptDismissedEvent() when promptDismissed != null:
 return promptDismissed(_that);case ShareNoteKeyReviewedEvent() when keyReviewed != null:
 return keyReviewed(_that);case ShareNoteMemberRoleChangedEvent() when memberRoleChanged != null:
@@ -97,7 +98,7 @@ return endConfirmed(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ShareNoteStartedEvent value)  started,required TResult Function( ShareNoteRetriedEvent value)  retried,required TResult Function( ShareNoteInviteRoleChosenEvent value)  inviteRoleChosen,required TResult Function( ShareNoteInvitedEvent value)  invited,required TResult Function( ShareNoteFingerprintConfirmedEvent value)  fingerprintConfirmed,required TResult Function( ShareNoteNewKeyAcceptedEvent value)  newKeyAccepted,required TResult Function( ShareNotePromptDismissedEvent value)  promptDismissed,required TResult Function( ShareNoteKeyReviewedEvent value)  keyReviewed,required TResult Function( ShareNoteMemberRoleChangedEvent value)  memberRoleChanged,required TResult Function( ShareNoteMemberRemovedEvent value)  memberRemoved,required TResult Function( ShareNoteRequestApprovedEvent value)  requestApproved,required TResult Function( ShareNoteRequestDeclinedEvent value)  requestDeclined,required TResult Function( ShareNoteLinkRoleChosenEvent value)  linkRoleChosen,required TResult Function( ShareNoteLinkDaysChosenEvent value)  linkDaysChosen,required TResult Function( ShareNoteLinkMadeEvent value)  linkMade,required TResult Function( ShareNoteLinkCancelledEvent value)  linkCancelled,required TResult Function( ShareNoteLinkCopiedEvent value)  linkCopied,required TResult Function( ShareNoteLinkSentEvent value)  linkSent,required TResult Function( ShareNoteEndAskedEvent value)  endAsked,required TResult Function( ShareNoteEndDismissedEvent value)  endDismissed,required TResult Function( ShareNoteEndConfirmedEvent value)  endConfirmed,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ShareNoteStartedEvent value)  started,required TResult Function( ShareNoteRetriedEvent value)  retried,required TResult Function( ShareNoteInviteRoleChosenEvent value)  inviteRoleChosen,required TResult Function( ShareNoteInvitedEvent value)  invited,required TResult Function( ShareNoteFingerprintConfirmedEvent value)  fingerprintConfirmed,required TResult Function( ShareNoteInvitedUnverifiedEvent value)  invitedUnverified,required TResult Function( ShareNoteNewKeyAcceptedEvent value)  newKeyAccepted,required TResult Function( ShareNotePromptDismissedEvent value)  promptDismissed,required TResult Function( ShareNoteKeyReviewedEvent value)  keyReviewed,required TResult Function( ShareNoteMemberRoleChangedEvent value)  memberRoleChanged,required TResult Function( ShareNoteMemberRemovedEvent value)  memberRemoved,required TResult Function( ShareNoteRequestApprovedEvent value)  requestApproved,required TResult Function( ShareNoteRequestDeclinedEvent value)  requestDeclined,required TResult Function( ShareNoteLinkRoleChosenEvent value)  linkRoleChosen,required TResult Function( ShareNoteLinkDaysChosenEvent value)  linkDaysChosen,required TResult Function( ShareNoteLinkMadeEvent value)  linkMade,required TResult Function( ShareNoteLinkCancelledEvent value)  linkCancelled,required TResult Function( ShareNoteLinkCopiedEvent value)  linkCopied,required TResult Function( ShareNoteLinkSentEvent value)  linkSent,required TResult Function( ShareNoteEndAskedEvent value)  endAsked,required TResult Function( ShareNoteEndDismissedEvent value)  endDismissed,required TResult Function( ShareNoteEndConfirmedEvent value)  endConfirmed,}){
 final _that = this;
 switch (_that) {
 case ShareNoteStartedEvent():
@@ -105,7 +106,8 @@ return started(_that);case ShareNoteRetriedEvent():
 return retried(_that);case ShareNoteInviteRoleChosenEvent():
 return inviteRoleChosen(_that);case ShareNoteInvitedEvent():
 return invited(_that);case ShareNoteFingerprintConfirmedEvent():
-return fingerprintConfirmed(_that);case ShareNoteNewKeyAcceptedEvent():
+return fingerprintConfirmed(_that);case ShareNoteInvitedUnverifiedEvent():
+return invitedUnverified(_that);case ShareNoteNewKeyAcceptedEvent():
 return newKeyAccepted(_that);case ShareNotePromptDismissedEvent():
 return promptDismissed(_that);case ShareNoteKeyReviewedEvent():
 return keyReviewed(_that);case ShareNoteMemberRoleChangedEvent():
@@ -135,7 +137,7 @@ return endConfirmed(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ShareNoteStartedEvent value)?  started,TResult? Function( ShareNoteRetriedEvent value)?  retried,TResult? Function( ShareNoteInviteRoleChosenEvent value)?  inviteRoleChosen,TResult? Function( ShareNoteInvitedEvent value)?  invited,TResult? Function( ShareNoteFingerprintConfirmedEvent value)?  fingerprintConfirmed,TResult? Function( ShareNoteNewKeyAcceptedEvent value)?  newKeyAccepted,TResult? Function( ShareNotePromptDismissedEvent value)?  promptDismissed,TResult? Function( ShareNoteKeyReviewedEvent value)?  keyReviewed,TResult? Function( ShareNoteMemberRoleChangedEvent value)?  memberRoleChanged,TResult? Function( ShareNoteMemberRemovedEvent value)?  memberRemoved,TResult? Function( ShareNoteRequestApprovedEvent value)?  requestApproved,TResult? Function( ShareNoteRequestDeclinedEvent value)?  requestDeclined,TResult? Function( ShareNoteLinkRoleChosenEvent value)?  linkRoleChosen,TResult? Function( ShareNoteLinkDaysChosenEvent value)?  linkDaysChosen,TResult? Function( ShareNoteLinkMadeEvent value)?  linkMade,TResult? Function( ShareNoteLinkCancelledEvent value)?  linkCancelled,TResult? Function( ShareNoteLinkCopiedEvent value)?  linkCopied,TResult? Function( ShareNoteLinkSentEvent value)?  linkSent,TResult? Function( ShareNoteEndAskedEvent value)?  endAsked,TResult? Function( ShareNoteEndDismissedEvent value)?  endDismissed,TResult? Function( ShareNoteEndConfirmedEvent value)?  endConfirmed,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ShareNoteStartedEvent value)?  started,TResult? Function( ShareNoteRetriedEvent value)?  retried,TResult? Function( ShareNoteInviteRoleChosenEvent value)?  inviteRoleChosen,TResult? Function( ShareNoteInvitedEvent value)?  invited,TResult? Function( ShareNoteFingerprintConfirmedEvent value)?  fingerprintConfirmed,TResult? Function( ShareNoteInvitedUnverifiedEvent value)?  invitedUnverified,TResult? Function( ShareNoteNewKeyAcceptedEvent value)?  newKeyAccepted,TResult? Function( ShareNotePromptDismissedEvent value)?  promptDismissed,TResult? Function( ShareNoteKeyReviewedEvent value)?  keyReviewed,TResult? Function( ShareNoteMemberRoleChangedEvent value)?  memberRoleChanged,TResult? Function( ShareNoteMemberRemovedEvent value)?  memberRemoved,TResult? Function( ShareNoteRequestApprovedEvent value)?  requestApproved,TResult? Function( ShareNoteRequestDeclinedEvent value)?  requestDeclined,TResult? Function( ShareNoteLinkRoleChosenEvent value)?  linkRoleChosen,TResult? Function( ShareNoteLinkDaysChosenEvent value)?  linkDaysChosen,TResult? Function( ShareNoteLinkMadeEvent value)?  linkMade,TResult? Function( ShareNoteLinkCancelledEvent value)?  linkCancelled,TResult? Function( ShareNoteLinkCopiedEvent value)?  linkCopied,TResult? Function( ShareNoteLinkSentEvent value)?  linkSent,TResult? Function( ShareNoteEndAskedEvent value)?  endAsked,TResult? Function( ShareNoteEndDismissedEvent value)?  endDismissed,TResult? Function( ShareNoteEndConfirmedEvent value)?  endConfirmed,}){
 final _that = this;
 switch (_that) {
 case ShareNoteStartedEvent() when started != null:
@@ -143,7 +145,8 @@ return started(_that);case ShareNoteRetriedEvent() when retried != null:
 return retried(_that);case ShareNoteInviteRoleChosenEvent() when inviteRoleChosen != null:
 return inviteRoleChosen(_that);case ShareNoteInvitedEvent() when invited != null:
 return invited(_that);case ShareNoteFingerprintConfirmedEvent() when fingerprintConfirmed != null:
-return fingerprintConfirmed(_that);case ShareNoteNewKeyAcceptedEvent() when newKeyAccepted != null:
+return fingerprintConfirmed(_that);case ShareNoteInvitedUnverifiedEvent() when invitedUnverified != null:
+return invitedUnverified(_that);case ShareNoteNewKeyAcceptedEvent() when newKeyAccepted != null:
 return newKeyAccepted(_that);case ShareNotePromptDismissedEvent() when promptDismissed != null:
 return promptDismissed(_that);case ShareNoteKeyReviewedEvent() when keyReviewed != null:
 return keyReviewed(_that);case ShareNoteMemberRoleChangedEvent() when memberRoleChanged != null:
@@ -176,14 +179,15 @@ return endConfirmed(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String noteId)?  started,TResult Function()?  retried,TResult Function( ShareRole role)?  inviteRoleChosen,TResult Function( String username)?  invited,TResult Function()?  fingerprintConfirmed,TResult Function()?  newKeyAccepted,TResult Function()?  promptDismissed,TResult Function( String username)?  keyReviewed,TResult Function( String accountId,  ShareRole role)?  memberRoleChanged,TResult Function( String accountId)?  memberRemoved,TResult Function( String accountId)?  requestApproved,TResult Function( String accountId)?  requestDeclined,TResult Function( ShareRole role)?  linkRoleChosen,TResult Function( int days)?  linkDaysChosen,TResult Function()?  linkMade,TResult Function( String linkId)?  linkCancelled,TResult Function()?  linkCopied,TResult Function( Rect? origin)?  linkSent,TResult Function()?  endAsked,TResult Function()?  endDismissed,TResult Function()?  endConfirmed,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String noteId)?  started,TResult Function()?  retried,TResult Function( ShareRole role)?  inviteRoleChosen,TResult Function( String username)?  invited,TResult Function()?  fingerprintConfirmed,TResult Function()?  invitedUnverified,TResult Function()?  newKeyAccepted,TResult Function()?  promptDismissed,TResult Function( String username)?  keyReviewed,TResult Function( String accountId,  ShareRole role)?  memberRoleChanged,TResult Function( String accountId)?  memberRemoved,TResult Function( String accountId)?  requestApproved,TResult Function( String accountId)?  requestDeclined,TResult Function( ShareRole role)?  linkRoleChosen,TResult Function( int days)?  linkDaysChosen,TResult Function()?  linkMade,TResult Function( String linkId)?  linkCancelled,TResult Function()?  linkCopied,TResult Function( Rect? origin)?  linkSent,TResult Function()?  endAsked,TResult Function()?  endDismissed,TResult Function()?  endConfirmed,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case ShareNoteStartedEvent() when started != null:
 return started(_that.noteId);case ShareNoteRetriedEvent() when retried != null:
 return retried();case ShareNoteInviteRoleChosenEvent() when inviteRoleChosen != null:
 return inviteRoleChosen(_that.role);case ShareNoteInvitedEvent() when invited != null:
 return invited(_that.username);case ShareNoteFingerprintConfirmedEvent() when fingerprintConfirmed != null:
-return fingerprintConfirmed();case ShareNoteNewKeyAcceptedEvent() when newKeyAccepted != null:
+return fingerprintConfirmed();case ShareNoteInvitedUnverifiedEvent() when invitedUnverified != null:
+return invitedUnverified();case ShareNoteNewKeyAcceptedEvent() when newKeyAccepted != null:
 return newKeyAccepted();case ShareNotePromptDismissedEvent() when promptDismissed != null:
 return promptDismissed();case ShareNoteKeyReviewedEvent() when keyReviewed != null:
 return keyReviewed(_that.username);case ShareNoteMemberRoleChangedEvent() when memberRoleChanged != null:
@@ -217,14 +221,15 @@ return endConfirmed();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String noteId)  started,required TResult Function()  retried,required TResult Function( ShareRole role)  inviteRoleChosen,required TResult Function( String username)  invited,required TResult Function()  fingerprintConfirmed,required TResult Function()  newKeyAccepted,required TResult Function()  promptDismissed,required TResult Function( String username)  keyReviewed,required TResult Function( String accountId,  ShareRole role)  memberRoleChanged,required TResult Function( String accountId)  memberRemoved,required TResult Function( String accountId)  requestApproved,required TResult Function( String accountId)  requestDeclined,required TResult Function( ShareRole role)  linkRoleChosen,required TResult Function( int days)  linkDaysChosen,required TResult Function()  linkMade,required TResult Function( String linkId)  linkCancelled,required TResult Function()  linkCopied,required TResult Function( Rect? origin)  linkSent,required TResult Function()  endAsked,required TResult Function()  endDismissed,required TResult Function()  endConfirmed,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String noteId)  started,required TResult Function()  retried,required TResult Function( ShareRole role)  inviteRoleChosen,required TResult Function( String username)  invited,required TResult Function()  fingerprintConfirmed,required TResult Function()  invitedUnverified,required TResult Function()  newKeyAccepted,required TResult Function()  promptDismissed,required TResult Function( String username)  keyReviewed,required TResult Function( String accountId,  ShareRole role)  memberRoleChanged,required TResult Function( String accountId)  memberRemoved,required TResult Function( String accountId)  requestApproved,required TResult Function( String accountId)  requestDeclined,required TResult Function( ShareRole role)  linkRoleChosen,required TResult Function( int days)  linkDaysChosen,required TResult Function()  linkMade,required TResult Function( String linkId)  linkCancelled,required TResult Function()  linkCopied,required TResult Function( Rect? origin)  linkSent,required TResult Function()  endAsked,required TResult Function()  endDismissed,required TResult Function()  endConfirmed,}) {final _that = this;
 switch (_that) {
 case ShareNoteStartedEvent():
 return started(_that.noteId);case ShareNoteRetriedEvent():
 return retried();case ShareNoteInviteRoleChosenEvent():
 return inviteRoleChosen(_that.role);case ShareNoteInvitedEvent():
 return invited(_that.username);case ShareNoteFingerprintConfirmedEvent():
-return fingerprintConfirmed();case ShareNoteNewKeyAcceptedEvent():
+return fingerprintConfirmed();case ShareNoteInvitedUnverifiedEvent():
+return invitedUnverified();case ShareNoteNewKeyAcceptedEvent():
 return newKeyAccepted();case ShareNotePromptDismissedEvent():
 return promptDismissed();case ShareNoteKeyReviewedEvent():
 return keyReviewed(_that.username);case ShareNoteMemberRoleChangedEvent():
@@ -254,14 +259,15 @@ return endConfirmed();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String noteId)?  started,TResult? Function()?  retried,TResult? Function( ShareRole role)?  inviteRoleChosen,TResult? Function( String username)?  invited,TResult? Function()?  fingerprintConfirmed,TResult? Function()?  newKeyAccepted,TResult? Function()?  promptDismissed,TResult? Function( String username)?  keyReviewed,TResult? Function( String accountId,  ShareRole role)?  memberRoleChanged,TResult? Function( String accountId)?  memberRemoved,TResult? Function( String accountId)?  requestApproved,TResult? Function( String accountId)?  requestDeclined,TResult? Function( ShareRole role)?  linkRoleChosen,TResult? Function( int days)?  linkDaysChosen,TResult? Function()?  linkMade,TResult? Function( String linkId)?  linkCancelled,TResult? Function()?  linkCopied,TResult? Function( Rect? origin)?  linkSent,TResult? Function()?  endAsked,TResult? Function()?  endDismissed,TResult? Function()?  endConfirmed,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String noteId)?  started,TResult? Function()?  retried,TResult? Function( ShareRole role)?  inviteRoleChosen,TResult? Function( String username)?  invited,TResult? Function()?  fingerprintConfirmed,TResult? Function()?  invitedUnverified,TResult? Function()?  newKeyAccepted,TResult? Function()?  promptDismissed,TResult? Function( String username)?  keyReviewed,TResult? Function( String accountId,  ShareRole role)?  memberRoleChanged,TResult? Function( String accountId)?  memberRemoved,TResult? Function( String accountId)?  requestApproved,TResult? Function( String accountId)?  requestDeclined,TResult? Function( ShareRole role)?  linkRoleChosen,TResult? Function( int days)?  linkDaysChosen,TResult? Function()?  linkMade,TResult? Function( String linkId)?  linkCancelled,TResult? Function()?  linkCopied,TResult? Function( Rect? origin)?  linkSent,TResult? Function()?  endAsked,TResult? Function()?  endDismissed,TResult? Function()?  endConfirmed,}) {final _that = this;
 switch (_that) {
 case ShareNoteStartedEvent() when started != null:
 return started(_that.noteId);case ShareNoteRetriedEvent() when retried != null:
 return retried();case ShareNoteInviteRoleChosenEvent() when inviteRoleChosen != null:
 return inviteRoleChosen(_that.role);case ShareNoteInvitedEvent() when invited != null:
 return invited(_that.username);case ShareNoteFingerprintConfirmedEvent() when fingerprintConfirmed != null:
-return fingerprintConfirmed();case ShareNoteNewKeyAcceptedEvent() when newKeyAccepted != null:
+return fingerprintConfirmed();case ShareNoteInvitedUnverifiedEvent() when invitedUnverified != null:
+return invitedUnverified();case ShareNoteNewKeyAcceptedEvent() when newKeyAccepted != null:
 return newKeyAccepted();case ShareNotePromptDismissedEvent() when promptDismissed != null:
 return promptDismissed();case ShareNoteKeyReviewedEvent() when keyReviewed != null:
 return keyReviewed(_that.username);case ShareNoteMemberRoleChangedEvent() when memberRoleChanged != null:
@@ -539,6 +545,38 @@ int get hashCode => runtimeType.hashCode;
 @override
 String toString() {
   return 'ShareNoteEvent.fingerprintConfirmed()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class ShareNoteInvitedUnverifiedEvent implements ShareNoteEvent {
+  const ShareNoteInvitedUnverifiedEvent();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ShareNoteInvitedUnverifiedEvent);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'ShareNoteEvent.invitedUnverified()';
 }
 
 

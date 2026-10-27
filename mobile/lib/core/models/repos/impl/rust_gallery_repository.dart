@@ -8,6 +8,7 @@ import 'package:injectable/injectable.dart';
 import '../../../bridge/api/gallery.dart';
 import '../../../bridge/api/types.dart';
 import '../../../utils/kanso_error_mapping.dart';
+import '../../../utils/theme_changes.dart';
 import '../../data/application_error.dart';
 import '../abs/gallery_repository.dart';
 
@@ -17,19 +18,35 @@ class RustGalleryRepository implements GalleryRepository {
   RustGalleryRepository(this._gallery);
 
   final KansoGallery _gallery;
+  final ThemeChanges _changes = ThemeChanges();
 
   @override
   Future<Either<ApplicationError, List<GalleryItem>>> index({
     bool refresh = false,
-  }) => attempt(() => _gallery.index(refresh: refresh));
+  }) => attempt(() async {
+    final items = await _gallery.index(refresh: refresh);
+    _changes.seen(items);
+    return items;
+  });
 
   @override
   Future<Either<ApplicationError, List<GalleryItem>>> install(String id) =>
-      attempt(() => _gallery.install(id: id));
+      attempt(() async {
+        final items = await _gallery.install(id: id);
+        _changes.seen(items, touched: <String>{id});
+        return items;
+      });
 
   @override
   Future<Either<ApplicationError, List<GalleryItem>>> uninstall(String id) =>
-      attempt(() => _gallery.uninstall(id: id));
+      attempt(() async {
+        final items = await _gallery.uninstall(id: id);
+        _changes.seen(items, touched: <String>{id});
+        return items;
+      });
+
+  @override
+  Stream<String> themeChanges() => _changes.changes;
 
   @override
   Future<Either<ApplicationError, List<BuiltinTheme>>> installedThemes() =>

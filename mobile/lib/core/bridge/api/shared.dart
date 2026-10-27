@@ -63,6 +63,8 @@ abstract class KansoShared implements RustOpaqueInterface {
     required String commentId,
   });
 
+  Future<void> dismissProblems({required String noteId});
+
   Future<void> editComment({
     required String noteId,
     required String commentId,
@@ -86,6 +88,10 @@ abstract class KansoShared implements RustOpaqueInterface {
   Future<JoinRow> join({required String link});
 
   Future<void> leave({required String noteId});
+
+  /// What the note's page says of its sharing; `None` when it isn't
+  /// shared.
+  Future<LiveStatus?> liveStatus({required String noteId});
 
   Future<PersonLookup> lookupPerson({required String username});
 

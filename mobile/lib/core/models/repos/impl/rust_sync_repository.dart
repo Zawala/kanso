@@ -66,4 +66,32 @@ class RustSyncRepository implements SyncRepository {
     await _sync.setForeground(foreground: foreground);
     return unit;
   });
+
+  @override
+  Future<Either<ApplicationError, SyncSettingsRow>> settings() =>
+      attempt(_sync.settings);
+
+  @override
+  Future<Either<ApplicationError, SyncSettingsRow>> setSettings({
+    required bool enabled,
+    required int intervalSecs,
+  }) => attempt(
+    () => _sync.setSettings(enabled: enabled, intervalSecs: intervalSecs),
+  );
+
+  @override
+  List<SyncIntervalOption> intervalOptions() => KansoSync.intervalOptions();
+
+  @override
+  SyncStatusLine statusLine(
+    SyncStatus status,
+    SyncSettingsRow settings, {
+    required String when,
+    required String resume,
+  }) => KansoSync.statusLine(
+    status: status,
+    settings: settings,
+    when: when,
+    resume: resume,
+  );
 }

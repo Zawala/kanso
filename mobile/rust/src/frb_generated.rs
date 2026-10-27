@@ -49,7 +49,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1452762456;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1306331860;
 
 // Section: executor
 
@@ -2165,6 +2165,109 @@ fn wire__crate__api__editor__KansoEditor_command_impl(
         },
     )
 }
+fn wire__crate__api__editor__KansoEditor_comment_marks_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoEditor_comment_marks",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoEditor>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok =
+                        crate::api::editor::KansoEditor::comment_marks(&*api_that_guard)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__editor__KansoEditor_comment_on_selection_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoEditor_comment_on_selection",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoEditor>,
+            >>::sse_decode(&mut deserializer);
+            let api_body = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::editor::KansoEditor::comment_on_selection(
+                        &*api_that_guard,
+                        api_body,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__editor__KansoEditor_completion_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2464,6 +2567,56 @@ fn wire__crate__api__editor__KansoEditor_redo_impl(
         },
     )
 }
+fn wire__crate__api__editor__KansoEditor_remote_cursors_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoEditor_remote_cursors",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoEditor>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok =
+                        crate::api::editor::KansoEditor::remote_cursors(&*api_that_guard)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__editor__KansoEditor_remove_property_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2566,6 +2719,59 @@ fn wire__crate__api__editor__KansoEditor_select_impl(
                 )?;
                 std::result::Result::Ok(output_ok)
             })())
+        },
+    )
+}
+fn wire__crate__api__editor__KansoEditor_select_comment_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoEditor_select_comment",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoEditor>,
+            >>::sse_decode(&mut deserializer);
+            let api_comment_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::editor::KansoEditor::select_comment(
+                        &*api_that_guard,
+                        api_comment_id,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
         },
     )
 }
@@ -6357,6 +6563,59 @@ fn wire__crate__api__shared__KansoShared_delete_comment_impl(
         },
     )
 }
+fn wire__crate__api__shared__KansoShared_dismiss_problems_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoShared_dismiss_problems",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoShared>,
+            >>::sse_decode(&mut deserializer);
+            let api_note_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::shared::KansoShared::dismiss_problems(
+                        &*api_that_guard,
+                        api_note_id,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__shared__KansoShared_edit_comment_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -6722,6 +6981,59 @@ fn wire__crate__api__shared__KansoShared_leave_impl(
                     let api_that_guard = api_that_guard.unwrap();
                     let output_ok =
                         crate::api::shared::KansoShared::leave(&*api_that_guard, api_note_id)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__shared__KansoShared_live_status_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoShared_live_status",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoShared>,
+            >>::sse_decode(&mut deserializer);
+            let api_note_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::shared::KansoShared::live_status(
+                        &*api_that_guard,
+                        api_note_id,
+                    )?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -8192,6 +8504,15 @@ const _: fn() = || {
         let _: bool = CompletionItem.new_note;
     }
     {
+        let CursorMark = None::<crate::api::types::CursorMark>.unwrap();
+        let _: String = CursorMark.name;
+        let _: u32 = CursorMark.caret;
+        let _: u32 = CursorMark.start;
+        let _: u32 = CursorMark.end;
+        let _: u32 = CursorMark.light;
+        let _: u32 = CursorMark.dark;
+    }
+    {
         let DeviceRow = None::<crate::api::types::DeviceRow>.unwrap();
         let _: String = DeviceRow.id;
         let _: String = DeviceRow.title;
@@ -8263,6 +8584,7 @@ const _: fn() = || {
         let _: crate::api::types::LockState = EditorSnapshot.lock;
         let _: Vec<crate::api::types::Property> = EditorSnapshot.properties;
         let _: u64 = EditorSnapshot.version;
+        let _: crate::api::types::Range16 = EditorSnapshot.selection;
         let _: crate::api::types::HistoryState = EditorSnapshot.history;
         let _: crate::api::types::SaveState = EditorSnapshot.save;
     }
@@ -8403,6 +8725,14 @@ const _: fn() = || {
         let _: bool = ListShape.by_date;
         let _: crate::api::types::DateField = ListShape.date;
         let _: bool = ListShape.group_pinned;
+    }
+    {
+        let LiveStatus = None::<crate::api::types::LiveStatus>.unwrap();
+        let _: crate::api::types::ShareRole = LiveStatus.role;
+        let _: bool = LiveStatus.connected;
+        let _: bool = LiveStatus.ended;
+        let _: bool = LiveStatus.near_limit;
+        let _: Vec<String> = LiveStatus.problems;
     }
     match None::<crate::api::types::LockEvent>.unwrap() {
         crate::api::types::LockEvent::Unlocked => {}
@@ -8714,6 +9044,7 @@ const _: fn() = || {
         let _: Vec<String> = SharedEvent.note_ids;
         let _: u32 = SharedEvent.invitations;
         let _: Vec<String> = SharedEvent.comment_notes;
+        let _: Vec<String> = SharedEvent.live_notes;
     }
     {
         let SignedUp = None::<crate::api::types::SignedUp>.unwrap();
@@ -9581,6 +9912,26 @@ impl SseDecode for crate::api::types::CompletionKind {
     }
 }
 
+impl SseDecode for crate::api::types::CursorMark {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_name = <String>::sse_decode(deserializer);
+        let mut var_caret = <u32>::sse_decode(deserializer);
+        let mut var_start = <u32>::sse_decode(deserializer);
+        let mut var_end = <u32>::sse_decode(deserializer);
+        let mut var_light = <u32>::sse_decode(deserializer);
+        let mut var_dark = <u32>::sse_decode(deserializer);
+        return crate::api::types::CursorMark {
+            name: var_name,
+            caret: var_caret,
+            start: var_start,
+            end: var_end,
+            light: var_light,
+            dark: var_dark,
+        };
+    }
+}
+
 impl SseDecode for crate::api::types::DateField {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -9789,6 +10140,7 @@ impl SseDecode for crate::api::types::EditorSnapshot {
         let mut var_lock = <crate::api::types::LockState>::sse_decode(deserializer);
         let mut var_properties = <Vec<crate::api::types::Property>>::sse_decode(deserializer);
         let mut var_version = <u64>::sse_decode(deserializer);
+        let mut var_selection = <crate::api::types::Range16>::sse_decode(deserializer);
         let mut var_history = <crate::api::types::HistoryState>::sse_decode(deserializer);
         let mut var_save = <crate::api::types::SaveState>::sse_decode(deserializer);
         return crate::api::types::EditorSnapshot {
@@ -9799,6 +10151,7 @@ impl SseDecode for crate::api::types::EditorSnapshot {
             lock: var_lock,
             properties: var_properties,
             version: var_version,
+            selection: var_selection,
             history: var_history,
             save: var_save,
         };
@@ -10196,6 +10549,18 @@ impl SseDecode for Vec<crate::api::types::CompletionItem> {
             ans_.push(<crate::api::types::CompletionItem>::sse_decode(
                 deserializer,
             ));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::CursorMark> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::CursorMark>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -10623,6 +10988,24 @@ impl SseDecode for Vec<crate::api::types::ThemedIcon> {
     }
 }
 
+impl SseDecode for crate::api::types::LiveStatus {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_role = <crate::api::types::ShareRole>::sse_decode(deserializer);
+        let mut var_connected = <bool>::sse_decode(deserializer);
+        let mut var_ended = <bool>::sse_decode(deserializer);
+        let mut var_nearLimit = <bool>::sse_decode(deserializer);
+        let mut var_problems = <Vec<String>>::sse_decode(deserializer);
+        return crate::api::types::LiveStatus {
+            role: var_role,
+            connected: var_connected,
+            ended: var_ended,
+            near_limit: var_nearLimit,
+            problems: var_problems,
+        };
+    }
+}
+
 impl SseDecode for crate::api::types::LockEvent {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -11017,6 +11400,17 @@ impl SseDecode for Option<crate::api::types::ListPlace> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<crate::api::types::ListPlace>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api::types::LiveStatus> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::types::LiveStatus>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -11699,10 +12093,12 @@ impl SseDecode for crate::api::types::SharedEvent {
         let mut var_noteIds = <Vec<String>>::sse_decode(deserializer);
         let mut var_invitations = <u32>::sse_decode(deserializer);
         let mut var_commentNotes = <Vec<String>>::sse_decode(deserializer);
+        let mut var_liveNotes = <Vec<String>>::sse_decode(deserializer);
         return crate::api::types::SharedEvent {
             note_ids: var_noteIds,
             invitations: var_invitations,
             comment_notes: var_commentNotes,
+            live_notes: var_liveNotes,
         };
     }
 }
@@ -12445,396 +12841,432 @@ fn pde_ffi_dispatcher_primary_impl(
             data_len,
         ),
         38 => wire__crate__api__editor__KansoEditor_close_impl(port, ptr, rust_vec_len, data_len),
-        40 => {
+        40 => wire__crate__api__editor__KansoEditor_comment_marks_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        41 => wire__crate__api__editor__KansoEditor_comment_on_selection_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        42 => {
             wire__crate__api__editor__KansoEditor_completion_impl(port, ptr, rust_vec_len, data_len)
         }
-        41 => wire__crate__api__editor__KansoEditor_events_impl(port, ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__editor__KansoEditor_flush_impl(port, ptr, rust_vec_len, data_len),
-        43 => {
+        43 => wire__crate__api__editor__KansoEditor_events_impl(port, ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__editor__KansoEditor_flush_impl(port, ptr, rust_vec_len, data_len),
+        45 => {
             wire__crate__api__editor__KansoEditor_keep_mine_impl(port, ptr, rust_vec_len, data_len)
         }
-        44 => wire__crate__api__editor__KansoEditor_link_at_impl(port, ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__editor__KansoEditor_remove_property_impl(
+        46 => wire__crate__api__editor__KansoEditor_link_at_impl(port, ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__editor__KansoEditor_remote_cursors_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        48 => wire__crate__api__editor__KansoEditor_set_property_impl(
+        49 => wire__crate__api__editor__KansoEditor_remove_property_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        50 => {
+        51 => wire__crate__api__editor__KansoEditor_select_comment_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        52 => wire__crate__api__editor__KansoEditor_set_property_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        54 => {
             wire__crate__api__editor__KansoEditor_snapshot_impl(port, ptr, rust_vec_len, data_len)
         }
-        51 => wire__crate__api__editor__KansoEditor_styled_runs_impl(
+        55 => wire__crate__api__editor__KansoEditor_styled_runs_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        53 => {
+        57 => {
             wire__crate__api__editor__KansoEditor_use_theirs_impl(port, ptr, rust_vec_len, data_len)
         }
-        54 => wire__crate__api__gallery__KansoGallery_index_impl(port, ptr, rust_vec_len, data_len),
-        55 => {
+        58 => wire__crate__api__gallery__KansoGallery_index_impl(port, ptr, rust_vec_len, data_len),
+        59 => {
             wire__crate__api__gallery__KansoGallery_install_impl(port, ptr, rust_vec_len, data_len)
         }
-        56 => wire__crate__api__gallery__KansoGallery_installed_theme_tokens_impl(
+        60 => wire__crate__api__gallery__KansoGallery_installed_theme_tokens_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        57 => wire__crate__api__gallery__KansoGallery_installed_themes_impl(
+        61 => wire__crate__api__gallery__KansoGallery_installed_themes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        58 => wire__crate__api__gallery__KansoGallery_uninstall_impl(
+        62 => wire__crate__api__gallery__KansoGallery_uninstall_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        62 => wire__crate__api__library__KansoLibrary_attachment_impl(
+        66 => wire__crate__api__library__KansoLibrary_attachment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        63 => {
+        67 => {
             wire__crate__api__library__KansoLibrary_change_impl(port, ptr, rust_vec_len, data_len)
         }
-        64 => {
+        68 => {
             wire__crate__api__library__KansoLibrary_changes_impl(port, ptr, rust_vec_len, data_len)
         }
-        65 => {
+        69 => {
             wire__crate__api__library__KansoLibrary_create_impl(port, ptr, rust_vec_len, data_len)
         }
-        66 => wire__crate__api__library__KansoLibrary_create_linked_note_impl(
+        70 => wire__crate__api__library__KansoLibrary_create_linked_note_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        67 => wire__crate__api__library__KansoLibrary_create_notebook_impl(
+        71 => wire__crate__api__library__KansoLibrary_create_notebook_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        68 => wire__crate__api__library__KansoLibrary_edit_impl(port, ptr, rust_vec_len, data_len),
-        70 => wire__crate__api__library__KansoLibrary_list_impl(port, ptr, rust_vec_len, data_len),
-        72 => wire__crate__api__library__KansoLibrary_note_impl(port, ptr, rust_vec_len, data_len),
-        73 => wire__crate__api__library__KansoLibrary_notebooks_impl(
+        72 => wire__crate__api__library__KansoLibrary_edit_impl(port, ptr, rust_vec_len, data_len),
+        74 => wire__crate__api__library__KansoLibrary_list_impl(port, ptr, rust_vec_len, data_len),
+        76 => wire__crate__api__library__KansoLibrary_note_impl(port, ptr, rust_vec_len, data_len),
+        77 => wire__crate__api__library__KansoLibrary_notebooks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        74 => wire__crate__api__library__KansoLibrary_open_impl(port, ptr, rust_vec_len, data_len),
-        75 => wire__crate__api__library__KansoLibrary_overdue_tasks_impl(
+        78 => wire__crate__api__library__KansoLibrary_open_impl(port, ptr, rust_vec_len, data_len),
+        79 => wire__crate__api__library__KansoLibrary_overdue_tasks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        76 => {
+        80 => {
             wire__crate__api__library__KansoLibrary_overview_impl(port, ptr, rust_vec_len, data_len)
         }
-        77 => wire__crate__api__library__KansoLibrary_properties_impl(
+        81 => wire__crate__api__library__KansoLibrary_properties_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        78 => wire__crate__api__library__KansoLibrary_query_view_impl(
+        82 => wire__crate__api__library__KansoLibrary_query_view_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        80 => wire__crate__api__library__KansoLibrary_save_impl(port, ptr, rust_vec_len, data_len),
-        81 => {
+        84 => wire__crate__api__library__KansoLibrary_save_impl(port, ptr, rust_vec_len, data_len),
+        85 => {
             wire__crate__api__library__KansoLibrary_search_impl(port, ptr, rust_vec_len, data_len)
         }
-        82 => {
+        86 => {
             wire__crate__api__library__KansoLibrary_set_task_impl(port, ptr, rust_vec_len, data_len)
         }
-        85 => wire__crate__api__library__KansoLibrary_tags_impl(port, ptr, rust_vec_len, data_len),
-        86 => wire__crate__api__library__KansoLibrary_tasks_impl(port, ptr, rust_vec_len, data_len),
-        87 => wire__crate__api__library__KansoLibrary_toggle_task_at_impl(
+        89 => wire__crate__api__library__KansoLibrary_tags_impl(port, ptr, rust_vec_len, data_len),
+        90 => wire__crate__api__library__KansoLibrary_tasks_impl(port, ptr, rust_vec_len, data_len),
+        91 => wire__crate__api__library__KansoLibrary_toggle_task_at_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        88 => wire__crate__api__library__KansoLibrary_trash_impl(port, ptr, rust_vec_len, data_len),
-        89 => wire__crate__api__library__KansoLibrary_undo_impl(port, ptr, rust_vec_len, data_len),
-        90 => wire__crate__api__locks__KansoLocks_is_note_unlocked_impl(
+        92 => wire__crate__api__library__KansoLibrary_trash_impl(port, ptr, rust_vec_len, data_len),
+        93 => wire__crate__api__library__KansoLibrary_undo_impl(port, ptr, rust_vec_len, data_len),
+        94 => wire__crate__api__locks__KansoLocks_is_note_unlocked_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        91 => {
+        95 => {
             wire__crate__api__locks__KansoLocks_is_unlocked_impl(port, ptr, rust_vec_len, data_len)
         }
-        92 => wire__crate__api__locks__KansoLocks_lock_impl(port, ptr, rust_vec_len, data_len),
-        93 => {
+        96 => wire__crate__api__locks__KansoLocks_lock_impl(port, ptr, rust_vec_len, data_len),
+        97 => {
             wire__crate__api__locks__KansoLocks_lock_events_impl(port, ptr, rust_vec_len, data_len)
         }
-        94 => wire__crate__api__locks__KansoLocks_lock_note_impl(port, ptr, rust_vec_len, data_len),
-        95 => wire__crate__api__locks__KansoLocks_unlock_impl(port, ptr, rust_vec_len, data_len),
-        96 => wire__crate__api__renderer__KansoRenderer_builtin_theme_tokens_impl(
+        98 => wire__crate__api__locks__KansoLocks_lock_note_impl(port, ptr, rust_vec_len, data_len),
+        99 => wire__crate__api__locks__KansoLocks_unlock_impl(port, ptr, rust_vec_len, data_len),
+        100 => wire__crate__api__renderer__KansoRenderer_builtin_theme_tokens_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        97 => wire__crate__api__renderer__KansoRenderer_builtin_themes_impl(
+        101 => wire__crate__api__renderer__KansoRenderer_builtin_themes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        98 => wire__crate__api__renderer__KansoRenderer_code_block_impl(
+        102 => wire__crate__api__renderer__KansoRenderer_code_block_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        99 => wire__crate__api__renderer__KansoRenderer_diagram_renderer_impl(
+        103 => wire__crate__api__renderer__KansoRenderer_diagram_renderer_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        100 => wire__crate__api__renderer__KansoRenderer_diagram_svg_impl(
+        104 => wire__crate__api__renderer__KansoRenderer_diagram_svg_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        101 => wire__crate__api__renderer__KansoRenderer_highlight_impl(
+        105 => wire__crate__api__renderer__KansoRenderer_highlight_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        102 => wire__crate__api__renderer__KansoRenderer_icon_theme_icons_impl(
+        106 => wire__crate__api__renderer__KansoRenderer_icon_theme_icons_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        103 => wire__crate__api__renderer__KansoRenderer_icon_themes_impl(
+        107 => wire__crate__api__renderer__KansoRenderer_icon_themes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        104 => wire__crate__api__renderer__KansoRenderer_link_target_impl(
+        108 => wire__crate__api__renderer__KansoRenderer_link_target_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        105 => wire__crate__api__renderer__KansoRenderer_math_svg_impl(
+        109 => wire__crate__api__renderer__KansoRenderer_math_svg_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        106 => wire__crate__api__renderer__KansoRenderer_preview_html_impl(
+        110 => wire__crate__api__renderer__KansoRenderer_preview_html_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        107 => wire__crate__api__renderer__KansoRenderer_preview_html_with_impl(
+        111 => wire__crate__api__renderer__KansoRenderer_preview_html_with_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        108 => wire__crate__api__renderer__KansoRenderer_set_diagram_renderer_impl(
+        112 => wire__crate__api__renderer__KansoRenderer_set_diagram_renderer_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        109 => wire__crate__api__renderer__KansoRenderer_set_fonts_impl(
+        113 => wire__crate__api__renderer__KansoRenderer_set_fonts_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        110 => wire__crate__api__renderer__KansoRenderer_styled_runs_impl(
+        114 => wire__crate__api__renderer__KansoRenderer_styled_runs_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        111 => wire__crate__api__renderer__KansoRenderer_theme_tokens_impl(
+        115 => wire__crate__api__renderer__KansoRenderer_theme_tokens_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        112 => wire__crate__api__shared__KansoShared_accept_impl(port, ptr, rust_vec_len, data_len),
-        113 => wire__crate__api__shared__KansoShared_accept_new_key_impl(
+        116 => wire__crate__api__shared__KansoShared_accept_impl(port, ptr, rust_vec_len, data_len),
+        117 => wire__crate__api__shared__KansoShared_accept_new_key_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        114 => wire__crate__api__shared__KansoShared_add_comment_impl(
+        118 => wire__crate__api__shared__KansoShared_add_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        115 => wire__crate__api__shared__KansoShared_approve_request_impl(
+        119 => wire__crate__api__shared__KansoShared_approve_request_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        116 => {
+        120 => {
             wire__crate__api__shared__KansoShared_can_share_impl(port, ptr, rust_vec_len, data_len)
         }
-        117 => wire__crate__api__shared__KansoShared_cancel_link_impl(
-            port,
-            ptr,
-            rust_vec_len,
-            data_len,
-        ),
-        118 => {
-            wire__crate__api__shared__KansoShared_close_live_impl(port, ptr, rust_vec_len, data_len)
-        }
-        119 => {
-            wire__crate__api__shared__KansoShared_comments_impl(port, ptr, rust_vec_len, data_len)
-        }
-        120 => wire__crate__api__shared__KansoShared_comments_band_impl(
-            port,
-            ptr,
-            rust_vec_len,
-            data_len,
-        ),
-        121 => wire__crate__api__shared__KansoShared_create_link_impl(
+        121 => wire__crate__api__shared__KansoShared_cancel_link_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
         122 => {
+            wire__crate__api__shared__KansoShared_close_live_impl(port, ptr, rust_vec_len, data_len)
+        }
+        123 => {
+            wire__crate__api__shared__KansoShared_comments_impl(port, ptr, rust_vec_len, data_len)
+        }
+        124 => wire__crate__api__shared__KansoShared_comments_band_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        125 => wire__crate__api__shared__KansoShared_create_link_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        126 => {
             wire__crate__api__shared__KansoShared_decline_impl(port, ptr, rust_vec_len, data_len)
         }
-        123 => wire__crate__api__shared__KansoShared_decline_request_impl(
+        127 => wire__crate__api__shared__KansoShared_decline_request_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        124 => wire__crate__api__shared__KansoShared_delete_comment_impl(
+        128 => wire__crate__api__shared__KansoShared_delete_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        125 => wire__crate__api__shared__KansoShared_edit_comment_impl(
+        129 => wire__crate__api__shared__KansoShared_dismiss_problems_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        126 => wire__crate__api__shared__KansoShared_events_impl(port, ptr, rust_vec_len, data_len),
-        127 => wire__crate__api__shared__KansoShared_info_impl(port, ptr, rust_vec_len, data_len),
-        128 => wire__crate__api__shared__KansoShared_invitations_impl(
+        130 => wire__crate__api__shared__KansoShared_edit_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        129 => wire__crate__api__shared__KansoShared_invite_impl(port, ptr, rust_vec_len, data_len),
-        130 => wire__crate__api__shared__KansoShared_join_impl(port, ptr, rust_vec_len, data_len),
-        131 => wire__crate__api__shared__KansoShared_leave_impl(port, ptr, rust_vec_len, data_len),
-        132 => wire__crate__api__shared__KansoShared_lookup_person_impl(
+        131 => wire__crate__api__shared__KansoShared_events_impl(port, ptr, rust_vec_len, data_len),
+        132 => wire__crate__api__shared__KansoShared_info_impl(port, ptr, rust_vec_len, data_len),
+        133 => wire__crate__api__shared__KansoShared_invitations_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        133 => wire__crate__api__shared__KansoShared_open_comments_impl(
+        134 => wire__crate__api__shared__KansoShared_invite_impl(port, ptr, rust_vec_len, data_len),
+        135 => wire__crate__api__shared__KansoShared_join_impl(port, ptr, rust_vec_len, data_len),
+        136 => wire__crate__api__shared__KansoShared_leave_impl(port, ptr, rust_vec_len, data_len),
+        137 => wire__crate__api__shared__KansoShared_live_status_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        134 => {
+        138 => wire__crate__api__shared__KansoShared_lookup_person_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        139 => wire__crate__api__shared__KansoShared_open_comments_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        140 => {
             wire__crate__api__shared__KansoShared_open_live_impl(port, ptr, rust_vec_len, data_len)
         }
-        135 => wire__crate__api__shared__KansoShared_remove_impl(port, ptr, rust_vec_len, data_len),
-        136 => wire__crate__api__shared__KansoShared_resolve_comment_impl(
+        141 => wire__crate__api__shared__KansoShared_remove_impl(port, ptr, rust_vec_len, data_len),
+        142 => wire__crate__api__shared__KansoShared_resolve_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        137 => {
+        143 => {
             wire__crate__api__shared__KansoShared_set_role_impl(port, ptr, rust_vec_len, data_len)
         }
-        138 => wire__crate__api__shared__KansoShared_share_impl(port, ptr, rust_vec_len, data_len),
-        139 => wire__crate__api__shared__KansoShared_stop_impl(port, ptr, rust_vec_len, data_len),
-        140 => wire__crate__api__shared__KansoShared_sync_shared_impl(
+        144 => wire__crate__api__shared__KansoShared_share_impl(port, ptr, rust_vec_len, data_len),
+        145 => wire__crate__api__shared__KansoShared_stop_impl(port, ptr, rust_vec_len, data_len),
+        146 => wire__crate__api__shared__KansoShared_sync_shared_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        141 => wire__crate__api__shared__KansoShared_verify_person_impl(
+        147 => wire__crate__api__shared__KansoShared_verify_person_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        142 => {
+        148 => {
             wire__crate__api__sync__KansoSync_check_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        143 => {
+        149 => {
             wire__crate__api__sync__KansoSync_default_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        147 => {
+        153 => {
             wire__crate__api__sync__KansoSync_set_foreground_impl(port, ptr, rust_vec_len, data_len)
         }
-        148 => {
+        154 => {
             wire__crate__api__sync__KansoSync_set_settings_impl(port, ptr, rust_vec_len, data_len)
         }
-        149 => wire__crate__api__sync__KansoSync_settings_impl(port, ptr, rust_vec_len, data_len),
-        150 => wire__crate__api__sync__KansoSync_sign_in_password_impl(
+        155 => wire__crate__api__sync__KansoSync_settings_impl(port, ptr, rust_vec_len, data_len),
+        156 => wire__crate__api__sync__KansoSync_sign_in_password_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        151 => wire__crate__api__sync__KansoSync_sign_out_impl(port, ptr, rust_vec_len, data_len),
-        152 => wire__crate__api__sync__KansoSync_status_impl(port, ptr, rust_vec_len, data_len),
-        154 => {
+        157 => wire__crate__api__sync__KansoSync_sign_out_impl(port, ptr, rust_vec_len, data_len),
+        158 => wire__crate__api__sync__KansoSync_status_impl(port, ptr, rust_vec_len, data_len),
+        160 => {
             wire__crate__api__sync__KansoSync_status_stream_impl(port, ptr, rust_vec_len, data_len)
         }
-        155 => wire__crate__api__sync__KansoSync_sync_now_impl(port, ptr, rust_vec_len, data_len),
-        156 => {
+        161 => wire__crate__api__sync__KansoSync_sync_now_impl(port, ptr, rust_vec_len, data_len),
+        162 => {
             wire__crate__api__diagnostics__backup_excluded_impl(port, ptr, rust_vec_len, data_len)
         }
-        157 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
-        158 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
-        159 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
-        160 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
+        163 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
+        164 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
+        165 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
+        166 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -12849,26 +13281,26 @@ fn pde_ffi_dispatcher_sync_impl(
     match func_id {
         37 => wire__crate__api__editor__KansoEditor_apply_impl(ptr, rust_vec_len, data_len),
         39 => wire__crate__api__editor__KansoEditor_command_impl(ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__editor__KansoEditor_redo_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__editor__KansoEditor_select_impl(ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__editor__KansoEditor_set_title_impl(ptr, rust_vec_len, data_len),
-        52 => wire__crate__api__editor__KansoEditor_undo_impl(ptr, rust_vec_len, data_len),
-        59 => wire__crate__api__library__KansoLibrary_account_impl(ptr, rust_vec_len, data_len),
-        60 => wire__crate__api__library__KansoLibrary_account_settings_impl(
+        47 => wire__crate__api__editor__KansoEditor_redo_impl(ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__editor__KansoEditor_select_impl(ptr, rust_vec_len, data_len),
+        53 => wire__crate__api__editor__KansoEditor_set_title_impl(ptr, rust_vec_len, data_len),
+        56 => wire__crate__api__editor__KansoEditor_undo_impl(ptr, rust_vec_len, data_len),
+        63 => wire__crate__api__library__KansoLibrary_account_impl(ptr, rust_vec_len, data_len),
+        64 => wire__crate__api__library__KansoLibrary_account_settings_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        61 => wire__crate__api__library__KansoLibrary_approvals_impl(ptr, rust_vec_len, data_len),
-        69 => wire__crate__api__library__KansoLibrary_gallery_impl(ptr, rust_vec_len, data_len),
-        71 => wire__crate__api__library__KansoLibrary_locks_impl(ptr, rust_vec_len, data_len),
-        79 => wire__crate__api__library__KansoLibrary_renderer_impl(ptr, rust_vec_len, data_len),
-        83 => wire__crate__api__library__KansoLibrary_shared_impl(ptr, rust_vec_len, data_len),
-        84 => wire__crate__api__library__KansoLibrary_syncing_impl(ptr, rust_vec_len, data_len),
-        144 => wire__crate__api__sync__KansoSync_interval_label_impl(ptr, rust_vec_len, data_len),
-        145 => wire__crate__api__sync__KansoSync_interval_options_impl(ptr, rust_vec_len, data_len),
-        146 => wire__crate__api__sync__KansoSync_interval_phrase_impl(ptr, rust_vec_len, data_len),
-        153 => wire__crate__api__sync__KansoSync_status_line_impl(ptr, rust_vec_len, data_len),
+        65 => wire__crate__api__library__KansoLibrary_approvals_impl(ptr, rust_vec_len, data_len),
+        73 => wire__crate__api__library__KansoLibrary_gallery_impl(ptr, rust_vec_len, data_len),
+        75 => wire__crate__api__library__KansoLibrary_locks_impl(ptr, rust_vec_len, data_len),
+        83 => wire__crate__api__library__KansoLibrary_renderer_impl(ptr, rust_vec_len, data_len),
+        87 => wire__crate__api__library__KansoLibrary_shared_impl(ptr, rust_vec_len, data_len),
+        88 => wire__crate__api__library__KansoLibrary_syncing_impl(ptr, rust_vec_len, data_len),
+        150 => wire__crate__api__sync__KansoSync_interval_label_impl(ptr, rust_vec_len, data_len),
+        151 => wire__crate__api__sync__KansoSync_interval_options_impl(ptr, rust_vec_len, data_len),
+        152 => wire__crate__api__sync__KansoSync_interval_phrase_impl(ptr, rust_vec_len, data_len),
+        159 => wire__crate__api__sync__KansoSync_status_line_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -13459,6 +13891,31 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::CompletionK
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::CursorMark> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.name.into_into_dart().into_dart(),
+            self.0.caret.into_into_dart().into_dart(),
+            self.0.start.into_into_dart().into_dart(),
+            self.0.end.into_into_dart().into_dart(),
+            self.0.light.into_into_dart().into_dart(),
+            self.0.dark.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::CursorMark>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::CursorMark>>
+    for crate::api::types::CursorMark
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::CursorMark> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::DateField> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
@@ -13724,6 +14181,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::EditorSnaps
             self.0.lock.into_into_dart().into_dart(),
             self.0.properties.into_into_dart().into_dart(),
             self.0.version.into_into_dart().into_dart(),
+            self.0.selection.into_into_dart().into_dart(),
             self.0.history.into_into_dart().into_dart(),
             self.0.save.into_into_dart().into_dart(),
         ]
@@ -14161,6 +14619,30 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::ListShape>>
     for crate::api::types::ListShape
 {
     fn into_into_dart(self) -> FrbWrapper<crate::api::types::ListShape> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveStatus> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.role.into_into_dart().into_dart(),
+            self.0.connected.into_into_dart().into_dart(),
+            self.0.ended.into_into_dart().into_dart(),
+            self.0.near_limit.into_into_dart().into_dart(),
+            self.0.problems.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveStatus>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveStatus>>
+    for crate::api::types::LiveStatus
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveStatus> {
         self.into()
     }
 }
@@ -15205,6 +15687,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::SharedEvent
             self.0.note_ids.into_into_dart().into_dart(),
             self.0.invitations.into_into_dart().into_dart(),
             self.0.comment_notes.into_into_dart().into_dart(),
+            self.0.live_notes.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -16450,6 +16933,18 @@ impl SseEncode for crate::api::types::CompletionKind {
     }
 }
 
+impl SseEncode for crate::api::types::CursorMark {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.name, serializer);
+        <u32>::sse_encode(self.caret, serializer);
+        <u32>::sse_encode(self.start, serializer);
+        <u32>::sse_encode(self.end, serializer);
+        <u32>::sse_encode(self.light, serializer);
+        <u32>::sse_encode(self.dark, serializer);
+    }
+}
+
 impl SseEncode for crate::api::types::DateField {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -16633,6 +17128,7 @@ impl SseEncode for crate::api::types::EditorSnapshot {
         <crate::api::types::LockState>::sse_encode(self.lock, serializer);
         <Vec<crate::api::types::Property>>::sse_encode(self.properties, serializer);
         <u64>::sse_encode(self.version, serializer);
+        <crate::api::types::Range16>::sse_encode(self.selection, serializer);
         <crate::api::types::HistoryState>::sse_encode(self.history, serializer);
         <crate::api::types::SaveState>::sse_encode(self.save, serializer);
     }
@@ -16938,6 +17434,16 @@ impl SseEncode for Vec<crate::api::types::CompletionItem> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::types::CompletionItem>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::CursorMark> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::CursorMark>::sse_encode(item, serializer);
         }
     }
 }
@@ -17284,6 +17790,17 @@ impl SseEncode for Vec<crate::api::types::ThemedIcon> {
     }
 }
 
+impl SseEncode for crate::api::types::LiveStatus {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::types::ShareRole>::sse_encode(self.role, serializer);
+        <bool>::sse_encode(self.connected, serializer);
+        <bool>::sse_encode(self.ended, serializer);
+        <bool>::sse_encode(self.near_limit, serializer);
+        <Vec<String>>::sse_encode(self.problems, serializer);
+    }
+}
+
 impl SseEncode for crate::api::types::LockEvent {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -17598,6 +18115,16 @@ impl SseEncode for Option<crate::api::types::ListPlace> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <crate::api::types::ListPlace>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::types::LiveStatus> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::types::LiveStatus>::sse_encode(value, serializer);
         }
     }
 }
@@ -18180,6 +18707,7 @@ impl SseEncode for crate::api::types::SharedEvent {
         <Vec<String>>::sse_encode(self.note_ids, serializer);
         <u32>::sse_encode(self.invitations, serializer);
         <Vec<String>>::sse_encode(self.comment_notes, serializer);
+        <Vec<String>>::sse_encode(self.live_notes, serializer);
     }
 }
 

@@ -16,6 +16,7 @@ import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 
 import 'close_bloc_later.dart';
 import 'fixture_about_repository.dart';
@@ -23,6 +24,7 @@ import 'fixture_library_repository.dart';
 import 'fixture_sync_repository.dart';
 import 'seeded_account_blocs.dart';
 import 'seeded_appearance_bloc.dart';
+import 'sync_settings_blocs.dart';
 
 /// The BLoCs the settings screens read, read: the version of the app
 /// (0.1.0, build 3), the account and a sync status, by default no account.
@@ -95,6 +97,7 @@ class SettingsBlocs {
   List<BlocProvider<dynamic>> get providers => <BlocProvider<dynamic>>[
     BlocProvider<AboutBloc>.value(value: about),
     BlocProvider<SyncStatusBloc>.value(value: sync),
+    BlocProvider<SyncSettingsBloc>.value(value: startedSyncSettingsBloc()),
     BlocProvider<AccountBloc>.value(value: account),
     BlocProvider<LibraryIndexBloc>.value(value: index),
     BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),

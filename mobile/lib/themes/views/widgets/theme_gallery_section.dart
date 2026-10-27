@@ -7,7 +7,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/load_status.dart';
-import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
@@ -26,9 +25,9 @@ import 'gallery_results.dart';
 /// community's themes as cards, each with Install, Update or Remove.
 ///
 /// A theme installed or removed here changes the picker's installed themes
-/// (the [ThemePickerBloc]), and a removed theme that was in use goes back to
-/// Kanso's own (the `AppearanceBloc`). It needs a [ThemeGalleryBloc] above
-/// it, with those two.
+/// (the [ThemePickerBloc]); the app's appearance hears of it from the
+/// gallery itself. It needs a [ThemeGalleryBloc] and a [ThemePickerBloc]
+/// above it.
 class ThemeGallerySection extends StatelessWidget {
   const ThemeGallerySection({super.key});
 
@@ -42,10 +41,6 @@ class ThemeGallerySection extends StatelessWidget {
           before.installedRevision != after.installedRevision &&
           after.changed.isNotEmpty,
       listener: (context, state) {
-        final appearance = context.read<AppearanceBloc>();
-        for (final id in state.changed) {
-          appearance.add(AppearanceEvent.themeChanged(id));
-        }
         context.read<ThemePickerBloc>().add(
           const ThemePickerEvent.installedChanged(),
         );

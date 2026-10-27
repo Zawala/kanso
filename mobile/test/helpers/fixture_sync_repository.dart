@@ -94,4 +94,85 @@ class FixtureSyncRepository implements SyncRepository {
   @override
   Future<Either<ApplicationError, Unit>> signOut() =>
       throw UnimplementedError();
+
+  /// Whether Kanso syncs on its own, and how often.
+  SyncSettingsRow syncSettings = const SyncSettingsRow(
+    enabled: true,
+    intervalSecs: 300,
+  );
+
+  /// When set, a change of the settings fails with it.
+  ApplicationError? settingsError;
+
+  @override
+  Future<Either<ApplicationError, SyncSettingsRow>> settings() async =>
+      Right<ApplicationError, SyncSettingsRow>(syncSettings);
+
+  @override
+  Future<Either<ApplicationError, SyncSettingsRow>> setSettings({
+    required bool enabled,
+    required int intervalSecs,
+  }) async {
+    final error = settingsError;
+    if (error != null) {
+      return Left<ApplicationError, SyncSettingsRow>(error);
+    }
+    syncSettings = SyncSettingsRow(
+      enabled: enabled,
+      intervalSecs: intervalSecs,
+    );
+    return Right<ApplicationError, SyncSettingsRow>(syncSettings);
+  }
+
+  @override
+  List<SyncIntervalOption> intervalOptions() => fixtureIntervals;
+
+  /// The desktop's words for the common cases, so pictures read true.
+  @override
+  SyncStatusLine statusLine(
+    SyncStatus status,
+    SyncSettingsRow settings, {
+    required String when,
+    required String resume,
+  }) {
+    if (status.phase == SyncPhase.signedOut) {
+      return const SyncStatusLine(
+        tone: SyncTone.quiet,
+        label: 'Sync is off',
+        detail:
+            'Your notes are only on this device. With a free account they '
+            'sync to all your devices and are backed up, locked so only you '
+            'can read them.',
+      );
+    }
+    if (!settings.enabled) {
+      return const SyncStatusLine(
+        tone: SyncTone.quiet,
+        label: 'Sync off',
+        detail: 'Turn on Sync automatically, or sync once with Sync now.',
+      );
+    }
+    final minutes = settings.intervalSecs ~/ 60;
+    final every = switch (minutes) {
+      1 => 'every minute',
+      60 => 'every hour',
+      _ when minutes % 60 == 0 => 'every ${minutes ~/ 60} hours',
+      _ => 'every $minutes minutes',
+    };
+    return SyncStatusLine(
+      tone: SyncTone.good,
+      label: 'Synced $when',
+      detail: 'Kanso syncs $every and soon after you edit.',
+    );
+  }
 }
+
+/// The desktop's choices for how often sync runs.
+const List<SyncIntervalOption> fixtureIntervals = <SyncIntervalOption>[
+  SyncIntervalOption(minutes: 1, label: '1 minute'),
+  SyncIntervalOption(minutes: 5, label: '5 minutes'),
+  SyncIntervalOption(minutes: 15, label: '15 minutes'),
+  SyncIntervalOption(minutes: 30, label: '30 minutes'),
+  SyncIntervalOption(minutes: 60, label: '1 hour'),
+  SyncIntervalOption(minutes: 240, label: '4 hours'),
+];

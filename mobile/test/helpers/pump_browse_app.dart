@@ -22,6 +22,7 @@ import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/shell/state/note_creation/note_creation_bloc.dart';
@@ -33,8 +34,10 @@ import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_renderer_repository.dart';
 import 'fixture_shared_notes_repository.dart';
+import 'fixture_sync_repository.dart';
 import 'register_page_blocs.dart';
 import 'seeded_appearance_bloc.dart';
+import 'sync_settings_blocs.dart';
 
 /// The boundary around the app that a picture is taken of.
 const Key appBoundaryKey = ValueKey<String>('app-boundary');
@@ -74,7 +77,8 @@ class BrowseApp {
 /// window of one (a Split View half) is not enough to tell; it defaults to
 /// what the window's own size says. [backupNotice] is the notice's BLoC; it
 /// defaults to one that is not shown. [accounts] has the account screens'
-/// BLoCs; by default the phone has no account. [shared] and [gallery] are
+/// BLoCs; by default the phone has no account. [sync] is the sync the
+/// status and the sync settings read. [shared] and [gallery] are
 /// the shared notes and the theme gallery the app reads, if a test has made
 /// them. The app is inside a repaint boundary, [appBoundaryKey], to take a
 /// picture of.
@@ -92,10 +96,11 @@ Future<BrowseApp> pumpBrowseApp(
   FixtureSharedNotesRepository? shared,
   FixtureGalleryRepository? gallery,
   AccountBlocs? accounts,
+  FixtureSyncRepository? sync,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
-  final blocs = await BrowseBlocs.start(library, null, shared);
+  final blocs = await BrowseBlocs.start(library, sync, shared);
   registerPageBlocs(
     blocs.library,
     renderer,
@@ -137,6 +142,9 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
           BlocProvider<InvitationsBloc>.value(value: blocs.invitations),
           BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
+          BlocProvider<SyncSettingsBloc>.value(
+            value: startedSyncSettingsBloc(blocs.syncRepository),
+          ),
           BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
           BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
           BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),

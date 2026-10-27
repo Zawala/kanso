@@ -27,12 +27,14 @@ import 'package:kanso/core/views/widgets/kanso_drawer_scope.dart';
 import 'package:kanso/core/views/widgets/kanso_sheet.dart';
 import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
 import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
+import 'package:kanso/library/views/widgets/library_pane.dart';
 import 'package:kanso/note/views/pages/note_page.dart';
 import 'package:kanso/note/views/widgets/no_note_selected_pane.dart';
 import 'package:kanso/note_list/views/pages/note_list_page.dart';
 import 'package:kanso/search/views/pages/search_page.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
 import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
@@ -44,6 +46,7 @@ import '../../../helpers/browse_blocs.dart';
 import '../../../helpers/crash_samples.dart';
 import '../../../helpers/register_page_blocs.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
+import '../../../helpers/sync_settings_blocs.dart';
 
 const Size _landscape = Size(1180, 820);
 const Size _portrait = Size(820, 1180);
@@ -83,6 +86,7 @@ Future<GoRouter> _pump(
         BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
         BlocProvider<InvitationsBloc>.value(value: blocs.invitations),
         BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
+        BlocProvider<SyncSettingsBloc>.value(value: startedSyncSettingsBloc()),
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
         BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
@@ -353,10 +357,18 @@ void main() {
       tester,
     ) async {
       await _pump(tester, _landscape, gallery: true);
-      expect(
-        find.text('Design gallery', skipOffstage: false),
-        findsOneWidget,
+      // It is the last row of the library, below its fold.
+      await tester.scrollUntilVisible(
+        find.text('Design gallery'),
+        120,
+        scrollable: find
+            .descendant(
+              of: find.byType(LibraryPane),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
+      expect(find.text('Design gallery'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await _pump(tester, _landscape);
       expect(find.text('Design gallery', skipOffstage: false), findsNothing);

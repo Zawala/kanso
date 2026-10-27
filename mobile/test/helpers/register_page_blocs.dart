@@ -15,9 +15,11 @@ import 'package:kanso/search/state/search/search_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/icon_themes/icon_themes_bloc.dart';
 import 'package:kanso/settings/state/licences/licences_bloc.dart';
+import 'package:kanso/sharing/state/comments/comments_bloc.dart';
 import 'package:kanso/sharing/state/join_link/join_link_bloc.dart';
 import 'package:kanso/sharing/state/share_note/share_note_bloc.dart';
 import 'package:kanso/sharing/state/shared_note_live/shared_note_live_bloc.dart';
+import 'package:kanso/sharing/state/shared_note_status/shared_note_status_bloc.dart';
 import 'package:kanso/tasks/state/tasks/tasks_bloc.dart';
 import 'package:kanso/themes/state/theme_gallery/theme_gallery_bloc.dart';
 import 'package:kanso/themes/state/theme_picker/theme_picker_bloc.dart';
@@ -124,6 +126,16 @@ void registerPageBlocs(
     getIt.unregister<SharedNoteLiveBloc>();
   }
   getIt.registerFactory<SharedNoteLiveBloc>(() => SharedNoteLiveBloc(sharing));
+  if (getIt.isRegistered<CommentsBloc>()) {
+    getIt.unregister<CommentsBloc>();
+  }
+  getIt.registerFactory<CommentsBloc>(() => CommentsBloc(sharing));
+  if (getIt.isRegistered<SharedNoteStatusBloc>()) {
+    getIt.unregister<SharedNoteStatusBloc>();
+  }
+  getIt.registerFactory<SharedNoteStatusBloc>(
+    () => SharedNoteStatusBloc(sharing),
+  );
   if (getIt.isRegistered<IconThemesBloc>()) {
     getIt.unregister<IconThemesBloc>();
   }

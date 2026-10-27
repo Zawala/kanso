@@ -2947,7 +2947,7 @@ abstract class AppLocalizations {
   /// All the share sheet says of a locked note.
   ///
   /// In en, this message translates to:
-  /// **'Locked notes can’t be shared.'**
+  /// **'Locked notes, and notes in locked notebooks, can’t be shared. Remove the lock first.'**
   String get shareLockedNote;
 
   /// The share sheet's message while no account is signed in.
@@ -3322,6 +3322,12 @@ abstract class AppLocalizations {
   /// **'Mark as verified and invite'**
   String get shareVerifyConfirm;
 
+  /// Invites the person without comparing their fingerprint; it stays unverified.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite'**
+  String get shareInviteUnverified;
+
   /// Warns that someone's keys changed.
   ///
   /// In en, this message translates to:
@@ -3669,6 +3675,258 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Request sent'**
   String get joinSentTitle;
+
+  /// When something happened under a minute ago, after “Synced” or “Edited”.
+  ///
+  /// In en, this message translates to:
+  /// **'just now'**
+  String get timeJustNow;
+
+  /// When something happened, minutes ago.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min ago'**
+  String timeMinutesAgo(int minutes);
+
+  /// When something happened, hours ago.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} h ago'**
+  String timeHoursAgo(int hours);
+
+  /// When something happened earlier today, more than a day ago by the clock.
+  ///
+  /// In en, this message translates to:
+  /// **'today'**
+  String get timeToday;
+
+  /// When something happened yesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'yesterday'**
+  String get timeYesterday;
+
+  /// When paused sync starts again, later today, after “Sync resumes”.
+  ///
+  /// In en, this message translates to:
+  /// **'at {time}'**
+  String timeResumeAt(String time);
+
+  /// When paused sync starts again, tomorrow.
+  ///
+  /// In en, this message translates to:
+  /// **'tomorrow at {time}'**
+  String timeResumeTomorrow(String time);
+
+  /// When paused sync starts again, on a later day.
+  ///
+  /// In en, this message translates to:
+  /// **'on {day} at {time}'**
+  String timeResumeOn(String day, String time);
+
+  /// The Settings switch that lets Kanso sync on its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync automatically'**
+  String get settingsSyncAutomatically;
+
+  /// Under the Sync automatically switch: when Kanso syncs on its own.
+  ///
+  /// In en, this message translates to:
+  /// **'In the background, and soon after you edit.'**
+  String get settingsSyncAutomaticallyDetail;
+
+  /// The Settings row that chooses how often Kanso syncs on its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync every'**
+  String get settingsSyncEvery;
+
+  /// The title of the sheet of how often Kanso syncs on its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync every'**
+  String get settingsSyncEveryTitle;
+
+  /// The title of a shared note's comments sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments'**
+  String get commentsTitle;
+
+  /// What the comments button in a shared note's top bar does, as a screen reader says it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Comments} =1{Comments, 1 open} other{Comments, {count} open}}'**
+  String commentsButton(int count);
+
+  /// The heading over the comments whose words were deleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Orphaned'**
+  String get commentsOrphaned;
+
+  /// Says that a note that isn't shared has no comments.
+  ///
+  /// In en, this message translates to:
+  /// **'Comments are for shared notes'**
+  String get commentsNotShared;
+
+  /// Under the title that says comments are for shared notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Share this note to talk it over with others.'**
+  String get commentsNotSharedHint;
+
+  /// Says that nobody has commented on a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'No comments yet'**
+  String get commentsEmpty;
+
+  /// How to comment, under No comments yet, for someone who may comment.
+  ///
+  /// In en, this message translates to:
+  /// **'Select some words, then choose Comment.'**
+  String get commentsEmptyHint;
+
+  /// Under No comments yet, for someone who may only read the note.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody has commented on this note yet.'**
+  String get commentsEmptyHintReader;
+
+  /// After when a comment was written, when it was edited since.
+  ///
+  /// In en, this message translates to:
+  /// **' · Edited'**
+  String get commentEditedSuffix;
+
+  /// After when a comment was written, while it is on its way to the others.
+  ///
+  /// In en, this message translates to:
+  /// **' · Sending…'**
+  String get commentSendingSuffix;
+
+  /// Marks a resolved comment.
+  ///
+  /// In en, this message translates to:
+  /// **'Resolved'**
+  String get commentResolvedMark;
+
+  /// Marks a comment as dealt with.
+  ///
+  /// In en, this message translates to:
+  /// **'Resolve'**
+  String get commentResolve;
+
+  /// Opens a resolved comment again.
+  ///
+  /// In en, this message translates to:
+  /// **'Reopen'**
+  String get commentReopen;
+
+  /// Changes the words of one of the person's comments.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get commentEdit;
+
+  /// Deletes one of the person's comments.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get commentDelete;
+
+  /// Asks once before a comment is deleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this comment? It goes for everyone in the note.'**
+  String get commentDeleteWarning;
+
+  /// The title of the sheet that changes a comment's words.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit comment'**
+  String get commentEditTitle;
+
+  /// Saves a comment's new words.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get commentSave;
+
+  /// The title of the sheet that comments on the selected words.
+  ///
+  /// In en, this message translates to:
+  /// **'Comment on the selection'**
+  String get commentNewTitle;
+
+  /// Sends a new comment.
+  ///
+  /// In en, this message translates to:
+  /// **'Comment'**
+  String get commentNewAction;
+
+  /// The hint in the empty comment field.
+  ///
+  /// In en, this message translates to:
+  /// **'Your comment'**
+  String get commentHint;
+
+  /// The text menu's button that comments on the selected words of a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'Comment'**
+  String get menuComment;
+
+  /// The first words of a shared note's status line.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared'**
+  String get sharedStatusShared;
+
+  /// In a shared note's status line: this account may not change the text.
+  ///
+  /// In en, this message translates to:
+  /// **'Read only'**
+  String get sharedStatusReadOnly;
+
+  /// In a shared note's status line: edits cross between people within a moment.
+  ///
+  /// In en, this message translates to:
+  /// **'Live'**
+  String get sharedStatusLive;
+
+  /// In a shared note's status line: the note's room is not connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline'**
+  String get sharedStatusOffline;
+
+  /// In a shared note's status line: the note uses more than 80% of its size limit.
+  ///
+  /// In en, this message translates to:
+  /// **'Near this shared note\'s size limit'**
+  String get sharedStatusNearLimit;
+
+  /// The status line of a note whose sharing ended while it was open.
+  ///
+  /// In en, this message translates to:
+  /// **'Private copy · No longer shared'**
+  String get sharedStatusPrivateCopy;
+
+  /// The banner over a shared note: the newest thing that couldn't be done, and how many more there are.
+  ///
+  /// In en, this message translates to:
+  /// **'{message} ({count, plural, =1{1 more} other{{count} more}})'**
+  String sharedProblemsMore(String message, int count);
+
+  /// Clears the banner of a shared note's problems.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get sharedProblemsDismiss;
 }
 
 class _AppLocalizationsDelegate

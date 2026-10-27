@@ -463,6 +463,45 @@ enum CompletionKind {
   tag,
 }
 
+class CursorMark {
+  final String name;
+  final int caret;
+  final int start;
+  final int end;
+  final int light;
+  final int dark;
+
+  const CursorMark({
+    required this.name,
+    required this.caret,
+    required this.start,
+    required this.end,
+    required this.light,
+    required this.dark,
+  });
+
+  @override
+  int get hashCode =>
+      name.hashCode ^
+      caret.hashCode ^
+      start.hashCode ^
+      end.hashCode ^
+      light.hashCode ^
+      dark.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CursorMark &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          caret == other.caret &&
+          start == other.start &&
+          end == other.end &&
+          light == other.light &&
+          dark == other.dark;
+}
+
 enum DateField {
   updated,
   created,
@@ -663,6 +702,7 @@ class EditorSnapshot {
   final LockState lock;
   final List<Property> properties;
   final int version;
+  final Range16 selection;
   final HistoryState history;
   final SaveState save;
 
@@ -674,6 +714,7 @@ class EditorSnapshot {
     required this.lock,
     required this.properties,
     required this.version,
+    required this.selection,
     required this.history,
     required this.save,
   });
@@ -687,6 +728,7 @@ class EditorSnapshot {
       lock.hashCode ^
       properties.hashCode ^
       version.hashCode ^
+      selection.hashCode ^
       history.hashCode ^
       save.hashCode;
 
@@ -702,6 +744,7 @@ class EditorSnapshot {
           lock == other.lock &&
           properties == other.properties &&
           version == other.version &&
+          selection == other.selection &&
           history == other.history &&
           save == other.save;
 }
@@ -1168,6 +1211,41 @@ class ListShape {
           byDate == other.byDate &&
           date == other.date &&
           groupPinned == other.groupPinned;
+}
+
+class LiveStatus {
+  final ShareRole role;
+  final bool connected;
+  final bool ended;
+  final bool nearLimit;
+  final List<String> problems;
+
+  const LiveStatus({
+    required this.role,
+    required this.connected,
+    required this.ended,
+    required this.nearLimit,
+    required this.problems,
+  });
+
+  @override
+  int get hashCode =>
+      role.hashCode ^
+      connected.hashCode ^
+      ended.hashCode ^
+      nearLimit.hashCode ^
+      problems.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveStatus &&
+          runtimeType == other.runtimeType &&
+          role == other.role &&
+          connected == other.connected &&
+          ended == other.ended &&
+          nearLimit == other.nearLimit &&
+          problems == other.problems;
 }
 
 @freezed
@@ -2158,16 +2236,21 @@ class SharedEvent {
   final List<String> noteIds;
   final int invitations;
   final List<String> commentNotes;
+  final List<String> liveNotes;
 
   const SharedEvent({
     required this.noteIds,
     required this.invitations,
     required this.commentNotes,
+    required this.liveNotes,
   });
 
   @override
   int get hashCode =>
-      noteIds.hashCode ^ invitations.hashCode ^ commentNotes.hashCode;
+      noteIds.hashCode ^
+      invitations.hashCode ^
+      commentNotes.hashCode ^
+      liveNotes.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -2176,7 +2259,8 @@ class SharedEvent {
           runtimeType == other.runtimeType &&
           noteIds == other.noteIds &&
           invitations == other.invitations &&
-          commentNotes == other.commentNotes;
+          commentNotes == other.commentNotes &&
+          liveNotes == other.liveNotes;
 }
 
 enum SignOutReasonKind {

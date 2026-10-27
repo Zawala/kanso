@@ -53,6 +53,7 @@ enum KansoIcons {
   listChecks('list-checks'),
   lock('lock'),
   lockOpen('lock-open'),
+  messageSquare('message-square'),
   logOut('log-out'),
   menu('menu'),
   monitor('monitor'),

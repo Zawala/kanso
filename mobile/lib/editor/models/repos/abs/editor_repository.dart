@@ -104,4 +104,22 @@ abstract interface class EditorDocument {
   /// What happens to the note that was not asked for: saved, changed
   /// elsewhere, reloaded, closed. Single-subscription.
   Stream<EditorEvent> events();
+
+  /// Comments on the selected words of a shared note, the desktop's Comment
+  /// on Selection; the typing goes into the room first. Answers with the new
+  /// comment's ID, or why not (no words selected, not shared, may only
+  /// read).
+  Future<Either<ApplicationError, String>> commentOnSelection(String body);
+
+  /// The words the note's open comments are on, in UTF-16 units of the
+  /// note's text, to tint. None for a note that isn't shared.
+  Future<Either<ApplicationError, List<Range16>>> commentMarks();
+
+  /// Selects the words comment [commentId] is on; the selection, or null
+  /// when there is no such comment.
+  Future<Either<ApplicationError, Range16?>> selectComment(String commentId);
+
+  /// Other people's carets and selections in the note, in UTF-16 units of
+  /// the text, with their colours; none for a note that isn't open live.
+  Future<Either<ApplicationError, List<CursorMark>>> remoteCursors();
 }

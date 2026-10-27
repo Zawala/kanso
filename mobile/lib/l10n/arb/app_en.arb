@@ -2136,7 +2136,7 @@
   "@shareLoading": {
     "description": "Says to a screen reader that a note's sharing is being read."
   },
-  "shareLockedNote": "Locked notes can’t be shared.",
+  "shareLockedNote": "Locked notes, and notes in locked notebooks, can’t be shared. Remove the lock first.",
   "@shareLockedNote": {
     "description": "All the share sheet says of a locked note."
   },
@@ -2442,6 +2442,10 @@
   "@shareVerifyConfirm": {
     "description": "Marks a fingerprint as compared and invites the person."
   },
+  "shareInviteUnverified": "Invite",
+  "@shareInviteUnverified": {
+    "description": "Invites the person without comparing their fingerprint; it stays unverified."
+  },
   "shareKeyChangedIntro": "{username}’s keys changed since you last shared with them. That happens when they set up their account again, and also when someone tries to read what you share. Ask them which fingerprint they see now before you trust it.",
   "@shareKeyChangedIntro": {
     "description": "Warns that someone's keys changed.",
@@ -2713,5 +2717,210 @@
   "joinSentTitle": "Request sent",
   "@joinSentTitle": {
     "description": "The title of the card that says a request to join was sent."
+  },
+  "timeJustNow": "just now",
+  "@timeJustNow": {
+    "description": "When something happened under a minute ago, after “Synced” or “Edited”."
+  },
+  "timeMinutesAgo": "{minutes} min ago",
+  "@timeMinutesAgo": {
+    "description": "When something happened, minutes ago.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "timeHoursAgo": "{hours} h ago",
+  "@timeHoursAgo": {
+    "description": "When something happened, hours ago.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "timeToday": "today",
+  "@timeToday": {
+    "description": "When something happened earlier today, more than a day ago by the clock."
+  },
+  "timeYesterday": "yesterday",
+  "@timeYesterday": {
+    "description": "When something happened yesterday."
+  },
+  "timeResumeAt": "at {time}",
+  "@timeResumeAt": {
+    "description": "When paused sync starts again, later today, after “Sync resumes”.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "timeResumeTomorrow": "tomorrow at {time}",
+  "@timeResumeTomorrow": {
+    "description": "When paused sync starts again, tomorrow.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "timeResumeOn": "on {day} at {time}",
+  "@timeResumeOn": {
+    "description": "When paused sync starts again, on a later day.",
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsSyncAutomatically": "Sync automatically",
+  "@settingsSyncAutomatically": {
+    "description": "The Settings switch that lets Kanso sync on its own."
+  },
+  "settingsSyncAutomaticallyDetail": "In the background, and soon after you edit.",
+  "@settingsSyncAutomaticallyDetail": {
+    "description": "Under the Sync automatically switch: when Kanso syncs on its own."
+  },
+  "settingsSyncEvery": "Sync every",
+  "@settingsSyncEvery": {
+    "description": "The Settings row that chooses how often Kanso syncs on its own."
+  },
+  "settingsSyncEveryTitle": "Sync every",
+  "@settingsSyncEveryTitle": {
+    "description": "The title of the sheet of how often Kanso syncs on its own."
+  },
+  "commentsTitle": "Comments",
+  "@commentsTitle": {
+    "description": "The title of a shared note's comments sheet."
+  },
+  "commentsButton": "{count, plural, =0{Comments} =1{Comments, 1 open} other{Comments, {count} open}}",
+  "@commentsButton": {
+    "description": "What the comments button in a shared note's top bar does, as a screen reader says it.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commentsOrphaned": "Orphaned",
+  "@commentsOrphaned": {
+    "description": "The heading over the comments whose words were deleted."
+  },
+  "commentsNotShared": "Comments are for shared notes",
+  "@commentsNotShared": {
+    "description": "Says that a note that isn't shared has no comments."
+  },
+  "commentsNotSharedHint": "Share this note to talk it over with others.",
+  "@commentsNotSharedHint": {
+    "description": "Under the title that says comments are for shared notes."
+  },
+  "commentsEmpty": "No comments yet",
+  "@commentsEmpty": {
+    "description": "Says that nobody has commented on a shared note."
+  },
+  "commentsEmptyHint": "Select some words, then choose Comment.",
+  "@commentsEmptyHint": {
+    "description": "How to comment, under No comments yet, for someone who may comment."
+  },
+  "commentsEmptyHintReader": "Nobody has commented on this note yet.",
+  "@commentsEmptyHintReader": {
+    "description": "Under No comments yet, for someone who may only read the note."
+  },
+  "commentEditedSuffix": " · Edited",
+  "@commentEditedSuffix": {
+    "description": "After when a comment was written, when it was edited since."
+  },
+  "commentSendingSuffix": " · Sending…",
+  "@commentSendingSuffix": {
+    "description": "After when a comment was written, while it is on its way to the others."
+  },
+  "commentResolvedMark": "Resolved",
+  "@commentResolvedMark": {
+    "description": "Marks a resolved comment."
+  },
+  "commentResolve": "Resolve",
+  "@commentResolve": {
+    "description": "Marks a comment as dealt with."
+  },
+  "commentReopen": "Reopen",
+  "@commentReopen": {
+    "description": "Opens a resolved comment again."
+  },
+  "commentEdit": "Edit",
+  "@commentEdit": {
+    "description": "Changes the words of one of the person's comments."
+  },
+  "commentDelete": "Delete",
+  "@commentDelete": {
+    "description": "Deletes one of the person's comments."
+  },
+  "commentDeleteWarning": "Delete this comment? It goes for everyone in the note.",
+  "@commentDeleteWarning": {
+    "description": "Asks once before a comment is deleted."
+  },
+  "commentEditTitle": "Edit comment",
+  "@commentEditTitle": {
+    "description": "The title of the sheet that changes a comment's words."
+  },
+  "commentSave": "Save",
+  "@commentSave": {
+    "description": "Saves a comment's new words."
+  },
+  "commentNewTitle": "Comment on the selection",
+  "@commentNewTitle": {
+    "description": "The title of the sheet that comments on the selected words."
+  },
+  "commentNewAction": "Comment",
+  "@commentNewAction": {
+    "description": "Sends a new comment."
+  },
+  "commentHint": "Your comment",
+  "@commentHint": {
+    "description": "The hint in the empty comment field."
+  },
+  "menuComment": "Comment",
+  "@menuComment": {
+    "description": "The text menu's button that comments on the selected words of a shared note."
+  },
+  "sharedStatusShared": "Shared",
+  "@sharedStatusShared": {
+    "description": "The first words of a shared note's status line."
+  },
+  "sharedStatusReadOnly": "Read only",
+  "@sharedStatusReadOnly": {
+    "description": "In a shared note's status line: this account may not change the text."
+  },
+  "sharedStatusLive": "Live",
+  "@sharedStatusLive": {
+    "description": "In a shared note's status line: edits cross between people within a moment."
+  },
+  "sharedStatusOffline": "Offline",
+  "@sharedStatusOffline": {
+    "description": "In a shared note's status line: the note's room is not connected."
+  },
+  "sharedStatusNearLimit": "Near this shared note's size limit",
+  "@sharedStatusNearLimit": {
+    "description": "In a shared note's status line: the note uses more than 80% of its size limit."
+  },
+  "sharedStatusPrivateCopy": "Private copy · No longer shared",
+  "@sharedStatusPrivateCopy": {
+    "description": "The status line of a note whose sharing ended while it was open."
+  },
+  "sharedProblemsMore": "{message} ({count, plural, =1{1 more} other{{count} more}})",
+  "@sharedProblemsMore": {
+    "description": "The banner over a shared note: the newest thing that couldn't be done, and how many more there are.",
+    "placeholders": {
+      "message": {"type": "String"},
+      "count": {"type": "int"}
+    }
+  },
+  "sharedProblemsDismiss": "Dismiss",
+  "@sharedProblemsDismiss": {
+    "description": "Clears the banner of a shared note's problems."
   }
 }

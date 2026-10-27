@@ -379,6 +379,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   ListQuery dco_decode_box_autoadd_list_query(dynamic raw);
 
   @protected
+  LiveStatus dco_decode_box_autoadd_live_status(dynamic raw);
+
+  @protected
   LockedInfo dco_decode_box_autoadd_locked_info(dynamic raw);
 
   @protected
@@ -464,6 +467,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   CompletionKind dco_decode_completion_kind(dynamic raw);
+
+  @protected
+  CursorMark dco_decode_cursor_mark(dynamic raw);
 
   @protected
   DateField dco_decode_date_field(dynamic raw);
@@ -568,6 +574,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<CompletionItem> dco_decode_list_completion_item(dynamic raw);
 
   @protected
+  List<CursorMark> dco_decode_list_cursor_mark(dynamic raw);
+
+  @protected
   List<DeviceRow> dco_decode_list_device_row(dynamic raw);
 
   @protected
@@ -666,6 +675,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<ThemedIcon> dco_decode_list_themed_icon(dynamic raw);
 
   @protected
+  LiveStatus dco_decode_live_status(dynamic raw);
+
+  @protected
   LockEvent dco_decode_lock_event(dynamic raw);
 
   @protected
@@ -739,6 +751,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   ListPlace? dco_decode_opt_box_autoadd_list_place(dynamic raw);
+
+  @protected
+  LiveStatus? dco_decode_opt_box_autoadd_live_status(dynamic raw);
 
   @protected
   NotebookRole? dco_decode_opt_box_autoadd_notebook_role(dynamic raw);
@@ -1288,6 +1303,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   ListQuery sse_decode_box_autoadd_list_query(SseDeserializer deserializer);
 
   @protected
+  LiveStatus sse_decode_box_autoadd_live_status(SseDeserializer deserializer);
+
+  @protected
   LockedInfo sse_decode_box_autoadd_locked_info(SseDeserializer deserializer);
 
   @protected
@@ -1387,6 +1405,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   CompletionKind sse_decode_completion_kind(SseDeserializer deserializer);
+
+  @protected
+  CursorMark sse_decode_cursor_mark(SseDeserializer deserializer);
 
   @protected
   DateField sse_decode_date_field(SseDeserializer deserializer);
@@ -1499,6 +1520,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<CompletionItem> sse_decode_list_completion_item(
     SseDeserializer deserializer,
   );
+
+  @protected
+  List<CursorMark> sse_decode_list_cursor_mark(SseDeserializer deserializer);
 
   @protected
   List<DeviceRow> sse_decode_list_device_row(SseDeserializer deserializer);
@@ -1615,6 +1639,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<ThemedIcon> sse_decode_list_themed_icon(SseDeserializer deserializer);
 
   @protected
+  LiveStatus sse_decode_live_status(SseDeserializer deserializer);
+
+  @protected
   LockEvent sse_decode_lock_event(SseDeserializer deserializer);
 
   @protected
@@ -1698,6 +1725,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   ListPlace? sse_decode_opt_box_autoadd_list_place(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  LiveStatus? sse_decode_opt_box_autoadd_live_status(
     SseDeserializer deserializer,
   );
 
@@ -2350,6 +2382,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_live_status(
+    LiveStatus self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_locked_info(
     LockedInfo self,
     SseSerializer serializer,
@@ -2497,6 +2535,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_cursor_mark(CursorMark self, SseSerializer serializer);
+
+  @protected
   void sse_encode_date_field(DateField self, SseSerializer serializer);
 
   @protected
@@ -2622,6 +2663,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_list_completion_item(
     List<CompletionItem> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_cursor_mark(
+    List<CursorMark> self,
     SseSerializer serializer,
   );
 
@@ -2782,6 +2829,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_live_status(LiveStatus self, SseSerializer serializer);
+
+  @protected
   void sse_encode_lock_event(LockEvent self, SseSerializer serializer);
 
   @protected
@@ -2874,6 +2924,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_opt_box_autoadd_list_place(
     ListPlace? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_live_status(
+    LiveStatus? self,
     SseSerializer serializer,
   );
 

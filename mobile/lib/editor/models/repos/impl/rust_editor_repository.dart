@@ -111,4 +111,20 @@ class RustEditorDocument implements EditorDocument {
 
   @override
   Stream<EditorEvent> events() => cancelableStream(_editor.events());
+
+  @override
+  Future<Either<ApplicationError, String>> commentOnSelection(String body) =>
+      attempt(() => _editor.commentOnSelection(body: body));
+
+  @override
+  Future<Either<ApplicationError, List<Range16>>> commentMarks() =>
+      attempt(_editor.commentMarks);
+
+  @override
+  Future<Either<ApplicationError, Range16?>> selectComment(String commentId) =>
+      attempt(() => _editor.selectComment(commentId: commentId));
+
+  @override
+  Future<Either<ApplicationError, List<CursorMark>>> remoteCursors() =>
+      attempt(_editor.remoteCursors);
 }

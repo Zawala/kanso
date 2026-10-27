@@ -78,7 +78,13 @@ void main() {
       await _pumpNote(tester, MockIds.privateJournal, shared);
       await tester.tap(find.byType(ShareNoteButton));
       await tester.pumpAndSettle();
-      expect(find.text('Locked notes can’t be shared.'), findsOneWidget);
+      expect(
+        find.text(
+          'Locked notes, and notes in locked notebooks, can’t be shared. '
+          'Remove the lock first.',
+        ),
+        findsOneWidget,
+      );
       expect(find.byType(ShareInviteBar), findsNothing);
     });
 
@@ -111,6 +117,8 @@ void main() {
       await _pumpNote(tester, MockIds.syncDesign, shared);
       expect(shared.live, <String>{MockIds.syncDesign});
       await tester.pumpWidget(const SizedBox.shrink());
+      // The room is left once the bloc has closed, a few turns later.
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await tester.pump();
       expect(shared.live, isEmpty);
       expect(shared.calls, contains('closeLive ${MockIds.syncDesign}'));

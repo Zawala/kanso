@@ -100,10 +100,13 @@ import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
 import 'settings/state/default_notebook/default_notebook_bloc.dart' as _i925;
 import 'settings/state/icon_themes/icon_themes_bloc.dart' as _i636;
 import 'settings/state/licences/licences_bloc.dart' as _i570;
+import 'settings/state/sync_settings/sync_settings_bloc.dart' as _i794;
+import 'sharing/state/comments/comments_bloc.dart' as _i295;
 import 'sharing/state/invitations/invitations_bloc.dart' as _i1;
 import 'sharing/state/join_link/join_link_bloc.dart' as _i676;
 import 'sharing/state/share_note/share_note_bloc.dart' as _i252;
 import 'sharing/state/shared_note_live/shared_note_live_bloc.dart' as _i361;
+import 'sharing/state/shared_note_status/shared_note_status_bloc.dart' as _i109;
 import 'shell/state/library_pane/library_pane_bloc.dart' as _i612;
 import 'shell/state/note_creation/note_creation_bloc.dart' as _i34;
 import 'tasks/state/tasks/tasks_bloc.dart' as _i470;
@@ -341,6 +344,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.factory<_i185.SyncStatusBloc>(
       () => _i185.SyncStatusBloc(gh<_i601.SyncRepository>()),
     );
+    gh.factory<_i794.SyncSettingsBloc>(
+      () => _i794.SyncSettingsBloc(gh<_i601.SyncRepository>()),
+    );
     gh.factory<_i569.ThemeGalleryBloc>(
       () => _i569.ThemeGalleryBloc(gh<_i550.GalleryRepository>()),
     );
@@ -379,6 +385,9 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i202.SystemShareRepository>(),
       ),
     );
+    gh.factory<_i295.CommentsBloc>(
+      () => _i295.CommentsBloc(gh<_i374.SharedNotesRepository>()),
+    );
     gh.factory<_i1.InvitationsBloc>(
       () => _i1.InvitationsBloc(gh<_i374.SharedNotesRepository>()),
     );
@@ -387,6 +396,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i361.SharedNoteLiveBloc>(
       () => _i361.SharedNoteLiveBloc(gh<_i374.SharedNotesRepository>()),
+    );
+    gh.factory<_i109.SharedNoteStatusBloc>(
+      () => _i109.SharedNoteStatusBloc(gh<_i374.SharedNotesRepository>()),
     );
     gh.factory<_i551.AppearanceBloc>(
       () => _i551.AppearanceBloc(

@@ -4,8 +4,8 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    CommentRow, InvitationRow, JoinRow, KansoError, PersonLookup, PersonRow, ShareInfo, ShareRole,
-    SharedEvent, SharedNotes,
+    CommentRow, InvitationRow, JoinRow, KansoError, LiveStatus, PersonLookup, PersonRow, ShareInfo,
+    ShareRole, SharedEvent, SharedNotes,
 };
 
 #[frb(opaque)]
@@ -139,6 +139,16 @@ impl KansoShared {
 
     pub fn close_live(&self, note_id: String) {
         self.0.close_live(note_id);
+    }
+
+    /// What the note's page says of its sharing; `None` when it isn't
+    /// shared.
+    pub fn live_status(&self, note_id: String) -> Result<Option<LiveStatus>, KansoError> {
+        self.0.live_status(note_id)
+    }
+
+    pub fn dismiss_problems(&self, note_id: String) -> Result<(), KansoError> {
+        self.0.dismiss_problems(note_id)
     }
 
     /// The note's comments: those on words still in the text in order, then

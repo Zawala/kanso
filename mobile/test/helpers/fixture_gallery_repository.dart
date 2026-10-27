@@ -9,6 +9,7 @@ import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/configs/kanso_palette.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/repos/abs/gallery_repository.dart';
+import 'package:kanso/core/utils/theme_changes.dart';
 
 import 'gallery_fixtures.dart';
 import 'theme_tokens.dart';
@@ -50,6 +51,11 @@ class FixtureGalleryRepository implements GalleryRepository {
   /// for the others.
   final Map<String, KansoPalette> palettes = <String, KansoPalette>{};
 
+  final ThemeChanges _changes = ThemeChanges();
+
+  @override
+  Stream<String> themeChanges() => _changes.changes;
+
   KansoPalette _paletteOf(GalleryItem item) =>
       palettes[item.id] ??
       fakePalette(item.id, dark: item.dark).copyWith(name: item.name);
@@ -64,6 +70,7 @@ class FixtureGalleryRepository implements GalleryRepository {
     if (failure != null) {
       return Left<ApplicationError, List<GalleryItem>>(failure);
     }
+    _changes.seen(items);
     return Right<ApplicationError, List<GalleryItem>>(
       List<GalleryItem>.of(items),
     );
@@ -98,6 +105,7 @@ class FixtureGalleryRepository implements GalleryRepository {
         else
           item,
     ];
+    _changes.seen(items, touched: <String>{id});
     return Right<ApplicationError, List<GalleryItem>>(items);
   }
 
@@ -124,6 +132,7 @@ class FixtureGalleryRepository implements GalleryRepository {
         else
           item,
     ];
+    _changes.seen(items, touched: <String>{id});
     return Right<ApplicationError, List<GalleryItem>>(items);
   }
 

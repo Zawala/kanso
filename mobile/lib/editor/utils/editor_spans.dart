@@ -19,7 +19,10 @@ import 'diff_values.dart';
 /// overlap; a run or range outside the text is cut to it.
 ///
 /// A composing range is underlined with a plain line, and wins over a
-/// misspelling where they meet.
+/// misspelling where they meet. The words [comments] are on are drawn
+/// with [commentStyle] as well, code and addresses included, and what other
+/// people have selected ([selections]) on a wash of their colour, which
+/// wins over a comment's.
 TextSpan editorSpans({
   required String text,
   required List<EditorRun> runs,
@@ -33,6 +36,9 @@ TextSpan editorSpans({
     decoration: TextDecoration.underline,
     decorationStyle: TextDecorationStyle.wavy,
   ),
+  List<TextRange> comments = const <TextRange>[],
+  TextStyle commentStyle = const TextStyle(backgroundColor: Color(0x33F5A524)),
+  List<(TextRange, Color)> selections = const <(TextRange, Color)>[],
 }) {
   final length = text.length;
   int snap(int at) {
@@ -65,9 +71,33 @@ TextSpan editorSpans({
       ..add(mark.start)
       ..add(mark.end);
   }
+  final commented = <TextRange>[
+    for (final range in comments)
+      if (range.isValid && !range.isCollapsed)
+        TextRange(start: snap(range.start), end: snap(range.end)),
+  ];
+  for (final range in commented) {
+    stops
+      ..add(range.start)
+      ..add(range.end);
+  }
+  final selected = <(TextRange, Color)>[
+    for (final (range, color) in selections)
+      if (range.isValid && !range.isCollapsed)
+        (TextRange(start: snap(range.start), end: snap(range.end)), color),
+  ];
+  for (final (range, _) in selected) {
+    stops
+      ..add(range.start)
+      ..add(range.end);
+  }
   final ordered = stops.toList()..sort();
 
-  if (ordered.length <= 2 && runs.isEmpty && composed.isCollapsed) {
+  if (ordered.length <= 2 &&
+      runs.isEmpty &&
+      composed.isCollapsed &&
+      commented.isEmpty &&
+      selected.isEmpty) {
     return TextSpan(text: text, style: base);
   }
 
@@ -112,6 +142,16 @@ TextSpan editorSpans({
       style = style?.merge(composingStyle) ?? composingStyle;
     } else if (misspelled && !(here?.quiet ?? false)) {
       style = style?.merge(misspelledStyle) ?? misspelledStyle;
+    }
+    if (commented.any((range) => range.start <= from && range.end >= to)) {
+      style = style?.merge(commentStyle) ?? commentStyle;
+    }
+    for (final (range, color) in selected) {
+      if (range.start <= from && range.end >= to) {
+        final wash = TextStyle(backgroundColor: color);
+        style = style?.merge(wash) ?? wash;
+        break;
+      }
     }
     spans.add(TextSpan(text: text.substring(from, to), style: style));
   }

@@ -800,6 +800,9 @@ pub struct EditorSnapshot {
     pub lock: LockState,
     pub properties: Vec<Property>,
     pub version: u64,
+    /// The selection in the visible text, in UTF-16 units: where the caret
+    /// is now, after a merge moved the text around it.
+    pub selection: Range16,
     pub history: HistoryState,
     pub save: SaveState,
 }

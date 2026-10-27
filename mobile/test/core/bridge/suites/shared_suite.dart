@@ -136,6 +136,65 @@ void sharedSuite(OpenLibrary open) {
       );
     });
 
+    test('a note shared with nobody has no comments to read or write, and '
+        'signed out they are out of reach', () async {
+      final library = await open();
+      final shared = library.shared();
+      final id = await makeNote(library, 'Plan', 'Body');
+      // Read with no account behind them: refused, as everything shared is.
+      await expectLater(
+        shared.comments(noteId: id),
+        throwsA(isA<KansoError>()),
+      );
+      await expectLater(
+        shared.openComments(noteId: id),
+        throwsA(isA<KansoError>()),
+      );
+      await expectLater(
+        shared.commentsBand(noteId: id),
+        throwsA(isA<KansoError>()),
+      );
+      await expectLater(
+        shared.addComment(noteId: id, start: 0, end: 4, body: 'Why?'),
+        throwsA(isA<KansoError>()),
+      );
+      await expectLater(
+        shared.editComment(noteId: id, commentId: 'c', body: 'Why not?'),
+        throwsA(isA<KansoError>()),
+      );
+      await expectLater(
+        shared.resolveComment(noteId: id, commentId: 'c', resolved: true),
+        throwsA(isA<KansoError>()),
+      );
+      await expectLater(
+        shared.deleteComment(noteId: id, commentId: 'c'),
+        throwsA(isA<KansoError>()),
+      );
+      // A note that is not there is not found first.
+      await expectLater(
+        shared.openComments(noteId: 'no-such-note'),
+        throwsA(isA<KansoError_NotFound>()),
+      );
+      expect((await library.note(id: id)).body, 'Body');
+    });
+
+    test('a note shared with nobody has no live status and no problems to '
+        'dismiss', () async {
+      final library = await open();
+      final shared = library.shared();
+      final id = await makeNote(library, 'Plan', 'Body');
+      expect(await shared.liveStatus(noteId: id), isNull);
+      await expectLater(
+        shared.dismissProblems(noteId: id),
+        throwsA(isA<KansoError>()),
+      );
+      // A note that is not there is not found, as everywhere else.
+      await expectLater(
+        shared.liveStatus(noteId: 'no-such-note'),
+        throwsA(isA<KansoError_NotFound>()),
+      );
+    });
+
     test('the events stream says nothing until something is found', () async {
       final shared = (await open()).shared();
       final events = <SharedEvent>[];

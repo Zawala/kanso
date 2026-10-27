@@ -9,19 +9,24 @@ import '../../../bridge/api/shared.dart';
 import '../../../bridge/api/types.dart';
 import '../../../utils/cancelable_stream.dart';
 import '../../../utils/kanso_error_mapping.dart';
+import '../../../utils/live_rooms.dart';
 import '../../data/application_error.dart';
 import '../abs/shared_notes_repository.dart';
 
 /// [SharedNotesRepository] over the Rust core's shared notes.
 @LazySingleton(as: SharedNotesRepository)
 class RustSharedNotesRepository implements SharedNotesRepository {
-  RustSharedNotesRepository(this._shared);
+  RustSharedNotesRepository(this._shared)
+    : _rooms = LiveRooms(
+        (noteId) => _shared.openLive(noteId: noteId),
+        (noteId) => _shared.closeLive(noteId: noteId),
+      );
 
   final KansoShared _shared;
 
   /// Who has each note's live room open. The library's room has no count of
   /// its own, so it is left only when the last holder lets go.
-  final Map<String, Set<Object>> _holders = <String, Set<Object>>{};
+  final LiveRooms _rooms;
 
   @override
   Future<Either<ApplicationError, Unit>> canShare(String noteId) =>
@@ -157,8 +162,7 @@ class RustSharedNotesRepository implements SharedNotesRepository {
     String noteId,
     Object holder,
   ) => attempt(() async {
-    await _shared.openLive(noteId: noteId);
-    _holders.putIfAbsent(noteId, Set<Object>.identity).add(holder);
+    await _rooms.take(noteId, holder);
     return unit;
   });
 
@@ -167,17 +171,62 @@ class RustSharedNotesRepository implements SharedNotesRepository {
     String noteId,
     Object holder,
   ) => attempt(() async {
-    final holders = _holders[noteId];
-    if (holders == null || !holders.remove(holder)) {
-      return unit;
-    }
-    if (holders.isEmpty) {
-      _holders.remove(noteId);
-      await _shared.closeLive(noteId: noteId);
-    }
+    await _rooms.letGo(noteId, holder);
     return unit;
   });
 
   @override
   Stream<SharedEvent> events() => cancelableStream(_shared.events());
+
+  @override
+  Future<Either<ApplicationError, List<CommentRow>>> comments(String noteId) =>
+      attempt(() => _shared.comments(noteId: noteId));
+
+  @override
+  Future<Either<ApplicationError, String>> commentsBand(String noteId) =>
+      attempt(() => _shared.commentsBand(noteId: noteId));
+
+  @override
+  Future<Either<ApplicationError, Unit>> editComment(
+    String noteId,
+    String commentId,
+    String body,
+  ) => attempt(() async {
+    await _shared.editComment(noteId: noteId, commentId: commentId, body: body);
+    return unit;
+  });
+
+  @override
+  Future<Either<ApplicationError, Unit>> deleteComment(
+    String noteId,
+    String commentId,
+  ) => attempt(() async {
+    await _shared.deleteComment(noteId: noteId, commentId: commentId);
+    return unit;
+  });
+
+  @override
+  Future<Either<ApplicationError, Unit>> resolveComment(
+    String noteId,
+    String commentId, {
+    required bool resolved,
+  }) => attempt(() async {
+    await _shared.resolveComment(
+      noteId: noteId,
+      commentId: commentId,
+      resolved: resolved,
+    );
+    return unit;
+  });
+
+  @override
+  Future<Either<ApplicationError, LiveStatus?>> liveStatus(String noteId) =>
+      attempt(() => _shared.liveStatus(noteId: noteId));
+
+  @override
+  Future<Either<ApplicationError, Unit>> dismissProblems(String noteId) =>
+      attempt(() async {
+        await _shared.dismissProblems(noteId: noteId);
+        return unit;
+      });
 }

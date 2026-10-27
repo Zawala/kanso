@@ -16,6 +16,7 @@ import 'package:kanso/sharing/views/widgets/share_invite_bar.dart';
 import 'package:kanso/sharing/views/widgets/share_link_maker.dart';
 import 'package:kanso/sharing/views/widgets/share_member_menu.dart';
 import 'package:kanso/sharing/views/widgets/share_note_view.dart';
+import 'package:kanso/sharing/views/widgets/share_prompt_view.dart';
 
 import '../../../helpers/close_bloc_later.dart';
 import '../../../helpers/fixture_shared_notes_repository.dart';
@@ -215,13 +216,40 @@ void main() {
       expect(find.text('99999'), findsNWidgets(2));
 
       await _tapText(tester, 'Trust the new keys');
+      // Trusted is not verified: the new fingerprint is compared next, as
+      // the desktop asks.
+      expect(shared.calls, isNot(contains('share n1 bo editor')));
+      expect(find.text('Mark as verified and invite'), findsOneWidget);
+      expect(find.text('Back'), findsOneWidget);
+      await _tapText(tester, 'Mark as verified and invite');
       expect(
         shared.calls,
         containsAllInOrder(<String>[
           'acceptNewKey bo 99999 99999',
+          'verify a_bo',
           'share n1 bo editor',
         ]),
       );
+    });
+
+    testWidgets('invites someone new without comparing the fingerprint when '
+        'the person chooses to', (tester) async {
+      final shared = FixtureSharedNotesRepository()
+        ..people['bo'] = PersonLookup.found(personRow('bo'));
+      await _pump(tester, shared: shared);
+      await tester.enterText(find.byType(EditableText), 'bo');
+      await _tapText(tester, 'Invite');
+      expect(find.textContaining('first time'), findsOneWidget);
+      // The step's own Invite, under the fingerprint.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(SharePromptView),
+          matching: find.text('Invite'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(shared.calls, isNot(contains('verify a_bo')));
+      expect(shared.calls, contains('share n1 bo editor'));
     });
 
     testWidgets('Don’t invite leaves changed keys untrusted', (tester) async {
@@ -243,7 +271,13 @@ void main() {
     testWidgets('a locked note says that and nothing else', (tester) async {
       final shared = FixtureSharedNotesRepository()..locked.add('n1');
       await _pump(tester, shared: shared);
-      expect(find.text('Locked notes can’t be shared.'), findsOneWidget);
+      expect(
+        find.text(
+          'Locked notes, and notes in locked notebooks, can’t be shared. '
+          'Remove the lock first.',
+        ),
+        findsOneWidget,
+      );
       expect(find.byType(ShareInviteBar), findsNothing);
       expect(find.byType(EditableText), findsNothing);
       expect(find.byType(KansoButton), findsNothing);

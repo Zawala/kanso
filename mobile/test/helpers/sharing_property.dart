@@ -112,4 +112,34 @@ extension GalleryAny on Any {
           verified: verified,
         ),
   );
+
+  /// Any share role.
+  Generator<ShareRole> get shareRole => choose(ShareRole.values);
+
+  /// Any status of a shared note's page: any role, live or not, ended or
+  /// not, near its limit or not, with up to three problems.
+  Generator<LiveStatus> get liveStatus => combine5(
+    shareRole,
+    this.bool,
+    this.bool,
+    this.bool,
+    listWithLengthInRange<String>(
+      0,
+      4,
+      choose(<String>['Couldn’t send.', 'Too big. ', 'Refused']),
+    ),
+    (
+      ShareRole role,
+      bool connected,
+      bool ended,
+      bool nearLimit,
+      List<String> problems,
+    ) => LiveStatus(
+      role: role,
+      connected: connected,
+      ended: ended,
+      nearLimit: nearLimit,
+      problems: problems,
+    ),
+  );
 }

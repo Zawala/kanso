@@ -49,6 +49,7 @@ class ShareNoteBloc extends Bloc<ShareNoteEvent, ShareNoteState> {
         ),
         ShareNoteInvitedEvent(:final username) => _onInvited(username, emit),
         ShareNoteFingerprintConfirmedEvent() => _onFingerprintConfirmed(emit),
+        ShareNoteInvitedUnverifiedEvent() => _onInvitedUnverified(emit),
         ShareNoteNewKeyAcceptedEvent() => _onNewKeyAccepted(emit),
         ShareNotePromptDismissedEvent() => _emitNow(
           emit,
@@ -267,6 +268,14 @@ class ShareNoteBloc extends Bloc<ShareNoteEvent, ShareNoteState> {
     );
   }
 
+  Future<void> _onInvitedUnverified(Emitter<ShareNoteState> emit) async {
+    final prompt = state.prompt;
+    if (prompt is! SharePromptVerify || state.busy) {
+      return;
+    }
+    await _invite(prompt.person.username, prompt.role, emit);
+  }
+
   Future<void> _onNewKeyAccepted(Emitter<ShareNoteState> emit) async {
     final prompt = state.prompt;
     if (prompt is! SharePromptKeyChanged || state.busy) {
@@ -283,7 +292,14 @@ class ShareNoteBloc extends Bloc<ShareNoteEvent, ShareNoteState> {
       (person) async {
         final role = prompt.role;
         if (role != null) {
-          await _invite(person.username, role, emit);
+          // The new keys are trusted, not verified: their fingerprint is
+          // compared next, as for someone new.
+          emit(
+            state.copyWith(
+              busy: false,
+              prompt: SharePrompt.verify(person: person, role: role),
+            ),
+          );
           return;
         }
         // A member of the note: its sharing, with their keys trusted.

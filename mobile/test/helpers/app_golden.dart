@@ -15,6 +15,7 @@ import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_renderer_repository.dart';
 import 'fixture_shared_notes_repository.dart';
+import 'fixture_sync_repository.dart';
 import 'golden.dart';
 import 'kanso_viewport.dart';
 import 'pump_browse_app.dart';
@@ -49,6 +50,7 @@ Future<void> expectAppGoldenOnBothPlatforms(
   FixtureSharedNotesRepository Function()? shared,
   FixtureGalleryRepository Function()? gallery,
   AccountBlocs Function()? accounts,
+  FixtureSyncRepository Function()? sync,
   Future<void> Function(WidgetTester tester, BrowseApp app)? interact,
 }) async {
   tester.platformDispatcher
@@ -89,6 +91,7 @@ Future<void> expectAppGoldenOnBothPlatforms(
           shared: shared?.call(),
           gallery: gallery?.call(),
           accounts: accounts?.call(),
+          sync: sync?.call(),
         );
         if (interact != null) {
           await interact(tester, app);

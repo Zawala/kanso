@@ -31,6 +31,7 @@ import 'package:kanso/note_list/views/pages/note_list_page.dart';
 import 'package:kanso/search/views/pages/search_page.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/settings/views/pages/fonts_page.dart';
 import 'package:kanso/settings/views/pages/licences_page.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
@@ -44,6 +45,7 @@ import '../../helpers/browse_blocs.dart';
 import '../../helpers/crash_samples.dart';
 import '../../helpers/register_page_blocs.dart';
 import '../../helpers/seeded_appearance_bloc.dart';
+import '../../helpers/sync_settings_blocs.dart';
 
 Future<GoRouter> _pump(
   WidgetTester tester, {
@@ -78,6 +80,7 @@ Future<GoRouter> _pump(
         BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
         BlocProvider<InvitationsBloc>.value(value: blocs.invitations),
         BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
+        BlocProvider<SyncSettingsBloc>.value(value: startedSyncSettingsBloc()),
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
         BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),

@@ -344,6 +344,51 @@ void main() {
     );
 
     blocTest<ShareNoteBloc, ShareNoteState>(
+      'someone new can be invited without comparing the fingerprint, which '
+      'then stays unverified',
+      setUp: () {
+        notShared();
+        when(
+          () => shared.lookupPerson('bo'),
+        ).thenAnswer((_) async => _ok(PersonLookup.found(fresh)));
+        when(
+          () => shared.share('n1', any()),
+        ).thenAnswer((_) async => _ok(shareInfo('n1')));
+      },
+      build: build,
+      act: (bloc) async {
+        bloc.add(const ShareNoteEvent.started('n1'));
+        await settle();
+        bloc.add(const ShareNoteEvent.invited('bo'));
+        await settle();
+        bloc.add(const ShareNoteEvent.invitedUnverified());
+      },
+      verify: (bloc) {
+        verifyNever(() => shared.verifyPerson(any()));
+        verify(
+          () => shared.share('n1', <(String, ShareRole)>[
+            ('bo', ShareRole.editor),
+          ]),
+        ).called(1);
+        expect(bloc.state.prompt, isNull);
+        expect(bloc.state.done, const ShareDone.invited('bo'));
+      },
+    );
+
+    blocTest<ShareNoteBloc, ShareNoteState>(
+      'inviting without comparing does nothing when no fingerprint is asked '
+      'about',
+      setUp: notShared,
+      build: build,
+      act: (bloc) async {
+        bloc.add(const ShareNoteEvent.started('n1'));
+        await settle();
+        bloc.add(const ShareNoteEvent.invitedUnverified());
+      },
+      verify: (_) => verifyNever(() => shared.share(any(), any())),
+    );
+
+    blocTest<ShareNoteBloc, ShareNoteState>(
       'someone whose keys changed shows the old and the new fingerprint, and '
       'the new keys are trusted only when the person says so',
       setUp: () {
@@ -372,6 +417,18 @@ void main() {
         expect(prompt.role, ShareRole.editor);
         verifyNever(() => shared.acceptNewKey(any(), any()));
         bloc.add(const ShareNoteEvent.newKeyAccepted());
+        await settle();
+        // Trusted is not verified: the new fingerprint is compared next,
+        // and nobody is invited before that step is answered.
+        expect(
+          bloc.state.prompt,
+          SharePrompt.verify(
+            person: personRow('bo', fingerprint: '99999 99999'),
+            role: ShareRole.editor,
+          ),
+        );
+        verifyNever(() => shared.share(any(), any()));
+        bloc.add(const ShareNoteEvent.invitedUnverified());
       },
       verify: (bloc) {
         verifyInOrder(<void Function()>[
@@ -559,6 +616,21 @@ void main() {
       verifyNever(() => shared.remove(any(), any()));
       verifyNever(() => shared.createLink(any(), any(), any()));
       expect(bloc.state.confirmEnd, isFalse);
+      await bloc.close();
+    });
+
+    test('reviewing a member whose keys are the pinned ones trusts '
+        'nothing and asks nothing', () async {
+      final bloc = await started();
+      when(
+        () => shared.lookupPerson('ana'),
+      ).thenAnswer((_) async => _ok(PersonLookup.found(personRow('ana'))));
+      bloc.add(const ShareNoteEvent.keyReviewed('ana'));
+      await settle();
+      expect(bloc.state.prompt, isNull);
+      expect(bloc.state.busy, isFalse);
+      verifyNever(() => shared.acceptNewKey(any(), any()));
+      verifyNever(() => shared.verifyPerson(any()));
       await bloc.close();
     });
 

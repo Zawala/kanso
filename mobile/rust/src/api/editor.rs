@@ -9,7 +9,7 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    Completion, EditCommand, EditOutcome, EditorContext, EditorEvent, EditorSession,
+    Completion, CursorMark, EditCommand, EditOutcome, EditorContext, EditorEvent, EditorSession,
     EditorSnapshot, KansoError, LinkTarget, Property, Range16, RunBatch, SaveState, TextChange,
 };
 
@@ -100,6 +100,26 @@ impl KansoEditor {
 
     pub fn keep_mine(&self) -> Result<SaveState, KansoError> {
         self.0.keep_mine()
+    }
+
+    /// Comments on the selected words of a shared note; the new comment's ID.
+    pub fn comment_on_selection(&self, body: String) -> Result<String, KansoError> {
+        self.0.comment_on_selection(body)
+    }
+
+    /// The words the note's open comments are on, to tint.
+    pub fn comment_marks(&self) -> Result<Vec<Range16>, KansoError> {
+        self.0.comment_marks()
+    }
+
+    /// Other people's carets and selections, in units of the text.
+    pub fn remote_cursors(&self) -> Result<Vec<CursorMark>, KansoError> {
+        self.0.remote_cursors()
+    }
+
+    /// Selects the words a comment is on; the selection, if it was found.
+    pub fn select_comment(&self, comment_id: String) -> Result<Option<Range16>, KansoError> {
+        self.0.select_comment(comment_id)
     }
 
     pub fn use_theirs(&self) -> Result<EditorSnapshot, KansoError> {

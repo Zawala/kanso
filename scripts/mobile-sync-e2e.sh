@@ -20,13 +20,15 @@
 #      - three accounts are made with `sign-up`: the phone's (U, with notes),
 #        a friend's (F), and a second one for joining by recovery key (R, with
 #        notes). Each prints its recovery key.
-#      - `approve-next` for U waits in the background for the phone to ask to
-#        be approved (it answers over the account's event socket).
+#      - `request-approval` for U asks, in the background, to join U's account
+#        as a new device; the phone, signed in as U, approves it from its
+#        sheet, and the peer joins.
 #      - `share` makes a note owned by F and shares it with U; the phone finds
 #        the invitation, accepts, edits the note, and a background `wait-text`
 #        for F ends when the phone's edit arrives.
-#    The flow test and the peer meet only on the server: the peer waits for the
-#    phone's request and the phone waits for the peer's note. What the test
+#    The flow test and the peer meet only on the server: the phone waits for
+#    the peer's request and its note, and the peer waits for the phone's
+#    approval and edit. What the test
 #    needs comes in as --dart-define values (below); the peers' JSON lines are
 #    kept in $STATE/peers/*.log, and $STATE/flow.json collects what the setup
 #    made, for people reading a failure.
@@ -212,9 +214,11 @@ if [[ ! -f "$FLOW" ]]; then
 	exit 0
 fi
 
-# Where the device reaches this computer: an Android emulator says 10.0.2.2 and
-# an iOS simulator shares the host's loopback. A real phone can't reach a
-# Worker bound to 127.0.0.1, so it is refused rather than guessed at.
+# Where the device reaches this computer: an iOS simulator shares the host's
+# loopback, and an Android emulator is given it with `adb reverse` (the app
+# takes plain http only to 127.0.0.1, so 10.0.2.2 won't do). A real phone
+# can't reach a Worker bound to 127.0.0.1, so it is refused rather than
+# guessed at.
 command -v jq >/dev/null || {
 	echo "jq is needed to read 'flutter devices --machine'." >&2
 	exit 1
@@ -227,7 +231,11 @@ fi
 PLATFORM="$(jq -r '.targetPlatform' <<<"$DEVICE_INFO")"
 EMULATOR="$(jq -r '.emulator' <<<"$DEVICE_INFO")"
 case "$PLATFORM:$EMULATOR" in
-android*:true) DEVICE_HOST=10.0.2.2 ;;
+android*:true)
+	PORT_OF_WORKER="${ENDPOINT##*:}"
+	adb -s "$DEVICE" reverse "tcp:$PORT_OF_WORKER" "tcp:$PORT_OF_WORKER"
+	DEVICE_HOST=127.0.0.1
+	;;
 ios:true) DEVICE_HOST=127.0.0.1 ;;
 *)
 	echo "$DEVICE is a $PLATFORM device that isn't a simulator or emulator; it can't reach a Worker on 127.0.0.1." >&2
@@ -285,10 +293,10 @@ SHARE_ID="$(field "$STATE/peers/share.log" shared share_id)"
 jq -n --arg server "$DEVICE_SERVER" --arg u "$USER_U" --arg f "$USER_F" --arg r "$USER_R" --arg share "$SHARE_ID" \
 	'{server: $server, phone_account: $u, friend: $f, recovery_account: $r, share_id: $share}' >"$STATE/flow.json"
 
-# The peers that wait for the phone: one to approve its request, one to see its
-# edit arrive. Their lines are in the logs, and a failure of either fails the run.
-peer approve-next --server "$ENDPOINT" --username "$USER_U" --password "$TEST_PASSWORD" --timeout-secs 900 \
-	--dir "$STATE/peers/${USER_U}-approver" >"$STATE/peers/approve-next.log" 2>"$STATE/peers/approve-next.err" &
+# The peers that wait for the phone: one asking it for approval, one to see
+# its edit arrive. Their lines are in the logs, and a failure of either fails the run.
+peer request-approval --server "$ENDPOINT" --username "$USER_U" --password "$TEST_PASSWORD" --timeout-secs 900 \
+	--dir "$STATE/peers/${USER_U}-new-device" >"$STATE/peers/request-approval.log" 2>"$STATE/peers/request-approval.err" &
 APPROVER_PID=$!
 BACKGROUND_PIDS+=("$APPROVER_PID")
 peer wait-text --server "$ENDPOINT" --username "$USER_F" --password "$TEST_PASSWORD" --share "$SHARE_ID" \
@@ -317,12 +325,12 @@ FLOW_STATUS=0
 		--dart-define="KANSO_E2E_NEW_PASSWORD=$TEST_PASSWORD new"
 ) || FLOW_STATUS=$?
 
-# The peer's side of what the flows should have done: it approved the phone's
-# request, and the phone's edit reached the note's owner.
+# The peer's side of what the flows should have done: the phone approved the
+# peer's request, and the phone's edit reached the note's owner.
 PEER_STATUS=0
 for name in approver watcher; do
 	case "$name" in
-	approver) pid="$APPROVER_PID" log=approve-next ;;
+	approver) pid="$APPROVER_PID" log=request-approval ;;
 	*) pid="$WATCHER_PID" log=wait-text ;;
 	esac
 	if [[ "$FLOW_STATUS" == "0" ]]; then
@@ -339,4 +347,4 @@ if [[ "$FLOW_STATUS" != "0" || "$PEER_STATUS" != "0" ]]; then
 	exit 1
 fi
 FAILED=0
-echo "The Flutter flows passed, and the peer saw the phone's request approved and its edit arrive."
+echo "The Flutter flows passed: the phone approved the peer's request, and its edit arrived."

@@ -70,4 +70,34 @@ extension ShareLabels on AppLocalizations {
         ? shareLinkExpired(name)
         : shareLinkDaysLeft(name, daysLeft);
   }
+
+  /// A shared note's status line, in the desktop footer's words: "Shared ·
+  /// Can view · Read only · Live", and the size limit when it is near; a
+  /// note whose sharing ended is a private copy.
+  String sharedStatusLine(LiveStatus status) {
+    if (status.ended) {
+      return sharedStatusPrivateCopy;
+    }
+    final canEdit =
+        status.role == ShareRole.owner || status.role == ShareRole.editor;
+    return <String>[
+      sharedStatusShared,
+      shareRoleName(status.role),
+      if (!canEdit) sharedStatusReadOnly,
+      if (status.connected) sharedStatusLive else sharedStatusOffline,
+      if (status.nearLimit) sharedStatusNearLimit,
+    ].join(' · ');
+  }
+
+  /// What the banner over a shared note says of its [problems] (newest
+  /// first): the newest one's words, and how many more there are. Null
+  /// with none.
+  String? sharedProblemsBanner(List<String> problems) {
+    if (problems.isEmpty) {
+      return null;
+    }
+    final newest = problems.first.trim();
+    final more = problems.length - 1;
+    return more == 0 ? newest : sharedProblemsMore(newest, more);
+  }
 }

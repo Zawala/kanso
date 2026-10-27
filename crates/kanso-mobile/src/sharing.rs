@@ -17,8 +17,10 @@
 //! and a pump that every quarter second hands the library's text to
 //! [`Engine::sync_editor`], so a local save goes out and a remote edit is
 //! merged into the library at once, where [`crate::Library::changes`]
-//! reports it. When the editor session lands it drives the merge itself
-//! through [`SharedNotes::editor_merge`] and the pump stands aside.
+//! reports it. While an editor session is open on the note it drives the
+//! merge itself (`SharedNotes::editor_merge`, when typing pauses and
+//! whenever the room says edits are waiting) and the pump stands aside, as
+//! the desktop editor does.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -36,8 +38,8 @@ use crate::boundary::{guard, held};
 use crate::errors::KansoError;
 use crate::library::Inner;
 use crate::sharing_model::{
-    CursorRow, EditorMergeRow, InvitationRow, JoinRow, MemberRow, PersonLookup, PersonRow,
-    ShareInfo, ShareLinkRow, ShareRole, SharedEvent, SpliceRow,
+    CursorRow, InvitationRow, JoinRow, LiveStatus, MemberRow, PersonLookup, PersonRow, ShareInfo,
+    ShareLinkRow, ShareRole, SharedEvent,
 };
 use crate::stream::Listeners;
 use crate::syncing::SyncHandle;
@@ -111,6 +113,14 @@ struct Room {
     ended: Arc<AtomicBool>,
     /// An editor session merges for this note: the pump stands aside.
     editor: Arc<AtomicBool>,
+    /// Held by the pump for a whole tick and by the editor's merge, so the
+    /// pump never hands the engine text it read before the editor took over.
+    turn: Arc<Mutex<()>>,
+    /// Edits arrived (or the room just opened) that the editor session has
+    /// not merged yet.
+    waiting: Arc<AtomicBool>,
+    /// The room is connected now, as it last said.
+    connected: Arc<AtomicBool>,
     wake: Sender<()>,
     _live: LiveHandle,
 }
@@ -423,6 +433,7 @@ impl SharedNotes {
                 note_ids,
                 invitations,
                 comment_notes,
+                live_notes: Vec::new(),
             };
             let news = {
                 let mut told = held(&self.inner.shared.told_invitations);
@@ -465,15 +476,40 @@ impl SharedNotes {
             let stop = Arc::new(AtomicBool::new(false));
             let ended = Arc::new(AtomicBool::new(false));
             let editor = Arc::new(AtomicBool::new(false));
+            let connected = Arc::new(AtomicBool::new(false));
+            let turn = Arc::new(Mutex::new(()));
+            // A session already open on the note merges as soon as the room
+            // is there.
+            let waiting = Arc::new(AtomicBool::new(true));
             let (wake, woken) = mpsc::channel::<()>();
             let notify: Notify = {
                 let wake = Mutex::new(wake.clone());
                 let ended = ended.clone();
+                let waiting = waiting.clone();
+                let connected = connected.clone();
                 let inner = Arc::downgrade(&self.inner);
                 let note_id = note_id.clone();
+                // The page asks again for what the room says now.
+                let tell_live = {
+                    let inner = inner.clone();
+                    let note_id = note_id.clone();
+                    move || {
+                        if let Some(inner) = inner.upgrade() {
+                            inner.shared.listeners.send(SharedEvent {
+                                live_notes: vec![note_id.clone()],
+                                invitations: *held(&inner.shared.told_invitations),
+                                ..SharedEvent::default()
+                            });
+                        }
+                    }
+                };
                 Arc::new(move |notice| match notice {
                     kanso_collab::LiveNotice::Text { .. } => {
+                        waiting.store(true, Ordering::SeqCst);
                         let _ = held(&wake).send(());
+                        if let Some(inner) = inner.upgrade() {
+                            inner.editors.wake();
+                        }
                     }
                     kanso_collab::LiveNotice::Ended { .. } => {
                         ended.store(true, Ordering::SeqCst);
@@ -494,7 +530,12 @@ impl SharedNotes {
                             });
                         }
                     }
-                    _ => {}
+                    kanso_collab::LiveNotice::Connection { live, .. } => {
+                        connected.store(live, Ordering::SeqCst);
+                        tell_live();
+                    }
+                    kanso_collab::LiveNotice::Presence { .. }
+                    | kanso_collab::LiveNotice::Problem { .. } => tell_live(),
                 })
             };
             let live = Engine::go_live(&engine, &share_id, notify);
@@ -504,6 +545,7 @@ impl SharedNotes {
                 note_id: note_id.clone(),
                 stop: stop.clone(),
                 editor: editor.clone(),
+                turn: turn.clone(),
             };
             let spawned = std::thread::Builder::new()
                 .name("kanso-collab-pump".into())
@@ -522,10 +564,15 @@ impl SharedNotes {
                     stop,
                     ended,
                     editor,
+                    turn,
+                    waiting,
+                    connected,
                     wake,
                     _live: live,
                 },
             );
+            drop(rooms);
+            self.inner.editors.wake();
             Ok(())
         })
     }
@@ -556,47 +603,126 @@ impl SharedNotes {
     /// library and says how the editor's text must change. `None` when the
     /// note has no open room. From the first call on, the pump stands aside
     /// for this note until its room closes.
-    #[allow(dead_code)] // The editor session calls this when it lands.
     pub(crate) fn editor_merge(
         &self,
         note_id: &str,
         title: &str,
         body: &str,
-    ) -> Result<Option<EditorMergeRow>, KansoError> {
+    ) -> Result<Option<kanso_collab::EditorMerge>, KansoError> {
+        self.refuse_locked(note_id)?;
+        let (engine, share_id, turn) = {
+            let rooms = held(&self.inner.shared.rooms);
+            let Some(room) = rooms.get(note_id) else {
+                return Ok(None);
+            };
+            if room.ended.load(Ordering::SeqCst) {
+                return Ok(None);
+            }
+            room.waiting.store(false, Ordering::SeqCst);
+            (
+                room.engine.clone(),
+                room.share_id.clone(),
+                room.turn.clone(),
+            )
+        };
+        // After a tick the pump may be in, and before any other.
+        let _turn = held(&turn);
+        if let Some(room) = held(&self.inner.shared.rooms).get(note_id) {
+            room.editor.store(true, Ordering::SeqCst);
+        }
+        let merge = engine
+            .sync_editor(&share_id, title, body)
+            .map_err(|err| collab_error(&err))?;
+        Ok(Some(merge))
+    }
+
+    /// Whether the note's room is open, for its editor session to merge
+    /// through.
+    pub(crate) fn merges(&self, note_id: &str) -> bool {
+        held(&self.inner.shared.rooms)
+            .get(note_id)
+            .is_some_and(|room| !room.ended.load(Ordering::SeqCst))
+    }
+
+    /// Whether edits wait in the note's room for its editor session.
+    pub(crate) fn edits_waiting(&self, note_id: &str) -> bool {
+        held(&self.inner.shared.rooms)
+            .get(note_id)
+            .is_some_and(|room| {
+                !room.ended.load(Ordering::SeqCst) && room.waiting.load(Ordering::SeqCst)
+            })
+    }
+
+    /// What the page of shared note `note_id` says of its sharing: the
+    /// desktop's footer and problems banner. `None` for a note that isn't
+    /// shared and never was while open. Signed out, the role is the one the
+    /// note was last given, and the room is not connected.
+    pub fn live_status(&self, note_id: String) -> Result<Option<LiveStatus>, KansoError> {
         guard(|| {
-            self.refuse_locked(note_id)?;
-            let (engine, share_id) = {
-                let rooms = held(&self.inner.shared.rooms);
-                let Some(room) = rooms.get(note_id) else {
-                    return Ok(None);
-                };
-                room.editor.store(true, Ordering::SeqCst);
-                (room.engine.clone(), room.share_id.clone())
+            self.refuse_locked(&note_id)?;
+            let room = held(&self.inner.shared.rooms).get(&note_id).map(|room| {
+                (
+                    room.engine.clone(),
+                    room.share_id.clone(),
+                    room.ended.load(Ordering::SeqCst),
+                    room.connected.load(Ordering::SeqCst),
+                )
+            });
+            let marked = self
+                .inner
+                .store
+                .note(&note_id)?
+                .and_then(|note| share_mark(&note.extra));
+            let (engine, share_id, ended, connected) = match (room, marked) {
+                (Some(room), _) => room,
+                (None, Some((share_id, _))) => match self.engine() {
+                    Ok(engine) => (engine, share_id, false, false),
+                    Err(KansoError::SignedOut) => {
+                        return Ok(marked_status(&self.inner.store, &note_id));
+                    }
+                    Err(err) => return Err(err),
+                },
+                (None, None) => return Ok(None),
             };
-            let merge = engine
-                .sync_editor(&share_id, title, body)
-                .map_err(|err| collab_error(&err))?;
-            let splices = |list: Vec<kanso_collab::model::Splice>| {
-                list.into_iter()
-                    .map(|s| SpliceRow {
-                        at: clip(s.at),
-                        delete: clip(s.delete),
-                        insert: s.insert,
-                    })
-                    .collect()
-            };
-            Ok(Some(EditorMergeRow {
-                title: splices(merge.title),
-                body: splices(merge.body),
-                title_text: merge.title_text,
-                body_text: merge.body_text,
+            let role = engine
+                .role(&share_id)
+                .or_else(|| marked_role(&self.inner.store, &note_id))
+                .unwrap_or(Role::View);
+            let mut problems: Vec<_> = engine
+                .problems()
+                .into_iter()
+                .filter(|problem| problem.share_id == share_id)
+                .collect();
+            problems.sort_by_key(|problem| std::cmp::Reverse(problem.at));
+            let near_limit = !ended
+                && engine
+                    .size_use(&share_id)
+                    .is_some_and(|size| size.is_near());
+            Ok(Some(LiveStatus {
+                role: role.into(),
+                connected: connected && !ended,
+                ended,
+                near_limit,
+                problems: problems.into_iter().map(|p| p.message).collect(),
             }))
+        })
+    }
+
+    /// Forgets what couldn't be done for shared note `note_id`, as the
+    /// banner's Dismiss does.
+    pub fn dismiss_problems(&self, note_id: String) -> Result<(), KansoError> {
+        guard(|| {
+            let (engine, share_id) = match held(&self.inner.shared.rooms).get(&note_id) {
+                Some(room) => (room.engine.clone(), room.share_id.clone()),
+                None => self.shared(&note_id)?,
+            };
+            engine.dismiss_problems(Some(&share_id));
+            Ok(())
         })
     }
 
     /// This device's caret in the open note (byte offsets of the body), sent
     /// to the others as presence.
-    #[allow(dead_code)] // The editor session calls this when it lands.
     pub(crate) fn set_caret(&self, note_id: &str, anchor: usize, head: usize) {
         let rooms = held(&self.inner.shared.rooms);
         if let Some(room) = rooms.get(note_id) {
@@ -605,7 +731,6 @@ impl SharedNotes {
     }
 
     /// Other members' carets in the open note.
-    #[allow(dead_code)] // The editor session calls this when it lands.
     pub(crate) fn cursors(&self, note_id: &str) -> Vec<CursorRow> {
         let rooms = held(&self.inner.shared.rooms);
         let Some(room) = rooms.get(note_id) else {
@@ -744,6 +869,7 @@ struct Pump {
     note_id: String,
     stop: Arc<AtomicBool>,
     editor: Arc<AtomicBool>,
+    turn: Arc<Mutex<()>>,
 }
 
 impl Pump {
@@ -758,6 +884,7 @@ impl Pump {
             if self.stop.load(Ordering::SeqCst) {
                 return;
             }
+            let _turn = held(&self.turn);
             if self.editor.load(Ordering::SeqCst) {
                 continue;
             }
@@ -817,6 +944,35 @@ fn changed_comment_notes(
         .collect();
     changed.sort();
     changed
+}
+
+/// The share a note's mark says it is, and this account's role in it, from
+/// the library: what is known of a shared note signed out.
+fn share_mark(extra: &serde_json::Map<String, serde_json::Value>) -> Option<(String, Role)> {
+    let mark = extra.get(kanso_core::model::SHARE_FIELD)?.as_object()?;
+    let share_id = mark.get("shareId")?.as_str()?.to_owned();
+    let role = mark
+        .get("role")
+        .and_then(|r| r.as_str())
+        .and_then(Role::parse)
+        .unwrap_or(Role::View);
+    Some((share_id, role))
+}
+
+fn marked_role(store: &kanso_store::Store, note_id: &str) -> Option<Role> {
+    let note = store.note(note_id).ok()??;
+    share_mark(&note.extra).map(|(_, role)| role)
+}
+
+/// A marked note's status with no engine: its role, and nothing live.
+fn marked_status(store: &kanso_store::Store, note_id: &str) -> Option<LiveStatus> {
+    marked_role(store, note_id).map(|role| LiveStatus {
+        role: role.into(),
+        connected: false,
+        ended: false,
+        near_limit: false,
+        problems: Vec::new(),
+    })
 }
 
 /// A byte offset or count as the shell's `u32`.

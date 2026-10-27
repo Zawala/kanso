@@ -153,6 +153,7 @@ void main() {
           lock: outside.lock,
           properties: outside.properties,
           version: outside.version,
+          selection: outside.selection,
           history: outside.history,
           save: outside.save,
         ),

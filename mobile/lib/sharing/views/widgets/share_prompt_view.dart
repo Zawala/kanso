@@ -55,6 +55,14 @@ class SharePromptView extends StatelessWidget {
           ),
           const SizedBox(height: KansoSpacing.xs),
           KansoButton(
+            label: l10n.shareInviteUnverified,
+            variant: KansoButtonVariant.secondary,
+            onPressed: busy
+                ? null
+                : () => bloc.add(const ShareNoteEvent.invitedUnverified()),
+          ),
+          const SizedBox(height: KansoSpacing.xs),
+          KansoButton(
             label: l10n.shareBack,
             variant: KansoButtonVariant.quiet,
             onPressed: busy ? null : dismiss,

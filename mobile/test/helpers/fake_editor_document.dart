@@ -74,6 +74,7 @@ class FakeEditorDocument implements EditorDocument {
     lock: const LockState.plain(),
     properties: properties,
     version: version,
+    selection: Range16(start: text.length, end: text.length),
     history: history,
     save: save,
   );
@@ -254,4 +255,47 @@ class FakeEditorDocument implements EditorDocument {
 
   @override
   Stream<EditorEvent> events() => cancelableStream(events_.stream);
+
+  /// The words the note's comments are on.
+  List<Range16> marks = const <Range16>[];
+
+  /// Where each comment's words are, by ID.
+  Map<String, Range16> commentWords = <String, Range16>{};
+
+  /// When set, commenting fails with it.
+  ApplicationError? commentFailure;
+
+  @override
+  Future<Either<ApplicationError, String>> commentOnSelection(
+    String body,
+  ) async {
+    calls.add('commentOnSelection $body');
+    final failure = commentFailure;
+    return failure == null
+        ? const Right<ApplicationError, String>('c_new')
+        : Left<ApplicationError, String>(failure);
+  }
+
+  @override
+  Future<Either<ApplicationError, List<Range16>>> commentMarks() async {
+    calls.add('commentMarks');
+    return Right<ApplicationError, List<Range16>>(marks);
+  }
+
+  @override
+  Future<Either<ApplicationError, Range16?>> selectComment(
+    String commentId,
+  ) async {
+    calls.add('selectComment $commentId');
+    return Right<ApplicationError, Range16?>(commentWords[commentId]);
+  }
+
+  /// Other people's carets and selections.
+  List<CursorMark> cursors = const <CursorMark>[];
+
+  @override
+  Future<Either<ApplicationError, List<CursorMark>>> remoteCursors() async {
+    calls.add('remoteCursors');
+    return Right<ApplicationError, List<CursorMark>>(cursors);
+  }
 }

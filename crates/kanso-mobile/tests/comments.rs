@@ -206,7 +206,7 @@ fn a_comment_travels_between_devices_and_each_role_may_what_it_may() {
         .resolve_comment(bobs.clone(), first.clone(), true)
         .unwrap();
     bob.sync();
-    assert_eq!(alice.sync().comment_notes, [alices.clone()]);
+    assert_eq!(alice.sync().comment_notes, std::slice::from_ref(&alices));
     let rows = alice.shared().comments(alices.clone()).unwrap();
     assert!(rows[0].resolved);
     assert_eq!(alice.shared().open_comments(alices.clone()).unwrap(), 0);
@@ -457,6 +457,102 @@ proptest! {
             prop_assert_eq!((s as usize, e as usize), (start, end));
             let said = String::from_utf16(&units[start..end]).unwrap();
             prop_assert_eq!(rows[0].quote.as_str(), said.trim());
+        }
+    }
+}
+
+/// The words of `range` (UTF-16 units) of `text`.
+fn words(text: &str, range: &kanso_mobile::Range16) -> String {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    String::from_utf16(&units[range.start as usize..range.end as usize]).unwrap()
+}
+
+// no-prop-test: one walk through the editor's three comment calls on a
+// note with front matter; the property below holds them over random words.
+#[test]
+fn the_editor_comments_on_its_selection_tints_it_and_selects_it_again() {
+    let (alice, _bob, _carol, alices, _, _) = trio();
+    let rev = alice.library.note(&alices).unwrap().rev;
+    alice
+        .library
+        .save(&alices, &rev, format!("---\nstatus: draft\n---\n{BODY}"))
+        .unwrap();
+    let session = alice.library.edit(&alices).unwrap();
+    let text = session.snapshot().unwrap().text;
+    assert_eq!(text, BODY, "the front matter is not in the editor's text");
+
+    // Nothing selected: refused in the desktop's words.
+    assert_eq!(
+        session.comment_on_selection("Hm".into()),
+        Err(KansoError::invalid("Select the words to comment on first."))
+    );
+    // "delta", after the emoji.
+    let delta = kanso_mobile::Range16 { start: 20, end: 25 };
+    session.select(delta, false).unwrap();
+    let id = session.comment_on_selection("Why delta?".into()).unwrap();
+    assert_eq!(session.comment_marks().unwrap(), vec![delta]);
+    assert_eq!(words(&text, &delta), "delta");
+
+    // Selecting it again from elsewhere in the text.
+    session
+        .select(kanso_mobile::Range16 { start: 0, end: 0 }, false)
+        .unwrap();
+    assert_eq!(session.select_comment(id.clone()).unwrap(), Some(delta));
+    assert_eq!(session.snapshot().unwrap().selection, delta);
+    assert_eq!(session.select_comment("no-such".into()).unwrap(), None);
+
+    // Resolved, it is no longer tinted.
+    alice
+        .shared()
+        .resolve_comment(alices.clone(), id, true)
+        .unwrap();
+    assert!(session.comment_marks().unwrap().is_empty());
+
+    // A note that isn't shared has none, and can't be commented on.
+    let mine = note(&alice.library, "Mine", "words here");
+    let private = alice.library.edit(&mine).unwrap();
+    assert!(private.comment_marks().unwrap().is_empty());
+    private
+        .select(kanso_mobile::Range16 { start: 0, end: 5 }, false)
+        .unwrap();
+    assert!(matches!(
+        private.comment_on_selection("x".into()),
+        Err(KansoError::Invalid { .. })
+    ));
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(6))]
+
+    /// Whatever words of a note with front matter are selected, the comment
+    /// made on them is tinted on exactly those words.
+    #[test]
+    fn prop_a_comment_from_the_editor_is_tinted_on_its_words(
+        a in 0usize..40,
+        b in 0usize..40,
+    ) {
+        let world = world();
+        let alice = world.phone("alice");
+        let bob = world.phone("bob");
+        bob.sync();
+        let id = note(&alice.library, "Plan", &format!("---\nk: v\n---\n{BODY}"));
+        let invites = vec![("bob".into(), ShareRole::Commenter)];
+        alice.shared().share(id.clone(), invites).unwrap();
+        let session = alice.library.edit(&id).unwrap();
+        let text = session.snapshot().unwrap().text;
+        let boundaries: Vec<u32> = std::iter::once(0)
+            .chain(text.char_indices().map(|(at, c)| at + c.len_utf8()))
+            .map(|byte| text[..byte].encode_utf16().count() as u32)
+            .collect();
+        let (x, y) = (boundaries[a % boundaries.len()], boundaries[b % boundaries.len()]);
+        let range = kanso_mobile::Range16 { start: x.min(y), end: x.max(y) };
+        session.select(range, false).unwrap();
+        let made = session.comment_on_selection("Note".into());
+        if range.start == range.end {
+            prop_assert!(made.is_err());
+        } else {
+            prop_assert!(made.is_ok(), "{made:?}");
+            prop_assert_eq!(session.comment_marks().unwrap(), vec![range]);
         }
     }
 }

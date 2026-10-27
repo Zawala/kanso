@@ -19,6 +19,7 @@ import '../../utils/edit_log.dart';
 import '../../utils/editor_spans.dart';
 import '../../utils/editor_timing.dart';
 import '../../utils/editor_window.dart';
+import '../../utils/shift_marks.dart';
 import '../../utils/shift_runs.dart';
 
 /// The controller of the note's text field: the only thing that changes the
@@ -137,6 +138,13 @@ class KansoMarkdownController extends TextEditingController {
   /// How the text being composed is drawn.
   final TextStyle composingStyle;
 
+  /// How the words comments are on are drawn; the screen sets its colour.
+  TextStyle commentStyle = const TextStyle();
+
+  /// Whether other people's cursors take their colours for a dark page;
+  /// the screen says.
+  bool darkCursors = false;
+
   /// The completion being offered, and the item Return would take; set by
   /// the screen. A newline typed while there is one chooses it.
   Completion? completion;
@@ -145,6 +153,10 @@ class KansoMarkdownController extends TextEditingController {
   int _version;
   HistoryState _history;
   List<EditorRun> _runs = const <EditorRun>[];
+  // The words comments are on, in units of the note.
+  List<TextRange> _comments = const <TextRange>[];
+  // Other people's carets and selections, in units of the note.
+  List<CursorMark> _cursors = const <CursorMark>[];
   Range16? _lastSelection;
   bool _lastComposing = false;
   bool _syncing = false;
@@ -193,6 +205,11 @@ class KansoMarkdownController extends TextEditingController {
   List<EditorRun>? _spanRuns;
   TextRange? _spanComposing;
   List<TextRange>? _spanMisspellings;
+  List<TextRange>? _spanComments;
+  int? _spanOrigin;
+  TextStyle? _spanCommentStyle;
+  List<CursorMark>? _spanCursors;
+  bool? _spanDarkCursors;
   TextStyle? _spanBase;
   TextStyle? _spanMisspelled;
   TextSpan? _span;
@@ -206,6 +223,83 @@ class KansoMarkdownController extends TextEditingController {
 
   /// The colours the text is drawn in now.
   List<EditorRun> get runs => _runs;
+
+  /// The words comments are on, in units of the note: as the Rust core last
+  /// said, moved along the edits made since.
+  List<TextRange> get commentMarks => _comments;
+
+  set commentMarks(List<TextRange> marks) {
+    if (_disposed) {
+      return;
+    }
+    _comments = List<TextRange>.unmodifiable(marks);
+    outsideChanged.value++;
+    notifyListeners();
+  }
+
+  /// Other people's carets and selections, in units of the note: as the
+  /// Rust core last said, moved along the edits made since.
+  List<CursorMark> get remoteCursors => _cursors;
+
+  set remoteCursors(List<CursorMark> cursors) {
+    if (_disposed) {
+      return;
+    }
+    _cursors = List<CursorMark>.unmodifiable(cursors);
+    outsideChanged.value++;
+    notifyListeners();
+  }
+
+  /// The colour [cursor] is drawn in on this page.
+  Color cursorColor(CursorMark cursor) =>
+      Color(0xFF000000 | (darkCursors ? cursor.dark : cursor.light));
+
+  /// What other people have selected, as the wash it is drawn on, cut to
+  /// [from] to [to] of the note and less [from].
+  List<(TextRange, Color)> _selectionsIn(int from, int to) {
+    final found = <(TextRange, Color)>[];
+    for (final cursor in _cursors) {
+      final clipped = _clipMarks(
+        <TextRange>[TextRange(start: cursor.start, end: cursor.end)],
+        from,
+        to,
+      );
+      for (final range in clipped) {
+        found.add((range, cursorColor(cursor).withValues(alpha: 0.22)));
+      }
+    }
+    return found;
+  }
+
+  /// [_cursors] moved along a change of [start] to [end] of the note into
+  /// [inserted] units: a caret after it moves with its text, one inside it
+  /// goes to its end.
+  void _shiftCursors(int start, int end, int inserted) {
+    if (_cursors.isEmpty) {
+      return;
+    }
+    int move(int at) {
+      if (at <= start) {
+        return at;
+      }
+      if (at >= end) {
+        return at + inserted - (end - start);
+      }
+      return start + inserted;
+    }
+
+    _cursors = <CursorMark>[
+      for (final cursor in _cursors)
+        CursorMark(
+          name: cursor.name,
+          caret: move(cursor.caret),
+          start: move(cursor.start),
+          end: move(cursor.end),
+          light: cursor.light,
+          dark: cursor.dark,
+        ),
+    ];
+  }
 
   /// Whether an input method is composing text now.
   bool get isComposing => _composingIn(value);
@@ -341,6 +435,17 @@ class KansoMarkdownController extends TextEditingController {
           start: diff.start,
           end: diff.end,
           inserted: diff.text.length,
+        );
+        _comments = shiftMarks(
+          _comments,
+          start: _before.length + diff.start,
+          end: _before.length + diff.end,
+          inserted: diff.text.length,
+        );
+        _shiftCursors(
+          _before.length + diff.start,
+          _before.length + diff.end,
+          diff.text.length,
         );
         _version = outcome.version;
         _history = outcome.history;
@@ -534,6 +639,13 @@ class KansoMarkdownController extends TextEditingController {
         end: replace.end - origin,
         inserted: replace.text.length,
       );
+      _comments = shiftMarks(
+        _comments,
+        start: replace.start,
+        end: replace.end,
+        inserted: replace.text.length,
+      );
+      _shiftCursors(replace.start, replace.end, replace.text.length);
     }
     final shownSelection = TextSelection(
       baseOffset: (selection.start - origin).clamp(0, next.length),
@@ -556,9 +668,10 @@ class KansoMarkdownController extends TextEditingController {
   // MARK: Text from outside
 
   /// Shows [snapshot]'s text in place of the field's (the note was changed
-  /// elsewhere, or the person took the other version), after a composition
-  /// ends if one is open. The caret stays where it was, as far as the text
-  /// reaches.
+  /// elsewhere, other people's typing was merged in, or the person took the
+  /// other version), after a composition ends if one is open. The caret and
+  /// the selection go where the core says they are now: with their words,
+  /// when other people's typing came in before them.
   void reload(EditorSnapshot snapshot) {
     if (isComposing) {
       _waiting = snapshot;
@@ -570,17 +683,18 @@ class KansoMarkdownController extends TextEditingController {
   void _show(EditorSnapshot snapshot) {
     final old = noteSelection;
     final length = snapshot.text.length;
+    final moved = snapshot.selection;
+    // The core's selection keeps its direction from the field's.
+    final backwards = old.isValid && old.baseOffset > old.extentOffset;
     _version = snapshot.version;
     _history = snapshot.history;
     _log.reset();
     _replaceWindow(
       snapshot.text,
-      old.isValid
-          ? TextSelection(
-              baseOffset: old.baseOffset.clamp(0, length),
-              extentOffset: old.extentOffset.clamp(0, length),
-            )
-          : const TextSelection.collapsed(offset: 0),
+      TextSelection(
+        baseOffset: (backwards ? moved.end : moved.start).clamp(0, length),
+        extentOffset: (backwards ? moved.start : moved.end).clamp(0, length),
+      ),
     );
     _tell(super.value);
     requestRuns();
@@ -754,6 +868,34 @@ class KansoMarkdownController extends TextEditingController {
     return true;
   }
 
+  /// Selects [start] to [end] of the note, moving the window to them if
+  /// they are not all in it; false when a composition is open.
+  bool selectRange(int start, int end) {
+    if (_disposed || isComposing) {
+      return false;
+    }
+    final from = start.clamp(0, noteLength);
+    final to = end.clamp(from, noteLength);
+    final first = fieldOffsetOf(from);
+    final last = fieldOffsetOf(to);
+    if (first != null && last != null) {
+      selection = TextSelection(baseOffset: first, extentOffset: last);
+      return true;
+    }
+    final note = noteText;
+    final window = windowAround(
+      note,
+      from,
+      to,
+      cap: windowUnits,
+      margin: windowMargin,
+    );
+    onWindowWillMove?.call(to);
+    _putWindow(note, window, TextSelection(baseOffset: from, extentOffset: to));
+    _tell(super.value);
+    return true;
+  }
+
   /// Makes the window the whole note and selects all of it: Select All. One
   /// slow layout, for something the person asked for. False when a
   /// composition is open.
@@ -813,6 +955,42 @@ class KansoMarkdownController extends TextEditingController {
       }
     }
     return found;
+  }
+
+  /// The words comments are on in the text outside the window from [from]
+  /// to [to], in the units [outsideRunsOf] takes, less [from].
+  List<TextRange> outsideCommentsOf(OutsideSide side, int from, int to) {
+    // Where that side's text starts in the note.
+    final origin = side == OutsideSide.before
+        ? 0
+        : _before.length + super.value.text.length + 1;
+    return _clipMarks(_comments, origin + from, origin + to);
+  }
+
+  /// What other people have selected in the text outside the window from
+  /// [from] to [to], as [outsideCommentsOf] counts, with its wash.
+  List<(TextRange, Color)> outsideSelectionsOf(
+    OutsideSide side,
+    int from,
+    int to,
+  ) {
+    final origin = side == OutsideSide.before
+        ? 0
+        : _before.length + super.value.text.length + 1;
+    return _selectionsIn(origin + from, origin + to);
+  }
+
+  /// [marks] that reach into [from] to [to] of the note, cut to it and less
+  /// [from].
+  static List<TextRange> _clipMarks(List<TextRange> marks, int from, int to) {
+    return <TextRange>[
+      for (final mark in marks)
+        if (mark.end > from && mark.start < to)
+          TextRange(
+            start: (mark.start < from ? from : mark.start) - from,
+            end: (mark.end > to ? to : mark.end) - from,
+          ),
+    ];
   }
 
   void _askOutside(OutsideSide side, int chunk) {
@@ -1035,6 +1213,11 @@ class KansoMarkdownController extends TextEditingController {
         identical(_runs, _spanRuns) &&
         composing == _spanComposing &&
         identical(misspellings, _spanMisspellings) &&
+        identical(_comments, _spanComments) &&
+        identical(_cursors, _spanCursors) &&
+        darkCursors == _spanDarkCursors &&
+        _before.length == _spanOrigin &&
+        commentStyle == _spanCommentStyle &&
         style == _spanBase &&
         misspelledStyle == _spanMisspelled) {
       return cached;
@@ -1049,12 +1232,27 @@ class KansoMarkdownController extends TextEditingController {
         misspellings: misspellings,
         composingStyle: composingStyle,
         misspelledStyle: misspelledStyle,
+        comments: _clipMarks(
+          _comments,
+          _before.length,
+          _before.length + text.length,
+        ),
+        commentStyle: commentStyle,
+        selections: _selectionsIn(
+          _before.length,
+          _before.length + text.length,
+        ),
       ),
     );
     _spanText = text;
     _spanRuns = _runs;
     _spanComposing = composing;
     _spanMisspellings = misspellings;
+    _spanComments = _comments;
+    _spanOrigin = _before.length;
+    _spanCommentStyle = commentStyle;
+    _spanCursors = _cursors;
+    _spanDarkCursors = darkCursors;
     _spanBase = style;
     _spanMisspelled = misspelledStyle;
     _span = span;

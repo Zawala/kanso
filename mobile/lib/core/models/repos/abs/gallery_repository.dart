@@ -26,6 +26,12 @@ abstract interface class GalleryRepository {
   /// The installed colour themes, fitted for drawing, for the picker.
   Future<Either<ApplicationError, List<BuiltinTheme>>> installedThemes();
 
+  /// The ids of the installed colour themes that change: removed, withdrawn
+  /// by the catalog when the index is fetched, installed, or installed again
+  /// in new colours. Whoever shows a theme listens, so a change reaches it
+  /// wherever it was made.
+  Stream<String> themeChanges();
+
   /// The tokens of the installed colour theme [id].
   Future<Either<ApplicationError, ThemeTokens>> installedThemeTokens(
     String id,
