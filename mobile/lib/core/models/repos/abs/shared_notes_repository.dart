@@ -102,11 +102,18 @@ abstract interface class SharedNotesRepository {
   /// Syncs shared notes now.
   Future<Either<ApplicationError, SharedEvent>> syncShared();
 
-  /// Opens the live room of the shared note [noteId].
-  Future<Either<ApplicationError, Unit>> openLive(String noteId);
+  /// Opens the live room of the shared note [noteId] for [holder], whatever
+  /// has the note open. Opening it again for the same holder (after the app
+  /// came back to the front) is fine.
+  Future<Either<ApplicationError, Unit>> openLive(String noteId, Object holder);
 
-  /// Leaves the room of [noteId].
-  Future<Either<ApplicationError, Unit>> closeLive(String noteId);
+  /// Lets go of the room of [noteId] for [holder]. The room is left when the
+  /// last holder lets go: the library has one room per note, which two open
+  /// copies of the note share.
+  Future<Either<ApplicationError, Unit>> closeLive(
+    String noteId,
+    Object holder,
+  );
 
   /// What each sync of shared notes finds that is news.
   Stream<SharedEvent> events();

@@ -18,38 +18,46 @@ part 'shared_note_live_state.dart';
 /// While the note is open and shared, its room is open: what other people
 /// type is merged into the library within a moment (and so reaches the
 /// editor through the library's changes), and what the person types goes out
-/// the same way. Closing the bloc leaves the room. A note that is not shared
-/// has no room, and this does nothing for it.
+/// the same way. Closing the bloc leaves the room, even when it is closed
+/// while the room is still being opened. A note that is not shared has no
+/// room, and this does nothing for it.
 ///
 /// The room is closed when the app goes to the background; coming back to
-/// the front is [SharedNoteLiveEvent.resumed].
+/// the front is [SharedNoteLiveEvent.resumed]. Every event runs after the
+/// one before it finished, so a resume never reopens the room of a note
+/// that was left meanwhile.
 @injectable
 class SharedNoteLiveBloc
     extends Bloc<SharedNoteLiveEvent, SharedNoteLiveState> {
   SharedNoteLiveBloc(this._shared) : super(const SharedNoteLiveState()) {
-    on<SharedNoteLiveOpenedEvent>(_onOpened, transformer: sequential());
-    on<SharedNoteLiveResumedEvent>(
-      (event, emit) => _enter(state.noteId, emit),
+    on<SharedNoteLiveEvent>(
+      (event, emit) => switch (event) {
+        SharedNoteLiveOpenedEvent(:final noteId) => _onOpened(noteId, emit),
+        SharedNoteLiveResumedEvent() => _enter(state.noteId, emit),
+      },
       transformer: sequential(),
     );
   }
 
   final SharedNotesRepository _shared;
 
+  /// The note whose room this holds open, if any.
+  String? _room;
+
   Future<void> _onOpened(
-    SharedNoteLiveOpenedEvent event,
+    String noteId,
     Emitter<SharedNoteLiveState> emit,
   ) async {
     // The room of the note that was open before this one is left.
-    if (state.live && state.noteId != event.noteId) {
-      await _shared.closeLive(state.noteId);
+    if (_room != null && _room != noteId) {
+      await _leave();
     }
-    emit(SharedNoteLiveState(noteId: event.noteId));
-    await _enter(event.noteId, emit);
+    emit(SharedNoteLiveState(noteId: noteId));
+    await _enter(noteId, emit);
   }
 
   Future<void> _enter(String noteId, Emitter<SharedNoteLiveState> emit) async {
-    if (noteId.isEmpty) {
+    if (noteId.isEmpty || isClosed) {
       return;
     }
     final read = await _shared.info(noteId);
@@ -57,15 +65,31 @@ class SharedNoteLiveBloc
     if (!shared) {
       return;
     }
-    final opened = await _shared.openLive(noteId);
-    emit(state.copyWith(live: opened.isRight()));
+    final opened = await _shared.openLive(noteId, this);
+    if (opened.isLeft()) {
+      emit(state.copyWith(live: false));
+      return;
+    }
+    _room = noteId;
+    if (isClosed) {
+      // Closed while the room was opening: nobody is left to leave it.
+      await _leave();
+      return;
+    }
+    emit(state.copyWith(live: true));
+  }
+
+  Future<void> _leave() async {
+    final room = _room;
+    _room = null;
+    if (room != null) {
+      await _shared.closeLive(room, this);
+    }
   }
 
   @override
   Future<void> close() async {
-    if (state.live) {
-      await _shared.closeLive(state.noteId);
-    }
-    return super.close();
+    await super.close();
+    await _leave();
   }
 }

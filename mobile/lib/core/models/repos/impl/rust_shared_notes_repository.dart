@@ -19,6 +19,10 @@ class RustSharedNotesRepository implements SharedNotesRepository {
 
   final KansoShared _shared;
 
+  /// Who has each note's live room open. The library's room has no count of
+  /// its own, so it is left only when the last holder lets go.
+  final Map<String, Set<Object>> _holders = <String, Set<Object>>{};
+
   @override
   Future<Either<ApplicationError, Unit>> canShare(String noteId) =>
       attempt(() async {
@@ -149,18 +153,30 @@ class RustSharedNotesRepository implements SharedNotesRepository {
       attempt(_shared.syncShared);
 
   @override
-  Future<Either<ApplicationError, Unit>> openLive(String noteId) =>
-      attempt(() async {
-        await _shared.openLive(noteId: noteId);
-        return unit;
-      });
+  Future<Either<ApplicationError, Unit>> openLive(
+    String noteId,
+    Object holder,
+  ) => attempt(() async {
+    await _shared.openLive(noteId: noteId);
+    _holders.putIfAbsent(noteId, () => Set<Object>.identity()).add(holder);
+    return unit;
+  });
 
   @override
-  Future<Either<ApplicationError, Unit>> closeLive(String noteId) =>
-      attempt(() async {
-        await _shared.closeLive(noteId: noteId);
-        return unit;
-      });
+  Future<Either<ApplicationError, Unit>> closeLive(
+    String noteId,
+    Object holder,
+  ) => attempt(() async {
+    final holders = _holders[noteId];
+    if (holders == null || !holders.remove(holder)) {
+      return unit;
+    }
+    if (holders.isEmpty) {
+      _holders.remove(noteId);
+      await _shared.closeLive(noteId: noteId);
+    }
+    return unit;
+  });
 
   @override
   Stream<SharedEvent> events() => cancelableStream(_shared.events());

@@ -446,14 +446,20 @@ class FixtureSharedNotesRepository implements SharedNotesRepository {
   }
 
   @override
-  Future<Either<ApplicationError, Unit>> openLive(String noteId) async {
+  Future<Either<ApplicationError, Unit>> openLive(
+    String noteId,
+    Object holder,
+  ) async {
     calls.add('openLive $noteId');
     live.add(noteId);
     return const Right<ApplicationError, Unit>(unit);
   }
 
   @override
-  Future<Either<ApplicationError, Unit>> closeLive(String noteId) async {
+  Future<Either<ApplicationError, Unit>> closeLive(
+    String noteId,
+    Object holder,
+  ) async {
     calls.add('closeLive $noteId');
     live.remove(noteId);
     return const Right<ApplicationError, Unit>(unit);
