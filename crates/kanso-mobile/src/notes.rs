@@ -16,11 +16,10 @@ use kanso_core::query::{Clause, Field, Query};
 use kanso_core::query_view::ViewNote;
 use kanso_core::roles::{ROLE_FIELD, Role};
 use kanso_core::{DocType, Note, NoteStatus, new_id, now_ms};
-use kanso_engine::batch::{self, Change};
 use kanso_engine::links::tags::apply_inline_tags;
 use kanso_engine::list::{self, DAY_MS, DateKey, Filter, RECENT_DAYS};
 use kanso_engine::lock::LockView;
-use kanso_store::{NoteSummary, Origin, Put, SearchParams, Sort};
+use kanso_store::{Origin, Put, SearchParams, Sort};
 use serde_json::{Value, json};
 
 use crate::boundary::{guard, held};
@@ -30,7 +29,7 @@ use crate::matching::ranges;
 use crate::model::{
     Changed, DateField, Hit, LibraryOverview, ListPlace, ListQuery, ListShape, LockState, NewNote,
     NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, Property, PropertyKind,
-    Saved, SearchScope, SortKey, Table, TableRow, TagRow,
+    Saved, SearchScope, SortKey, StatusCount, Table, TableRow, TagRow,
 };
 use crate::undo::Undoable;
 
@@ -48,6 +47,8 @@ impl Library {
                 ListPlace::Recent => Filter::Recent,
                 ListPlace::Notebook { id } => Filter::Book(id.clone()),
                 ListPlace::Tag { id } => Filter::Tag(id.clone()),
+                ListPlace::Status { status } => Filter::Status(parse_status(status)?),
+                ListPlace::TagPath { path } => Filter::TagPath(path.clone()),
                 ListPlace::Trash => Filter::Trash,
             };
             let sort = match query.sort {
@@ -56,13 +57,10 @@ impl Library {
                 SortKey::Title => Sort::Title,
             };
             let mut params = list::search_params(&filter, "", sort, query.descending);
-            let status =
-                match &query.status_only {
-                    Some(status) => Some(NoteStatus::parse(status).ok_or_else(|| {
-                        KansoError::invalid(format!("“{status}” isn't a status."))
-                    })?),
-                    None => None,
-                };
+            let status = match &query.status_only {
+                Some(status) => Some(parse_status(status)?),
+                None => None,
+            };
             list::refine_status(&mut params, status);
             let mut notes = list::list_notes(
                 &self.inner.store,
@@ -71,7 +69,12 @@ impl Library {
                 query.pinned_only,
                 recent_since(),
             )?;
-            if status.is_some() || matches!(query.place, ListPlace::Tag { .. }) {
+            if status.is_some()
+                || matches!(
+                    query.place,
+                    ListPlace::Tag { .. } | ListPlace::Status { .. } | ListPlace::TagPath { .. }
+                )
+            {
                 notes.retain(|note| !note.locked);
             }
             let shape = list::shape(&filter, query.pinned_only, sort);
@@ -103,6 +106,14 @@ impl Library {
                 pinned: counts.pinned,
                 recent: self.inner.store.count_recent(recent_since())?,
                 trash: counts.trash,
+                by_status: NoteStatus::ALL
+                    .into_iter()
+                    .filter(|status| *status != NoteStatus::None)
+                    .map(|status| StatusCount {
+                        status: status.as_str().to_owned(),
+                        count: counts.by_status.get(&status).copied().unwrap_or(0),
+                    })
+                    .collect(),
             })
         })
     }
@@ -120,79 +131,15 @@ impl Library {
     /// and moved between unlocked notebooks.
     pub fn change(&self, ids: Vec<String>, change: NoteChange) -> Result<Changed, KansoError> {
         guard(|| {
-            let store = &self.inner.store;
-            let mut seen = std::collections::HashSet::new();
-            let ids: Vec<String> = ids
-                .into_iter()
-                .filter(|id| seen.insert(id.clone()))
-                .collect();
-            let locked_books = store.locked_books()?;
-            let mut notes = Vec::with_capacity(ids.len());
-            let mut in_locked_book = std::collections::HashSet::new();
-            for id in &ids {
-                let note = self.stored(id)?;
-                let sealed = store.note_is_locked(id)?;
-                if locked_books.contains(&note.book_id) {
-                    in_locked_book.insert(note.id.clone());
-                }
-                notes.push(NoteSummary {
-                    locked: sealed || locked_books.contains(&note.book_id),
-                    id: note.id,
-                    rev: note.rev.unwrap_or_default(),
-                    title: note.title,
-                    snippet: String::new(),
-                    book_id: note.book_id,
-                    status: note.status,
-                    tags: note.tags,
-                    pinned: note.pinned,
-                    updated_at: note.updated_at,
-                    created_at: note.created_at,
-                    tasks_done: 0,
-                    tasks_total: 0,
-                });
-            }
-            let change = match change {
-                NoteChange::TogglePin => Change::TogglePin,
-                NoteChange::Trash => Change::Move(TRASH_BOOK_ID.to_owned()),
-                NoteChange::Move { notebook_id } => {
-                    if notebook_id != TRASH_BOOK_ID
-                        && !store.books()?.iter().any(|book| book.id == notebook_id)
-                    {
-                        return Err(KansoError::NotFound);
-                    }
-                    Change::Move(notebook_id)
-                }
-            };
-            if batch::needs_one_by_one(&notes, &change, &locked_books) {
-                return Err(KansoError::Locked);
-            }
-            let edits = batch::plan(&notes, &change);
-            if let Change::Move(book) = &change
-                && book != TRASH_BOOK_ID
-                && edits.iter().any(|edit| in_locked_book.contains(&edit.id))
-            {
-                return Err(KansoError::Locked);
-            }
-            if edits.is_empty() {
-                return Ok(Changed::default());
-            }
-            let count = edits.len();
-            let place = match &change {
-                Change::Move(book) => store
-                    .books()?
-                    .into_iter()
-                    .find(|b| &b.id == book)
-                    .map(|b| b.name)
-                    .unwrap_or_default(),
-                _ => String::new(),
-            };
-            let message = batch::summary(&change, count, &place, batch::turned_on(&change, &edits));
-            let changes = edits.iter().map(|edit| edit.change.clone()).collect();
-            store.merge_many(DocType::Note, changes, Origin::Ui)?;
+            let applied = self.apply(ids, change)?;
             Ok(Changed {
-                count: count as u32,
-                undo: Some(self.keep_undo(Undoable::Fields(edits))),
-                message,
+                count: applied.count,
+                undo: if applied.edits.is_empty() {
+                    None
+                } else {
+                    Some(self.keep_undo(Undoable::Fields(applied.edits)))
+                },
+                message: applied.notice,
             })
         })
     }
@@ -519,6 +466,8 @@ impl Library {
             Some(ListPlace::Recent) => Filter::Recent,
             Some(ListPlace::Notebook { id }) => Filter::Book(id.clone()),
             Some(ListPlace::Tag { id }) => Filter::Tag(id.clone()),
+            Some(ListPlace::Status { status }) => Filter::Status(parse_status(status)?),
+            Some(ListPlace::TagPath { path }) => Filter::TagPath(path.clone()),
             Some(ListPlace::Trash) => Filter::Trash,
         };
         let target = list::new_note_target(
@@ -587,11 +536,20 @@ fn scoped(mut query: Query, scope: &SearchScope) -> Query {
     query
 }
 
+/// A status by its stored name, or [`KansoError::Invalid`].
+pub(crate) fn parse_status(status: &str) -> Result<NoteStatus, KansoError> {
+    NoteStatus::parse(status)
+        .ok_or_else(|| KansoError::invalid(format!("“{status}” isn't a status.")))
+}
+
 /// The notebooks as rows, in tree order.
-fn notebook_rows(books: &[kanso_core::Book]) -> Vec<NotebookRow> {
-    list::notebook_tree(books)
-        .into_iter()
-        .map(|(depth, book)| NotebookRow {
+pub(crate) fn notebook_rows(books: &[kanso_core::Book]) -> Vec<NotebookRow> {
+    let tree = list::notebook_tree(books);
+    let depths: Vec<usize> = tree.iter().map(|(depth, _)| *depth).collect();
+    tree.into_iter()
+        .enumerate()
+        .map(|(at, (depth, book))| NotebookRow {
+            has_children: depths.get(at + 1).is_some_and(|next| *next > depth),
             locked: book.is_locked(),
             icon: book
                 .extra

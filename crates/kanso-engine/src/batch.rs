@@ -106,6 +106,7 @@ pub fn summary(change: &Change, count: usize, place: &str, on: bool) -> String {
         Change::Move(book) if book == TRASH_BOOK_ID => format!("Moved {notes} to the trash."),
         Change::Move(_) => format!("Moved {notes} to {place}."),
         Change::AddTag(_) => format!("Added #{place} to {notes}."),
+        Change::RemoveTag(_) => format!("Took #{place} off {notes}."),
         Change::ToggleTag(_) if on => format!("Added #{place} to {notes}."),
         Change::ToggleTag(_) => format!("Took #{place} off {notes}."),
         Change::TogglePin if on => format!("Pinned {notes}."),
@@ -135,28 +136,6 @@ pub fn turned_on(change: &Change, edits: &[Edit]) -> bool {
 /// with the ones inside it (`Store::locked_books`).
 pub fn needs_one_by_one(notes: &[NoteSummary], change: &Change, locked: &HashSet<String>) -> bool {
     matches!(change, Change::Move(book) if locked.contains(book)) && notes.iter().any(|n| !n.locked)
-}
-
-/// What the notice says once `count` notes changed. `place` names the
-/// notebook, tag or status the change is about; `on` is whether a toggle
-/// turned the tag or pin on. Pure.
-pub fn summary(change: &Change, count: usize, place: &str, on: bool) -> String {
-    let notes = if count == 1 {
-        "1 note".to_owned()
-    } else {
-        format!("{count} notes")
-    };
-    match change {
-        Change::Move(book) if book == TRASH_BOOK_ID => format!("Moved {notes} to the trash."),
-        Change::Move(_) => format!("Moved {notes} to {place}."),
-        Change::AddTag(_) => format!("Added #{place} to {notes}."),
-        Change::RemoveTag(_) => format!("Took #{place} off {notes}."),
-        Change::ToggleTag(_) if on => format!("Added #{place} to {notes}."),
-        Change::ToggleTag(_) => format!("Took #{place} off {notes}."),
-        Change::TogglePin if on => format!("Pinned {notes}."),
-        Change::TogglePin => format!("Unpinned {notes}."),
-        Change::Status(_) => format!("Set {notes} to {place}."),
-    }
 }
 
 #[cfg(test)]
@@ -473,30 +452,6 @@ mod tests {
             // Nothing but a move is held up by a lock.
             prop_assert!(!needs_one_by_one(&before, &Change::TogglePin, &locked_set));
         }
-    }
-
-    #[test]
-    fn notices() {
-        assert_eq!(
-            summary(&Change::Move(TRASH_BOOK_ID.into()), 3, "", true),
-            "Moved 3 notes to the trash."
-        );
-        assert_eq!(
-            summary(&Change::Move("book:a".into()), 1, "Work", true),
-            "Moved 1 note to Work."
-        );
-        assert_eq!(
-            summary(&Change::ToggleTag("t".into()), 2, "ideas", false),
-            "Took #ideas off 2 notes."
-        );
-        assert_eq!(
-            summary(&Change::TogglePin, 2, "", false),
-            "Unpinned 2 notes."
-        );
-        assert_eq!(
-            summary(&Change::Status(NoteStatus::Active), 1, "Active", true),
-            "Set 1 note to Active."
-        );
     }
 
     #[test]

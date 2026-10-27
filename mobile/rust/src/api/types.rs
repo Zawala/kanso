@@ -23,7 +23,7 @@ pub use kanso_mobile::{
     PersonLookup, PersonRow, PreviewLink, PreviewOptions, PromptState, Property, PropertyKind,
     ProviderEvent, ProviderKind, QuotaLimit, Range16, RecoveryKeyText, Replacement, RunBatch,
     SaveState, Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo,
-    ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow, StyledRun,
+    ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow, StatusCount, StyledRun,
     SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow,
     SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagRow,
     TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange, ThemeTokens,
@@ -89,6 +89,8 @@ pub enum _ListPlace {
     Recent,
     Notebook { id: String },
     Tag { id: String },
+    Status { status: String },
+    TagPath { path: String },
     Trash,
 }
 
@@ -127,6 +129,13 @@ pub struct _LibraryOverview {
     pub pinned: u32,
     pub recent: u32,
     pub trash: u32,
+    pub by_status: Vec<StatusCount>,
+}
+
+#[frb(mirror(StatusCount))]
+pub struct _StatusCount {
+    pub status: String,
+    pub count: u32,
 }
 
 #[frb(mirror(TaskListQuery))]
@@ -196,6 +205,11 @@ pub enum _NoteChange {
     TogglePin,
     Move { notebook_id: String },
     Trash,
+    SetStatus { status: String },
+    AddTag { tag_id: String },
+    RemoveTag { tag_id: String },
+    Restore,
+    DeleteForever,
 }
 
 #[frb(mirror(Changed))]
@@ -257,6 +271,7 @@ pub struct _NotebookRow {
     pub color: Option<String>,
     pub role: Option<NotebookRole>,
     pub depth: u32,
+    pub has_children: bool,
 }
 
 #[frb(mirror(TagRow))]

@@ -801,6 +801,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<SpanRow> dco_decode_list_span_row(dynamic raw);
 
   @protected
+  List<StatusCount> dco_decode_list_status_count(dynamic raw);
+
+  @protected
   List<StyledRun> dco_decode_list_styled_run(dynamic raw);
 
   @protected
@@ -1119,6 +1122,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   SpanRow dco_decode_span_row(dynamic raw);
+
+  @protected
+  StatusCount dco_decode_status_count(dynamic raw);
 
   @protected
   StyledRun dco_decode_styled_run(dynamic raw);
@@ -2007,6 +2013,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<SpanRow> sse_decode_list_span_row(SseDeserializer deserializer);
 
   @protected
+  List<StatusCount> sse_decode_list_status_count(SseDeserializer deserializer);
+
+  @protected
   List<StyledRun> sse_decode_list_styled_run(SseDeserializer deserializer);
 
   @protected
@@ -2371,6 +2380,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   SpanRow sse_decode_span_row(SseDeserializer deserializer);
+
+  @protected
+  StatusCount sse_decode_status_count(SseDeserializer deserializer);
 
   @protected
   StyledRun sse_decode_styled_run(SseDeserializer deserializer);
@@ -3491,6 +3503,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_list_span_row(List<SpanRow> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_status_count(
+    List<StatusCount> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_styled_run(
     List<StyledRun> self,
     SseSerializer serializer,
@@ -3927,6 +3945,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_span_row(SpanRow self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_status_count(StatusCount self, SseSerializer serializer);
 
   @protected
   void sse_encode_styled_run(StyledRun self, SseSerializer serializer);

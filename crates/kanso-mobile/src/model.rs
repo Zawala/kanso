@@ -87,6 +87,18 @@ pub enum ListPlace {
     Tag {
         id: String,
     },
+    /// Notes with this status (`active`, `onHold`, ...), as the desktop's
+    /// status places list them. A locked note is never listed here: its
+    /// status is its content.
+    Status {
+        status: String,
+    },
+    /// Notes with a tag at or under this level of the nested tag tree
+    /// (`work` lists `work` and `work/acme`). A locked note is never listed
+    /// here, as for [`ListPlace::Tag`].
+    TagPath {
+        path: String,
+    },
     Trash,
 }
 
@@ -143,7 +155,7 @@ pub struct NoteList {
 }
 
 /// The counts the library's places show.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LibraryOverview {
     /// Notes outside the trash.
     pub all: u32,
@@ -151,6 +163,36 @@ pub struct LibraryOverview {
     /// Notes changed in the last seven days.
     pub recent: u32,
     pub trash: u32,
+    /// Notes with each status, for Active, On hold, Completed and Dropped
+    /// in that order (a note with no status is in none of them).
+    pub by_status: Vec<StatusCount>,
+}
+
+/// How many notes have a status.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StatusCount {
+    /// `active`, `onHold`, `completed` or `dropped`.
+    pub status: String,
+    pub count: u32,
+}
+
+/// A status a note can be set to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StatusChoice {
+    /// The value `NoteChange::SetStatus` and `ListPlace::Status` take:
+    /// `none`, `active`, `onHold`, `completed` or `dropped`.
+    pub status: String,
+    /// What the desktop calls it: "None", "Active", "On hold", ...
+    pub label: String,
+}
+
+/// A tag color the desktop offers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ColorChoice {
+    /// The name `Library::set_tag_color` takes (`red`, `default`, ...).
+    pub name: String,
+    /// `0xRRGGBB`.
+    pub rgb: u32,
 }
 
 /// What is done to every note in a change.
@@ -162,6 +204,29 @@ pub enum NoteChange {
     Move { notebook_id: String },
     /// Into the trash.
     Trash,
+    /// Sets the status (`none`, `active`, `onHold`, `completed`, `dropped`).
+    /// A locked note is left out: its status is its content.
+    SetStatus { status: String },
+    /// Adds the tag (its ID) to each note that hasn't it. A locked note is
+    /// left out.
+    AddTag { tag_id: String },
+    /// Takes the tag (its ID) off each note that has it. A locked note is
+    /// left out.
+    RemoveTag { tag_id: String },
+    /// Moves notes that are in the trash into the first notebook, as the
+    /// desktop's Restore does. Notes outside the trash are left alone.
+    Restore,
+    /// Deletes notes in the trash permanently. It can't be undone.
+    DeleteForever,
+}
+
+/// A link to copy: the text for the clipboard and what to tell the person.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CopiedLink {
+    /// A wiki-link (`[[Title]]`) or Kanso's own link by ID.
+    pub text: String,
+    /// "Link copied." or why a Kanso link was copied instead.
+    pub message: String,
 }
 
 /// What a search looks in.
@@ -361,6 +426,8 @@ pub struct NotebookRow {
     pub role: Option<NotebookRole>,
     /// How many notebooks it is inside; 0 at the top.
     pub depth: u32,
+    /// Another notebook is inside it (the next row is deeper).
+    pub has_children: bool,
 }
 
 /// A tag in the sidebar.
@@ -1155,4 +1222,66 @@ pub enum DiagramRenderer {
     Pele,
     /// Kanso's own.
     Kanso,
+}
+
+/// A notebook icon the picker offers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IconChoice {
+    /// What the notebook keeps: the Lucide icon's name.
+    pub name: String,
+    /// What the picker's tooltip says.
+    pub label: String,
+}
+
+/// Which notebooks the sidebar shows open, in what the phone keeps between
+/// runs (it mirrors the engine's `BookFolds`). Start from the default.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FoldState {
+    /// Notebooks opened with their arrows, by ID.
+    pub open: Vec<String>,
+    /// The notebook that was showing when notebooks around it were folded.
+    pub folded_at: Option<String>,
+    /// Those folded notebooks; they open around another notebook again.
+    pub folded: Vec<String>,
+}
+
+/// A notebook row that shows in the sidebar.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VisibleNotebook {
+    pub row: NotebookRow,
+    /// Notebooks inside it show (always false when it is not a `parent`).
+    pub open: bool,
+    /// Another notebook is inside it.
+    pub parent: bool,
+}
+
+/// One row of the nested tag tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TagTreeRow {
+    /// The full path, as `ListPlace::TagPath` takes it.
+    pub path: String,
+    /// The last level, which the row shows.
+    pub label: String,
+    /// The tag with exactly this name, if there is one; a leaf lists as
+    /// `ListPlace::Tag { id }`, a level as `ListPlace::TagPath { path }`.
+    pub tag_id: Option<String>,
+    /// Notes with this tag or any tag inside it, each counted once.
+    pub count: u32,
+    pub depth: u32,
+    /// Other levels are inside it.
+    pub parent: bool,
+    /// Its levels show (always false when it is not a `parent`).
+    pub open: bool,
+}
+
+/// The sidebar's tags: chips for tags that aren't nested, and a tree for
+/// those that are.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TagPlaces {
+    /// The chips shown, in name order: all of them, or the most used few.
+    pub chips: Vec<TagRow>,
+    /// There are more chips than the few shown by default ("…").
+    pub more: bool,
+    /// The tree's rows that show, top to bottom.
+    pub tree: Vec<TagTreeRow>,
 }

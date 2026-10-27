@@ -71,6 +71,27 @@ impl BookFolds {
         }
     }
 
+    /// The folds of a sidebar restored from what it kept: `open`, and the
+    /// notebooks `folded` around notebook `folded_at` (see
+    /// [`BookFolds::folded_around`]). Pure.
+    pub fn with_state(
+        open: HashSet<String>,
+        folded_around: Option<(String, HashSet<String>)>,
+    ) -> BookFolds {
+        BookFolds {
+            open,
+            folded_around,
+        }
+    }
+
+    /// The notebook that was showing when some notebooks around it were
+    /// folded, and those notebooks. Pure.
+    pub fn folded_around(&self) -> Option<(&str, &HashSet<String>)> {
+        self.folded_around
+            .as_ref()
+            .map(|(at, folded)| (at.as_str(), folded))
+    }
+
     /// Whether notebook `id` shows open while notebook `showing` (if one
     /// is) shows inside the notebooks `around`. Pure.
     pub fn is_open(&self, id: &str, showing: Option<&str>, around: &HashSet<String>) -> bool {

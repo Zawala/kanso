@@ -170,6 +170,8 @@ proptest! {
             NoteChange::Move { ref notebook_id } => {
                 prop_assert!(after.iter().all(|n| &n.notebook_id == notebook_id));
             }
+            // The actions have their own tests (`tests/actions.rs`).
+            _ => unreachable!("only three kinds are drawn"),
         }
         // Asked again, a move or a trash writes nothing.
         if kind != 0 {

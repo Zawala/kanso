@@ -10997,6 +10997,7 @@ const _: fn() = || {
         let _: u32 = LibraryOverview.pinned;
         let _: u32 = LibraryOverview.recent;
         let _: u32 = LibraryOverview.trash;
+        let _: Vec<crate::api::types::StatusCount> = LibraryOverview.by_status;
     }
     {
         let LinkRef = None::<crate::api::linking_types::LinkRef>.unwrap();
@@ -11030,6 +11031,12 @@ const _: fn() = || {
         }
         crate::api::types::ListPlace::Tag { id } => {
             let _: String = id;
+        }
+        crate::api::types::ListPlace::Status { status } => {
+            let _: String = status;
+        }
+        crate::api::types::ListPlace::TagPath { path } => {
+            let _: String = path;
         }
         crate::api::types::ListPlace::Trash => {}
     }
@@ -11124,6 +11131,17 @@ const _: fn() = || {
             let _: String = notebook_id;
         }
         crate::api::types::NoteChange::Trash => {}
+        crate::api::types::NoteChange::SetStatus { status } => {
+            let _: String = status;
+        }
+        crate::api::types::NoteChange::AddTag { tag_id } => {
+            let _: String = tag_id;
+        }
+        crate::api::types::NoteChange::RemoveTag { tag_id } => {
+            let _: String = tag_id;
+        }
+        crate::api::types::NoteChange::Restore => {}
+        crate::api::types::NoteChange::DeleteForever => {}
     }
     {
         let NoteHistory = None::<crate::api::types::NoteHistory>.unwrap();
@@ -11189,6 +11207,7 @@ const _: fn() = || {
         let _: Option<String> = NotebookRow.color;
         let _: Option<crate::api::types::NotebookRole> = NotebookRow.role;
         let _: u32 = NotebookRow.depth;
+        let _: bool = NotebookRow.has_children;
     }
     {
         let OpenedDocuments = None::<crate::api::types::OpenedDocuments>.unwrap();
@@ -11550,6 +11569,11 @@ const _: fn() = || {
         let SpanRow = None::<crate::api::types::SpanRow>.unwrap();
         let _: crate::api::types::Range16 = SpanRow.range;
         let _: Vec<String> = SpanRow.tokens;
+    }
+    {
+        let StatusCount = None::<crate::api::types::StatusCount>.unwrap();
+        let _: String = StatusCount.status;
+        let _: u32 = StatusCount.count;
     }
     {
         let StyledRun = None::<crate::api::types::StyledRun>.unwrap();
@@ -13164,11 +13188,13 @@ impl SseDecode for crate::api::types::LibraryOverview {
         let mut var_pinned = <u32>::sse_decode(deserializer);
         let mut var_recent = <u32>::sse_decode(deserializer);
         let mut var_trash = <u32>::sse_decode(deserializer);
+        let mut var_byStatus = <Vec<crate::api::types::StatusCount>>::sse_decode(deserializer);
         return crate::api::types::LibraryOverview {
             all: var_all,
             pinned: var_pinned,
             recent: var_recent,
             trash: var_trash,
+            by_status: var_byStatus,
         };
     }
 }
@@ -13646,6 +13672,14 @@ impl SseDecode for crate::api::types::ListPlace {
                 return crate::api::types::ListPlace::Tag { id: var_id };
             }
             5 => {
+                let mut var_status = <String>::sse_decode(deserializer);
+                return crate::api::types::ListPlace::Status { status: var_status };
+            }
+            6 => {
+                let mut var_path = <String>::sse_decode(deserializer);
+                return crate::api::types::ListPlace::TagPath { path: var_path };
+            }
+            7 => {
                 return crate::api::types::ListPlace::Trash;
             }
             _ => {
@@ -13818,6 +13852,18 @@ impl SseDecode for Vec<crate::api::types::SpanRow> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::types::SpanRow>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::StatusCount> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::StatusCount>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -14122,6 +14168,24 @@ impl SseDecode for crate::api::types::NoteChange {
             2 => {
                 return crate::api::types::NoteChange::Trash;
             }
+            3 => {
+                let mut var_status = <String>::sse_decode(deserializer);
+                return crate::api::types::NoteChange::SetStatus { status: var_status };
+            }
+            4 => {
+                let mut var_tagId = <String>::sse_decode(deserializer);
+                return crate::api::types::NoteChange::AddTag { tag_id: var_tagId };
+            }
+            5 => {
+                let mut var_tagId = <String>::sse_decode(deserializer);
+                return crate::api::types::NoteChange::RemoveTag { tag_id: var_tagId };
+            }
+            6 => {
+                return crate::api::types::NoteChange::Restore;
+            }
+            7 => {
+                return crate::api::types::NoteChange::DeleteForever;
+            }
             _ => {
                 unimplemented!("");
             }
@@ -14270,6 +14334,7 @@ impl SseDecode for crate::api::types::NotebookRow {
         let mut var_color = <Option<String>>::sse_decode(deserializer);
         let mut var_role = <Option<crate::api::types::NotebookRole>>::sse_decode(deserializer);
         let mut var_depth = <u32>::sse_decode(deserializer);
+        let mut var_hasChildren = <bool>::sse_decode(deserializer);
         return crate::api::types::NotebookRow {
             id: var_id,
             name: var_name,
@@ -14280,6 +14345,7 @@ impl SseDecode for crate::api::types::NotebookRow {
             color: var_color,
             role: var_role,
             depth: var_depth,
+            has_children: var_hasChildren,
         };
     }
 }
@@ -15569,6 +15635,18 @@ impl SseDecode for crate::api::types::SpanRow {
         return crate::api::types::SpanRow {
             range: var_range,
             tokens: var_tokens,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::StatusCount {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_status = <String>::sse_decode(deserializer);
+        let mut var_count = <u32>::sse_decode(deserializer);
+        return crate::api::types::StatusCount {
+            status: var_status,
+            count: var_count,
         };
     }
 }
@@ -18406,6 +18484,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LibraryOver
             self.0.pinned.into_into_dart().into_dart(),
             self.0.recent.into_into_dart().into_dart(),
             self.0.trash.into_into_dart().into_dart(),
+            self.0.by_status.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -18508,7 +18587,13 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::ListPlace> 
             crate::api::types::ListPlace::Tag { id } => {
                 [4.into_dart(), id.into_into_dart().into_dart()].into_dart()
             }
-            crate::api::types::ListPlace::Trash => [5.into_dart()].into_dart(),
+            crate::api::types::ListPlace::Status { status } => {
+                [5.into_dart(), status.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::types::ListPlace::TagPath { path } => {
+                [6.into_dart(), path.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::types::ListPlace::Trash => [7.into_dart()].into_dart(),
             _ => {
                 unimplemented!("");
             }
@@ -18824,6 +18909,17 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::NoteChange>
                 [1.into_dart(), notebook_id.into_into_dart().into_dart()].into_dart()
             }
             crate::api::types::NoteChange::Trash => [2.into_dart()].into_dart(),
+            crate::api::types::NoteChange::SetStatus { status } => {
+                [3.into_dart(), status.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::types::NoteChange::AddTag { tag_id } => {
+                [4.into_dart(), tag_id.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::types::NoteChange::RemoveTag { tag_id } => {
+                [5.into_dart(), tag_id.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::types::NoteChange::Restore => [6.into_dart()].into_dart(),
+            crate::api::types::NoteChange::DeleteForever => [7.into_dart()].into_dart(),
             _ => {
                 unimplemented!("");
             }
@@ -19009,6 +19105,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::NotebookRow
             self.0.color.into_into_dart().into_dart(),
             self.0.role.into_into_dart().into_dart(),
             self.0.depth.into_into_dart().into_dart(),
+            self.0.has_children.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -20289,6 +20386,27 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::SpanRow>>
     for crate::api::types::SpanRow
 {
     fn into_into_dart(self) -> FrbWrapper<crate::api::types::SpanRow> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::StatusCount> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.status.into_into_dart().into_dart(),
+            self.0.count.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::StatusCount>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::StatusCount>>
+    for crate::api::types::StatusCount
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::StatusCount> {
         self.into()
     }
 }
@@ -22020,6 +22138,7 @@ impl SseEncode for crate::api::types::LibraryOverview {
         <u32>::sse_encode(self.pinned, serializer);
         <u32>::sse_encode(self.recent, serializer);
         <u32>::sse_encode(self.trash, serializer);
+        <Vec<crate::api::types::StatusCount>>::sse_encode(self.by_status, serializer);
     }
 }
 
@@ -22405,8 +22524,16 @@ impl SseEncode for crate::api::types::ListPlace {
                 <i32>::sse_encode(4, serializer);
                 <String>::sse_encode(id, serializer);
             }
-            crate::api::types::ListPlace::Trash => {
+            crate::api::types::ListPlace::Status { status } => {
                 <i32>::sse_encode(5, serializer);
+                <String>::sse_encode(status, serializer);
+            }
+            crate::api::types::ListPlace::TagPath { path } => {
+                <i32>::sse_encode(6, serializer);
+                <String>::sse_encode(path, serializer);
+            }
+            crate::api::types::ListPlace::Trash => {
+                <i32>::sse_encode(7, serializer);
             }
             _ => {
                 unimplemented!("");
@@ -22542,6 +22669,16 @@ impl SseEncode for Vec<crate::api::types::SpanRow> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::types::SpanRow>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::StatusCount> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::StatusCount>::sse_encode(item, serializer);
         }
     }
 }
@@ -22774,6 +22911,24 @@ impl SseEncode for crate::api::types::NoteChange {
             crate::api::types::NoteChange::Trash => {
                 <i32>::sse_encode(2, serializer);
             }
+            crate::api::types::NoteChange::SetStatus { status } => {
+                <i32>::sse_encode(3, serializer);
+                <String>::sse_encode(status, serializer);
+            }
+            crate::api::types::NoteChange::AddTag { tag_id } => {
+                <i32>::sse_encode(4, serializer);
+                <String>::sse_encode(tag_id, serializer);
+            }
+            crate::api::types::NoteChange::RemoveTag { tag_id } => {
+                <i32>::sse_encode(5, serializer);
+                <String>::sse_encode(tag_id, serializer);
+            }
+            crate::api::types::NoteChange::Restore => {
+                <i32>::sse_encode(6, serializer);
+            }
+            crate::api::types::NoteChange::DeleteForever => {
+                <i32>::sse_encode(7, serializer);
+            }
             _ => {
                 unimplemented!("");
             }
@@ -22878,6 +23033,7 @@ impl SseEncode for crate::api::types::NotebookRow {
         <Option<String>>::sse_encode(self.color, serializer);
         <Option<crate::api::types::NotebookRole>>::sse_encode(self.role, serializer);
         <u32>::sse_encode(self.depth, serializer);
+        <bool>::sse_encode(self.has_children, serializer);
     }
 }
 
@@ -23938,6 +24094,14 @@ impl SseEncode for crate::api::types::SpanRow {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <crate::api::types::Range16>::sse_encode(self.range, serializer);
         <Vec<String>>::sse_encode(self.tokens, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::StatusCount {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.status, serializer);
+        <u32>::sse_encode(self.count, serializer);
     }
 }
 

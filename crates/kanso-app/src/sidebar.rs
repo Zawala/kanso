@@ -23,7 +23,6 @@ use kanso_engine::sidebar::{
     BookFolds, STATUS_PLACES, TAG_LIMIT, flat_tag_ids, status_choice_after, status_group_open,
     visible_book_rows, visible_tag_rows, visible_tags,
 };
-use kanso_sync::SyncProblem;
 
 use crate::clock::Clock;
 use crate::editor::rgb_color;
@@ -1846,8 +1845,7 @@ pub(crate) fn mention_badge(unread: usize) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        SIGN_IN_TO_SYNC, SyncState, Tone, api_icon, footer_name, initials, status_choice_after,
-        status_group_open, sync_line, tone_icon, visible_tags,
+        SIGN_IN_TO_SYNC, SyncState, Tone, api_icon, footer_name, initials, sync_line, tone_icon,
     };
     use kanso_engine::sync::words::{WAITING_FOR_APPROVAL, problem_label};
     use std::collections::HashSet;
