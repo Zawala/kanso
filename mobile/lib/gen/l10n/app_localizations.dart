@@ -1695,6 +1695,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not now'**
   String get lockOfferDecline;
+
+  /// Closes a lock sheet that has told its result.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get lockDone;
 }
 
 class _AppLocalizationsDelegate

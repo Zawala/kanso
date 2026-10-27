@@ -31,10 +31,14 @@ final class PrivacyCover {
       })
   }
 
-  /// Turns the cover on or off. Off also takes down a cover that is showing.
+  /// Turns the cover on or off. Off takes down a cover that is showing only
+  /// while the app is active. Inactive (the app switcher is taking its
+  /// snapshot), the cover stays up until the app is active again, so a
+  /// `setSecure(false)` that arrives from Dart then, as the app locks, can't
+  /// uncover the note before the snapshot.
   func setSecure(_ on: Bool) {
     secure = on
-    if !on { hide() }
+    if !on && UIApplication.shared.applicationState == .active { hide() }
   }
 
   private func show(over scene: UIWindowScene?) {

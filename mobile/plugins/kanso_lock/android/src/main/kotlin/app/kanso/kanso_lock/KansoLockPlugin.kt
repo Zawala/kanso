@@ -8,6 +8,9 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -67,15 +70,37 @@ class KansoLockPlugin :
         applySecure()
     }
 
-    /** Sets or clears `FLAG_SECURE` on the current activity's window. */
+    /** Main thread only: a clear is waiting for the activity to resume. */
+    private var clearWaiting = false
+
+    /**
+     * Sets or clears `FLAG_SECURE` on the current activity's window. The flag
+     * is cleared only while the activity is resumed: when Dart turns it off
+     * as the app leaves the foreground (the notes lock), the recents
+     * thumbnail is taken after that, and must still be blank. A clear that
+     * arrives earlier waits for `onResume`.
+     */
     private fun applySecure() {
         val host = activity ?: return
-        val on = secure
         host.runOnUiThread {
-            if (on) {
+            if (secure) {
                 host.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            } else {
+                return@runOnUiThread
+            }
+            val lifecycle = (host as? LifecycleOwner)?.lifecycle
+            if (lifecycle == null || lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                 host.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            } else if (!clearWaiting) {
+                clearWaiting = true
+                lifecycle.addObserver(
+                    object : DefaultLifecycleObserver {
+                        override fun onResume(owner: LifecycleOwner) {
+                            owner.lifecycle.removeObserver(this)
+                            clearWaiting = false
+                            applySecure()
+                        }
+                    },
+                )
             }
         }
     }
@@ -121,7 +146,7 @@ class KansoLockPlugin :
         val secret = ByteArray(SECRET_LENGTH).also { SecureRandom().nextBytes(it) }
         try {
             keys.store(libraryId, checked.cipher, secret)
-            return finish(ticket, BiometricStatus.OK, libraryId, secret)
+            return finish(ticket, BiometricStatus.OK, libraryId, secret, enrolling = true)
         } catch (error: Exception) {
             keys.forget(libraryId)
             return finish(ticket, BiometricStatus.FAILED, libraryId)
@@ -175,17 +200,20 @@ class KansoLockPlugin :
 
     /**
      * Gives Rust the answer, so it never waits, and returns what Dart is told.
-     * An invalidated answer, or a secret Rust says does not open its keys,
-     * also deletes the key and the stored secret.
+     * The key and the stored secret are deleted by an invalidated answer (or a
+     * secret Rust says does not open its keys), and, when [enrolling], by a
+     * secret Rust did not keep. An unlock Rust could not apply (a fault, no
+     * ticket) leaves them: they are still good, as on iOS.
      */
     private fun finish(
         ticket: Long,
         status: BiometricStatus,
         libraryId: String,
         secret: ByteArray? = null,
+        enrolling: Boolean = false,
     ): BiometricOutcome {
         val outcome = BiometricStatus.outcomeAfter(status, RustAnswer.deliver(ticket, status, secret))
-        if (outcome == BiometricOutcome.INVALIDATED || (status == BiometricStatus.OK && outcome != BiometricOutcome.DONE)) {
+        if (BiometricStatus.shouldForget(status, outcome, enrolling)) {
             forget(libraryId)
         }
         return outcome

@@ -49,6 +49,22 @@ class BiometricStatusTest {
     }
 
     @Test
+    fun theKeyIsForgottenOnlyWhenInvalidatedOrAnEnrolmentWasNotKept() {
+        val forget = BiometricStatus::shouldForget
+        // Invalidated, in either flow.
+        assertEquals(true, forget(BiometricStatus.INVALIDATED, BiometricOutcome.INVALIDATED, false))
+        assertEquals(true, forget(BiometricStatus.OK, BiometricOutcome.INVALIDATED, false))
+        // An unlock Rust could not apply (no ticket, a fault) keeps the key.
+        assertEquals(false, forget(BiometricStatus.OK, BiometricOutcome.FAILED, false))
+        assertEquals(false, forget(BiometricStatus.OK, BiometricOutcome.DONE, false))
+        // An enrolment Rust did not keep forgets it; one it kept does not.
+        assertEquals(true, forget(BiometricStatus.OK, BiometricOutcome.FAILED, true))
+        assertEquals(false, forget(BiometricStatus.OK, BiometricOutcome.DONE, true))
+        // Cancelled and the like never do.
+        assertEquals(false, forget(BiometricStatus.CANCELLED, BiometricOutcome.CANCELLED, true))
+    }
+
+    @Test
     fun oneFeatureNamesTheKindManyDoNot() {
         assertEquals(BiometricKind.FINGERPRINT, BiometricStatus.kindOf(true, false, false))
         assertEquals(BiometricKind.FACE, BiometricStatus.kindOf(false, true, false))

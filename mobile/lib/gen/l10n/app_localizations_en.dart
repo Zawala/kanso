@@ -923,4 +923,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get lockOfferDecline => 'Not now';
+
+  @override
+  String get lockDone => 'Done';
 }

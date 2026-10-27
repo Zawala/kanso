@@ -47,6 +47,20 @@ enum class BiometricStatus(
                 else -> BiometricOutcome.FAILED
             }
 
+        /**
+         * Whether the platform key and stored secret go after an answer of
+         * [status] that ended as [outcome]: when biometrics changed, or when
+         * an enrolment's secret was not kept (as iOS's `finish` and `enroll`
+         * do). A failed unlock leaves them.
+         */
+        fun shouldForget(
+            status: BiometricStatus,
+            outcome: BiometricOutcome,
+            enrolling: Boolean,
+        ): Boolean =
+            outcome == BiometricOutcome.INVALIDATED ||
+                (enrolling && status == OK && outcome != BiometricOutcome.DONE)
+
         /** The kind to report for the biometric features the phone declares. */
         fun kindOf(
             fingerprint: Boolean,

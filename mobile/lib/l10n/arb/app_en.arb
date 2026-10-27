@@ -1198,5 +1198,9 @@
   "lockOfferDecline": "Not now",
   "@lockOfferDecline": {
     "description": "Declines the offer of biometric unlock."
+  },
+  "lockDone": "Done",
+  "@lockDone": {
+    "description": "Closes a lock sheet that has told its result."
   }
 }

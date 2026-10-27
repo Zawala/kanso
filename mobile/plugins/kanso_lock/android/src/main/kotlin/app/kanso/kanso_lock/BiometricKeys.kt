@@ -8,6 +8,7 @@ import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
 import java.security.KeyStore
+import java.security.UnrecoverableKeyException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -42,17 +43,27 @@ class BiometricKeys(
         secret: ByteArray,
     ) {
         val sealed = cipher.doFinal(secret)
-        preferences
-            .edit()
-            .putString(prefKey(libraryId, "ct"), Base64.encodeToString(sealed, Base64.NO_WRAP))
-            .putString(prefKey(libraryId, "iv"), Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .apply()
+        // Written before the enrolment is told to Rust, and off the main
+        // thread already, so it is waited for.
+        val written =
+            preferences
+                .edit()
+                .putString(prefKey(libraryId, "ct"), Base64.encodeToString(sealed, Base64.NO_WRAP))
+                .putString(prefKey(libraryId, "iv"), Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+                .commit()
+        check(written) { "the sealed secret was not written" }
     }
 
     /** A cipher to decrypt [libraryId]'s secret; [Gone] when it cannot be. */
     fun decryptCipher(libraryId: String): Cipher {
         val iv = preferences.getString(prefKey(libraryId, "iv"), null)
-        val key = keyStore().getKey(alias(libraryId), null) as? SecretKey
+        // A key the Keystore can no longer recover is gone, like one it lost.
+        val key =
+            try {
+                keyStore().getKey(alias(libraryId), null) as? SecretKey
+            } catch (error: UnrecoverableKeyException) {
+                null
+            }
         if (iv == null || key == null || sealed(libraryId) == null) {
             forget(libraryId)
             throw Gone()
