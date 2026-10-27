@@ -128,6 +128,11 @@ dependencies {
     // The Rust crate rustls-platform-verifier has a Kotlin part; its version
     // comes from Cargo.lock (above).
     implementation("org.rustls:rustls-platform-verifier")
+
+    // The JVM tests of the pure parts (reminders); org.json because the
+    // Android one is a stub off a device.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }
 
 flutter {
