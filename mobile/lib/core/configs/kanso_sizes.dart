@@ -16,8 +16,11 @@ abstract final class KansoSizes {
   /// 48: a row of settings.
   static const double settingsRow = 48;
 
-  /// 48: a button.
-  static const double button = 48;
+  /// 52: a button.
+  static const double button = 52;
+
+  /// 48: a field to type in.
+  static const double field = 48;
 
   /// 44: a search field.
   static const double searchField = 44;
@@ -25,8 +28,8 @@ abstract final class KansoSizes {
   /// 32: a filter chip.
   static const double chip = 32;
 
-  /// 56: the button for a new note that floats over a phone's list.
-  static const double floatingButton = 56;
+  /// 48: the capsule for a new note that floats over a phone's list.
+  static const double floatingButton = 48;
 
   /// 22: a tag chip.
   static const double tagChip = 22;

@@ -52,9 +52,9 @@ class ApproveDeviceSheet extends StatelessWidget {
     final l10n = context.l10n;
     final typography = context.typography;
     final locale = Localizations.localeOf(context).toString();
-    final time = DateFormat.Hm(locale).format(
-      DateTime.fromMillisecondsSinceEpoch(prompt.askedAtMs),
-    );
+    final time = DateFormat.Hm(
+      locale,
+    ).format(DateTime.fromMillisecondsSinceEpoch(prompt.askedAtMs));
     final code = prompt.code;
     final changed = prompt.state == PromptState.changed;
     return KansoBottomSheet(

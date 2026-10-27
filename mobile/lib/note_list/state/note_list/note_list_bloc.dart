@@ -125,9 +125,8 @@ class NoteListBloc extends Bloc<NoteListEvent, NoteListState> {
       return;
     }
     result.fold(
-      (error) => emit(
-        state.copyWith(status: NoteListStatus.failed, error: error),
-      ),
+      (error) =>
+          emit(state.copyWith(status: NoteListStatus.failed, error: error)),
       (list) {
         final present = <String>{for (final row in list.rows) row.id};
         emit(

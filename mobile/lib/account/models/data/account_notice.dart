@@ -21,9 +21,8 @@ sealed class AccountNotice with _$AccountNotice {
 
   const factory AccountNotice.passkeyRemoved() = AccountNoticePasskeyRemoved;
 
-  const factory AccountNotice.providerLinked({
-    required ProviderKind provider,
-  }) = AccountNoticeProviderLinked;
+  const factory AccountNotice.providerLinked({required ProviderKind provider}) =
+      AccountNoticeProviderLinked;
 
   const factory AccountNotice.providerUnlinked({
     required ProviderKind provider,

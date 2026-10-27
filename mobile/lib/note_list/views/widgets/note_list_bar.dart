@@ -2,6 +2,7 @@
 // Created 2026-10-26.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -27,6 +28,7 @@ class NoteListBar extends StatelessWidget {
     required this.state,
     required this.index,
     this.newNote,
+    this.titleShown,
     super.key,
   });
 
@@ -36,6 +38,9 @@ class NoteListBar extends StatelessWidget {
   /// Makes a new note, from a button in the bar; null where the list has a
   /// button afloat over it instead.
   final VoidCallback? newNote;
+
+  /// When the title shows, for a list whose large title scrolls with it.
+  final ValueListenable<bool>? titleShown;
 
   @override
   Widget build(BuildContext context) {
@@ -59,16 +64,14 @@ class NoteListBar extends StatelessWidget {
         onTrash: state.inTrash
             ? null
             : () => bloc.add(
-                NoteListEvent.changeRequested(
-                  const NoteChange.trash(),
-                  chosen,
-                ),
+                NoteListEvent.changeRequested(const NoteChange.trash(), chosen),
               ),
       );
     }
     final place = state.place;
     return NoteListTopBar(
       onNewNote: newNote,
+      titleShown: titleShown,
       title: placeTitle(l10n, place, index),
       subtitle: state.status == NoteListStatus.ready
           ? l10n.noteListCount(state.rows.length)

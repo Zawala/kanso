@@ -34,20 +34,14 @@ class TasksBloc extends Bloc<TasksEvent, TasksState> {
   TasksBloc(this._library, this._haptics, this._undoNotice)
     : super(const TasksState()) {
     on<TasksStartedEvent>(_onStarted, transformer: restartable());
-    on<TasksNotebookChosenEvent>(
-      (event, emit) async {
-        emit(state.copyWith(notebookId: event.notebookId));
-        await _read(emit);
-      },
-      transformer: restartable(),
-    );
-    on<TasksShowDoneChangedEvent>(
-      (event, emit) async {
-        emit(state.copyWith(showDone: event.showDone));
-        await _read(emit);
-      },
-      transformer: restartable(),
-    );
+    on<TasksNotebookChosenEvent>((event, emit) async {
+      emit(state.copyWith(notebookId: event.notebookId));
+      await _read(emit);
+    }, transformer: restartable());
+    on<TasksShowDoneChangedEvent>((event, emit) async {
+      emit(state.copyWith(showDone: event.showDone));
+      await _read(emit);
+    }, transformer: restartable());
     on<TasksChangesReceivedEvent>(
       (event, emit) => _read(emit),
       transformer: debounceRestartable<TasksChangesReceivedEvent>(

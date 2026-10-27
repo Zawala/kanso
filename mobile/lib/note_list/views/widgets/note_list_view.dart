@@ -17,6 +17,7 @@ import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/day_grouping.dart';
 import '../../../core/utils/list_labels.dart';
 import '../../../core/views/widgets/kanso_divider.dart';
+import '../../../core/views/widgets/kanso_large_title.dart';
 import '../../../core/views/widgets/kanso_refresh_control.dart';
 import '../../../core/views/widgets/kanso_section_header.dart';
 import '../../../core/views/widgets/kanso_swipe_host.dart';
@@ -36,6 +37,8 @@ class NoteListView extends StatelessWidget {
     required this.location,
     this.openNoteId,
     this.bottomClearance = 0,
+    this.largeTitle,
+    this.largeSubtitle,
     super.key,
   });
 
@@ -47,6 +50,11 @@ class NoteListView extends StatelessWidget {
   /// How much room the list leaves below its last row for something afloat
   /// over it, besides the usual gutter.
   final double bottomClearance;
+
+  /// The list's title, large, above its first row, where the bar takes it
+  /// over once it has scrolled away (a phone's list); none when null.
+  final String? largeTitle;
+  final String? largeSubtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +83,10 @@ class NoteListView extends StatelessWidget {
         physics: signedIn ? const AlwaysScrollableScrollPhysics() : null,
         slivers: <Widget>[
           if (signedIn) KansoRefreshControl(onRefresh: () => syncNow(context)),
+          if (largeTitle case final title?)
+            SliverToBoxAdapter(
+              child: KansoLargeTitle(title: title, subtitle: largeSubtitle),
+            ),
           SliverPadding(
             padding: EdgeInsets.only(
               top: KansoSpacing.xxs,

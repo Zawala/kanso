@@ -61,9 +61,7 @@ class TasksNoticeLine extends StatelessWidget {
                 padding: const EdgeInsets.all(KansoSpacing.sm),
                 child: Text(
                   l10n.noteListDismiss,
-                  style: context.typography.body.copyWith(
-                    color: colors.accent,
-                  ),
+                  style: context.typography.body.copyWith(color: colors.accent),
                 ),
               ),
             ),

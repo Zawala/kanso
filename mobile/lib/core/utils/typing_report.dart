@@ -110,10 +110,7 @@ abstract final class TypingLimits {
 /// What is wrong with [report] by the gate's measures, in words; none when it
 /// passes. [minRefreshRate] asks something of the display as in
 /// [frameProblems].
-List<String> typingProblems(
-  TypingReport report, {
-  double minRefreshRate = 0,
-}) {
+List<String> typingProblems(TypingReport report, {double minRefreshRate = 0}) {
   final interval = report.frames.budgetMs;
   String over(String what, double value, double limit, String unit) =>
       '$what ${value.toStringAsFixed(2)} $unit is over '
@@ -137,11 +134,6 @@ List<String> typingProblems(
     if (report.applyP99 > TypingLimits.applyP99Ms)
       over('p99 kanso.apply', report.applyP99, TypingLimits.applyP99Ms, 'ms'),
     if (report.rssGrowthMb > TypingLimits.rssGrowthMb)
-      over(
-        'memory growth',
-        report.rssGrowthMb,
-        TypingLimits.rssGrowthMb,
-        'MB',
-      ),
+      over('memory growth', report.rssGrowthMb, TypingLimits.rssGrowthMb, 'MB'),
   ];
 }

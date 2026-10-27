@@ -37,10 +37,7 @@ class SharePromptView extends StatelessWidget {
       SharePromptVerify(:final person) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text(
-            l10n.shareVerifyIntro(person.username),
-            style: typography.body,
-          ),
+          Text(l10n.shareVerifyIntro(person.username), style: typography.body),
           const SizedBox(height: KansoSpacing.sm),
           FingerprintBlock(
             fingerprint: person.fingerprint,

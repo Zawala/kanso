@@ -5,14 +5,7 @@
 import '../../core/bridge/api/types.dart';
 
 /// What is said under a person's name in a shared note.
-enum MemberNote {
-  declined,
-  left,
-  invited,
-  you,
-  unchecked,
-  verified,
-}
+enum MemberNote { declined, left, invited, you, unchecked, verified }
 
 /// How a person's row reads.
 enum MemberTone {

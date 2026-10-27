@@ -1238,10 +1238,7 @@ class KansoMarkdownController extends TextEditingController {
           _before.length + text.length,
         ),
         commentStyle: commentStyle,
-        selections: _selectionsIn(
-          _before.length,
-          _before.length + text.length,
-        ),
+        selections: _selectionsIn(_before.length, _before.length + text.length),
       ),
     );
     _spanText = text;

@@ -57,18 +57,16 @@ class RustRendererRepository implements RendererRepository {
   );
 
   @override
-  Future<Either<ApplicationError, ThemeTokens>> themeTokens(
-    String themeJson,
-  ) => attempt(() => KansoRenderer.themeTokens(themeJson: themeJson));
+  Future<Either<ApplicationError, ThemeTokens>> themeTokens(String themeJson) =>
+      attempt(() => KansoRenderer.themeTokens(themeJson: themeJson));
 
   @override
   Future<Either<ApplicationError, List<BuiltinTheme>>> builtinThemes() =>
       attempt(KansoRenderer.builtinThemes);
 
   @override
-  Future<Either<ApplicationError, ThemeTokens>> builtinThemeTokens(
-    String id,
-  ) => attempt(() => KansoRenderer.builtinThemeTokens(id: id));
+  Future<Either<ApplicationError, ThemeTokens>> builtinThemeTokens(String id) =>
+      attempt(() => KansoRenderer.builtinThemeTokens(id: id));
 
   @override
   Future<Either<ApplicationError, List<IconThemeRow>>> iconThemes() =>
@@ -113,11 +111,8 @@ class RustRendererRepository implements RendererRepository {
     String source,
     PaletteDto palette,
   ) => attempt(
-    () => KansoRenderer.diagramSvg(
-      kind: kind,
-      source: source,
-      palette: palette,
-    ),
+    () =>
+        KansoRenderer.diagramSvg(kind: kind, source: source, palette: palette),
   );
 
   @override

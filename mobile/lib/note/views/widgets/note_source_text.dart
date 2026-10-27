@@ -55,9 +55,7 @@ class NoteSourceText extends StatelessWidget {
         var cursor = line.start;
         for (final run in line.runs) {
           if (run.range.start > cursor) {
-            spans.add(
-              TextSpan(text: text.substring(cursor, run.range.start)),
-            );
+            spans.add(TextSpan(text: text.substring(cursor, run.range.start)));
           }
           spans.add(
             TextSpan(

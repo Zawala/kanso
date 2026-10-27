@@ -101,9 +101,7 @@ class CreateAccountPane extends StatelessWidget {
                       label: l10n.accountPassword,
                       obscure: true,
                       textInputAction: TextInputAction.next,
-                      autofillHints: const <String>[
-                        AutofillHints.newPassword,
-                      ],
+                      autofillHints: const <String>[AutofillHints.newPassword],
                       enabled: idle,
                       invalid:
                           state.problem == FormProblem.passwordTooShort ||
