@@ -9,7 +9,7 @@ use proptest::test_runner::FileFailurePersistence;
 use super::text::*;
 use super::*;
 
-fn config() -> ProptestConfig {
+pub(super) fn config() -> ProptestConfig {
     ProptestConfig {
         cases: 2048,
         failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
@@ -19,7 +19,7 @@ fn config() -> ProptestConfig {
 
 /// The system clipboard, as a test has it.
 #[derive(Default)]
-struct FakeClip(Option<String>);
+pub(super) struct FakeClip(pub(super) Option<String>);
 
 impl Clipboard for FakeClip {
     fn read(&mut self) -> Option<String> {
@@ -31,10 +31,10 @@ impl Clipboard for FakeClip {
 /// applies each outcome, keeps an undo stack where each Vim change (an
 /// Insert mode session with the command that began it) is one step, and
 /// the clipboard.
-struct Buf {
-    text: String,
-    cursor: usize,
-    vim: Vim,
+pub(super) struct Buf {
+    pub(super) text: String,
+    pub(super) cursor: usize,
+    pub(super) vim: Vim,
     clip: FakeClip,
     undo: Vec<(String, usize)>,
     redo: Vec<(String, usize)>,
@@ -47,7 +47,7 @@ struct Buf {
 }
 
 impl Buf {
-    fn new(text: &str, cursor: usize) -> Buf {
+    pub(super) fn new(text: &str, cursor: usize) -> Buf {
         Buf {
             text: text.to_owned(),
             cursor: clamp_normal(text, cursor),
@@ -74,7 +74,7 @@ impl Buf {
         text
     }
 
-    fn key(&mut self, key: Key) {
+    pub(super) fn key(&mut self, key: Key) {
         if self.vim.mode() == Mode::Insert {
             self.insert_key(key);
             return;
@@ -628,7 +628,7 @@ fn diff_finds_the_one_change() {
 /// Texts with the awkward parts: blank and empty lines, multibyte
 /// letters, emoji (one with joiners), a combining accent, brackets and
 /// quotes.
-fn gen_text() -> impl Strategy<Value = String> {
+pub(super) fn gen_text() -> impl Strategy<Value = String> {
     prop::collection::vec(
         prop::sample::select(vec![
             "a",
@@ -655,7 +655,7 @@ fn gen_text() -> impl Strategy<Value = String> {
     .prop_map(|parts| parts.concat())
 }
 
-fn gen_key() -> impl Strategy<Value = Key> {
+pub(super) fn gen_key() -> impl Strategy<Value = Key> {
     prop_oneof![
         8 => prop::sample::select(
             "hjklwbeWBE0^$G+-;,{}%fFtTgdcyxXDCsSrJ~pPoOaAiIuvVY.:123qz\"'()pw ab"
@@ -744,7 +744,7 @@ fn gen_change() -> impl Strategy<Value = &'static str> {
 }
 
 /// A cursor somewhere in `text`, as an offset to clamp.
-fn gen_case() -> impl Strategy<Value = (String, usize)> {
+pub(super) fn gen_case() -> impl Strategy<Value = (String, usize)> {
     gen_text().prop_flat_map(|text| {
         let len = text.len();
         (Just(text), 0..=len)
