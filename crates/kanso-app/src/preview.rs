@@ -71,10 +71,7 @@ pub enum PreviewEdit {
 /// Where the preview's edits go.
 pub type ResizeSender = async_channel::Sender<PreviewEdit>;
 
-/// The widths an attached image can be given in the preview, besides its
-/// own: small and medium.
-pub const IMAGE_SIZES: [(&str, Option<u32>); 3] =
-    [("Small", Some(240)), ("Medium", Some(480)), ("Full", None)];
+pub use kanso_engine::edit::image::IMAGE_SIZES;
 
 /// Shows the size buttons over every image, as a hover would.
 #[cfg(test)]
