@@ -369,6 +369,17 @@ mod tests {
         assert_eq!(place(&doc, &comment), Placement::Anchored(13..18));
     }
 
+    #[test]
+    fn probe2() {
+        let body = "Alpha beta gamma 😀 delta";
+        let doc = CollabDoc::from_text("", body);
+        let end = doc.sticky(Field::Body, body.len());
+        let start = doc.sticky(Field::Body, 22);
+        eprintln!("PROBE len={} start={:?} end={:?}", body.len(), doc.resolve(&start), doc.resolve(&end));
+        doc.set_text(Field::Body, &format!("Intro 😀 {body}"));
+        eprintln!("PROBE after start={:?} end={:?}", doc.resolve(&start), doc.resolve(&end));
+    }
+
     // no-prop-test: the end of texts with wide characters, fixed cases; the
     // mobile comments test holds the property over random texts.
     #[test]
