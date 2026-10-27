@@ -783,7 +783,6 @@ pub struct OpenedDocuments {
     pub problems: Vec<String>,
 }
 
-
 /// What saving the shared items waiting in the inbox folder did
 /// ([`Library::save_drops`](crate::Library::save_drops)).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

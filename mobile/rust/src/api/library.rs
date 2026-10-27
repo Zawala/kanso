@@ -6,9 +6,9 @@ use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
     AttachmentFile, CaptureOutcome, Changed, DropsSaved, Hit, ImportEvent, KansoError, Library,
-    LibraryOverview, ListQuery, LocalTime, NewNote, NoteChange, NoteList, NoteView,
-    NotebookRow, OpenedDocuments, OpenedFile, Property, Saved, SearchScope, Share, Table,
-    TagRow, TaskBoard, TaskListQuery, Ticked,
+    LibraryOverview, ListQuery, LocalTime, NewNote, NoteChange, NoteList, NoteView, NotebookRow,
+    OpenedDocuments, OpenedFile, Property, Saved, SearchScope, Share, Table, TagRow, TaskBoard,
+    TaskListQuery, Ticked,
 };
 
 use super::account::KansoAccount;
