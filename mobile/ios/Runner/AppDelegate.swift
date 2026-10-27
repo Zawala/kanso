@@ -10,10 +10,14 @@ import kanso_background
   ) -> Bool {
     // The background sync's handler must be registered before launch finishes.
     KansoBackground.register()
+    CrashDiagnostics.shared.start()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "KansoCrashDiagnostics") {
+      CrashDiagnostics.shared.register(with: registrar.messenger())
+    }
   }
 }

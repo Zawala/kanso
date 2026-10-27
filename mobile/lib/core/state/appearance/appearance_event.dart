@@ -17,6 +17,11 @@ sealed class AppearanceEvent with _$AppearanceEvent {
   const factory AppearanceEvent.followSystemChanged({required bool follow}) =
       AppearanceFollowSystemChangedEvent;
 
+  /// The person picked the icon theme [id] (`phosphor`); "lucide" is Kanso's
+  /// own icons.
+  const factory AppearanceEvent.iconThemePicked(String id) =
+      AppearanceIconThemePickedEvent;
+
   /// The person picked [font] for writing in the editor.
   const factory AppearanceEvent.editorFontChanged(KansoFontFamily font) =
       AppearanceEditorFontChangedEvent;

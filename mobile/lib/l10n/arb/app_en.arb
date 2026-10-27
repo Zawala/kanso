@@ -183,6 +183,10 @@
   "@accessoryOutdent": {
     "description": "A keyboard shortcut that outdents a line."
   },
+  "accessoryRedo": "Redo",
+  "@accessoryRedo": {
+    "description": "What the undo key of the keyboard bar does when it is held, for a screen reader's list of actions."
+  },
   "accessoryUndo": "Undo",
   "@accessoryUndo": {
     "description": "A keyboard shortcut that undoes the last change."
@@ -194,6 +198,22 @@
   "settingsClose": "Close",
   "@settingsClose": {
     "description": "Closes a page."
+  },
+  "settingsGeneral": "General",
+  "@settingsGeneral": {
+    "description": "A section of settings."
+  },
+  "settingsDefaultNotebook": "Default notebook",
+  "@settingsDefaultNotebook": {
+    "description": "The notebook new notes go to."
+  },
+  "defaultNotebookFirst": "First notebook",
+  "@defaultNotebookFirst": {
+    "description": "The choice of the first notebook in the library as the one new notes go to."
+  },
+  "defaultNotebookFooter": "New notes go here, except those made from a notebook's own list. A locked notebook can't be chosen.",
+  "@defaultNotebookFooter": {
+    "description": "The note under the notebooks that can be the default one."
   },
   "settingsAppearance": "Appearance",
   "@settingsAppearance": {
@@ -222,6 +242,14 @@
   "settingsWebsite": "Website",
   "@settingsWebsite": {
     "description": "Opens Kanso's website."
+  },
+  "settingsReleaseNotes": "Release notes",
+  "@settingsReleaseNotes": {
+    "description": "Opens what changed in each version of Kanso, on the website."
+  },
+  "settingsHelp": "Help",
+  "@settingsHelp": {
+    "description": "Opens Kanso's help page on the website."
   },
   "settingsLicences": "Licences",
   "@settingsLicences": {
@@ -295,10 +323,6 @@
   "@appearanceDark": {
     "description": "Always dark."
   },
-  "screenNoteEdit": "Note, edit",
-  "@screenNoteEdit": {
-    "description": "The name of a mock screen."
-  },
   "screenError": "Error card",
   "@screenError": {
     "description": "The name of a mock screen."
@@ -322,6 +346,59 @@
   "settingsFonts": "Fonts",
   "@settingsFonts": {
     "description": "The settings row that opens the fonts of notes."
+  },
+  "settingsIcons": "Icons",
+  "@settingsIcons": {
+    "description": "The settings row that opens the icon themes."
+  },
+  "iconsTitle": "Icons",
+  "@iconsTitle": {
+    "description": "The title of the page where the icon theme is chosen."
+  },
+  "iconsFooter": "The icon themes of the desktop app. Choosing one changes every icon at once; an icon a theme doesn’t draw stays Kanso’s own.",
+  "@iconsFooter": {
+    "description": "Explains the icon themes, under the list."
+  },
+  "iconsCredit": "{author}, {license}",
+  "@iconsCredit": {
+    "description": "Who made an icon theme and under which licence, when both are known.",
+    "placeholders": {
+      "author": {
+        "type": "String"
+      },
+      "license": {
+        "type": "String"
+      }
+    }
+  },
+  "iconsPreview": "Icons in {name}",
+  "@iconsPreview": {
+    "description": "Says to a screen reader what a row of sample icons shows.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "iconsLoading": "Loading icon themes",
+  "@iconsLoading": {
+    "description": "Says to a screen reader that the icon themes are being read."
+  },
+  "iconsFailedTitle": "The icon themes didn’t load",
+  "@iconsFailedTitle": {
+    "description": "The title of the card shown when the icon themes could not be read."
+  },
+  "iconsFailedMessage": "Something went wrong reading the icon themes. Try again.",
+  "@iconsFailedMessage": {
+    "description": "The message of the card shown when the icon themes could not be read."
+  },
+  "iconsEmptyTitle": "No icon themes",
+  "@iconsEmptyTitle": {
+    "description": "The title of the card shown when there are no icon themes to choose from."
+  },
+  "iconsEmptyMessage": "Kanso’s own icons are in use.",
+  "@iconsEmptyMessage": {
+    "description": "The message of the card shown when there are no icon themes to choose from."
   },
   "settingsBack": "Back",
   "@settingsBack": {
@@ -402,6 +479,83 @@
   "textSizeLarger": "Larger",
   "@textSizeLarger": {
     "description": "The largest text size."
+  },
+  "editorTitleHint": "Title",
+  "@editorTitleHint": {
+    "description": "What the empty title field of a note being edited says."
+  },
+  "editorChangedMessage": "This note was changed elsewhere while you were editing. The version you don't keep stays in its history.",
+  "@editorChangedMessage": {
+    "description": "Says a note was changed elsewhere while it was being edited."
+  },
+  "editorKeepMine": "Keep mine",
+  "@editorKeepMine": {
+    "description": "Keeps the text typed here over a change made elsewhere."
+  },
+  "editorUseTheirs": "Use theirs",
+  "@editorUseTheirs": {
+    "description": "Takes a change made elsewhere over the text typed here."
+  },
+  "editorDeletedMessage": "This note was deleted elsewhere while you were editing.",
+  "@editorDeletedMessage": {
+    "description": "Says a note was deleted elsewhere while it was being edited."
+  },
+  "editorKeepIt": "Keep it",
+  "@editorKeepIt": {
+    "description": "Keeps a note that was deleted elsewhere, by saving it again."
+  },
+  "editorDiscard": "Discard",
+  "@editorDiscard": {
+    "description": "Lets go of a note that was deleted elsewhere."
+  },
+  "editorSaveFailed": "Your changes aren't saved yet.",
+  "@editorSaveFailed": {
+    "description": "Says that saving a note failed."
+  },
+  "editorOpeningLabel": "Opening the note",
+  "@editorOpeningLabel": {
+    "description": "What a screen reader says while a note is opened for editing."
+  },
+  "propertiesAdd": "Add property",
+  "@propertiesAdd": {
+    "description": "Adds a property to the note."
+  },
+  "propertiesName": "Name",
+  "@propertiesName": {
+    "description": "The hint of the field for the name of a new property."
+  },
+  "propertiesValue": "Value",
+  "@propertiesValue": {
+    "description": "The hint of the field for the value of a property."
+  },
+  "propertiesRemove": "Remove {name}",
+  "@propertiesRemove": {
+    "description": "Removes a property from the note; for a screen reader.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "propertiesConfirmAdd": "Add",
+  "@propertiesConfirmAdd": {
+    "description": "Adds the property that was just named."
+  },
+  "propertiesCancelAdd": "Cancel",
+  "@propertiesCancelAdd": {
+    "description": "Gives up on adding a property."
+  },
+  "propertiesFailed": "That property couldn't be set.",
+  "@propertiesFailed": {
+    "description": "Says that a property of the note could not be set."
+  },
+  "propertiesShow": "Show properties",
+  "@propertiesShow": {
+    "description": "What the row of properties does when it is closed, for a screen reader."
+  },
+  "propertiesHide": "Hide properties",
+  "@propertiesHide": {
+    "description": "What the row of properties does when it is open, for a screen reader."
   },
   "noteModeLabel": "View mode",
   "@noteModeLabel": {
@@ -635,9 +789,49 @@
   "@noteListChangeLocked": {
     "description": "The line shown when notes could not be moved into or out of a locked notebook."
   },
+  "libraryNewNotebook": "New notebook",
+  "@libraryNewNotebook": {
+    "description": "What the add button of the notebooks header does."
+  },
+  "newNotebookTitle": "New notebook",
+  "@newNotebookTitle": {
+    "description": "The title of the sheet that makes a notebook."
+  },
+  "newNotebookNameHint": "Name",
+  "@newNotebookNameHint": {
+    "description": "The hint, and the label, of the field for a new notebook's name."
+  },
+  "newNotebookCreate": "Create",
+  "@newNotebookCreate": {
+    "description": "The button that makes the notebook."
+  },
+  "newNotebookInvalid": "Give the notebook a name.",
+  "@newNotebookInvalid": {
+    "description": "The line shown when a new notebook's name is empty or not accepted."
+  },
+  "newNotebookFailed": "The notebook couldn't be made. Try again.",
+  "@newNotebookFailed": {
+    "description": "The line shown when a notebook could not be made."
+  },
+  "noteListNewNote": "New note",
+  "@noteListNewNote": {
+    "description": "What the add button of the note list does."
+  },
+  "noteListNewNoteLocked": "Unlock this notebook to add notes to it.",
+  "@noteListNewNoteLocked": {
+    "description": "The line shown when a new note was asked for in a notebook that is locked."
+  },
+  "noteListNewNoteFailed": "The note couldn't be made. Try again.",
+  "@noteListNewNoteFailed": {
+    "description": "The line shown when a new note could not be made."
+  },
   "noteListDismiss": "OK",
   "@noteListDismiss": {
     "description": "The button that closes the line that says a change did not happen."
+  },
+  "undoNoticeUndo": "Undo",
+  "@undoNoticeUndo": {
+    "description": "The button on the notice that follows a change to notes and takes the change back."
   },
   "noteLoading": "Loading the note",
   "@noteLoading": {
@@ -678,6 +872,26 @@
   "menuSelectAll": "Select All",
   "@menuSelectAll": {
     "description": "The button of a text field's menu that selects all of its text."
+  },
+  "menuDelete": "Delete",
+  "@menuDelete": {
+    "description": "The button of the spelling menu that deletes the misspelled word."
+  },
+  "menuOpenLink": "Open link",
+  "@menuOpenLink": {
+    "description": "The button of the editor's menu that opens the link the caret is in."
+  },
+  "completionAnnouncement": "{count, plural, =1{1 suggestion} other{{count} suggestions}}, {label} selected",
+  "@completionAnnouncement": {
+    "description": "What a screen reader says when suggestions for a link or a tag appear: how many, and which one is selected.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
   },
   "searchIdleTitle": "Search your notes",
   "@searchIdleTitle": {
@@ -751,6 +965,378 @@
   "settingsSyncBackupFooter": "The notes on this device aren’t included in device backups.",
   "@settingsSyncBackupFooter": {
     "description": "Says under Sync that device backups do not hold the notes."
+  },
+  "settingsVersionValue": "{version} ({build})",
+  "@settingsVersionValue": {
+    "description": "The app's version and the number of its build.",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      }
+    }
+  },
+  "licencesLoading": "Loading licences",
+  "@licencesLoading": {
+    "description": "Says to a screen reader that the licences are being read."
+  },
+  "licencesFailedTitle": "The licences didn’t load",
+  "@licencesFailedTitle": {
+    "description": "The title of the card shown when the licences could not be read."
+  },
+  "licencesFailedMessage": "Something went wrong reading the licences. Try again.",
+  "@licencesFailedMessage": {
+    "description": "The message of the card shown when the licences could not be read."
+  },
+  "licencesEmptyTitle": "No licences",
+  "@licencesEmptyTitle": {
+    "description": "The title shown when there are no licences to list."
+  },
+  "licencesEmptyMessage": "The packages Kanso is made of will be listed here.",
+  "@licencesEmptyMessage": {
+    "description": "Says what the empty list of licences will hold."
+  },
+  "licencesCount": "{count, plural, =1{1 licence} other{{count} licences}}",
+  "@licencesCount": {
+    "description": "How many licences a package comes under.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "themesFollowSystem": "Switch between a light and a dark theme with the system",
+  "@themesFollowSystem": {
+    "description": "The switch that makes the interface follow the system's light or dark mode."
+  },
+  "themesFollowSystemOn": "Showing the light theme in light mode and the dark one in dark mode.",
+  "@themesFollowSystemOn": {
+    "description": "Says what following the system does, while it is on."
+  },
+  "themesFollowSystemOff": "Off: the theme stays as picked whatever the system’s mode.",
+  "@themesFollowSystemOff": {
+    "description": "Says what happens while following the system is off."
+  },
+  "themesFailedTitle": "The themes didn’t load",
+  "@themesFailedTitle": {
+    "description": "The title of the card shown when the themes could not be read."
+  },
+  "themesFailedMessage": "Something went wrong reading the themes. Try again.",
+  "@themesFailedMessage": {
+    "description": "The message of the card shown when the themes could not be read."
+  },
+  "themesLoading": "Loading themes",
+  "@themesLoading": {
+    "description": "Says to a screen reader that the themes are being read."
+  },
+  "backupNoticeTitle": "Notes stay on this device",
+  "@backupNoticeTitle": {
+    "description": "The title of the card that says the notes are not in device backups."
+  },
+  "backupNoticeMessage": "The notes on this device aren’t included in device backups, so losing or resetting the device takes them with it.",
+  "@backupNoticeMessage": {
+    "description": "Says that device backups do not hold the notes."
+  },
+  "backupNoticeOk": "OK",
+  "@backupNoticeOk": {
+    "description": "Dismisses the notice about device backups."
+  },
+  "settingsVersionPatchValue": "{version} ({build}), patch {patch}",
+  "@settingsVersionPatchValue": {
+    "description": "The app's version, the number of its build and the number of the Shorebird patch it is running.",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      },
+      "patch": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsPrivacy": "Privacy",
+  "@settingsPrivacy": {
+    "description": "A section of settings."
+  },
+  "settingsPrivacyFooter": "Kanso sends a crash report only when you choose to.",
+  "@settingsPrivacyFooter": {
+    "description": "Says under Privacy that nothing is sent on its own."
+  },
+  "crashReportsTitle": "Crash reports",
+  "@crashReportsTitle": {
+    "description": "The settings row and the page that list the crash reports waiting on the device."
+  },
+  "crashReportsLoading": "Loading crash reports",
+  "@crashReportsLoading": {
+    "description": "Says to a screen reader that the crash reports are being read."
+  },
+  "crashReportsEmptyTitle": "No crash reports",
+  "@crashReportsEmptyTitle": {
+    "description": "The title of the page when no crash report is waiting."
+  },
+  "crashReportsEmptyMessage": "If Kanso closes unexpectedly, a report waits here until you decide whether to send it.",
+  "@crashReportsEmptyMessage": {
+    "description": "Says what will appear on the Crash reports page."
+  },
+  "crashReportsIntro": "A report holds only where in Kanso’s code something went wrong. It never holds note text, titles or file names. Nothing is sent unless you send it.",
+  "@crashReportsIntro": {
+    "description": "Explains, above the list, what a crash report holds."
+  },
+  "crashReportsSendAll": "Send all",
+  "@crashReportsSendAll": {
+    "description": "Sends every crash report waiting."
+  },
+  "crashReportSubtitle": "{day} · {kind}",
+  "@crashReportSubtitle": {
+    "description": "A crash report's row: the day, and where it came from.",
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      }
+    }
+  },
+  "crashReportSend": "Send",
+  "@crashReportSend": {
+    "description": "Sends one crash report."
+  },
+  "crashReportDelete": "Delete",
+  "@crashReportDelete": {
+    "description": "Deletes one crash report without sending it."
+  },
+  "crashReportShow": "Show report",
+  "@crashReportShow": {
+    "description": "Shows the exact text of a crash report."
+  },
+  "crashReportHide": "Hide report",
+  "@crashReportHide": {
+    "description": "Hides the text of a crash report."
+  },
+  "crashReportSending": "Sending…",
+  "@crashReportSending": {
+    "description": "Says a crash report is being sent."
+  },
+  "crashKindDart": "App",
+  "@crashKindDart": {
+    "description": "The origin of a crash report: an error in Kanso's own code."
+  },
+  "crashKindIosNative": "iOS",
+  "@crashKindIosNative": {
+    "description": "The origin of a crash report: a crash the system recorded on iPhone or iPad."
+  },
+  "crashKindAndroidNative": "Android native",
+  "@crashKindAndroidNative": {
+    "description": "The origin of a crash report: a crash in native code on Android."
+  },
+  "crashKindAndroidAnr": "Android not responding",
+  "@crashKindAndroidAnr": {
+    "description": "The origin of a crash report: the app stopped responding on Android."
+  },
+  "crashKindAndroidJvm": "Android",
+  "@crashKindAndroidJvm": {
+    "description": "The origin of a crash report: an uncaught exception on Android."
+  },
+  "crashNoticeTitle": "Kanso closed unexpectedly",
+  "@crashNoticeTitle": {
+    "description": "The title of the card shown after a launch that found crash reports."
+  },
+  "crashNoticeMessage": "Send a crash report? It holds only where in Kanso’s code it happened, never note text, titles or file names.",
+  "@crashNoticeMessage": {
+    "description": "Asks whether to send crash reports and says what they hold."
+  },
+  "crashNoticeSend": "Send",
+  "@crashNoticeSend": {
+    "description": "Sends the crash reports."
+  },
+  "crashNoticeDiscard": "Don’t send",
+  "@crashNoticeDiscard": {
+    "description": "Deletes the crash reports without sending them."
+  },
+  "crashOutcomeSent": "Report sent. Thank you.",
+  "@crashOutcomeSent": {
+    "description": "Said after a crash report was sent."
+  },
+  "crashOutcomeRejected": "The report couldn’t be sent.",
+  "@crashOutcomeRejected": {
+    "description": "Said when the server did not accept a crash report."
+  },
+  "crashOutcomeTryLater": "Too many reports just now. Try again later.",
+  "@crashOutcomeTryLater": {
+    "description": "Said when the server asked to wait."
+  },
+  "crashOutcomeUnreachable": "Couldn’t reach Kanso. Try again later.",
+  "@crashOutcomeUnreachable": {
+    "description": "Said when a crash report could not be sent for lack of a connection."
+  },
+  "crashReportsFailedMessage": "The crash reports couldn’t be read.",
+  "@crashReportsFailedMessage": {
+    "description": "The message of the card shown when the crash reports could not be read."
+  },
+  "screenNoteEdit": "Note, edit",
+  "@screenNoteEdit": {
+    "description": "The name of a mock screen."
+  },
+  "libraryTasks": "Tasks",
+  "@libraryTasks": {
+    "description": "The library row for tasks across the notes, and the title of their list."
+  },
+  "libraryTasksOverdue": "{count, plural, =1{1 overdue task} other{{count} overdue tasks}}",
+  "@libraryTasksOverdue": {
+    "description": "Says how many tasks are overdue, on the Tasks row (read by a screen reader).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tasksCount": "{count, plural, =1{1 task} other{{count} tasks}}",
+  "@tasksCount": {
+    "description": "How many tasks the list holds.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tasksFilter": "Filter tasks",
+  "@tasksFilter": {
+    "description": "The button that opens which notebook's tasks to show."
+  },
+  "tasksFilterTitle": "Filter tasks",
+  "@tasksFilterTitle": {
+    "description": "The title of the sheet that narrows the tasks."
+  },
+  "tasksAllNotebooks": "All notebooks",
+  "@tasksAllNotebooks": {
+    "description": "The choice that shows the tasks of every notebook."
+  },
+  "tasksShowCompleted": "Show Completed",
+  "@tasksShowCompleted": {
+    "description": "The switch that shows done tasks too."
+  },
+  "tasksNotebooksHeader": "Notebook",
+  "@tasksNotebooksHeader": {
+    "description": "The heading above the notebooks a task list can be narrowed to."
+  },
+  "tasksEmptyTitle": "No tasks yet",
+  "@tasksEmptyTitle": {
+    "description": "The title when no note has a task."
+  },
+  "tasksEmptyMessage": "Write “- [ ] Call Sam @2026-10-25” in any note, and it shows here.",
+  "@tasksEmptyMessage": {
+    "description": "Says how to make a task."
+  },
+  "tasksEmptyNotebookTitle": "No tasks in {notebook}",
+  "@tasksEmptyNotebookTitle": {
+    "description": "The title when the notebook picked has no tasks.",
+    "placeholders": {
+      "notebook": {
+        "type": "String"
+      }
+    }
+  },
+  "tasksAllDoneTitle": "All done",
+  "@tasksAllDoneTitle": {
+    "description": "The title when every task is ticked off."
+  },
+  "tasksAllDoneMessage": "Every task is ticked off.",
+  "@tasksAllDoneMessage": {
+    "description": "Says every task is done."
+  },
+  "tasksLoading": "Loading tasks",
+  "@tasksLoading": {
+    "description": "Says to a screen reader that the tasks are loading."
+  },
+  "tasksFailedTitle": "The tasks didn't load",
+  "@tasksFailedTitle": {
+    "description": "The title of the card shown when the tasks could not be read."
+  },
+  "tasksFailedMessage": "Something went wrong reading the tasks on this device. Try again.",
+  "@tasksFailedMessage": {
+    "description": "The message of the card shown when the tasks could not be read."
+  },
+  "tasksMoved": "That task changed in its note. The list is up to date now.",
+  "@tasksMoved": {
+    "description": "Says a task was changed in its note before it could be ticked."
+  },
+  "tasksChangeFailed": "Couldn't change the task. Try again.",
+  "@tasksChangeFailed": {
+    "description": "Says ticking a task did not happen."
+  },
+  "tasksTickOff": "Tick off",
+  "@tasksTickOff": {
+    "description": "The action that ticks a task off, for a screen reader."
+  },
+  "tasksTickBack": "Mark not done",
+  "@tasksTickBack": {
+    "description": "The action that clears a ticked task, for a screen reader."
+  },
+  "tasksOpenNote": "Open note",
+  "@tasksOpenNote": {
+    "description": "The action that opens the note a task is in, for a screen reader."
+  },
+  "tasksRowContext": "{note} · {notebook}",
+  "@tasksRowContext": {
+    "description": "The quiet line under a task: its note and its notebook.",
+    "placeholders": {
+      "note": {
+        "type": "String"
+      },
+      "notebook": {
+        "type": "String"
+      }
+    }
+  },
+  "tasksRowDue": "Due {due}",
+  "@tasksRowDue": {
+    "description": "A task's due date, for a screen reader.",
+    "placeholders": {
+      "due": {
+        "type": "String"
+      }
+    }
+  },
+  "previewLabel": "The note's preview",
+  "@previewLabel": {
+    "description": "Read by a screen reader for the note's rendered page."
+  },
+  "previewFailed": "The preview couldn't be drawn.",
+  "@previewFailed": {
+    "description": "Shown instead of a note's rendered page when it could not be made."
+  },
+  "previewLinkFailed": "That link couldn't be opened.",
+  "@previewLinkFailed": {
+    "description": "Said when a tap on a link in the preview did nothing."
+  },
+  "previewLinkLocked": "Unlock your notes to open that.",
+  "@previewLinkLocked": {
+    "description": "Said when a tap in the preview leads to a locked note or notebook."
+  },
+  "attachmentDone": "Done",
+  "@attachmentDone": {
+    "description": "Closes an attachment's sheet or full-screen image."
+  },
+  "attachmentShare": "Share",
+  "@attachmentShare": {
+    "description": "Hands an attachment to the system's share sheet, to open, save or send it."
+  },
+  "attachmentDetails": "{type} · {size}",
+  "@attachmentDetails": {
+    "description": "An attachment's file type and size.",
+    "placeholders": {
+      "type": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
   },
   "settingsSyncSignIn": "Sign in",
   "@settingsSyncSignIn": {
@@ -1537,83 +2123,6 @@
   "accountDeleteMismatch": "That isn’t this account’s username.",
   "@accountDeleteMismatch": {
     "description": "Said when the name typed to confirm deleting the account is not the account's."
-  },
-  "settingsVersionValue": "{version} ({build})",
-  "@settingsVersionValue": {
-    "description": "The app's version and the number of its build.",
-    "placeholders": {
-      "version": {
-        "type": "String"
-      },
-      "build": {
-        "type": "String"
-      }
-    }
-  },
-  "licencesLoading": "Loading licences",
-  "@licencesLoading": {
-    "description": "Says to a screen reader that the licences are being read."
-  },
-  "licencesFailedTitle": "The licences didn’t load",
-  "@licencesFailedTitle": {
-    "description": "The title of the card shown when the licences could not be read."
-  },
-  "licencesFailedMessage": "Something went wrong reading the licences. Try again.",
-  "@licencesFailedMessage": {
-    "description": "The message of the card shown when the licences could not be read."
-  },
-  "licencesEmptyTitle": "No licences",
-  "@licencesEmptyTitle": {
-    "description": "The title shown when there are no licences to list."
-  },
-  "licencesEmptyMessage": "The packages Kanso is made of will be listed here.",
-  "@licencesEmptyMessage": {
-    "description": "Says what the empty list of licences will hold."
-  },
-  "licencesCount": "{count, plural, =1{1 licence} other{{count} licences}}",
-  "@licencesCount": {
-    "description": "How many licences a package comes under.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "themesFollowSystem": "Switch between a light and a dark theme with the system",
-  "@themesFollowSystem": {
-    "description": "The switch that makes the interface follow the system's light or dark mode."
-  },
-  "themesFollowSystemOn": "Showing the light theme in light mode and the dark one in dark mode.",
-  "@themesFollowSystemOn": {
-    "description": "Says what following the system does, while it is on."
-  },
-  "themesFollowSystemOff": "Off: the theme stays as picked whatever the system’s mode.",
-  "@themesFollowSystemOff": {
-    "description": "Says what happens while following the system is off."
-  },
-  "themesFailedTitle": "The themes didn’t load",
-  "@themesFailedTitle": {
-    "description": "The title of the card shown when the themes could not be read."
-  },
-  "themesFailedMessage": "Something went wrong reading the themes. Try again.",
-  "@themesFailedMessage": {
-    "description": "The message of the card shown when the themes could not be read."
-  },
-  "themesLoading": "Loading themes",
-  "@themesLoading": {
-    "description": "Says to a screen reader that the themes are being read."
-  },
-  "backupNoticeTitle": "Notes stay on this device",
-  "@backupNoticeTitle": {
-    "description": "The title of the card that says the notes are not in device backups."
-  },
-  "backupNoticeMessage": "The notes on this device aren’t included in device backups, so losing or resetting the device takes them with it.",
-  "@backupNoticeMessage": {
-    "description": "Says that device backups do not hold the notes."
-  },
-  "backupNoticeOk": "OK",
-  "@backupNoticeOk": {
-    "description": "Dismisses the notice about device backups."
   },
   "shareTitle": "Share",
   "@shareTitle": {

@@ -11,6 +11,7 @@ pub mod account;
 pub mod account_settings;
 pub mod approvals;
 pub mod diagnostics;
+pub mod editor;
 pub mod gallery;
 pub mod library;
 pub mod locks;

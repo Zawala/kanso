@@ -25,6 +25,9 @@ abstract final class KansoSizes {
   /// 32: a filter chip.
   static const double chip = 32;
 
+  /// 56: the button for a new note that floats over a phone's list.
+  static const double floatingButton = 56;
+
   /// 22: a tag chip.
   static const double tagChip = 22;
 
@@ -61,6 +64,9 @@ abstract final class KansoSizes {
 
   /// 340: a message card's width.
   static const double messageCardWidth = 340;
+
+  /// 420: the widest a notice afloat at the foot of the screen gets.
+  static const double noticeWidth = 420;
 
   /// 291: the height of a phone's keyboard, in logical pixels.
   static const double keyboardHeight = 291;

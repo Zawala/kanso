@@ -4658,6 +4658,7 @@ version = "0.8.4"
 dependencies = [
  "async-channel",
  "base64 0.22.1",
+ "chrono",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "ed25519-dalek",
@@ -4743,6 +4744,7 @@ version = "0.8.4"
 dependencies = [
  "base64 0.22.1",
  "flate2",
+ "kanso-core",
  "markdown",
  "mermaid-svg",
  "proptest",

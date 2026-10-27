@@ -441,7 +441,11 @@ class FixtureSharedNotesRepository implements SharedNotesRepository {
   Future<Either<ApplicationError, SharedEvent>> syncShared() async {
     calls.add('syncShared');
     return const Right<ApplicationError, SharedEvent>(
-      SharedEvent(noteIds: <String>[], invitations: 0),
+      SharedEvent(
+        noteIds: <String>[],
+        invitations: 0,
+        commentNotes: <String>[],
+      ),
     );
   }
 

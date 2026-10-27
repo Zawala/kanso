@@ -72,7 +72,13 @@ void main() {
       act: (bloc) async {
         bloc.add(const InvitationsEvent.started());
         await settle();
-        events.add(const SharedEvent(noteIds: <String>[], invitations: 1));
+        events.add(
+          const SharedEvent(
+            noteIds: <String>[],
+            invitations: 1,
+            commentNotes: <String>[],
+          ),
+        );
         await settle();
       },
       verify: (bloc) {

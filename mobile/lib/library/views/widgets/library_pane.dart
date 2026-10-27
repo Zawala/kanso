@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
+import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/browse_location.dart';
 import '../../../core/models/data/library_index_status.dart';
@@ -18,6 +19,7 @@ import '../../../core/utils/tag_row_color.dart';
 import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_dot.dart';
 import '../../../core/views/widgets/kanso_drawer_scope.dart';
+import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
 import '../../../core/views/widgets/kanso_pressable.dart';
 import '../../../core/views/widgets/kanso_search_field.dart';
@@ -27,11 +29,14 @@ import '../../../sharing/views/widgets/shared_with_you_row.dart';
 import 'library_header.dart';
 import 'library_loading_rows.dart';
 import 'library_place_row.dart';
+import 'library_tasks_row.dart';
+import 'new_notebook_sheet.dart';
 
 /// The library: the app's mark and settings, a search field, then All
-/// Notes, Templates (when there is a notebook of that role), Pinned and
-/// Recent, Shared with you (with how many invitations wait), the notebooks
-/// with their counts, the tags and Trash.
+/// Notes, Templates (when there is a notebook of that role), Pinned,
+/// Recent and Tasks (with the overdue ones counted), Shared with you (with
+/// how many invitations wait), the notebooks with their counts, the tags
+/// and Trash.
 ///
 /// A drawer on a phone, the first pane on a tablet. The place [location]
 /// is listing is selected. Its rows come from the `LibraryIndexBloc`
@@ -155,7 +160,21 @@ class LibraryPane extends StatelessWidget {
                         onOpen: () =>
                             leave(() => context.push(KansoRoutes.shared)),
                       ),
-                      KansoSectionHeader(label: l10n.libraryNotebooks),
+                      LibraryTasksRow(
+                        overdue: index.overdueTasks,
+                        selected: here is TasksLocation,
+                      ),
+                      KansoSectionHeader(
+                        label: l10n.libraryNotebooks,
+                        trailing: <Widget>[
+                          KansoIconButton(
+                            icon: KansoIcons.plus,
+                            semanticLabel: l10n.libraryNewNotebook,
+                            iconSize: KansoSizes.iconSmall + 2,
+                            onPressed: () => NewNotebookSheet.open(context),
+                          ),
+                        ],
+                      ),
                       if (index.notebooks.every(
                         (book) => book.role == NotebookRole.templates,
                       ))

@@ -134,46 +134,50 @@ void main() {
       await bloc.close();
     });
 
-    test('closing while the room is still opening leaves it once it is open',
-        () async {
-      isShared('n1', shared_: true);
-      final gate = Completer<void>();
-      when(() => shared.openLive('n1', any())).thenAnswer((_) async {
-        await gate.future;
-        return _ok(unit);
-      });
-      final bloc = build()..add(const SharedNoteLiveEvent.opened('n1'));
-      await settle();
-      unawaited(bloc.close());
-      await settle();
-      gate.complete();
-      await settle();
-      verify(() => shared.closeLive('n1', any())).called(1);
-    });
+    test(
+      'closing while the room is still opening leaves it once it is open',
+      () async {
+        isShared('n1', shared_: true);
+        final gate = Completer<void>();
+        when(() => shared.openLive('n1', any())).thenAnswer((_) async {
+          await gate.future;
+          return _ok(unit);
+        });
+        final bloc = build()..add(const SharedNoteLiveEvent.opened('n1'));
+        await settle();
+        unawaited(bloc.close());
+        await settle();
+        gate.complete();
+        await settle();
+        verify(() => shared.closeLive('n1', any())).called(1);
+      },
+    );
 
-    test('closing while the sharing is still being read leaves no room open',
-        () async {
-      final gate = Completer<void>();
-      when(() => shared.info('n1')).thenAnswer((_) async {
-        await gate.future;
-        return _ok<ShareInfo?>(shareInfo('n1'));
-      });
-      final open = <String>{};
-      when(() => shared.openLive(any(), any())).thenAnswer((call) async {
-        open.add(call.positionalArguments.first as String);
-        return _ok(unit);
-      });
-      when(() => shared.closeLive(any(), any())).thenAnswer((call) async {
-        open.remove(call.positionalArguments.first as String);
-        return _ok(unit);
-      });
-      final bloc = build()..add(const SharedNoteLiveEvent.opened('n1'));
-      await settle();
-      unawaited(bloc.close());
-      gate.complete();
-      await settle();
-      expect(open, isEmpty);
-    });
+    test(
+      'closing while the sharing is still being read leaves no room open',
+      () async {
+        final gate = Completer<void>();
+        when(() => shared.info('n1')).thenAnswer((_) async {
+          await gate.future;
+          return _ok<ShareInfo?>(shareInfo('n1'));
+        });
+        final open = <String>{};
+        when(() => shared.openLive(any(), any())).thenAnswer((call) async {
+          open.add(call.positionalArguments.first as String);
+          return _ok(unit);
+        });
+        when(() => shared.closeLive(any(), any())).thenAnswer((call) async {
+          open.remove(call.positionalArguments.first as String);
+          return _ok(unit);
+        });
+        final bloc = build()..add(const SharedNoteLiveEvent.opened('n1'));
+        await settle();
+        unawaited(bloc.close());
+        gate.complete();
+        await settle();
+        expect(open, isEmpty);
+      },
+    );
 
     test('a resume that comes while a note is opening does not reopen the '
         'room of the note left for another', () async {

@@ -189,7 +189,11 @@ void main() {
       expect(find.byType(InvitationTile), findsNothing);
       shared.invitationList = <InvitationRow>[invitationRow('s_4', from: 'ed')];
       shared.eventsController.add(
-        const SharedEvent(noteIds: <String>[], invitations: 1),
+        const SharedEvent(
+          noteIds: <String>[],
+          invitations: 1,
+          commentNotes: <String>[],
+        ),
       );
       await _settle(tester);
       expect(find.text('A note from ed'), findsOneWidget);

@@ -18,6 +18,13 @@ abstract class KansoShared implements RustOpaqueInterface {
     required String fingerprint,
   });
 
+  Future<String> addComment({
+    required String noteId,
+    required int start,
+    required int end,
+    required String body,
+  });
+
   Future<ShareInfo> approveRequest({
     required String noteId,
     required String accountId,
@@ -32,6 +39,12 @@ abstract class KansoShared implements RustOpaqueInterface {
 
   Future<void> closeLive({required String noteId});
 
+  /// The note's comments: those on words still in the text in order, then
+  /// the orphaned. Offsets are UTF-16 units of the note's body.
+  Future<List<CommentRow>> comments({required String noteId});
+
+  Future<String> commentsBand({required String noteId});
+
   Future<String> createLink({
     required String noteId,
     required ShareRole role,
@@ -43,6 +56,17 @@ abstract class KansoShared implements RustOpaqueInterface {
   Future<ShareInfo> declineRequest({
     required String noteId,
     required String accountId,
+  });
+
+  Future<void> deleteComment({
+    required String noteId,
+    required String commentId,
+  });
+
+  Future<void> editComment({
+    required String noteId,
+    required String commentId,
+    required String body,
   });
 
   /// What a sync of shared notes found, each time, until Dart stops
@@ -65,9 +89,17 @@ abstract class KansoShared implements RustOpaqueInterface {
 
   Future<PersonLookup> lookupPerson({required String username});
 
+  Future<int> openComments({required String noteId});
+
   Future<void> openLive({required String noteId});
 
   Future<ShareInfo> remove({required String noteId, required String accountId});
+
+  Future<void> resolveComment({
+    required String noteId,
+    required String commentId,
+    required bool resolved,
+  });
 
   Future<ShareInfo> setRole({
     required String noteId,

@@ -14,4 +14,10 @@ abstract interface class AboutRepository {
 
   /// Opens Kanso's website in the browser.
   Future<Either<ApplicationError, Unit>> openWebsite();
+
+  /// Opens the website's release notes in the browser.
+  Future<Either<ApplicationError, Unit>> openReleaseNotes();
+
+  /// Opens the website's help page in the browser.
+  Future<Either<ApplicationError, Unit>> openHelp();
 }

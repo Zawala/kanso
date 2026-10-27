@@ -18,11 +18,13 @@ import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/device_approval/device_approval_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 
 import 'helpers/account_blocs.dart';
 import 'helpers/close_bloc_later.dart';
+import 'helpers/crash_samples.dart';
 import 'helpers/fixture_sync_repository.dart';
 import 'helpers/seeded_appearance_bloc.dart';
 
@@ -48,6 +50,7 @@ Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
         BlocProvider<SyncStatusBloc>.value(value: sync),
         BlocProvider<AccountBloc>.value(value: accounts.account),
         BlocProvider<DeviceApprovalBloc>.value(value: accounts.approval),
+        BlocProvider<CrashReportsBloc>.value(value: quietCrashReportsBloc()),
       ],
       child: App(router: router),
     ),

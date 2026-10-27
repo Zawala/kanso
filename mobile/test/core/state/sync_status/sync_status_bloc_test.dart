@@ -14,17 +14,26 @@ import 'package:mocktail/mocktail.dart';
 
 import '../../../helpers/mock_repositories.dart';
 
-const _signedOut = SyncStatus(phase: SyncPhase.signedOut, conflicts: 0);
+const _signedOut = SyncStatus(
+  phase: SyncPhase.signedOut,
+  conflicts: 0,
+  skippedCount: 0,
+  account: SyncAccount.signedOut(),
+);
 const _idle = SyncStatus(
   phase: SyncPhase.idle,
   username: 'ana',
   server: 'https://example.invalid',
   conflicts: 0,
+  skippedCount: 0,
+  account: SyncAccount.signedIn(),
 );
 const _syncing = SyncStatus(
   phase: SyncPhase.syncing,
   username: 'ana',
   conflicts: 0,
+  skippedCount: 0,
+  account: SyncAccount.signedIn(),
 );
 const _report = SyncReportRow(
   pulled: 1,

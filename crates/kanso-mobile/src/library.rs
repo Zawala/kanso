@@ -20,6 +20,7 @@ use crate::approvals::Approvals;
 use crate::approver_model::Approver;
 use crate::backup;
 use crate::boundary::{guard, held};
+use crate::editing::Editors;
 use crate::errors::KansoError;
 use crate::gallery::Gallery;
 use crate::locks::LockSession;
@@ -30,6 +31,7 @@ use crate::secrets;
 use crate::sharing::{SharedNotes, SharedState};
 use crate::stream::Listeners;
 use crate::syncing::SyncHandle;
+use crate::undo::UndoBook;
 use crate::{Secrets, boundary};
 
 /// How often the auto-lock timer looks at the clock.
@@ -66,6 +68,10 @@ pub(crate) struct Inner {
     pub(crate) gallery_source: Mutex<Option<crate::gallery_net::Source>>,
     /// What this phone keeps while it approves other devices (`approvals`).
     pub(crate) approver: Approver,
+    /// The changes the Undo notice can take back.
+    pub(crate) undo: Mutex<UndoBook>,
+    /// The notes open for editing.
+    pub(crate) editors: Editors,
 }
 
 /// The libraries open in this process, by their database path. A background
@@ -147,6 +153,13 @@ impl Library {
         open.get(&key)
             .and_then(Weak::upgrade)
             .map(|inner| Library { inner })
+    }
+
+    /// The library's store, for tests that write to it as a sync would.
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn store(&self) -> &kanso_store::Store {
+        &self.inner.store
     }
 
     /// The database file this library is.
@@ -288,6 +301,7 @@ fn open_inner(
     let store = Arc::new(Store::open(&key)?);
     let settings = crate::sync_words::read_settings(&store).unwrap_or_default();
     let mut keys = KeySession::default();
+    let manual_autosave = params.is_some();
     if let Some(params) = params {
         keys.set_params(params);
     }
@@ -308,6 +322,9 @@ fn open_inner(
         ended: Mutex::new(None),
         gallery_source: Mutex::new(None),
         approver: Approver::default(),
+        undo: Mutex::new(UndoBook::default()),
+        // A library made for tests saves typing when a test says so.
+        editors: Editors::new(manual_autosave),
     });
     open.retain(|_, inner| inner.strong_count() > 0);
     open.insert(key, Arc::downgrade(&inner));

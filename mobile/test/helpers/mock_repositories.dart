@@ -2,6 +2,7 @@
 // Created 2026-10-26.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'package:bloc_test/bloc_test.dart';
 import 'package:kanso/core/models/repos/abs/about_repository.dart';
 import 'package:kanso/core/models/repos/abs/account_repository.dart';
 import 'package:kanso/core/models/repos/abs/account_settings_repository.dart';
@@ -14,6 +15,8 @@ import 'package:kanso/core/models/repos/abs/licences_repository.dart';
 import 'package:kanso/core/models/repos/abs/shared_notes_repository.dart';
 import 'package:kanso/core/models/repos/abs/sync_repository.dart';
 import 'package:kanso/core/models/repos/abs/system_share_repository.dart';
+import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
+import 'package:kanso/editor/models/repos/abs/web_link_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockLibraryRepository extends Mock implements LibraryRepository {}
@@ -21,6 +24,8 @@ class MockLibraryRepository extends Mock implements LibraryRepository {}
 class MockSyncRepository extends Mock implements SyncRepository {}
 
 class MockHapticsRepository extends Mock implements HapticsRepository {}
+
+class MockWebLinkRepository extends Mock implements WebLinkRepository {}
 
 class MockAboutRepository extends Mock implements AboutRepository {}
 
@@ -31,6 +36,7 @@ class MockGalleryRepository extends Mock implements GalleryRepository {}
 class MockSharedNotesRepository extends Mock implements SharedNotesRepository {}
 
 class MockSystemShareRepository extends Mock implements SystemShareRepository {}
+
 class MockAccountRepository extends Mock implements AccountRepository {}
 
 class MockAccountSettingsRepository extends Mock
@@ -39,3 +45,6 @@ class MockAccountSettingsRepository extends Mock
 class MockApprovalsRepository extends Mock implements ApprovalsRepository {}
 
 class MockAuthSessionRepository extends Mock implements AuthSessionRepository {}
+
+class MockUndoNoticeBloc extends MockBloc<UndoNoticeEvent, UndoNoticeState>
+    implements UndoNoticeBloc {}

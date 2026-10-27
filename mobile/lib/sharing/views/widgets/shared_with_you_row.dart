@@ -34,7 +34,7 @@ class SharedWithYouRow extends StatelessWidget {
           icon: KansoIcons.users,
           label: context.l10n.sharedWithYouTitle,
           selected: selected,
-          trailing: waiting == 0
+          badge: waiting == 0
               ? null
               : KansoBadge(label: '$waiting', tone: KansoBadgeTone.accent),
           onTap: () {

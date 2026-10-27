@@ -25,5 +25,6 @@ class KansoApplication : Application() {
         BackgroundSync.install { path, budgetMs -> KansoNative.backgroundSync(path, budgetMs) }
         RustAnswer.install { ticket, json -> KansoNative.passkeyAnswer(ticket, json) }
         SyncWorker.schedulePeriodic(this)
+        KansoCrashes.start(this)
     }
 }

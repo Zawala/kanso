@@ -4,8 +4,8 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    CommentRow, InvitationRow, JoinRow, KansoError, PersonLookup, PersonRow, ShareInfo, ShareRole, SharedEvent,
-    SharedNotes,
+    CommentRow, InvitationRow, JoinRow, KansoError, PersonLookup, PersonRow, ShareInfo, ShareRole,
+    SharedEvent, SharedNotes,
 };
 
 #[frb(opaque)]

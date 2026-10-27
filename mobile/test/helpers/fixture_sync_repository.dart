@@ -13,6 +13,8 @@ import 'package:kanso/core/models/repos/abs/sync_repository.dart';
 const SyncStatus signedOutStatus = SyncStatus(
   phase: SyncPhase.signedOut,
   conflicts: 0,
+  skippedCount: 0,
+  account: SyncAccount.signedOut(),
 );
 
 /// The status of a phone signed in to an account, with nothing to do.
@@ -21,6 +23,8 @@ const SyncStatus signedInStatus = SyncStatus(
   username: 'ana',
   server: 'https://example.invalid',
   conflicts: 0,
+  skippedCount: 0,
+  account: SyncAccount.signedIn(),
 );
 
 /// A sync service for widget tests: it has the status a test gives it,

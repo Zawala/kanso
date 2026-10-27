@@ -12,21 +12,27 @@ import 'package:kanso/core/configs/kanso_palette.dart';
 import 'package:kanso/core/models/data/app_version.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
+import 'package:kanso/core/models/data/kanso_icon_set.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
+import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
 import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
+import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../../helpers/close_bloc_later.dart';
 import '../../../helpers/fixture_sync_repository.dart';
+import '../../../helpers/library_fixtures.dart';
 import '../../../helpers/mock_repositories.dart';
 import '../../../helpers/pump_routed.dart';
 import '../../../helpers/seeded_account_blocs.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
+import '../../../helpers/settings_blocs.dart';
 
 class _Settings {
   _Settings(
@@ -49,6 +55,7 @@ Future<_Settings> _pump(
   AppearanceState appearance = const AppearanceState(),
   SyncStatus status = signedOutStatus,
   AccountState account = const AccountState.signedOut(),
+  Preferences preferences = const Preferences(),
 }) async {
   final about = MockAboutRepository();
   when(about.version).thenAnswer(
@@ -58,6 +65,12 @@ Future<_Settings> _pump(
   );
   when(
     about.openWebsite,
+  ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
+  when(
+    about.openReleaseNotes,
+  ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
+  when(
+    about.openHelp,
   ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
   final aboutBloc = AboutBloc(about)..add(const AboutEvent.started());
   final syncRepository = FixtureSyncRepository(current: status);
@@ -69,6 +82,7 @@ Future<_Settings> _pump(
   closeBlocLater(aboutBloc);
   closeBlocLater(syncBloc);
   closeBlocLater(appearanceBloc);
+  final blocs = await SettingsBlocs.start(preferences: preferences);
   final router = await pumpRouted(
     tester,
     MultiBlocProvider(
@@ -77,6 +91,8 @@ Future<_Settings> _pump(
         BlocProvider<SyncStatusBloc>.value(value: syncBloc),
         BlocProvider<AccountBloc>.value(value: accountBloc),
         BlocProvider<AboutBloc>.value(value: aboutBloc),
+        BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
+        BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
       ],
       child: const SettingsPane(),
     ),
@@ -94,8 +110,11 @@ void main() {
     ) async {
       await _pump(tester);
       for (final label in <String>[
+        'General',
+        'Default notebook',
         'Appearance',
         'Theme',
+        'Icons',
         'Fonts',
         'Text size',
         'Sync',
@@ -103,24 +122,42 @@ void main() {
         'About',
         'Version',
         'Website',
+        'Release notes',
+        'Help',
         'Licences',
       ]) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
       for (final label in <String>[
-        'General',
-        'Default notebook',
-        'Icons',
-        'Status',
-        'Sync now',
         'Sign out',
         'Locked notes',
-        'Release notes',
-        'Help',
       ]) {
         expect(find.text(label), findsNothing, reason: label);
       }
       expect(find.textContaining('Wake this device'), findsNothing);
+    });
+
+    testWidgets('the Default notebook row says the first notebook until one '
+        'is chosen, and opens the choice', (tester) async {
+      final screen = await _pump(tester);
+      expect(find.text('First notebook'), findsOneWidget);
+      await tester.tap(find.text('Default notebook'));
+      await tester.pumpAndSettle();
+      expect(screen.router.state.uri.toString(), '/settings/notebook');
+    });
+
+    testWidgets('the Default notebook row names the notebook chosen, but '
+        'not one that is gone or locked', (tester) async {
+      await _pump(
+        tester,
+        preferences: const Preferences(defaultNotebookId: MockIds.garden),
+      );
+      expect(find.text('Garden'), findsOneWidget);
+      await _pump(
+        tester,
+        preferences: const Preferences(defaultNotebookId: 'book:gone'),
+      );
+      expect(find.text('First notebook'), findsOneWidget);
     });
 
     testWidgets('the Fonts row sums up the choice and follows it', (
@@ -141,6 +178,19 @@ void main() {
         find.text('System · Instrument Sans · IBM Plex Mono'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('the Icons row names the icon theme in use', (tester) async {
+      await _pump(tester);
+      expect(find.text('Lucide'), findsOneWidget);
+      await _pump(
+        tester,
+        appearance: const AppearanceState(
+          iconSet: KansoIconSet(id: 'phosphor', name: 'Phosphor'),
+        ),
+      );
+      expect(find.text('Phosphor'), findsOneWidget);
+      expect(find.text('Lucide'), findsNothing);
     });
 
     testWidgets('the Text size row shows the size chosen', (tester) async {
@@ -192,6 +242,8 @@ void main() {
           phase: SyncPhase.synced,
           username: 'ana',
           conflicts: 0,
+          skippedCount: 0,
+          account: SyncAccount.signedIn(),
         ),
       );
       expect(find.text('ana'), findsOneWidget);
@@ -254,13 +306,36 @@ void main() {
       verify(screen.about.openWebsite).called(1);
     });
 
-    testWidgets('the rows go to Theme, Fonts, Text size and Licences', (
+    testWidgets('the Release notes row opens the release notes', (
+      tester,
+    ) async {
+      final screen = await _pump(tester);
+      await tester.tap(find.text('Release notes'));
+      await tester.pump();
+      verify(screen.about.openReleaseNotes).called(1);
+      verifyNever(screen.about.openWebsite);
+    });
+
+    testWidgets('the Help row opens the help page', (tester) async {
+      final screen = await _pump(tester);
+      await tester.tap(find.text('Help'));
+      await tester.pump();
+      verify(screen.about.openHelp).called(1);
+      verifyNever(screen.about.openWebsite);
+    });
+
+    testWidgets('the rows go to Theme, Icons, Fonts, Text size and Licences', (
       tester,
     ) async {
       final screen = await _pump(tester);
       await tester.tap(find.text('Theme'));
       await tester.pumpAndSettle();
       expect(topOf(screen.router), '/settings/theme');
+      screen.router.pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Icons'));
+      await tester.pumpAndSettle();
+      expect(topOf(screen.router), '/settings/icons');
       screen.router.pop();
       await tester.pumpAndSettle();
       await tester.tap(find.text('Fonts'));

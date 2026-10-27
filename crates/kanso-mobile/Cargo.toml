@@ -13,6 +13,8 @@ kanso-collab.workspace = true
 # Unpadded base64url for a passkey's credential ID and the native plugin's
 # answers (MIT or Apache-2.0; already in the tree through kanso-sync).
 base64.workspace = true
+# The local time the Tasks place groups by (`tasks.rs`).
+chrono.workspace = true
 kanso-core.workspace = true
 # The highlighter (`highlight`, with the grammars for fenced code) is the
 # phones' editor colors.
@@ -90,3 +92,8 @@ tar = "0.4.45"
 [[example]]
 name = "e2e_peer"
 test = true
+
+[build-dependencies]
+# build.rs reads the built-in icon themes' JSON to pick the SVGs the phone
+# draws.
+serde_json.workspace = true

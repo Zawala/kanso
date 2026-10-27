@@ -49,6 +49,8 @@ void main() {
               phase: SyncPhase.synced,
               username: 'ana',
               conflicts: 0,
+              skippedCount: 0,
+              account: SyncAccount.signedIn(),
             ),
           )).provide(_page(const SettingsPane())),
           name: 'phone_settings_synced_$name',

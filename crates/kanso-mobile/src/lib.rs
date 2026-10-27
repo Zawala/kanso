@@ -19,6 +19,11 @@
 //!   locked note's text, snippet, properties, tasks and preview never come
 //!   back while it is closed; only its title and its lock show in a list.
 //!   Keys never cross this edge.
+//! - [`EditorSession`] (`library.edit(id)`) is a note open for editing: the
+//!   text the shell's field shows, with the undo history, the editor's
+//!   commands, the colors of the text, completion, autosave and the
+//!   desktop's choice between versions when a note changes elsewhere while
+//!   it is typed in.
 //! - [`SyncHandle`] (`library.sync()`) signs in to a server, syncs and
 //!   reports its status.
 //! - [`Renderer`] (`library.renderer()`) draws a note's preview, highlights
@@ -66,11 +71,13 @@ pub mod boundary;
 mod builtin_themes;
 mod comments_model;
 pub mod diagnostics;
+mod editing;
 mod errors;
 mod gallery;
 mod gallery_model;
 mod gallery_net;
 mod gallery_store;
+mod icons;
 mod library;
 mod locks;
 mod matching;
@@ -78,6 +85,7 @@ mod model;
 mod notes;
 pub mod passkey_bridge;
 mod passkey_flow;
+mod preview;
 mod provider_loopback;
 mod renderer;
 mod schedule;
@@ -88,13 +96,16 @@ mod stream;
 mod sync_model;
 mod sync_words;
 mod syncing;
+mod tasks;
 mod theme_tokens;
+mod undo;
 
 pub use account::AccountHandle;
 pub use account_model::*;
 pub use account_settings::AccountSettings;
 pub use approvals::Approvals;
 pub use comments_model::*;
+pub use editing::EditorSession;
 pub use errors::KansoError;
 pub use gallery::Gallery;
 pub use gallery_model::*;

@@ -16,6 +16,7 @@ import '../test/core/bridge/suites/account_settings_suite.dart';
 import '../test/core/bridge/suites/account_suite.dart';
 import '../test/core/bridge/suites/approvals_suite.dart';
 import '../test/core/bridge/suites/diagnostics_suite.dart';
+import '../test/core/bridge/suites/editor_suite.dart';
 import '../test/core/bridge/suites/gallery_suite.dart';
 import '../test/core/bridge/suites/library_suite.dart';
 import '../test/core/bridge/suites/locks_suite.dart';
@@ -53,6 +54,7 @@ void main() {
   approvalsSuite(openDeviceLibrary);
   sharedSuite(openDeviceLibrary);
   gallerySuite(openDeviceLibrary);
+  editorSuite(openDeviceLibrary);
 
   group('the platform verifier', () {
     test(

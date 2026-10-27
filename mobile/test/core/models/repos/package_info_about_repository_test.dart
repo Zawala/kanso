@@ -28,4 +28,9 @@ void main() {
     expect(KansoLinks.website.scheme, 'https');
     expect(KansoLinks.website.host, 'kansoapp.app');
   });
+
+  test("the release notes and help are the website's own pages", () {
+    expect(KansoLinks.releaseNotes.toString(), 'https://kansoapp.app/releases');
+    expect(KansoLinks.help.toString(), 'https://kansoapp.app/help');
+  });
 }

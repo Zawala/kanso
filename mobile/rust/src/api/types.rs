@@ -9,19 +9,23 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    AccountDetails, AccountState, ApprovalPhase, ApprovalPrompt, ApprovalWait, BindingAnswer,
-    BindingQuestion, BuiltinTheme, ColorRow, DateField, DeviceRow, DiagramKind, GalleryColors,
-    GalleryItem, GalleryKind, Hit, InvitationRow, JoinRow, KansoError, LibraryOverview,
+    AccountDetails, AccountState, AccountStep, ApprovalPhase, ApprovalPrompt, ApprovalWait,
+    AttachmentFile, BindingAnswer, BindingQuestion, BuiltinTheme, Changed, ColorRow,
+    CommentPlacement, CommentRow, Completion, CompletionItem, CompletionKind, DateField, DeviceRow,
+    DiagramKind, DiagramRenderer, DueTone, EditCommand, EditOutcome, EditorContext, EditorEvent,
+    EditorRun, EditorSnapshot, FormatKind, GalleryColors, GalleryItem, GalleryKind, HistoryState,
+    Hit, IconThemeRow, InvitationRow, JoinRow, KansoError, LibraryOverview, LinkTarget,
     LinkedProviderRow, ListPlace, ListQuery, ListShape, LockEvent, LockReason, LockState,
-    LockedInfo, MemberRow, NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole,
-    NotebookRow, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind, PasskeyRow,
-    PersonLookup, PersonRow, PromptState, Property, PropertyKind, ProviderEvent, ProviderKind,
-    Range16, RecoveryKeyText, Saved, SearchScope, ServerInfo, ServerMethods, ShareInfo,
-    ShareLinkRow, ShareRole, SharedEvent, SignedUp, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase,
-    SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow,
-    ThemeTokens,
-    AccountStep, CommentPlacement, CommentRow, MentionSpan, QuotaLimit, SignOutReasonKind,
-    SyncAccount, SyncIntervalOption, SyncSettingsRow, SyncStatusLine, SyncTone,
+    LockedInfo, MemberRow, MentionSpan, NewNote, NoteChange, NoteList, NoteRow, NoteView,
+    NotebookRole, NotebookRow, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind,
+    PasskeyRow, PersonLookup, PersonRow, PreviewLink, PreviewOptions, PromptState, Property,
+    PropertyKind, ProviderEvent, ProviderKind, QuotaLimit, Range16, RecoveryKeyText, Replacement,
+    RunBatch, SaveState, Saved, SearchScope, ServerInfo, ServerMethods, ShareInfo, ShareLinkRow,
+    ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow, StyledRun, SvgRow,
+    SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow,
+    SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagRow, TaskBoard,
+    TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange, ThemeTokens, ThemedIcon,
+    Ticked,
 };
 
 #[frb(mirror(KansoError))]
@@ -123,11 +127,80 @@ pub struct _LibraryOverview {
     pub trash: u32,
 }
 
+#[frb(mirror(TaskListQuery))]
+pub struct _TaskListQuery {
+    pub notebook_id: Option<String>,
+    pub show_done: bool,
+    pub kept: Vec<String>,
+}
+
+#[frb(mirror(TaskGroupKind))]
+pub enum _TaskGroupKind {
+    Overdue,
+    Today,
+    Upcoming,
+    NoDate,
+    Done,
+}
+
+#[frb(mirror(DueTone))]
+pub enum _DueTone {
+    Plain,
+    Today,
+    Overdue,
+    Done,
+}
+
+#[frb(mirror(TaskItem))]
+pub struct _TaskItem {
+    pub key: String,
+    pub note_id: String,
+    pub note_title: String,
+    pub notebook_id: String,
+    pub notebook_name: String,
+    pub line: u32,
+    pub text: String,
+    pub source_text: String,
+    pub checked: bool,
+    pub due_label: Option<String>,
+    pub due_tone: Option<DueTone>,
+}
+
+#[frb(mirror(TaskSection))]
+pub struct _TaskSection {
+    pub group: TaskGroupKind,
+    pub label: String,
+    pub items: Vec<TaskItem>,
+}
+
+#[frb(mirror(TaskBoard))]
+pub struct _TaskBoard {
+    pub groups: Vec<TaskSection>,
+}
+
+#[frb(mirror(Ticked))]
+pub enum _Ticked {
+    Changed {
+        rev: String,
+        undo: u64,
+        message: String,
+    },
+    Unchanged,
+    Missing,
+}
+
 #[frb(mirror(NoteChange))]
 pub enum _NoteChange {
     TogglePin,
     Move { notebook_id: String },
     Trash,
+}
+
+#[frb(mirror(Changed))]
+pub struct _Changed {
+    pub count: u32,
+    pub undo: Option<u64>,
+    pub message: String,
 }
 
 #[frb(mirror(SearchScope))]
@@ -157,6 +230,12 @@ pub struct _NewNote {
     pub notebook_id: Option<String>,
     pub title: String,
     pub body: String,
+    pub place: Option<ListPlace>,
+    pub preferred_notebook_id: Option<String>,
+    #[frb(default = "const []")]
+    pub tags: Vec<String>,
+    #[frb(default = false)]
+    pub pinned: bool,
 }
 
 #[frb(mirror(Saved))]
@@ -453,6 +532,23 @@ pub struct _BuiltinTheme {
     pub source: Option<String>,
     pub dark: bool,
     pub tokens: ThemeTokens,
+}
+
+#[frb(mirror(ThemedIcon))]
+pub struct _ThemedIcon {
+    pub name: String,
+    pub svg: Option<String>,
+}
+
+#[frb(mirror(IconThemeRow))]
+pub struct _IconThemeRow {
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub license: String,
+    pub source: Option<String>,
+    pub description: Option<String>,
+    pub preview: Vec<ThemedIcon>,
 }
 
 #[frb(mirror(StyledRun))]
@@ -762,4 +858,202 @@ pub struct _GalleryItem {
     pub family: Option<String>,
     pub edited: bool,
     pub disabled: bool,
+}
+
+#[frb(mirror(TextChange))]
+pub struct _TextChange {
+    pub base_version: u64,
+    pub start: u32,
+    pub end: u32,
+    pub text: String,
+    pub selection: Range16,
+    pub composing: Option<Range16>,
+}
+
+#[frb(mirror(Replacement))]
+pub struct _Replacement {
+    pub start: u32,
+    pub end: u32,
+    pub text: String,
+}
+
+#[frb(mirror(HistoryState))]
+pub struct _HistoryState {
+    pub can_undo: bool,
+    pub can_redo: bool,
+}
+
+#[frb(mirror(EditOutcome))]
+pub struct _EditOutcome {
+    pub version: u64,
+    pub replace: Option<Replacement>,
+    pub selection: Range16,
+    pub history: HistoryState,
+}
+
+#[frb(mirror(EditorContext))]
+pub struct _EditorContext {
+    pub in_list: bool,
+    pub in_table: bool,
+    pub in_code: bool,
+    pub completion_here: bool,
+    pub history: HistoryState,
+}
+
+#[frb(mirror(FormatKind))]
+pub enum _FormatKind {
+    Bold,
+    Italic,
+    Strikethrough,
+    Code,
+    Bulleted,
+    Numbered,
+    Task,
+    Quote,
+    Link,
+    Image,
+    Table,
+    Rule,
+}
+
+#[frb(mirror(EditCommand))]
+pub enum _EditCommand {
+    Enter { plain: bool },
+    Tab { out: bool },
+    Format { format: FormatKind },
+    CycleHeading,
+    WikiLink,
+    Insert { range: Range16, text: String },
+}
+
+#[frb(mirror(SaveState))]
+pub enum _SaveState {
+    Saved { rev: String, at_ms: i64 },
+    Pending,
+    Conflict { deleted: bool },
+    Failed { message: String },
+}
+
+#[frb(mirror(EditorSnapshot))]
+pub struct _EditorSnapshot {
+    pub id: String,
+    pub title: String,
+    pub text: String,
+    pub rev: String,
+    pub lock: LockState,
+    pub properties: Vec<Property>,
+    pub version: u64,
+    pub history: HistoryState,
+    pub save: SaveState,
+}
+
+#[frb(mirror(EditorEvent))]
+pub enum _EditorEvent {
+    Saved { rev: String, at_ms: i64 },
+    Incoming { deleted: bool },
+    Reloaded { snapshot: EditorSnapshot },
+    Closed,
+    Failed { message: String },
+}
+
+#[frb(mirror(EditorRun))]
+pub struct _EditorRun {
+    pub range: Range16,
+    pub color: Option<u32>,
+    pub italic: Option<bool>,
+    pub weight: Option<u16>,
+    pub quiet: bool,
+}
+
+#[frb(mirror(RunBatch))]
+pub struct _RunBatch {
+    pub version: u64,
+    pub runs: Vec<EditorRun>,
+}
+
+#[frb(mirror(CompletionKind))]
+pub enum _CompletionKind {
+    Wiki,
+    Tag,
+}
+
+#[frb(mirror(CompletionItem))]
+pub struct _CompletionItem {
+    pub label: String,
+    pub detail: Option<String>,
+    pub highlight: Option<Range16>,
+    pub insert: String,
+    pub new_note: bool,
+}
+
+#[frb(mirror(Completion))]
+pub struct _Completion {
+    pub kind: CompletionKind,
+    pub replace: Range16,
+    pub items: Vec<CompletionItem>,
+}
+
+#[frb(mirror(LinkTarget))]
+pub enum _LinkTarget {
+    Note { id: String },
+    NewNote { title: String },
+    Web { url: String },
+}
+
+#[frb(mirror(PreviewOptions))]
+pub struct _PreviewOptions {
+    pub font: Option<String>,
+    pub mono: Option<String>,
+    pub size: f32,
+    pub utc_offset_secs: i32,
+    pub code: Vec<SyntaxStyleRow>,
+}
+
+#[frb(mirror(PreviewLink))]
+pub enum _PreviewLink {
+    Note {
+        id: String,
+        heading: Option<String>,
+        anchor: Option<String>,
+    },
+    NewNote {
+        title: String,
+    },
+    Tag {
+        name: String,
+    },
+    Heading {
+        id: String,
+    },
+    Web {
+        url: String,
+    },
+    Attachment {
+        id: String,
+        name: String,
+        content_type: String,
+        size: u64,
+    },
+    Task {
+        index: u32,
+    },
+    CopyCode {
+        index: u32,
+    },
+    Due,
+    Nothing,
+}
+
+#[frb(mirror(AttachmentFile))]
+pub struct _AttachmentFile {
+    pub id: String,
+    pub name: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+}
+
+#[frb(mirror(DiagramRenderer))]
+pub enum _DiagramRenderer {
+    Pele,
+    Kanso,
 }

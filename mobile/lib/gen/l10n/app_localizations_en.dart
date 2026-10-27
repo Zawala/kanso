@@ -153,6 +153,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accessoryOutdent => 'Outdent';
 
   @override
+  String get accessoryRedo => 'Redo';
+
+  @override
   String get accessoryUndo => 'Undo';
 
   @override
@@ -160,6 +163,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsClose => 'Close';
+
+  @override
+  String get settingsGeneral => 'General';
+
+  @override
+  String get settingsDefaultNotebook => 'Default notebook';
+
+  @override
+  String get defaultNotebookFirst => 'First notebook';
+
+  @override
+  String get defaultNotebookFooter =>
+      'New notes go here, except those made from a notebook\'s own list. A locked notebook can\'t be chosen.';
 
   @override
   String get settingsAppearance => 'Appearance';
@@ -181,6 +197,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsWebsite => 'Website';
+
+  @override
+  String get settingsReleaseNotes => 'Release notes';
+
+  @override
+  String get settingsHelp => 'Help';
 
   @override
   String get settingsLicences => 'Licences';
@@ -239,9 +261,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appearanceDark => 'Dark';
 
   @override
-  String get screenNoteEdit => 'Note, edit';
-
-  @override
   String get screenError => 'Error card';
 
   @override
@@ -258,6 +277,42 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsFonts => 'Fonts';
+
+  @override
+  String get settingsIcons => 'Icons';
+
+  @override
+  String get iconsTitle => 'Icons';
+
+  @override
+  String get iconsFooter =>
+      'The icon themes of the desktop app. Choosing one changes every icon at once; an icon a theme doesn’t draw stays Kanso’s own.';
+
+  @override
+  String iconsCredit(String author, String license) {
+    return '$author, $license';
+  }
+
+  @override
+  String iconsPreview(String name) {
+    return 'Icons in $name';
+  }
+
+  @override
+  String get iconsLoading => 'Loading icon themes';
+
+  @override
+  String get iconsFailedTitle => 'The icon themes didn’t load';
+
+  @override
+  String get iconsFailedMessage =>
+      'Something went wrong reading the icon themes. Try again.';
+
+  @override
+  String get iconsEmptyTitle => 'No icon themes';
+
+  @override
+  String get iconsEmptyMessage => 'Kanso’s own icons are in use.';
 
   @override
   String get settingsBack => 'Back';
@@ -320,6 +375,64 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get textSizeLarger => 'Larger';
+
+  @override
+  String get editorTitleHint => 'Title';
+
+  @override
+  String get editorChangedMessage =>
+      'This note was changed elsewhere while you were editing. The version you don\'t keep stays in its history.';
+
+  @override
+  String get editorKeepMine => 'Keep mine';
+
+  @override
+  String get editorUseTheirs => 'Use theirs';
+
+  @override
+  String get editorDeletedMessage =>
+      'This note was deleted elsewhere while you were editing.';
+
+  @override
+  String get editorKeepIt => 'Keep it';
+
+  @override
+  String get editorDiscard => 'Discard';
+
+  @override
+  String get editorSaveFailed => 'Your changes aren\'t saved yet.';
+
+  @override
+  String get editorOpeningLabel => 'Opening the note';
+
+  @override
+  String get propertiesAdd => 'Add property';
+
+  @override
+  String get propertiesName => 'Name';
+
+  @override
+  String get propertiesValue => 'Value';
+
+  @override
+  String propertiesRemove(String name) {
+    return 'Remove $name';
+  }
+
+  @override
+  String get propertiesConfirmAdd => 'Add';
+
+  @override
+  String get propertiesCancelAdd => 'Cancel';
+
+  @override
+  String get propertiesFailed => 'That property couldn\'t be set.';
+
+  @override
+  String get propertiesShow => 'Show properties';
+
+  @override
+  String get propertiesHide => 'Hide properties';
 
   @override
   String get noteModeLabel => 'View mode';
@@ -504,7 +617,38 @@ class AppLocalizationsEn extends AppLocalizations {
       'Locked notebooks can\'t take or give up notes here yet.';
 
   @override
+  String get libraryNewNotebook => 'New notebook';
+
+  @override
+  String get newNotebookTitle => 'New notebook';
+
+  @override
+  String get newNotebookNameHint => 'Name';
+
+  @override
+  String get newNotebookCreate => 'Create';
+
+  @override
+  String get newNotebookInvalid => 'Give the notebook a name.';
+
+  @override
+  String get newNotebookFailed => 'The notebook couldn\'t be made. Try again.';
+
+  @override
+  String get noteListNewNote => 'New note';
+
+  @override
+  String get noteListNewNoteLocked =>
+      'Unlock this notebook to add notes to it.';
+
+  @override
+  String get noteListNewNoteFailed => 'The note couldn\'t be made. Try again.';
+
+  @override
   String get noteListDismiss => 'OK';
+
+  @override
+  String get undoNoticeUndo => 'Undo';
 
   @override
   String get noteLoading => 'Loading the note';
@@ -538,6 +682,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get menuSelectAll => 'Select All';
+
+  @override
+  String get menuDelete => 'Delete';
+
+  @override
+  String get menuOpenLink => 'Open link';
+
+  @override
+  String completionAnnouncement(int count, String label) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count suggestions',
+      one: '1 suggestion',
+    );
+    return '$_temp0, $label selected';
+  }
 
   @override
   String get searchIdleTitle => 'Search your notes';
@@ -589,6 +750,288 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsSyncBackupFooter =>
       'The notes on this device aren’t included in device backups.';
+
+  @override
+  String settingsVersionValue(String version, String build) {
+    return '$version ($build)';
+  }
+
+  @override
+  String get licencesLoading => 'Loading licences';
+
+  @override
+  String get licencesFailedTitle => 'The licences didn’t load';
+
+  @override
+  String get licencesFailedMessage =>
+      'Something went wrong reading the licences. Try again.';
+
+  @override
+  String get licencesEmptyTitle => 'No licences';
+
+  @override
+  String get licencesEmptyMessage =>
+      'The packages Kanso is made of will be listed here.';
+
+  @override
+  String licencesCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count licences',
+      one: '1 licence',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get themesFollowSystem =>
+      'Switch between a light and a dark theme with the system';
+
+  @override
+  String get themesFollowSystemOn =>
+      'Showing the light theme in light mode and the dark one in dark mode.';
+
+  @override
+  String get themesFollowSystemOff =>
+      'Off: the theme stays as picked whatever the system’s mode.';
+
+  @override
+  String get themesFailedTitle => 'The themes didn’t load';
+
+  @override
+  String get themesFailedMessage =>
+      'Something went wrong reading the themes. Try again.';
+
+  @override
+  String get themesLoading => 'Loading themes';
+
+  @override
+  String get backupNoticeTitle => 'Notes stay on this device';
+
+  @override
+  String get backupNoticeMessage =>
+      'The notes on this device aren’t included in device backups, so losing or resetting the device takes them with it.';
+
+  @override
+  String get backupNoticeOk => 'OK';
+
+  @override
+  String settingsVersionPatchValue(String version, String build, int patch) {
+    return '$version ($build), patch $patch';
+  }
+
+  @override
+  String get settingsPrivacy => 'Privacy';
+
+  @override
+  String get settingsPrivacyFooter =>
+      'Kanso sends a crash report only when you choose to.';
+
+  @override
+  String get crashReportsTitle => 'Crash reports';
+
+  @override
+  String get crashReportsLoading => 'Loading crash reports';
+
+  @override
+  String get crashReportsEmptyTitle => 'No crash reports';
+
+  @override
+  String get crashReportsEmptyMessage =>
+      'If Kanso closes unexpectedly, a report waits here until you decide whether to send it.';
+
+  @override
+  String get crashReportsIntro =>
+      'A report holds only where in Kanso’s code something went wrong. It never holds note text, titles or file names. Nothing is sent unless you send it.';
+
+  @override
+  String get crashReportsSendAll => 'Send all';
+
+  @override
+  String crashReportSubtitle(String day, String kind) {
+    return '$day · $kind';
+  }
+
+  @override
+  String get crashReportSend => 'Send';
+
+  @override
+  String get crashReportDelete => 'Delete';
+
+  @override
+  String get crashReportShow => 'Show report';
+
+  @override
+  String get crashReportHide => 'Hide report';
+
+  @override
+  String get crashReportSending => 'Sending…';
+
+  @override
+  String get crashKindDart => 'App';
+
+  @override
+  String get crashKindIosNative => 'iOS';
+
+  @override
+  String get crashKindAndroidNative => 'Android native';
+
+  @override
+  String get crashKindAndroidAnr => 'Android not responding';
+
+  @override
+  String get crashKindAndroidJvm => 'Android';
+
+  @override
+  String get crashNoticeTitle => 'Kanso closed unexpectedly';
+
+  @override
+  String get crashNoticeMessage =>
+      'Send a crash report? It holds only where in Kanso’s code it happened, never note text, titles or file names.';
+
+  @override
+  String get crashNoticeSend => 'Send';
+
+  @override
+  String get crashNoticeDiscard => 'Don’t send';
+
+  @override
+  String get crashOutcomeSent => 'Report sent. Thank you.';
+
+  @override
+  String get crashOutcomeRejected => 'The report couldn’t be sent.';
+
+  @override
+  String get crashOutcomeTryLater =>
+      'Too many reports just now. Try again later.';
+
+  @override
+  String get crashOutcomeUnreachable =>
+      'Couldn’t reach Kanso. Try again later.';
+
+  @override
+  String get crashReportsFailedMessage => 'The crash reports couldn’t be read.';
+
+  @override
+  String get screenNoteEdit => 'Note, edit';
+
+  @override
+  String get libraryTasks => 'Tasks';
+
+  @override
+  String libraryTasksOverdue(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count overdue tasks',
+      one: '1 overdue task',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String tasksCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tasks',
+      one: '1 task',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tasksFilter => 'Filter tasks';
+
+  @override
+  String get tasksFilterTitle => 'Filter tasks';
+
+  @override
+  String get tasksAllNotebooks => 'All notebooks';
+
+  @override
+  String get tasksShowCompleted => 'Show Completed';
+
+  @override
+  String get tasksNotebooksHeader => 'Notebook';
+
+  @override
+  String get tasksEmptyTitle => 'No tasks yet';
+
+  @override
+  String get tasksEmptyMessage =>
+      'Write “- [ ] Call Sam @2026-10-25” in any note, and it shows here.';
+
+  @override
+  String tasksEmptyNotebookTitle(String notebook) {
+    return 'No tasks in $notebook';
+  }
+
+  @override
+  String get tasksAllDoneTitle => 'All done';
+
+  @override
+  String get tasksAllDoneMessage => 'Every task is ticked off.';
+
+  @override
+  String get tasksLoading => 'Loading tasks';
+
+  @override
+  String get tasksFailedTitle => 'The tasks didn\'t load';
+
+  @override
+  String get tasksFailedMessage =>
+      'Something went wrong reading the tasks on this device. Try again.';
+
+  @override
+  String get tasksMoved =>
+      'That task changed in its note. The list is up to date now.';
+
+  @override
+  String get tasksChangeFailed => 'Couldn\'t change the task. Try again.';
+
+  @override
+  String get tasksTickOff => 'Tick off';
+
+  @override
+  String get tasksTickBack => 'Mark not done';
+
+  @override
+  String get tasksOpenNote => 'Open note';
+
+  @override
+  String tasksRowContext(String note, String notebook) {
+    return '$note · $notebook';
+  }
+
+  @override
+  String tasksRowDue(String due) {
+    return 'Due $due';
+  }
+
+  @override
+  String get previewLabel => 'The note\'s preview';
+
+  @override
+  String get previewFailed => 'The preview couldn\'t be drawn.';
+
+  @override
+  String get previewLinkFailed => 'That link couldn\'t be opened.';
+
+  @override
+  String get previewLinkLocked => 'Unlock your notes to open that.';
+
+  @override
+  String get attachmentDone => 'Done';
+
+  @override
+  String get attachmentShare => 'Share';
+
+  @override
+  String attachmentDetails(String type, String size) {
+    return '$type · $size';
+  }
 
   @override
   String get settingsSyncSignIn => 'Sign in';
@@ -1191,71 +1634,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountDeleteMismatch => 'That isn’t this account’s username.';
-
-  @override
-  String settingsVersionValue(String version, String build) {
-    return '$version ($build)';
-  }
-
-  @override
-  String get licencesLoading => 'Loading licences';
-
-  @override
-  String get licencesFailedTitle => 'The licences didn’t load';
-
-  @override
-  String get licencesFailedMessage =>
-      'Something went wrong reading the licences. Try again.';
-
-  @override
-  String get licencesEmptyTitle => 'No licences';
-
-  @override
-  String get licencesEmptyMessage =>
-      'The packages Kanso is made of will be listed here.';
-
-  @override
-  String licencesCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count licences',
-      one: '1 licence',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String get themesFollowSystem =>
-      'Switch between a light and a dark theme with the system';
-
-  @override
-  String get themesFollowSystemOn =>
-      'Showing the light theme in light mode and the dark one in dark mode.';
-
-  @override
-  String get themesFollowSystemOff =>
-      'Off: the theme stays as picked whatever the system’s mode.';
-
-  @override
-  String get themesFailedTitle => 'The themes didn’t load';
-
-  @override
-  String get themesFailedMessage =>
-      'Something went wrong reading the themes. Try again.';
-
-  @override
-  String get themesLoading => 'Loading themes';
-
-  @override
-  String get backupNoticeTitle => 'Notes stay on this device';
-
-  @override
-  String get backupNoticeMessage =>
-      'The notes on this device aren’t included in device backups, so losing or resetting the device takes them with it.';
-
-  @override
-  String get backupNoticeOk => 'OK';
 
   @override
   String get shareTitle => 'Share';

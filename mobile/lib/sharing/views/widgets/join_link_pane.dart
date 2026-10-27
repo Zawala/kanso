@@ -103,6 +103,7 @@ class _JoinLinkPaneState extends State<JoinLinkPane> {
                     KansoTextInput(
                       controller: link,
                       hint: l10n.joinHint,
+                      autocorrect: false,
                       enabled: !state.joining,
                       keyboardType: TextInputType.url,
                       textInputAction: TextInputAction.go,

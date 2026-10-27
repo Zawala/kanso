@@ -206,6 +206,10 @@ impl Device {
                 notebook_id: None,
                 title: title.to_owned(),
                 body: body.to_owned(),
+                place: None,
+                preferred_notebook_id: None,
+                tags: Vec::new(),
+                pinned: false,
             })
             .expect("create")
             .id

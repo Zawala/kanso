@@ -16,6 +16,7 @@ import 'package:kanso/core/models/data/load_status.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_badge.dart';
 import 'package:kanso/core/views/widgets/kanso_drawer.dart';
+import 'package:kanso/core/views/widgets/kanso_icon_button.dart';
 import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
 import 'package:kanso/library/views/widgets/library_pane.dart';
 import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
@@ -26,6 +27,7 @@ import '../../../helpers/fixture_shared_notes_repository.dart';
 import '../../../helpers/golden.dart';
 import '../../../helpers/library_fixtures.dart';
 import '../../../helpers/pump_routed.dart';
+import '../../../helpers/register_page_blocs.dart';
 import '../../../helpers/sharing_fixtures.dart';
 
 Future<LibraryIndexBloc> _readyIndex(
@@ -74,9 +76,30 @@ void main() {
   setUp(() {
     library = FixtureLibraryRepository();
     addTearDown(() => unawaited(library.close()));
+    registerPageBlocs(library);
   });
 
   group('LibraryPane', () {
+    testWidgets('the notebooks header has a button that asks for a name and '
+        'goes to the new notebook', (tester) async {
+      final bloc = await _readyIndex(tester, library);
+      final router = await pumpRouted(tester, _pane(bloc));
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is KansoIconButton &&
+              widget.semanticLabel == 'New notebook',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(EditableText), 'Recipes');
+      await tester.pump();
+      await tester.tap(find.text('Create'));
+      await tester.pumpAndSettle();
+      expect(library.notebooksCreated.single.$1, 'Recipes');
+      expect(topOf(router), startsWith('/notebooks/'));
+    });
+
     testWidgets('lists the places, notebooks and tags with their counts', (
       tester,
     ) async {
@@ -93,10 +116,50 @@ void main() {
       expect(find.text('idea'), findsOneWidget);
       expect(find.text('Trash', skipOffstage: false), findsOneWidget);
       expect(find.text('4', skipOffstage: false), findsOneWidget);
-      // The mock's Tasks row has no screen yet, and there is no Templates
-      // notebook in this library.
-      expect(find.text('Tasks'), findsNothing);
+      expect(find.text('Tasks'), findsOneWidget);
+      // There is no Templates notebook in this library.
       expect(find.text('Templates'), findsNothing);
+    });
+
+    testWidgets('counts the overdue tasks on the Tasks row, or nothing', (
+      tester,
+    ) async {
+      final bloc = await _readyIndex(tester, library);
+      await pumpRouted(tester, _pane(bloc));
+      expect(find.text('2'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Semantics &&
+              widget.properties.value == '2 overdue tasks',
+        ),
+        findsOneWidget,
+      );
+
+      library.overdueValue = 0;
+      final none = await _readyIndex(tester, library);
+      await pumpRouted(tester, _pane(none));
+      expect(find.text('2'), findsNothing);
+      expect(find.text('Tasks'), findsOneWidget);
+    });
+
+    testWidgets('opens the Tasks place, and selects its row there', (
+      tester,
+    ) async {
+      final bloc = await _readyIndex(tester, library);
+      final router = await pumpRouted(tester, _pane(bloc));
+      expect(_selection(tester)['Tasks'], isFalse);
+      await tester.tap(find.text('Tasks'));
+      await tester.pumpAndSettle();
+      expect(whereIs(router), const BrowseLocation.tasks().location);
+
+      await pumpRouted(
+        tester,
+        _pane(bloc, location: const BrowseLocation.tasks()),
+      );
+      final selected = _selection(tester);
+      expect(selected['Tasks'], isTrue);
+      expect(selected['All Notes'], isFalse);
     });
 
     testWidgets('indents a notebook inside another', (tester) async {

@@ -61,6 +61,7 @@ class _ShareInviteBarState extends State<ShareInviteBar> {
                   child: KansoTextInput(
                     controller: username,
                     hint: l10n.shareUsernameHint,
+                    autocorrect: false,
                     enabled: !state.busy,
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => invite(context),
