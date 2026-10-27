@@ -49,7 +49,6 @@ mod due;
 mod editor;
 mod editor_footer;
 mod empty_state;
-mod export;
 mod export_html;
 mod export_style;
 mod flavour;
@@ -144,7 +143,6 @@ mod settings_window_tests;
 mod share_sheet;
 mod shared_inbox;
 mod sidebar;
-mod site;
 mod smart_paste;
 #[cfg(test)]
 mod snapshots;

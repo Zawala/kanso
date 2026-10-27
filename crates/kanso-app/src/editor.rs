@@ -638,10 +638,10 @@ impl NoteEditor {
 
     /// What the Publish sheet works from: the open note's ID, its title and
     /// body as typed, its revision, and the link it keeps, if any.
-    pub fn publish_source(&self, cx: &App) -> Option<crate::publish::Source> {
+    pub fn publish_source(&self, cx: &App) -> Option<kanso_engine::publish::Source> {
         let note = self.note.as_ref()?;
         let (title, body) = self.current_text(cx);
-        Some(crate::publish::Source {
+        Some(kanso_engine::publish::Source {
             id: note.id.clone(),
             title,
             body,
