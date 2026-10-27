@@ -18,9 +18,7 @@
 //! - [`LockSession`] (`library.locks()`) holds the lock password's keys. A
 //!   locked note's text, snippet, properties, tasks and preview never come
 //!   back while it is closed; only its title and its lock show in a list.
-//!   Keys never cross this edge. Locking a note or a notebook, removing a
-//!   lock, changing the lock password and unlocking with biometrics
-//!   ([`biometrics`]: a ticket the native plugin answers) are here too.
+//!   Keys never cross this edge.
 //! - [`EditorSession`] (`library.edit(id)`) is a note open for editing: the
 //!   text the shell's field shows, with the undo history, the editor's
 //!   commands, the colors of the text, completion, autosave and the
@@ -57,6 +55,16 @@
 //!   share extension, App Intents and the Android share activity leave in the
 //!   library's `inbox/` folder, each one note in the Inbox. The C entry
 //!   `kanso_capture_inbox` in `mobile/rust` calls it.
+//! - A note's past and the library's safety nets: [`Library::history`] lists
+//!   the saved versions, [`Library::history_diff`] says what changed since
+//!   one and [`Library::restore_version`] brings one back (a locked note's
+//!   sealed versions are opened with the session's keys, never returned
+//!   sealed, and not at all while it is closed). [`Library::replace_preview`],
+//!   [`Library::replace_apply`] and [`Library::replace_undo`] are Replace in
+//!   all notes, which never touches a locked note. [`Library::backup_if_due`],
+//!   [`Library::back_up_now`], [`Library::backups`] and
+//!   [`Library::delete_backup`] keep a daily copy of the database inside the
+//!   library's folder (so out of the device's backups) and one on request.
 //! - [`diagnostics`] has the version, the TLS check and the panic probe.
 //!
 //! # The edge
@@ -80,6 +88,7 @@ mod approvals;
 mod approver_model;
 pub mod background;
 mod backup;
+mod backups;
 pub mod biometrics;
 pub mod boundary;
 mod builtin_themes;
@@ -92,18 +101,21 @@ mod gallery;
 mod gallery_model;
 mod gallery_net;
 mod gallery_store;
+mod history;
 mod icons;
 pub mod import;
 mod library;
 mod locks;
 mod matching;
 mod model;
+mod model_history;
 mod notes;
 pub mod passkey_bridge;
 mod passkey_flow;
 mod preview;
 mod provider_loopback;
 mod renderer;
+mod replace;
 mod schedule;
 pub mod secrets;
 mod sharing;
@@ -120,6 +132,7 @@ pub use account::AccountHandle;
 pub use account_model::*;
 pub use account_settings::AccountSettings;
 pub use approvals::Approvals;
+pub use backups::BACKUPS_SUMMARY;
 pub use comments_model::*;
 pub use editing::EditorSession;
 pub use errors::KansoError;
@@ -128,7 +141,9 @@ pub use gallery_model::*;
 pub use library::Library;
 pub use locks::LockSession;
 pub use model::*;
+pub use model_history::*;
 pub use renderer::Renderer;
+pub use replace::replace_apply_label;
 pub use sharing::SharedNotes;
 pub use sharing_model::*;
 pub use stream::Sink;

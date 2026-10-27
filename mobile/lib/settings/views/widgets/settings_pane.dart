@@ -173,6 +173,13 @@ class SettingsPane extends StatelessWidget {
                         onTap: () =>
                             context.push(KansoRoutes.settingsCrashReports),
                       ),
+                      KansoSettingsRow(
+                        icon: KansoIcons.databaseBackup,
+                        label: l10n.backupsTitle,
+                        value: l10n.backupsSchedule,
+                        chevron: true,
+                        onTap: () => context.push(KansoRoutes.settingsBackups),
+                      ),
                     ],
                   ),
                   const SizedBox(height: KansoSpacing.lg),

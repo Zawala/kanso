@@ -15,6 +15,7 @@ import 'browse_blocs.dart';
 import 'fixture_device_lock_repository.dart';
 import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_parity_repositories.dart';
 import 'fixture_renderer_repository.dart';
 import 'fixture_session_repository.dart';
 import 'fixture_shared_notes_repository.dart';
@@ -58,6 +59,9 @@ Future<void> expectAppGoldenOnBothPlatforms(
   FixtureSessionRepository Function()? session,
   FixtureDeviceLockRepository Function()? device,
   OpenedDocumentsBloc? openedDocuments,
+  FixtureHistoryRepository Function()? history,
+  FixtureReplaceRepository Function()? replace,
+  FixtureBackupsRepository Function()? backups,
   Future<void> Function(WidgetTester tester, BrowseApp app)? interact,
 }) async {
   tester.platformDispatcher
@@ -102,6 +106,9 @@ Future<void> expectAppGoldenOnBothPlatforms(
           session: session?.call(),
           device: device?.call(),
           openedDocuments: openedDocuments,
+          history: history?.call(),
+          replace: replace?.call(),
+          backups: backups?.call(),
         );
         if (interact != null) {
           await interact(tester, app);

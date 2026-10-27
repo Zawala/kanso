@@ -194,6 +194,34 @@ class AttachmentFile {
           bytes == other.bytes;
 }
 
+class BackupFile {
+  final String path;
+  final int madeAtMs;
+  final bool manual;
+  final int bytes;
+
+  const BackupFile({
+    required this.path,
+    required this.madeAtMs,
+    required this.manual,
+    required this.bytes,
+  });
+
+  @override
+  int get hashCode =>
+      path.hashCode ^ madeAtMs.hashCode ^ manual.hashCode ^ bytes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BackupFile &&
+          runtimeType == other.runtimeType &&
+          path == other.path &&
+          madeAtMs == other.madeAtMs &&
+          manual == other.manual &&
+          bytes == other.bytes;
+}
+
 enum BindingAnswer {
   add,
   replace,
@@ -564,6 +592,86 @@ enum DiagramKind {
 enum DiagramRenderer {
   pele,
   kanso,
+}
+
+class DiffHunk {
+  final List<DiffLine> lines;
+  final String oldText;
+  final int added;
+  final int removed;
+  final int? oldStart;
+  final int? oldEnd;
+
+  const DiffHunk({
+    required this.lines,
+    required this.oldText,
+    required this.added,
+    required this.removed,
+    this.oldStart,
+    this.oldEnd,
+  });
+
+  @override
+  int get hashCode =>
+      lines.hashCode ^
+      oldText.hashCode ^
+      added.hashCode ^
+      removed.hashCode ^
+      oldStart.hashCode ^
+      oldEnd.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DiffHunk &&
+          runtimeType == other.runtimeType &&
+          lines == other.lines &&
+          oldText == other.oldText &&
+          added == other.added &&
+          removed == other.removed &&
+          oldStart == other.oldStart &&
+          oldEnd == other.oldEnd;
+}
+
+enum DiffKind {
+  same,
+  added,
+  removed,
+}
+
+class DiffLine {
+  final DiffKind kind;
+  final String text;
+  final int? oldLine;
+  final int? newLine;
+  final List<Range16> changed;
+
+  const DiffLine({
+    required this.kind,
+    required this.text,
+    this.oldLine,
+    this.newLine,
+    required this.changed,
+  });
+
+  @override
+  int get hashCode =>
+      kind.hashCode ^
+      text.hashCode ^
+      oldLine.hashCode ^
+      newLine.hashCode ^
+      changed.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DiffLine &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          text == other.text &&
+          oldLine == other.oldLine &&
+          newLine == other.newLine &&
+          changed == other.changed;
 }
 
 class DropsSaved {
@@ -1714,6 +1822,37 @@ sealed class NoteChange with _$NoteChange {
   const factory NoteChange.trash() = NoteChange_Trash;
 }
 
+class NoteHistory {
+  final String currentTitle;
+  final String currentBody;
+  final String? currentAuthors;
+  final List<NoteVersion> versions;
+
+  const NoteHistory({
+    required this.currentTitle,
+    required this.currentBody,
+    this.currentAuthors,
+    required this.versions,
+  });
+
+  @override
+  int get hashCode =>
+      currentTitle.hashCode ^
+      currentBody.hashCode ^
+      currentAuthors.hashCode ^
+      versions.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NoteHistory &&
+          runtimeType == other.runtimeType &&
+          currentTitle == other.currentTitle &&
+          currentBody == other.currentBody &&
+          currentAuthors == other.currentAuthors &&
+          versions == other.versions;
+}
+
 class NoteList {
   final List<NoteRow> rows;
   final ListShape shape;
@@ -1800,6 +1939,53 @@ class NoteRow {
           tasksDone == other.tasksDone &&
           tasksTotal == other.tasksTotal &&
           locked == other.locked;
+}
+
+class NoteVersion {
+  final String rev;
+  final int savedAt;
+  final String origin;
+  final String originLabel;
+  final String? authors;
+  final String? agent;
+  final String title;
+  final String body;
+
+  const NoteVersion({
+    required this.rev,
+    required this.savedAt,
+    required this.origin,
+    required this.originLabel,
+    this.authors,
+    this.agent,
+    required this.title,
+    required this.body,
+  });
+
+  @override
+  int get hashCode =>
+      rev.hashCode ^
+      savedAt.hashCode ^
+      origin.hashCode ^
+      originLabel.hashCode ^
+      authors.hashCode ^
+      agent.hashCode ^
+      title.hashCode ^
+      body.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NoteVersion &&
+          runtimeType == other.runtimeType &&
+          rev == other.rev &&
+          savedAt == other.savedAt &&
+          origin == other.origin &&
+          originLabel == other.originLabel &&
+          authors == other.authors &&
+          agent == other.agent &&
+          title == other.title &&
+          body == other.body;
 }
 
 class NoteView {
@@ -2148,6 +2334,27 @@ class PersonRow {
           verified == other.verified;
 }
 
+class PlannedNote {
+  final String id;
+  final String rev;
+
+  const PlannedNote({
+    required this.id,
+    required this.rev,
+  });
+
+  @override
+  int get hashCode => id.hashCode ^ rev.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PlannedNote &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          rev == other.rev;
+}
+
 @freezed
 sealed class PreviewLink with _$PreviewLink {
   const PreviewLink._();
@@ -2340,6 +2547,198 @@ class RecoveryKeyText {
       other is RecoveryKeyText &&
           runtimeType == other.runtimeType &&
           key == other.key;
+}
+
+class ReplaceMatch {
+  final String line;
+  final int startUtf16;
+  final int endUtf16;
+  final int lineNumber;
+
+  const ReplaceMatch({
+    required this.line,
+    required this.startUtf16,
+    required this.endUtf16,
+    required this.lineNumber,
+  });
+
+  @override
+  int get hashCode =>
+      line.hashCode ^
+      startUtf16.hashCode ^
+      endUtf16.hashCode ^
+      lineNumber.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReplaceMatch &&
+          runtimeType == other.runtimeType &&
+          line == other.line &&
+          startUtf16 == other.startUtf16 &&
+          endUtf16 == other.endUtf16 &&
+          lineNumber == other.lineNumber;
+}
+
+class ReplaceNote {
+  final String id;
+  final String title;
+  final String rev;
+  final bool trashed;
+  final int count;
+  final List<ReplaceMatch> matches;
+
+  const ReplaceNote({
+    required this.id,
+    required this.title,
+    required this.rev,
+    required this.trashed,
+    required this.count,
+    required this.matches,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      title.hashCode ^
+      rev.hashCode ^
+      trashed.hashCode ^
+      count.hashCode ^
+      matches.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReplaceNote &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          title == other.title &&
+          rev == other.rev &&
+          trashed == other.trashed &&
+          count == other.count &&
+          matches == other.matches;
+}
+
+class ReplaceOptions {
+  final String find;
+  final bool matchCase;
+  final bool wholeWord;
+  final bool regex;
+  final bool skipCode;
+  final bool includeTrash;
+
+  const ReplaceOptions({
+    required this.find,
+    required this.matchCase,
+    required this.wholeWord,
+    required this.regex,
+    required this.skipCode,
+    required this.includeTrash,
+  });
+
+  @override
+  int get hashCode =>
+      find.hashCode ^
+      matchCase.hashCode ^
+      wholeWord.hashCode ^
+      regex.hashCode ^
+      skipCode.hashCode ^
+      includeTrash.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReplaceOptions &&
+          runtimeType == other.runtimeType &&
+          find == other.find &&
+          matchCase == other.matchCase &&
+          wholeWord == other.wholeWord &&
+          regex == other.regex &&
+          skipCode == other.skipCode &&
+          includeTrash == other.includeTrash;
+}
+
+class ReplaceOutcome {
+  final String batch;
+  final int replaced;
+  final int notes;
+  final int skipped;
+  final String message;
+
+  const ReplaceOutcome({
+    required this.batch,
+    required this.replaced,
+    required this.notes,
+    required this.skipped,
+    required this.message,
+  });
+
+  @override
+  int get hashCode =>
+      batch.hashCode ^
+      replaced.hashCode ^
+      notes.hashCode ^
+      skipped.hashCode ^
+      message.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReplaceOutcome &&
+          runtimeType == other.runtimeType &&
+          batch == other.batch &&
+          replaced == other.replaced &&
+          notes == other.notes &&
+          skipped == other.skipped &&
+          message == other.message;
+}
+
+class ReplacePreview {
+  final String? error;
+  final int totalMatches;
+  final List<ReplaceNote> notes;
+
+  const ReplacePreview({
+    this.error,
+    required this.totalMatches,
+    required this.notes,
+  });
+
+  @override
+  int get hashCode => error.hashCode ^ totalMatches.hashCode ^ notes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReplacePreview &&
+          runtimeType == other.runtimeType &&
+          error == other.error &&
+          totalMatches == other.totalMatches &&
+          notes == other.notes;
+}
+
+class ReplaceUndone {
+  final int restored;
+  final int skipped;
+  final String message;
+
+  const ReplaceUndone({
+    required this.restored,
+    required this.skipped,
+    required this.message,
+  });
+
+  @override
+  int get hashCode => restored.hashCode ^ skipped.hashCode ^ message.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReplaceUndone &&
+          runtimeType == other.runtimeType &&
+          restored == other.restored &&
+          skipped == other.skipped &&
+          message == other.message;
 }
 
 class Replacement {

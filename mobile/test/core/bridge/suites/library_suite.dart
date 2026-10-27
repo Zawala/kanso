@@ -9,6 +9,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/import.dart';
+import 'package:kanso/core/bridge/api/library.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:path/path.dart' as p;
 
@@ -57,6 +58,61 @@ void librarySuite(OpenLibrary open) {
       expect(opened.problems, isEmpty);
     });
 
+    test('history, Replace and backups work through the bridge', () async {
+      final library = await open();
+      expect(backupsSummary(), isNotEmpty);
+      expect(replaceApplyLabel(matches: 2, notes: 1), isNotEmpty);
+
+      final made = await library.create(
+        note: const NewNote(title: 'Versions', body: 'needle needle'),
+      );
+      final initial = await library.note(id: made.id);
+      final saved = await library.save(
+        id: made.id,
+        baseRev: initial.rev,
+        body: 'needle again',
+      );
+      final history = await library.history(id: made.id);
+      expect(history.versions, isNotEmpty);
+      expect(
+        await library.historyDiff(
+          id: made.id,
+          rev: history.versions.last.rev,
+        ),
+        isNotEmpty,
+      );
+      await library.restoreVersion(
+        id: made.id,
+        rev: history.versions.last.rev,
+        baseRev: saved.rev,
+      );
+
+      const options = ReplaceOptions(
+        find: 'needle',
+        matchCase: false,
+        wholeWord: false,
+        regex: false,
+        skipCode: false,
+        includeTrash: false,
+      );
+      final preview = await library.replacePreview(options: options);
+      final planned = preview.notes
+          .map((note) => PlannedNote(id: note.id, rev: note.rev))
+          .toList();
+      final replaced = await library.replaceApply(
+        options: options,
+        replacement: 'seed',
+        planned: planned,
+      );
+      expect(replaced.replaced, greaterThan(0));
+      await library.replaceUndo(batch: replaced.batch);
+
+      expect(await library.backupIfDue(), isNotNull);
+      final manual = await library.backUpNow();
+      expect(manual.manual, isTrue);
+      expect(await library.backups(), isNotEmpty);
+      await library.deleteBackup(path: manual.path);
+    });
     test('a new library holds no notes', () async {
       final library = await open();
       expect((await library.list(query: everyNote)).rows, isEmpty);

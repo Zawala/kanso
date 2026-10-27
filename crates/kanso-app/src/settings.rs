@@ -809,13 +809,13 @@ impl SettingsView {
         }
         let state = cx.global::<AppState>();
         let store = state.store.clone();
-        let dir = paths::backups_dir(&state.data_dir);
+        let folder = state.data_dir.clone();
+        let dir = paths::backups_dir(&folder);
         let now = Clock::now_ms(cx);
         // Beside the daily backups but out of their rotation, so a copy
         // made on request never costs an older daily one.
         let backup = cx.background_spawn({
-            let dir = dir.clone();
-            async move { store.backup_now(&dir, now).map(drop) }
+            async move { kanso_engine::backup::back_up_now(&store, &folder, now).map(drop) }
         });
         self.backing_up = true;
         cx.notify();
@@ -1046,7 +1046,7 @@ impl SettingsView {
                                 .on_click(move |_, _, cx| cx.reveal_path(&dir)),
                         ),
                     Row::new(Lucide::DatabaseBackup, "Backups")
-                        .detail("Kanso backs up its database once a day and keeps the last 14. A backup made with Back up now is kept until you delete it.")
+                        .detail(kanso_engine::backup::SUMMARY)
                         .trailing(
                             Button::new("backup-now")
                                 .outline()

@@ -44,7 +44,6 @@ class MockSessionRepository extends Mock implements SessionRepository {}
 
 class MockDeviceLockRepository extends Mock implements DeviceLockRepository {}
 
-
 class MockGalleryRepository extends Mock implements GalleryRepository {}
 
 class MockSharedNotesRepository extends Mock implements SharedNotesRepository {}

@@ -19,6 +19,9 @@ import 'account/state/recover/recover_bloc.dart' as _i1059;
 import 'account/state/recovery_key/recovery_key_bloc.dart' as _i35;
 import 'account/state/sign_in/sign_in_bloc.dart' as _i552;
 import 'account/state/unlock/unlock_bloc.dart' as _i858;
+import 'backups/models/repos/abs/backups_repository.dart' as _i1002;
+import 'backups/models/repos/impl/rust_backups_repository.dart' as _i270;
+import 'backups/state/backups/backups_bloc.dart' as _i770;
 import 'capture/models/repos/abs/media_picker_repository.dart' as _i900;
 import 'capture/models/repos/impl/platform_media_picker_repository.dart'
     as _i598;
@@ -102,6 +105,9 @@ import 'editor/models/repos/impl/rust_editor_repository.dart' as _i606;
 import 'editor/models/repos/impl/url_launcher_web_link_repository.dart'
     as _i635;
 import 'editor/state/editor/editor_bloc.dart' as _i964;
+import 'history/models/repos/abs/history_repository.dart' as _i974;
+import 'history/models/repos/impl/rust_history_repository.dart' as _i1065;
+import 'history/state/note_history/note_history_bloc.dart' as _i403;
 import 'import/models/repos/abs/import_files_repository.dart' as _i26;
 import 'import/models/repos/abs/import_repository.dart' as _i242;
 import 'import/models/repos/impl/channel_import_files_repository.dart' as _i196;
@@ -123,6 +129,9 @@ import 'note/models/repos/impl/memory_note_place_repository.dart' as _i503;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note/state/preview/preview_bloc.dart' as _i435;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
+import 'replace/models/repos/abs/replace_repository.dart' as _i608;
+import 'replace/models/repos/impl/rust_replace_repository.dart' as _i1;
+import 'replace/state/replace_notes/replace_notes_bloc.dart' as _i1028;
 import 'search/state/search/search_bloc.dart' as _i696;
 import 'settings/state/about/about_bloc.dart' as _i380;
 import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
@@ -332,6 +341,16 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i825.ExternalChanges>(),
       ),
     );
+    gh.lazySingleton<_i974.HistoryRepository>(
+      () => _i1065.RustHistoryRepository(gh<_i455.KansoLibrary>()),
+    );
+    gh.factory<_i403.NoteHistoryBloc>(
+      () => _i403.NoteHistoryBloc(
+        gh<_i974.HistoryRepository>(),
+        gh<_i38.LibraryRepository>(),
+        gh<_i202.SystemShareRepository>(),
+      ),
+    );
     gh.factory<_i618.NoteBloc>(
       () => _i618.NoteBloc(
         gh<_i38.LibraryRepository>(),
@@ -378,6 +397,9 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i26.ImportFilesRepository>(),
       ),
     );
+    gh.lazySingleton<_i608.ReplaceRepository>(
+      () => _i1.RustReplaceRepository(gh<_i455.KansoLibrary>()),
+    );
     gh.factory<_i351.NoteListBloc>(
       () => _i351.NoteListBloc(
         gh<_i38.LibraryRepository>(),
@@ -385,6 +407,9 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i1056.HapticsRepository>(),
         gh<_i985.UndoNoticeBloc>(),
       ),
+    );
+    gh.lazySingleton<_i1002.BackupsRepository>(
+      () => _i270.RustBackupsRepository(gh<_i455.KansoLibrary>()),
     );
     gh.factory<_i1060.DailyNoteBloc>(
       () => _i1060.DailyNoteBloc(gh<_i23.CaptureRepository>()),
@@ -431,6 +456,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i550.GalleryRepository>(
       () => _i692.RustGalleryRepository(gh<_i783.KansoGallery>()),
     );
+    gh.factory<_i770.BackupsBloc>(
+      () => _i770.BackupsBloc(gh<_i1002.BackupsRepository>()),
+    );
     gh.lazySingleton<_i374.SharedNotesRepository>(
       () => _i628.RustSharedNotesRepository(gh<_i315.KansoShared>()),
     );
@@ -458,6 +486,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i794.SyncSettingsBloc>(
       () => _i794.SyncSettingsBloc(gh<_i601.SyncRepository>()),
+    );
+    gh.factory<_i1028.ReplaceNotesBloc>(
+      () => _i1028.ReplaceNotesBloc(gh<_i608.ReplaceRepository>()),
     );
     gh.factory<_i39.ChangePasswordBloc>(
       () => _i39.ChangePasswordBloc(gh<_i333.SessionRepository>()),

@@ -5,12 +5,18 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart' show addTearDown;
+import 'package:kanso/backups/models/repos/abs/backups_repository.dart';
+import 'package:kanso/backups/state/backups/backups_bloc.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
+import 'package:kanso/history/models/repos/abs/history_repository.dart';
+import 'package:kanso/history/state/note_history/note_history_bloc.dart';
 import 'package:kanso/injection.dart';
 import 'package:kanso/library/state/new_notebook/new_notebook_bloc.dart';
 import 'package:kanso/note/models/repos/impl/memory_note_place_repository.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
+import 'package:kanso/replace/models/repos/abs/replace_repository.dart';
+import 'package:kanso/replace/state/replace_notes/replace_notes_bloc.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/icon_themes/icon_themes_bloc.dart';
@@ -29,6 +35,7 @@ import 'fixture_about_repository.dart';
 import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_licences_repository.dart';
+import 'fixture_parity_repositories.dart';
 import 'fixture_renderer_repository.dart';
 import 'fixture_shared_notes_repository.dart';
 import 'fixture_system_share_repository.dart';
@@ -48,10 +55,16 @@ void registerPageBlocs(
   FixtureGalleryRepository? gallery,
   FixtureSharedNotesRepository? shared,
   FixtureSystemShareRepository? system,
+  FixtureHistoryRepository? history,
+  FixtureReplaceRepository? replace,
+  FixtureBackupsRepository? backups,
 ]) {
   final themes = gallery ?? FixtureGalleryRepository();
   final sharing = shared ?? FixtureSharedNotesRepository();
   final clipboard = system ?? FixtureSystemShareRepository();
+  final noteHistory = history ?? FixtureHistoryRepository();
+  final noteReplace = replace ?? FixtureReplaceRepository();
+  final libraryBackups = backups ?? FixtureBackupsRepository();
   final haptics = RecordingHaptics();
   final undoNotice = undo ?? UndoNoticeBloc(library, haptics);
   if (undo == null) {
@@ -142,5 +155,35 @@ void registerPageBlocs(
   getIt.registerFactory<IconThemesBloc>(
     () => IconThemesBloc(renderer ?? FixtureRendererRepository()),
   );
+  if (getIt.isRegistered<NoteHistoryBloc>()) {
+    getIt.unregister<NoteHistoryBloc>();
+  }
+  getIt.registerFactory<NoteHistoryBloc>(
+    () => NoteHistoryBloc(noteHistory, library, clipboard),
+  );
+  if (getIt.isRegistered<HistoryRepository>()) {
+    getIt.unregister<HistoryRepository>();
+  }
+  getIt.registerLazySingleton<HistoryRepository>(() => noteHistory);
+  if (getIt.isRegistered<ReplaceNotesBloc>()) {
+    getIt.unregister<ReplaceNotesBloc>();
+  }
+  getIt.registerFactory<ReplaceNotesBloc>(
+    () => ReplaceNotesBloc(noteReplace),
+  );
+  if (getIt.isRegistered<ReplaceRepository>()) {
+    getIt.unregister<ReplaceRepository>();
+  }
+  getIt.registerLazySingleton<ReplaceRepository>(() => noteReplace);
+  if (getIt.isRegistered<BackupsBloc>()) {
+    getIt.unregister<BackupsBloc>();
+  }
+  getIt.registerFactory<BackupsBloc>(
+    () => BackupsBloc(libraryBackups),
+  );
+  if (getIt.isRegistered<BackupsRepository>()) {
+    getIt.unregister<BackupsRepository>();
+  }
+  getIt.registerLazySingleton<BackupsRepository>(() => libraryBackups);
   addTearDown(() => unawaited(getIt.reset()));
 }

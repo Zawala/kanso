@@ -103,12 +103,10 @@ Future<void> _settings(WidgetTester tester, BrowseApp app) async {
   await tester.scrollUntilVisible(
     find.text('Change lock password…'),
     200,
-    scrollable: find
-        .descendant(
-          of: find.byType(SettingsPane),
-          matching: find.byType(Scrollable),
-        )
-        .first,
+    scrollable: find.descendant(
+      of: find.byType(SettingsPane),
+      matching: find.byType(Scrollable),
+    ),
   );
   await tester.pumpAndSettle();
 }
