@@ -11,11 +11,6 @@
 //! one is, the sort and narrowing, the order of the notebook tree and the
 //! date headers a list sits under.
 //!
-//! What a note takes from outside is here as well: [`attach`] stores images
-//! and PDFs as attachments and gives the Markdown that shows them, and
-//! [`capture`] turns typed text, and what other apps share, into notes in
-//! the Inbox.
-//!
 //! What happens in a note is here too. [`links`] decides how wiki-links
 //! resolve, what `[[` and `#` autocomplete offer, which link a note copies
 //! and when a rename offers to update links; [`fuzzy`] ranks what was typed
@@ -37,6 +32,14 @@
 //! component library compiles in, with the same queries, and a test in
 //! `kanso-app` holds the two to the same colors on a corpus of notes.
 //!
+//! A note's past and the library's safety nets are here as well.
+//! [`history`] says why each saved version was kept and who made it, and
+//! works out the changed sections (hunks) between a version and the note
+//! now, with the changed words in each line; [`replace`] has the options of
+//! Replace in all notes, the pattern they make and the words its button and
+//! reports say; [`backup`] decides where backups go, makes the daily one and
+//! the one made on request, lists them and deletes one made on request.
+//!
 //! Nothing here opens a window, reads a clock of its own or touches the
 //! system's secret store: the caller passes the time, and secrets go through
 //! [`Secrets`].
@@ -46,6 +49,7 @@
 
 pub mod account;
 pub mod attach;
+pub mod backup;
 pub mod batch;
 pub mod capture;
 pub mod daily;
@@ -54,10 +58,12 @@ pub mod editor_settings;
 pub mod fuzzy;
 #[cfg(feature = "highlight")]
 pub mod highlight;
+pub mod history;
 pub mod icons;
 pub mod links;
 pub mod list;
 pub mod lock;
+pub mod replace;
 pub mod saving;
 #[cfg(any(test, feature = "test-support"))]
 pub mod strategies;

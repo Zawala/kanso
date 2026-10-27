@@ -236,6 +236,13 @@ class LibraryPane extends StatelessWidget {
                         count: index.overview.trash,
                         selected: current == const ListPlace.trash(),
                       ),
+                      KansoSidebarRow(
+                        icon: KansoIcons.replaceAll,
+                        label: l10n.libraryReplace,
+                        onTap: () => leave(
+                          () => context.push(KansoRoutes.replace),
+                        ),
+                      ),
                       if (designGallery)
                         KansoSidebarRow(
                           icon: KansoIcons.palette,

@@ -11,13 +11,16 @@ import '../../account/views/pages/recover_page.dart';
 import '../../account/views/pages/recovery_key_page.dart';
 import '../../account/views/pages/sign_in_page.dart';
 import '../../account/views/pages/unlock_page.dart';
+import '../../backups/views/pages/backups_page.dart';
 import '../../capture/views/pages/daily_note_page.dart';
 import '../../capture/views/pages/new_note_page.dart';
 import '../../crash/views/pages/crash_reports_page.dart';
 import '../../design/views/pages/design_gallery_page.dart';
+import '../../history/views/pages/history_page.dart';
 import '../../note/views/pages/note_page.dart';
 import '../../note/views/widgets/no_note_selected_pane.dart';
 import '../../note_list/views/pages/note_list_page.dart';
+import '../../replace/views/pages/replace_page.dart';
 import '../../search/views/pages/search_page.dart';
 import '../../settings/views/pages/default_notebook_page.dart';
 import '../../settings/views/pages/fonts_page.dart';
@@ -103,6 +106,20 @@ class KansoRouter {
         GoRoute(
           path: '${KansoRoutes.notebookById}/:notebookId',
           redirect: (context, state) => redirectLocation(state.uri),
+        ),
+        GoRoute(
+          path: '${KansoRoutes.history}/:noteId',
+          pageBuilder: (context, state) => CupertinoPage<void>(
+            key: state.pageKey,
+            child: HistoryPage(noteId: state.pathParameters['noteId']!),
+          ),
+        ),
+        GoRoute(
+          path: KansoRoutes.replace,
+          pageBuilder: (context, state) => CupertinoPage<void>(
+            key: state.pageKey,
+            child: const ReplacePage(),
+          ),
         ),
         ShellRoute(
           navigatorKey: _browseKey,
@@ -227,6 +244,13 @@ class KansoRouter {
                   pageBuilder: (context, state) => CupertinoPage<void>(
                     key: state.pageKey,
                     child: const CrashReportsPage(),
+                  ),
+                ),
+                GoRoute(
+                  path: 'backups',
+                  pageBuilder: (context, state) => CupertinoPage<void>(
+                    key: state.pageKey,
+                    child: const BackupsPage(),
                   ),
                 ),
                 GoRoute(

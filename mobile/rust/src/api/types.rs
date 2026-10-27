@@ -581,6 +581,123 @@ pub struct _SvgRow {
     pub baseline: Option<f32>,
 }
 
+// A note's history, Replace in all notes and the backups.
+pub use kanso_mobile::{
+    BackupFile, DiffHunk, DiffKind, DiffLine, NoteHistory, NoteVersion, PlannedNote, ReplaceMatch,
+    ReplaceNote, ReplaceOptions, ReplaceOutcome, ReplacePreview, ReplaceUndone,
+};
+
+#[frb(mirror(NoteHistory))]
+pub struct _NoteHistory {
+    pub current_title: String,
+    pub current_body: String,
+    pub current_authors: Option<String>,
+    pub versions: Vec<NoteVersion>,
+}
+
+#[frb(mirror(NoteVersion))]
+pub struct _NoteVersion {
+    pub rev: String,
+    pub saved_at: i64,
+    pub origin: String,
+    pub origin_label: String,
+    pub authors: Option<String>,
+    pub agent: Option<String>,
+    pub title: String,
+    pub body: String,
+}
+
+#[frb(mirror(DiffKind))]
+pub enum _DiffKind {
+    Same,
+    Added,
+    Removed,
+}
+
+#[frb(mirror(DiffLine))]
+pub struct _DiffLine {
+    pub kind: DiffKind,
+    pub text: String,
+    pub old_line: Option<u32>,
+    pub new_line: Option<u32>,
+    pub changed: Vec<Range16>,
+}
+
+#[frb(mirror(DiffHunk))]
+pub struct _DiffHunk {
+    pub lines: Vec<DiffLine>,
+    pub old_text: String,
+    pub added: u32,
+    pub removed: u32,
+    pub old_start: Option<u32>,
+    pub old_end: Option<u32>,
+}
+
+#[frb(mirror(ReplaceOptions))]
+pub struct _ReplaceOptions {
+    pub find: String,
+    pub match_case: bool,
+    pub whole_word: bool,
+    pub regex: bool,
+    pub skip_code: bool,
+    pub include_trash: bool,
+}
+
+#[frb(mirror(ReplacePreview))]
+pub struct _ReplacePreview {
+    pub error: Option<String>,
+    pub total_matches: u32,
+    pub notes: Vec<ReplaceNote>,
+}
+
+#[frb(mirror(ReplaceNote))]
+pub struct _ReplaceNote {
+    pub id: String,
+    pub title: String,
+    pub rev: String,
+    pub trashed: bool,
+    pub count: u32,
+    pub matches: Vec<ReplaceMatch>,
+}
+
+#[frb(mirror(ReplaceMatch))]
+pub struct _ReplaceMatch {
+    pub line: String,
+    pub start_utf16: u32,
+    pub end_utf16: u32,
+    pub line_number: u32,
+}
+
+#[frb(mirror(PlannedNote))]
+pub struct _PlannedNote {
+    pub id: String,
+    pub rev: String,
+}
+
+#[frb(mirror(ReplaceOutcome))]
+pub struct _ReplaceOutcome {
+    pub batch: String,
+    pub replaced: u32,
+    pub notes: u32,
+    pub skipped: u32,
+    pub message: String,
+}
+
+#[frb(mirror(ReplaceUndone))]
+pub struct _ReplaceUndone {
+    pub restored: u32,
+    pub skipped: u32,
+    pub message: String,
+}
+
+#[frb(mirror(BackupFile))]
+pub struct _BackupFile {
+    pub path: String,
+    pub made_at_ms: i64,
+    pub manual: bool,
+    pub bytes: u64,
+}
+
 #[frb(mirror(ProviderKind))]
 pub enum _ProviderKind {
     Apple,

@@ -3328,5 +3328,542 @@
   "lockDone": "Done",
   "@lockDone": {
     "description": "Closes a lock sheet that has told its result."
+  },
+  "backupsTitle": "Backups",
+  "@backupsTitle": {
+    "description": "The title of the screen that lists the library's backups, and its row in Settings."
+  },
+  "backupsSchedule": "Once a day · last 14",
+  "@backupsSchedule": {
+    "description": "The daily backup schedule and retention shown beside Backups in Settings."
+  },
+  "backupsCount": "{count, plural, =0{None yet} =1{1 backup} other{{count} backups}}",
+  "@backupsCount": {
+    "description": "How many backups there are, as the value of the Backups row in Settings.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupsSummary": "Kanso backs up its database on this device once a day and keeps the last 14. A backup made with Back up now is kept until you delete it here.",
+  "@backupsSummary": {
+    "description": "Says how the backups work, at the top of the Backups screen. The same words as the engine's phone summary."
+  },
+  "backupsBackUpNow": "Back up now",
+  "@backupsBackUpNow": {
+    "description": "The button that makes a backup right away."
+  },
+  "backupsBackingUp": "Backing up…",
+  "@backupsBackingUp": {
+    "description": "What the Back up now button says while it works."
+  },
+  "backupsListHeader": "Backups",
+  "@backupsListHeader": {
+    "description": "The header over the list of backups."
+  },
+  "backupsKindDaily": "Daily backup",
+  "@backupsKindDaily": {
+    "description": "Says a backup was made by the daily schedule, which keeps the last 14."
+  },
+  "backupsKindManual": "Made with Back up now",
+  "@backupsKindManual": {
+    "description": "Says a backup was made on request and is kept until it is deleted."
+  },
+  "backupsKindManualKept": "{kind} · {size}",
+  "@backupsKindManualKept": {
+    "description": "A backup's second line: how it was made and how big it is.",
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "backupsDelete": "Delete backup",
+  "@backupsDelete": {
+    "description": "The label of the button that deletes a backup made on request."
+  },
+  "backupsEmptyTitle": "No backups yet",
+  "@backupsEmptyTitle": {
+    "description": "The title of the empty list of backups."
+  },
+  "backupsEmptyMessage": "Back up now makes one right away.",
+  "@backupsEmptyMessage": {
+    "description": "What the empty list of backups says to do."
+  },
+  "backupsLoading": "Reading the backups",
+  "@backupsLoading": {
+    "description": "What a screen reader says while the backups are read."
+  },
+  "backupsFailedTitle": "The backups couldn’t be read",
+  "@backupsFailedTitle": {
+    "description": "The title of the card shown when the backups could not be listed."
+  },
+  "backupsFailedMessage": "Try again in a moment.",
+  "@backupsFailedMessage": {
+    "description": "The message of the card shown when the backups could not be listed."
+  },
+  "backupsNoticeMadeNow": "The backup was made.",
+  "@backupsNoticeMadeNow": {
+    "description": "Says a backup was made on request."
+  },
+  "backupsNoticeDeleted": "The backup was deleted.",
+  "@backupsNoticeDeleted": {
+    "description": "Says a backup made on request was deleted."
+  },
+  "backupsProblemDaily": "Today’s backup couldn’t be made.",
+  "@backupsProblemDaily": {
+    "description": "Says the daily backup, made when the app opened, failed."
+  },
+  "backupsProblemBackUp": "The backup couldn’t be made.",
+  "@backupsProblemBackUp": {
+    "description": "Says Back up now failed."
+  },
+  "backupsProblemDelete": "The backup couldn’t be deleted.",
+  "@backupsProblemDelete": {
+    "description": "Says deleting a backup failed."
+  },
+  "backupsProblemList": "The list of backups couldn’t be updated.",
+  "@backupsProblemList": {
+    "description": "Says the list could not be read again; the one shown is the last that was read."
+  },
+  "backupsDeleteTitle": "Delete this backup?",
+  "@backupsDeleteTitle": {
+    "description": "The title of the sheet that asks to confirm deleting a backup."
+  },
+  "backupsDeleteMessage": "The backup made {when} is deleted from this device. This can’t be undone.",
+  "@backupsDeleteMessage": {
+    "description": "What the sheet that confirms deleting a backup says; {when} is the day and time it was made.",
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "backupsDeleteConfirm": "Delete",
+  "@backupsDeleteConfirm": {
+    "description": "The button that deletes the backup."
+  },
+  "backupsDeleteCancel": "Cancel",
+  "@backupsDeleteCancel": {
+    "description": "The button that keeps the backup."
+  },
+  "fileSizeBytes": "{size} B",
+  "@fileSizeBytes": {
+    "description": "A size in bytes.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "fileSizeKilobytes": "{size} KB",
+  "@fileSizeKilobytes": {
+    "description": "A size in kilobytes.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "fileSizeMegabytes": "{size} MB",
+  "@fileSizeMegabytes": {
+    "description": "A size in megabytes.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "fileSizeGigabytes": "{size} GB",
+  "@fileSizeGigabytes": {
+    "description": "A size in gigabytes.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "noteInfoHistory": "Show history",
+  "@noteInfoHistory": {
+    "description": "The row of a note's info sheet that opens the note's earlier versions."
+  },
+  "historyTitle": "Note history",
+  "@historyTitle": {
+    "description": "The title of the screen that lists a note's earlier versions."
+  },
+  "historyClose": "Close",
+  "@historyClose": {
+    "description": "Closes the history."
+  },
+  "historyLoading": "Reading the history",
+  "@historyLoading": {
+    "description": "What a screen reader says while a note's history is read."
+  },
+  "historyEmptyTitle": "No earlier versions yet",
+  "@historyEmptyTitle": {
+    "description": "The title shown when a note has no saved versions."
+  },
+  "historyEmptyMessage": "Kanso keeps one every few minutes while you edit, and one before every change made elsewhere.",
+  "@historyEmptyMessage": {
+    "description": "What the empty history says about when versions are kept."
+  },
+  "historyFailedTitle": "The history couldn’t be read",
+  "@historyFailedTitle": {
+    "description": "The title of the card shown when a note's history could not be read."
+  },
+  "historyFailedMessage": "Try again in a moment.",
+  "@historyFailedMessage": {
+    "description": "The message of the card shown when a note's history could not be read."
+  },
+  "historyLockedTitle": "This note is locked",
+  "@historyLockedTitle": {
+    "description": "The title shown for the history of a locked note that is closed."
+  },
+  "historyLockedMessage": "Its earlier versions stay sealed until you unlock it.",
+  "@historyLockedMessage": {
+    "description": "What the history of a closed locked note says."
+  },
+  "historyNotFoundTitle": "This note isn’t here any more",
+  "@historyNotFoundTitle": {
+    "description": "The title shown when the note whose history was asked for is gone."
+  },
+  "historyNotFoundMessage": "It may have been deleted on another device.",
+  "@historyNotFoundMessage": {
+    "description": "What the history of a note that is gone says."
+  },
+  "historyVersionLabel": "Version",
+  "@historyVersionLabel": {
+    "description": "The label of the control that chooses which earlier version to look at."
+  },
+  "historyVersionsTitle": "Versions",
+  "@historyVersionsTitle": {
+    "description": "The title of the sheet that lists the earlier versions."
+  },
+  "historyNow": "Now",
+  "@historyNow": {
+    "description": "The note as it is now, beside its versions."
+  },
+  "historyOrigin": "{origin, select, ui{Edited in Kanso} api{Replaced through the API} sync{Replaced by sync} import{Replaced by an import} collab{Edited in a shared note} agent{Suggested by an agent, applied by you} plugin{Changed by a plugin} other{Saved version}}",
+  "@historyOrigin": {
+    "description": "Why a version was kept, from what replaced it.",
+    "placeholders": {
+      "origin": {
+        "type": "String"
+      }
+    }
+  },
+  "historyPaneChanges": "Changes",
+  "@historyPaneChanges": {
+    "description": "The tab that shows what changed from a version to the note now."
+  },
+  "historyPaneVersion": "This version",
+  "@historyPaneVersion": {
+    "description": "The tab that shows a version's own text."
+  },
+  "historyPaneLabel": "What to show of the version",
+  "@historyPaneLabel": {
+    "description": "The label of the control that switches between the changes and the version."
+  },
+  "historyNoChanges": "This version’s text is the same as the note’s now.",
+  "@historyNoChanges": {
+    "description": "Says a version has the same text as the note."
+  },
+  "historyHunkLine": "Line {line}",
+  "@historyHunkLine": {
+    "description": "The heading of a changed section that is one line of the version.",
+    "placeholders": {
+      "line": {
+        "type": "int"
+      }
+    }
+  },
+  "historyHunkLines": "Lines {first}–{last}",
+  "@historyHunkLines": {
+    "description": "The heading of a changed section of several lines of the version.",
+    "placeholders": {
+      "first": {
+        "type": "int"
+      },
+      "last": {
+        "type": "int"
+      }
+    }
+  },
+  "historyHunkNew": "New lines",
+  "@historyHunkNew": {
+    "description": "The heading of a changed section that the version has no lines for."
+  },
+  "historyAdded": "{count, plural, =1{1 line added} other{{count} lines added}}",
+  "@historyAdded": {
+    "description": "Says how many lines the note has now that the version did not (read by a screen reader).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historyRemoved": "{count, plural, =1{1 line removed} other{{count} lines removed}}",
+  "@historyRemoved": {
+    "description": "Says how many lines the version had that the note has not now (read by a screen reader).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "historyLineAdded": "Added",
+  "@historyLineAdded": {
+    "description": "A screen reader's word for a line the note has now and the version did not."
+  },
+  "historyLineRemoved": "Removed",
+  "@historyLineRemoved": {
+    "description": "A screen reader's word for a line the version had and the note has not now."
+  },
+  "historyCopySection": "Copy section",
+  "@historyCopySection": {
+    "description": "The button that copies a changed section as the version has it."
+  },
+  "historyCopied": "Copied",
+  "@historyCopied": {
+    "description": "What the copy button says once the section is copied."
+  },
+  "historyRestore": "Restore this version",
+  "@historyRestore": {
+    "description": "The button that sets the note's text to the version's."
+  },
+  "historyRestoreDone": "This version was restored.",
+  "@historyRestoreDone": {
+    "description": "Confirms that the selected saved version was restored."
+  },
+  "historyRestoring": "Restoring…",
+  "@historyRestoring": {
+    "description": "What the restore button says while it works."
+  },
+  "historyDiffLoading": "Working out what changed",
+  "@historyDiffLoading": {
+    "description": "What a screen reader says while the changes since a version are worked out."
+  },
+  "historyProblemChanged": "The note changed while its history was open. The history is shown again; choose the version once more.",
+  "@historyProblemChanged": {
+    "description": "Says a restore was refused because the note changed meanwhile."
+  },
+  "historyProblemGone": "That version isn’t kept any more.",
+  "@historyProblemGone": {
+    "description": "Says the version chosen is gone."
+  },
+  "historyProblemRestore": "The version couldn’t be restored.",
+  "@historyProblemRestore": {
+    "description": "Says a restore failed."
+  },
+  "historyProblemDiff": "What changed couldn’t be worked out.",
+  "@historyProblemDiff": {
+    "description": "Says the changes since a version could not be worked out."
+  },
+  "historyAuthors": "{authors}",
+  "@historyAuthors": {
+    "description": "Who changed a shared note, as the library words it (\"by Ada, Sam\").",
+    "placeholders": {
+      "authors": {
+        "type": "String"
+      }
+    }
+  },
+  "libraryReplace": "Replace in all notes",
+  "@libraryReplace": {
+    "description": "The library row that opens Replace in all notes."
+  },
+  "replaceTitle": "Replace in all notes",
+  "@replaceTitle": {
+    "description": "The title of the screen that finds text in every note and replaces it."
+  },
+  "replaceClose": "Close",
+  "@replaceClose": {
+    "description": "Closes Replace in all notes."
+  },
+  "replaceFind": "Find",
+  "@replaceFind": {
+    "description": "The label of the field for the text to find."
+  },
+  "replaceWith": "Replace with",
+  "@replaceWith": {
+    "description": "The label of the field for the text to put instead."
+  },
+  "replaceMatchCase": "Match case",
+  "@replaceMatchCase": {
+    "description": "The toggle that makes the search case sensitive."
+  },
+  "replaceWholeWord": "Whole word",
+  "@replaceWholeWord": {
+    "description": "The toggle that matches whole words only."
+  },
+  "replaceRegex": "Regular expression ($1 in the replacement for a group)",
+  "@replaceRegex": {
+    "description": "The toggle that makes the text to find a regular expression."
+  },
+  "replaceSkipCode": "Skip code blocks",
+  "@replaceSkipCode": {
+    "description": "The toggle that leaves matches in code blocks alone."
+  },
+  "replaceIncludeTrash": "Include notes in the Trash",
+  "@replaceIncludeTrash": {
+    "description": "The toggle that also searches the notes in the Trash."
+  },
+  "replaceOptionsLabel": "Search options",
+  "@replaceOptionsLabel": {
+    "description": "The label of the row of toggles."
+  },
+  "replaceTypeToFind": "Type what to find.",
+  "@replaceTypeToFind": {
+    "description": "Says what to do before there is anything to preview."
+  },
+  "replaceNoMatches": "No matches.",
+  "@replaceNoMatches": {
+    "description": "Says nothing matched."
+  },
+  "replaceSearching": "Searching the notes",
+  "@replaceSearching": {
+    "description": "What a screen reader says while the notes are searched."
+  },
+  "replaceFound": "{matches, plural, =1{1 match} other{{matches} matches}} in {notes, plural, =1{1 note} other{{notes} notes}}",
+  "@replaceFound": {
+    "description": "How many matches the preview found and in how many notes.",
+    "placeholders": {
+      "matches": {
+        "type": "int"
+      },
+      "notes": {
+        "type": "int"
+      }
+    }
+  },
+  "replacePreviewHeader": "Preview",
+  "@replacePreviewHeader": {
+    "description": "The header over the matches."
+  },
+  "replaceInTrash": "In Trash",
+  "@replaceInTrash": {
+    "description": "Says a note in the preview is in the Trash."
+  },
+  "replaceUntitled": "Untitled",
+  "@replaceUntitled": {
+    "description": "What a note with no title is called in the preview."
+  },
+  "replaceMore": "and {count} more",
+  "@replaceMore": {
+    "description": "Says how many more matches a note has than the preview lists.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "replaceLine": "Line {line}",
+  "@replaceLine": {
+    "description": "A screen reader's words for the line number of a match.",
+    "placeholders": {
+      "line": {
+        "type": "int"
+      }
+    }
+  },
+  "replaceIncludeNote": "Include {title} in the replace",
+  "@replaceIncludeNote": {
+    "description": "The label of a note's checkbox in the preview.",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "replaceApply": "{matches, plural, =1{Replace 1} other{Replace {matches}}} in {notes, plural, =1{1 note} other{{notes} notes}}",
+  "@replaceApply": {
+    "description": "The Replace button: how many matches in how many notes.",
+    "placeholders": {
+      "matches": {
+        "type": "int"
+      },
+      "notes": {
+        "type": "int"
+      }
+    }
+  },
+  "replaceApplyIdle": "Replace",
+  "@replaceApplyIdle": {
+    "description": "The Replace button when there is nothing to replace yet."
+  },
+  "replaceApplying": "Replacing…",
+  "@replaceApplying": {
+    "description": "What the Replace button says while it works."
+  },
+  "replaceDone": "Replaced {matches, plural, =1{1 match} other{{matches} matches}} in {notes, plural, =1{1 note} other{{notes} notes}}.",
+  "@replaceDone": {
+    "description": "What the screen says after replacing.",
+    "placeholders": {
+      "matches": {
+        "type": "int"
+      },
+      "notes": {
+        "type": "int"
+      }
+    }
+  },
+  "replaceSkipped": "{count, plural, =1{1 note changed elsewhere since the preview and was left alone.} other{{count} notes changed elsewhere since the preview and were left alone.}}",
+  "@replaceSkipped": {
+    "description": "What the screen adds when notes were left alone because they changed since the preview.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "replaceUndo": "Undo replace",
+  "@replaceUndo": {
+    "description": "The button that puts the replaced notes back."
+  },
+  "replaceUndoing": "Putting back…",
+  "@replaceUndoing": {
+    "description": "What the undo button says while it works."
+  },
+  "replaceUndone": "Put back {count, plural, =1{1 note} other{{count} notes}}.",
+  "@replaceUndone": {
+    "description": "What the screen says after undoing a replace.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "replaceUndoSkipped": "{count, plural, =1{1 note was edited since and kept its changes.} other{{count} notes were edited since and kept their changes.}}",
+  "@replaceUndoSkipped": {
+    "description": "What the screen adds when undoing left notes that were edited since.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "replaceDismiss": "Dismiss",
+  "@replaceDismiss": {
+    "description": "Hides what the last replace did."
+  },
+  "replaceProblemBadPattern": "The text to find can’t be used as a regular expression.",
+  "@replaceProblemBadPattern": {
+    "description": "Says a replace was refused because the pattern does not parse."
+  },
+  "replaceProblemApply": "The notes couldn’t be changed.",
+  "@replaceProblemApply": {
+    "description": "Says a replace failed."
+  },
+  "replaceProblemUndo": "The notes couldn’t be put back.",
+  "@replaceProblemUndo": {
+    "description": "Says undoing a replace failed."
+  },
+  "replaceProblemSearch": "The notes couldn’t be searched.",
+  "@replaceProblemSearch": {
+    "description": "Says the preview could not be made."
   }
 }

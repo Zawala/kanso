@@ -16,6 +16,17 @@ import 'shared.dart';
 import 'sync.dart';
 import 'types.dart';
 
+/// What the Replace button says, or nothing when there is nothing to do.
+String? replaceApplyLabel({required int matches, required int notes}) =>
+    KansoCore.instance.api.crateApiLibraryReplaceApplyLabel(
+      matches: matches,
+      notes: notes,
+    );
+
+/// What the backups screen says of the daily backup and Back up now.
+String backupsSummary() =>
+    KansoCore.instance.api.crateApiLibraryBackupsSummary();
+
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
 abstract class KansoLibrary implements RustOpaqueInterface {
   KansoAccount account();
@@ -25,6 +36,14 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   KansoApprovals approvals();
 
   Future<AttachmentFile> attachment({required String id});
+
+  Future<BackupFile> backUpNow();
+
+  /// Makes the daily backup if one is due.
+  Future<BackupFile?> backupIfDue();
+
+  /// The backups, newest first.
+  Future<List<BackupFile>> backups();
 
   /// Saves something shared from inside the app as a note in the Inbox.
   Future<CaptureOutcome> capture({required Share share});
@@ -46,10 +65,19 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<NotebookRow> createNotebook({required String name, String? parentId});
 
+  /// Deletes a backup made with `back_up_now`; refuses any other.
+  Future<void> deleteBackup({required String path});
+
   /// Opens note `id` for editing. Locked while it is locked and closed.
   Future<KansoEditor> edit({required String id});
 
   KansoGallery gallery();
+
+  /// The note's saved versions, newest first, beside the note now.
+  Future<NoteHistory> history({required String id});
+
+  /// What changed from version `rev` to the note now, section by section.
+  Future<List<DiffHunk>> historyDiff({required String id, required String rev});
 
   Future<NoteList> list({required ListQuery query});
 
@@ -73,6 +101,24 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   Future<Table> queryView({required String source, String? selfId});
 
   KansoRenderer renderer();
+
+  Future<ReplaceOutcome> replaceApply({
+    required ReplaceOptions options,
+    required String replacement,
+    required List<PlannedNote> planned,
+  });
+
+  Future<ReplacePreview> replacePreview({required ReplaceOptions options});
+
+  /// Undoes a replace by its batch; says what was put back.
+  Future<ReplaceUndone> replaceUndo({required String batch});
+
+  /// Sets the note's title and text to those of version `rev`.
+  Future<Saved> restoreVersion({
+    required String id,
+    required String rev,
+    required String baseRev,
+  });
 
   Future<Saved> save({
     required String id,
