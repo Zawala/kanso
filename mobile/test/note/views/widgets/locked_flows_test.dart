@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
+import 'package:kanso/settings/views/widgets/settings_pane.dart';
 import 'package:kanso_lock/kanso_lock.dart';
 
 import '../../../helpers/browse_blocs.dart';
@@ -316,7 +317,16 @@ void main() {
     Future<void> settings(WidgetTester tester, BrowseApp app) async {
       unawaited(app.router.push<void>('/settings'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Change lock password…'));
+      // The page is a lazily built list, so the row has to be scrolled to
+      // before it exists to be found.
+      await tester.scrollUntilVisible(
+        find.text('Change lock password…'),
+        200,
+        scrollable: find.descendant(
+          of: find.byType(SettingsPane),
+          matching: find.byType(Scrollable),
+        ),
+      );
       await tester.pumpAndSettle();
     }
 
