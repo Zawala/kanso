@@ -1245,6 +1245,750 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OK'**
   String get backupNoticeOk;
+
+  /// The title of the sheet that shares a note, and the label of the button that opens it.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get shareTitle;
+
+  /// Closes the share sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get shareClose;
+
+  /// Says to a screen reader that a note's sharing is being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading sharing'**
+  String get shareLoading;
+
+  /// All the share sheet says of a locked note.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked notes can’t be shared.'**
+  String get shareLockedNote;
+
+  /// The share sheet's message while no account is signed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing lets people you choose read, comment on or edit a note with you, end-to-end encrypted. It needs a Kanso account: sign in, or create one, then share.'**
+  String get shareSignedOut;
+
+  /// Opens Settings to sign in, from the share sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in…'**
+  String get shareSignIn;
+
+  /// The title of the card shown when a note's sharing could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing didn’t load'**
+  String get shareFailedTitle;
+
+  /// The message of the card shown when a note's sharing could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading this note’s sharing. Try again.'**
+  String get shareFailedMessage;
+
+  /// What the share sheet says of a note that is not shared yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite people by their Kanso username to read, comment on or edit this note with you. It stays end-to-end encrypted: your sync server passes it on without reading it.'**
+  String get shareIntro;
+
+  /// What the share sheet says to someone a note was shared with.
+  ///
+  /// In en, this message translates to:
+  /// **'{owner} shared this note with you. You {access}.'**
+  String shareSharedWithYou(String owner, String access);
+
+  /// What a viewer can do with a shared note, to finish 'You …'.
+  ///
+  /// In en, this message translates to:
+  /// **'can read it'**
+  String get shareAccessView;
+
+  /// What a commenter can do with a shared note, to finish 'You …'.
+  ///
+  /// In en, this message translates to:
+  /// **'can read it and comment on it'**
+  String get shareAccessComment;
+
+  /// What an editor can do with a shared note, to finish 'You …'.
+  ///
+  /// In en, this message translates to:
+  /// **'can edit it'**
+  String get shareAccessEdit;
+
+  /// The hint in the field for the username of the person to invite.
+  ///
+  /// In en, this message translates to:
+  /// **'Username'**
+  String get shareUsernameHint;
+
+  /// Invites the person whose username is typed.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite'**
+  String get shareInvite;
+
+  /// Names the choice of role for an invitation, to a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'What the person you invite can do'**
+  String get shareInviteRoleLabel;
+
+  /// A person who owns a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner'**
+  String get shareRoleOwner;
+
+  /// A person who can edit a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'Can edit'**
+  String get shareRoleEditor;
+
+  /// A person who can comment on a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'Can comment'**
+  String get shareRoleCommenter;
+
+  /// A person who can only read a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'Can view'**
+  String get shareRoleViewer;
+
+  /// Says that a person was invited.
+  ///
+  /// In en, this message translates to:
+  /// **'Invited {username}. The note shows for them once they accept.'**
+  String shareInvited(String username);
+
+  /// Says that the owner stopped sharing a note.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing stopped. Everyone keeps a private copy of the note as it is.'**
+  String get shareStopped;
+
+  /// Says that the person left a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'You left the note. Your copy of it is private now.'**
+  String get shareLeft;
+
+  /// Says that no username was typed.
+  ///
+  /// In en, this message translates to:
+  /// **'Type the username of the person to invite.'**
+  String get shareProblemNameMissing;
+
+  /// Says that no invite link was typed.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste the invite link first.'**
+  String get shareProblemLinkMissing;
+
+  /// Says that the sync server could not be reached while sharing.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn’t reach your sync server. Check your connection and try again.'**
+  String get shareProblemOffline;
+
+  /// Says that the account signed the device out while sharing.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account signed this device out. Sign in again to share.'**
+  String get shareProblemSignedOut;
+
+  /// Says that a step of sharing failed for no reason the person can act on.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Try again.'**
+  String get shareProblemUnexpected;
+
+  /// The label above the people a note is shared with.
+  ///
+  /// In en, this message translates to:
+  /// **'People'**
+  String get sharePeople;
+
+  /// Says that a person has not accepted their invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Invited, hasn’t accepted yet'**
+  String get shareMemberInvited;
+
+  /// Says that a person declined their invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Declined'**
+  String get shareMemberDeclined;
+
+  /// Says that a person left the note.
+  ///
+  /// In en, this message translates to:
+  /// **'Left'**
+  String get shareMemberLeft;
+
+  /// Marks the person's own row in the list of people.
+  ///
+  /// In en, this message translates to:
+  /// **'You'**
+  String get shareMemberYou;
+
+  /// Says that a person's keys changed or could not be checked.
+  ///
+  /// In en, this message translates to:
+  /// **'Can’t be checked'**
+  String get shareMemberUnchecked;
+
+  /// Says that a person's fingerprint was compared and matches.
+  ///
+  /// In en, this message translates to:
+  /// **'Fingerprint verified'**
+  String get shareMemberVerified;
+
+  /// Reviews the new keys of a person whose keys changed.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept the new key'**
+  String get shareMemberAcceptKey;
+
+  /// Removes a person from a shared note, or cancels their invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from note'**
+  String get shareMemberRemove;
+
+  /// Names the button that changes a person's role, to a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Change what {username} can do'**
+  String shareMemberRoleLabel(String username);
+
+  /// The label above the people who asked to join through a link.
+  ///
+  /// In en, this message translates to:
+  /// **'Asked to join'**
+  String get shareRequests;
+
+  /// Says that a person asked to join through a link.
+  ///
+  /// In en, this message translates to:
+  /// **'{username} asked to join'**
+  String shareRequestAsked(String username);
+
+  /// Under a request to join: the role the link gives and the person's fingerprint.
+  ///
+  /// In en, this message translates to:
+  /// **'{role} · Fingerprint {fingerprint}'**
+  String shareRequestDetail(String role, String fingerprint);
+
+  /// Lets in a person who asked to join.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve'**
+  String get shareApprove;
+
+  /// Turns away a person who asked to join, or declines an invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get shareDecline;
+
+  /// The label above a note's invite links.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite links'**
+  String get shareLinks;
+
+  /// An invite link that has expired.
+  ///
+  /// In en, this message translates to:
+  /// **'{role}, expired'**
+  String shareLinkExpired(String role);
+
+  /// An invite link and how long it still works.
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =1{{role}, for 1 more day} other{{role}, for {days} more days}}'**
+  String shareLinkDaysLeft(String role, int days);
+
+  /// Cancels an invite link.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel link'**
+  String get shareLinkCancel;
+
+  /// Makes an invite link.
+  ///
+  /// In en, this message translates to:
+  /// **'Make link'**
+  String get shareLinkMake;
+
+  /// Names the choice of role for a link, to a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'What people who join with the link can do'**
+  String get shareLinkRoleLabel;
+
+  /// Names the choice of days for a link, to a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'How long the link works'**
+  String get shareLinkDaysLabel;
+
+  /// How many days a link works.
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =1{1 day} other{{days} days}}'**
+  String shareLinkDays(int days);
+
+  /// Names the made link, to a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite link'**
+  String get shareLinkAddress;
+
+  /// Copies the invite link.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get shareLinkCopy;
+
+  /// Says that the invite link was copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get shareLinkCopied;
+
+  /// Sends the invite link through the system's share sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get shareLinkSend;
+
+  /// Says what an invite link does and that it can be seen once.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with the link can ask to join; you approve each of them here. Copy it now: it can’t be shown again.'**
+  String get shareLinkNote;
+
+  /// Stops sharing a note.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop sharing'**
+  String get shareStop;
+
+  /// Confirms stopping the sharing of a note.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop sharing for everyone'**
+  String get shareStopEveryone;
+
+  /// Leaves a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get shareLeave;
+
+  /// Confirms leaving a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave the note'**
+  String get shareLeaveNote;
+
+  /// Warns before the owner stops sharing.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopping sharing ends the note for everyone in it. Each of them keeps a private copy of it as it is now.'**
+  String get shareStopWarning;
+
+  /// Warns before the person leaves a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'Leaving takes you out of the note. You keep a private copy of it as it is now.'**
+  String get shareLeaveWarning;
+
+  /// Cancels stopping or leaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep sharing'**
+  String get shareKeepSharing;
+
+  /// Goes back from a question about someone's keys.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get shareBack;
+
+  /// Asks the person to compare a fingerprint before the first share with someone.
+  ///
+  /// In en, this message translates to:
+  /// **'You’re sharing with {username} for the first time. Compare this fingerprint with the one they see in Settings › Account, in person or on a call. If it matches, nobody is standing between you.'**
+  String shareVerifyIntro(String username);
+
+  /// Marks a fingerprint as compared and invites the person.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as verified and invite'**
+  String get shareVerifyConfirm;
+
+  /// Warns that someone's keys changed.
+  ///
+  /// In en, this message translates to:
+  /// **'{username}’s keys changed since you last shared with them. That happens when they set up their account again, and also when someone tries to read what you share. Ask them which fingerprint they see now before you trust it.'**
+  String shareKeyChangedIntro(String username);
+
+  /// The label above the fingerprint pinned before.
+  ///
+  /// In en, this message translates to:
+  /// **'Before'**
+  String get shareKeyBefore;
+
+  /// The label above the fingerprint the server gives now.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get shareKeyNow;
+
+  /// Pins the new keys of someone whose keys changed.
+  ///
+  /// In en, this message translates to:
+  /// **'Trust the new keys'**
+  String get shareKeyTrust;
+
+  /// Turns down inviting someone whose keys changed.
+  ///
+  /// In en, this message translates to:
+  /// **'Don’t invite'**
+  String get shareKeyDontInvite;
+
+  /// Leaves the question about a member's new keys.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get shareKeyNotNow;
+
+  /// Names a fingerprint, to a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'{username}’s fingerprint'**
+  String shareFingerprintLabel(String username);
+
+  /// The title of the screen of invitations, and the library's row for it.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with you'**
+  String get sharedWithYouTitle;
+
+  /// The title of the empty list of invitations.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing shared with you'**
+  String get sharedWithYouEmptyTitle;
+
+  /// The message of the empty list of invitations.
+  ///
+  /// In en, this message translates to:
+  /// **'When someone shares a note with you, it waits here until you accept it.'**
+  String get sharedWithYouEmptyMessage;
+
+  /// The title shown while no account is signed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to get shared notes'**
+  String get sharedWithYouSignedOutTitle;
+
+  /// The message shown while no account is signed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes other people share with you reach this phone once it is signed in to a Kanso account. Sign in from Settings.'**
+  String get sharedWithYouSignedOutMessage;
+
+  /// The title of the card shown when invitations could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared notes didn’t load'**
+  String get sharedWithYouFailedTitle;
+
+  /// The message of the card shown when invitations could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong looking for notes shared with you. Try again.'**
+  String get sharedWithYouFailedMessage;
+
+  /// Says to a screen reader that invitations are being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading shared notes'**
+  String get sharedWithYouLoading;
+
+  /// The title of an invitation; the note's own title is sealed until it is accepted.
+  ///
+  /// In en, this message translates to:
+  /// **'A note from {from}'**
+  String sharedInvitationFrom(String from);
+
+  /// Accepts an invitation to a shared note.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept'**
+  String get sharedAccept;
+
+  /// Opens the screen that joins a note with an invite link.
+  ///
+  /// In en, this message translates to:
+  /// **'Join with a link'**
+  String get sharedJoinWithLink;
+
+  /// The title of the screen that joins a note with an invite link.
+  ///
+  /// In en, this message translates to:
+  /// **'Join with a link'**
+  String get joinTitle;
+
+  /// Says what joining with a link does.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste the invite link you were sent. The note’s owner lets you in, and the note comes to your library once they do.'**
+  String get joinMessage;
+
+  /// The hint in the field for an invite link.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite link'**
+  String get joinHint;
+
+  /// Asks to join the note an invite link is for.
+  ///
+  /// In en, this message translates to:
+  /// **'Join'**
+  String get joinButton;
+
+  /// Says who was asked to let the person in.
+  ///
+  /// In en, this message translates to:
+  /// **'Asked {owner} to let you in. The note shows in your library once they approve.'**
+  String joinAsked(String owner);
+
+  /// Goes back to an empty field to join another note.
+  ///
+  /// In en, this message translates to:
+  /// **'Join another note'**
+  String get joinAnother;
+
+  /// The label above the community's themes on the theme page.
+  ///
+  /// In en, this message translates to:
+  /// **'Gallery'**
+  String get galleryTitle;
+
+  /// The hint in the gallery's search field.
+  ///
+  /// In en, this message translates to:
+  /// **'Search themes'**
+  String get gallerySearchHint;
+
+  /// Clears the gallery's search field.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear search'**
+  String get gallerySearchClear;
+
+  /// Names the choice of order, to a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Order of the themes'**
+  String get galleryFilterLabel;
+
+  /// Orders the gallery's themes by how many installed them.
+  ///
+  /// In en, this message translates to:
+  /// **'Popular'**
+  String get galleryFilterPopular;
+
+  /// Orders the gallery's themes by when they were updated.
+  ///
+  /// In en, this message translates to:
+  /// **'Recently updated'**
+  String get galleryFilterRecent;
+
+  /// A badge on a theme made by Kanso.
+  ///
+  /// In en, this message translates to:
+  /// **'Official'**
+  String get galleryBadgeOfficial;
+
+  /// A badge on a theme made by the community.
+  ///
+  /// In en, this message translates to:
+  /// **'Community'**
+  String get galleryBadgeCommunity;
+
+  /// A badge on a theme that draws icons rather than colours.
+  ///
+  /// In en, this message translates to:
+  /// **'Icons'**
+  String get galleryBadgeIcons;
+
+  /// A badge on an installed theme the catalog withdrew.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdrawn'**
+  String get galleryBadgeWithdrawn;
+
+  /// Who made a theme.
+  ///
+  /// In en, this message translates to:
+  /// **'by {author}'**
+  String galleryBy(String author);
+
+  /// A theme's version.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version}'**
+  String galleryVersion(String version);
+
+  /// How many times a theme was installed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 install} other{{count} installs}}'**
+  String galleryInstalls(int count);
+
+  /// Installs a theme from the gallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Install'**
+  String get galleryInstall;
+
+  /// Says that a theme from the gallery is installed.
+  ///
+  /// In en, this message translates to:
+  /// **'Installed'**
+  String get galleryInstalled;
+
+  /// Updates an installed theme to the gallery's newer version.
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get galleryUpdate;
+
+  /// Removes an installed theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get galleryRemove;
+
+  /// Says that a theme is being installed.
+  ///
+  /// In en, this message translates to:
+  /// **'Installing…'**
+  String get galleryInstalling;
+
+  /// Says that a theme is being updated.
+  ///
+  /// In en, this message translates to:
+  /// **'Updating…'**
+  String get galleryUpdating;
+
+  /// Says that a theme is being removed.
+  ///
+  /// In en, this message translates to:
+  /// **'Removing…'**
+  String get galleryRemoving;
+
+  /// Says that a theme can't be installed by this version.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs a newer Kanso'**
+  String get galleryNeedsNewer;
+
+  /// Says to a screen reader that the gallery is being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading the gallery'**
+  String get galleryLoading;
+
+  /// The title of the card shown when the gallery could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The gallery didn’t load'**
+  String get galleryFailedTitle;
+
+  /// The message of the card shown when the gallery could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn’t reach the theme gallery. Check your connection and try again.'**
+  String get galleryFailedMessage;
+
+  /// Says that the gallery shown may be old.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing the last list. Couldn’t reach the gallery just now.'**
+  String get galleryStale;
+
+  /// Says that the gallery is being fetched again.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking for new themes…'**
+  String get galleryRefreshing;
+
+  /// The title shown when a search finds no theme.
+  ///
+  /// In en, this message translates to:
+  /// **'No themes match'**
+  String get galleryNoResultsTitle;
+
+  /// The message shown when a search finds no theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing in the gallery matches “{query}”. Try another word.'**
+  String galleryNoResultsMessage(String query);
+
+  /// The title shown when the gallery has no themes.
+  ///
+  /// In en, this message translates to:
+  /// **'The gallery is empty'**
+  String get galleryEmptyTitle;
+
+  /// The message shown when the gallery has no themes.
+  ///
+  /// In en, this message translates to:
+  /// **'There are no themes to show yet.'**
+  String get galleryEmptyMessage;
+
+  /// Says that the gallery could not be reached while installing.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn’t reach the gallery. Check your connection and try again.'**
+  String get galleryProblemOffline;
+
+  /// Says that installing or removing a theme failed for no reason the person can act on.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Try again.'**
+  String get galleryProblemUnexpected;
+
+  /// Reads the invitations again, as a screen reader says it.
+  ///
+  /// In en, this message translates to:
+  /// **'Look for new shared notes'**
+  String get sharedWithYouRefresh;
+
+  /// The title of the card that says a request to join was sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Request sent'**
+  String get joinSentTitle;
 }
 
 class _AppLocalizationsDelegate

@@ -654,4 +654,445 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get backupNoticeOk => 'OK';
+
+  @override
+  String get shareTitle => 'Share';
+
+  @override
+  String get shareClose => 'Close';
+
+  @override
+  String get shareLoading => 'Loading sharing';
+
+  @override
+  String get shareLockedNote => 'Locked notes can’t be shared.';
+
+  @override
+  String get shareSignedOut =>
+      'Sharing lets people you choose read, comment on or edit a note with you, end-to-end encrypted. It needs a Kanso account: sign in, or create one, then share.';
+
+  @override
+  String get shareSignIn => 'Sign in…';
+
+  @override
+  String get shareFailedTitle => 'Sharing didn’t load';
+
+  @override
+  String get shareFailedMessage =>
+      'Something went wrong reading this note’s sharing. Try again.';
+
+  @override
+  String get shareIntro =>
+      'Invite people by their Kanso username to read, comment on or edit this note with you. It stays end-to-end encrypted: your sync server passes it on without reading it.';
+
+  @override
+  String shareSharedWithYou(String owner, String access) {
+    return '$owner shared this note with you. You $access.';
+  }
+
+  @override
+  String get shareAccessView => 'can read it';
+
+  @override
+  String get shareAccessComment => 'can read it and comment on it';
+
+  @override
+  String get shareAccessEdit => 'can edit it';
+
+  @override
+  String get shareUsernameHint => 'Username';
+
+  @override
+  String get shareInvite => 'Invite';
+
+  @override
+  String get shareInviteRoleLabel => 'What the person you invite can do';
+
+  @override
+  String get shareRoleOwner => 'Owner';
+
+  @override
+  String get shareRoleEditor => 'Can edit';
+
+  @override
+  String get shareRoleCommenter => 'Can comment';
+
+  @override
+  String get shareRoleViewer => 'Can view';
+
+  @override
+  String shareInvited(String username) {
+    return 'Invited $username. The note shows for them once they accept.';
+  }
+
+  @override
+  String get shareStopped =>
+      'Sharing stopped. Everyone keeps a private copy of the note as it is.';
+
+  @override
+  String get shareLeft => 'You left the note. Your copy of it is private now.';
+
+  @override
+  String get shareProblemNameMissing =>
+      'Type the username of the person to invite.';
+
+  @override
+  String get shareProblemLinkMissing => 'Paste the invite link first.';
+
+  @override
+  String get shareProblemOffline =>
+      'Couldn’t reach your sync server. Check your connection and try again.';
+
+  @override
+  String get shareProblemSignedOut =>
+      'Your account signed this device out. Sign in again to share.';
+
+  @override
+  String get shareProblemUnexpected => 'Something went wrong. Try again.';
+
+  @override
+  String get sharePeople => 'People';
+
+  @override
+  String get shareMemberInvited => 'Invited, hasn’t accepted yet';
+
+  @override
+  String get shareMemberDeclined => 'Declined';
+
+  @override
+  String get shareMemberLeft => 'Left';
+
+  @override
+  String get shareMemberYou => 'You';
+
+  @override
+  String get shareMemberUnchecked => 'Can’t be checked';
+
+  @override
+  String get shareMemberVerified => 'Fingerprint verified';
+
+  @override
+  String get shareMemberAcceptKey => 'Accept the new key';
+
+  @override
+  String get shareMemberRemove => 'Remove from note';
+
+  @override
+  String shareMemberRoleLabel(String username) {
+    return 'Change what $username can do';
+  }
+
+  @override
+  String get shareRequests => 'Asked to join';
+
+  @override
+  String shareRequestAsked(String username) {
+    return '$username asked to join';
+  }
+
+  @override
+  String shareRequestDetail(String role, String fingerprint) {
+    return '$role · Fingerprint $fingerprint';
+  }
+
+  @override
+  String get shareApprove => 'Approve';
+
+  @override
+  String get shareDecline => 'Decline';
+
+  @override
+  String get shareLinks => 'Invite links';
+
+  @override
+  String shareLinkExpired(String role) {
+    return '$role, expired';
+  }
+
+  @override
+  String shareLinkDaysLeft(String role, int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$role, for $days more days',
+      one: '$role, for 1 more day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get shareLinkCancel => 'Cancel link';
+
+  @override
+  String get shareLinkMake => 'Make link';
+
+  @override
+  String get shareLinkRoleLabel => 'What people who join with the link can do';
+
+  @override
+  String get shareLinkDaysLabel => 'How long the link works';
+
+  @override
+  String shareLinkDays(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days',
+      one: '1 day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get shareLinkAddress => 'Invite link';
+
+  @override
+  String get shareLinkCopy => 'Copy';
+
+  @override
+  String get shareLinkCopied => 'Copied';
+
+  @override
+  String get shareLinkSend => 'Send';
+
+  @override
+  String get shareLinkNote =>
+      'Anyone with the link can ask to join; you approve each of them here. Copy it now: it can’t be shown again.';
+
+  @override
+  String get shareStop => 'Stop sharing';
+
+  @override
+  String get shareStopEveryone => 'Stop sharing for everyone';
+
+  @override
+  String get shareLeave => 'Leave';
+
+  @override
+  String get shareLeaveNote => 'Leave the note';
+
+  @override
+  String get shareStopWarning =>
+      'Stopping sharing ends the note for everyone in it. Each of them keeps a private copy of it as it is now.';
+
+  @override
+  String get shareLeaveWarning =>
+      'Leaving takes you out of the note. You keep a private copy of it as it is now.';
+
+  @override
+  String get shareKeepSharing => 'Keep sharing';
+
+  @override
+  String get shareBack => 'Back';
+
+  @override
+  String shareVerifyIntro(String username) {
+    return 'You’re sharing with $username for the first time. Compare this fingerprint with the one they see in Settings › Account, in person or on a call. If it matches, nobody is standing between you.';
+  }
+
+  @override
+  String get shareVerifyConfirm => 'Mark as verified and invite';
+
+  @override
+  String shareKeyChangedIntro(String username) {
+    return '$username’s keys changed since you last shared with them. That happens when they set up their account again, and also when someone tries to read what you share. Ask them which fingerprint they see now before you trust it.';
+  }
+
+  @override
+  String get shareKeyBefore => 'Before';
+
+  @override
+  String get shareKeyNow => 'Now';
+
+  @override
+  String get shareKeyTrust => 'Trust the new keys';
+
+  @override
+  String get shareKeyDontInvite => 'Don’t invite';
+
+  @override
+  String get shareKeyNotNow => 'Not now';
+
+  @override
+  String shareFingerprintLabel(String username) {
+    return '$username’s fingerprint';
+  }
+
+  @override
+  String get sharedWithYouTitle => 'Shared with you';
+
+  @override
+  String get sharedWithYouEmptyTitle => 'Nothing shared with you';
+
+  @override
+  String get sharedWithYouEmptyMessage =>
+      'When someone shares a note with you, it waits here until you accept it.';
+
+  @override
+  String get sharedWithYouSignedOutTitle => 'Sign in to get shared notes';
+
+  @override
+  String get sharedWithYouSignedOutMessage =>
+      'Notes other people share with you reach this phone once it is signed in to a Kanso account. Sign in from Settings.';
+
+  @override
+  String get sharedWithYouFailedTitle => 'Shared notes didn’t load';
+
+  @override
+  String get sharedWithYouFailedMessage =>
+      'Something went wrong looking for notes shared with you. Try again.';
+
+  @override
+  String get sharedWithYouLoading => 'Loading shared notes';
+
+  @override
+  String sharedInvitationFrom(String from) {
+    return 'A note from $from';
+  }
+
+  @override
+  String get sharedAccept => 'Accept';
+
+  @override
+  String get sharedJoinWithLink => 'Join with a link';
+
+  @override
+  String get joinTitle => 'Join with a link';
+
+  @override
+  String get joinMessage =>
+      'Paste the invite link you were sent. The note’s owner lets you in, and the note comes to your library once they do.';
+
+  @override
+  String get joinHint => 'Invite link';
+
+  @override
+  String get joinButton => 'Join';
+
+  @override
+  String joinAsked(String owner) {
+    return 'Asked $owner to let you in. The note shows in your library once they approve.';
+  }
+
+  @override
+  String get joinAnother => 'Join another note';
+
+  @override
+  String get galleryTitle => 'Gallery';
+
+  @override
+  String get gallerySearchHint => 'Search themes';
+
+  @override
+  String get gallerySearchClear => 'Clear search';
+
+  @override
+  String get galleryFilterLabel => 'Order of the themes';
+
+  @override
+  String get galleryFilterPopular => 'Popular';
+
+  @override
+  String get galleryFilterRecent => 'Recently updated';
+
+  @override
+  String get galleryBadgeOfficial => 'Official';
+
+  @override
+  String get galleryBadgeCommunity => 'Community';
+
+  @override
+  String get galleryBadgeIcons => 'Icons';
+
+  @override
+  String get galleryBadgeWithdrawn => 'Withdrawn';
+
+  @override
+  String galleryBy(String author) {
+    return 'by $author';
+  }
+
+  @override
+  String galleryVersion(String version) {
+    return 'Version $version';
+  }
+
+  @override
+  String galleryInstalls(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count installs',
+      one: '1 install',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get galleryInstall => 'Install';
+
+  @override
+  String get galleryInstalled => 'Installed';
+
+  @override
+  String get galleryUpdate => 'Update';
+
+  @override
+  String get galleryRemove => 'Remove';
+
+  @override
+  String get galleryInstalling => 'Installing…';
+
+  @override
+  String get galleryUpdating => 'Updating…';
+
+  @override
+  String get galleryRemoving => 'Removing…';
+
+  @override
+  String get galleryNeedsNewer => 'Needs a newer Kanso';
+
+  @override
+  String get galleryLoading => 'Loading the gallery';
+
+  @override
+  String get galleryFailedTitle => 'The gallery didn’t load';
+
+  @override
+  String get galleryFailedMessage =>
+      'Couldn’t reach the theme gallery. Check your connection and try again.';
+
+  @override
+  String get galleryStale =>
+      'Showing the last list. Couldn’t reach the gallery just now.';
+
+  @override
+  String get galleryRefreshing => 'Checking for new themes…';
+
+  @override
+  String get galleryNoResultsTitle => 'No themes match';
+
+  @override
+  String galleryNoResultsMessage(String query) {
+    return 'Nothing in the gallery matches “$query”. Try another word.';
+  }
+
+  @override
+  String get galleryEmptyTitle => 'The gallery is empty';
+
+  @override
+  String get galleryEmptyMessage => 'There are no themes to show yet.';
+
+  @override
+  String get galleryProblemOffline =>
+      'Couldn’t reach the gallery. Check your connection and try again.';
+
+  @override
+  String get galleryProblemUnexpected => 'Something went wrong. Try again.';
+
+  @override
+  String get sharedWithYouRefresh => 'Look for new shared notes';
+
+  @override
+  String get joinSentTitle => 'Request sent';
 }

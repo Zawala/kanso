@@ -56,6 +56,11 @@ Future<GoRouter> pumpRouted(
           GoRoute(path: 'licences', builder: empty),
         ],
       ),
+      GoRoute(
+        path: '/shared',
+        builder: empty,
+        routes: <RouteBase>[GoRoute(path: 'join', builder: empty)],
+      ),
       GoRoute(path: '/design', builder: empty),
     ],
   );

@@ -17,10 +17,13 @@ import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
+import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 
 import 'browse_blocs.dart';
+import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_shared_notes_repository.dart';
 import 'register_page_blocs.dart';
 import 'seeded_appearance_bloc.dart';
 
@@ -51,7 +54,9 @@ class BrowseApp {
 /// [tabletDevice] says whether the display is a tablet's, which a narrow
 /// window of one (a Split View half) is not enough to tell; it defaults to
 /// what the window's own size says. [backupNotice] is the notice's BLoC; it
-/// defaults to one that is not shown. The app is inside a repaint boundary,
+/// defaults to one that is not shown. [shared] and [gallery] are the shared
+/// notes and the theme gallery the app reads, if a test has made them. The
+/// app is inside a repaint boundary,
 /// [appBoundaryKey], to take a picture of.
 Future<BrowseApp> pumpBrowseApp(
   WidgetTester tester,
@@ -63,11 +68,13 @@ Future<BrowseApp> pumpBrowseApp(
   EdgeInsets safeArea = EdgeInsets.zero,
   bool? tabletDevice,
   BackupNoticeBloc? backupNotice,
+  FixtureSharedNotesRepository? shared,
+  FixtureGalleryRepository? gallery,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
-  final blocs = await BrowseBlocs.start(library);
-  registerPageBlocs(blocs.library);
+  final blocs = await BrowseBlocs.start(library, null, shared);
+  registerPageBlocs(blocs.library, null, gallery, blocs.shared);
   final padding = FakeViewPadding(
     left: safeArea.left * devicePixelRatio,
     top: safeArea.top * devicePixelRatio,
@@ -99,6 +106,7 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<AppearanceBloc>.value(value: bloc),
           BlocProvider<NavigationHistoryBloc>.value(value: blocs.history),
           BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
+          BlocProvider<InvitationsBloc>.value(value: blocs.invitations),
           BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
           BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
           BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),

@@ -12,16 +12,21 @@ import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/browse_location.dart';
 import 'package:kanso/core/models/data/library_index_status.dart';
+import 'package:kanso/core/models/data/load_status.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
+import 'package:kanso/core/views/widgets/kanso_badge.dart';
 import 'package:kanso/core/views/widgets/kanso_drawer.dart';
 import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
 import 'package:kanso/library/views/widgets/library_pane.dart';
+import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 
 import '../../../helpers/close_bloc_later.dart';
 import '../../../helpers/fixture_library_repository.dart';
+import '../../../helpers/fixture_shared_notes_repository.dart';
 import '../../../helpers/golden.dart';
 import '../../../helpers/library_fixtures.dart';
 import '../../../helpers/pump_routed.dart';
+import '../../../helpers/sharing_fixtures.dart';
 
 Future<LibraryIndexBloc> _readyIndex(
   WidgetTester tester,
@@ -36,9 +41,20 @@ Future<LibraryIndexBloc> _readyIndex(
   return bloc;
 }
 
-Widget _pane(LibraryIndexBloc bloc, {BrowseLocation? location}) {
-  return BlocProvider<LibraryIndexBloc>.value(
-    value: bloc,
+Widget _pane(
+  LibraryIndexBloc bloc, {
+  BrowseLocation? location,
+  InvitationsBloc? invitations,
+}) {
+  final shared = invitations ?? InvitationsBloc(FixtureSharedNotesRepository());
+  if (invitations == null) {
+    closeBlocLater(shared);
+  }
+  return MultiBlocProvider(
+    providers: <BlocProvider<dynamic>>[
+      BlocProvider<LibraryIndexBloc>.value(value: bloc),
+      BlocProvider<InvitationsBloc>.value(value: shared),
+    ],
     child: LibraryPane(
       location: location ?? const BrowseLocation.place(ListPlace.all()),
     ),
@@ -179,6 +195,48 @@ void main() {
       await tester.tap(find.text('todo'));
       await tester.pumpAndSettle();
       expect(whereIs(router), '/tags/${Uri.encodeComponent(MockIds.tagTodo)}');
+    });
+
+    testWidgets('has Shared with you after Recent, with no count while '
+        'nothing waits', (tester) async {
+      final bloc = await _readyIndex(tester, library);
+      await pumpRouted(tester, _pane(bloc), size: const Size(393, 1400));
+      final labels = tester
+          .widgetList<KansoSidebarRow>(find.byType(KansoSidebarRow))
+          .map((row) => row.label)
+          .toList();
+      expect(labels.indexOf('Shared with you'), labels.indexOf('Recent') + 1);
+      expect(find.byType(KansoBadge), findsNothing);
+    });
+
+    testWidgets('Shared with you shows how many invitations wait, and opens '
+        'them after reading them again', (tester) async {
+      final bloc = await _readyIndex(tester, library);
+      final shared = FixtureSharedNotesRepository()
+        ..invitationList = <InvitationRow>[
+          invitationRow('s_1'),
+          invitationRow('s_2'),
+        ];
+      final invitations = InvitationsBloc(shared)
+        ..add(const InvitationsEvent.started());
+      closeBlocLater(invitations);
+      await invitations.stream.firstWhere(
+        (state) => state.status != LoadStatus.loading,
+      );
+      final router = await pumpRouted(
+        tester,
+        _pane(bloc, invitations: invitations),
+        size: const Size(393, 1400),
+      );
+      expect(
+        tester.widget<KansoBadge>(find.byType(KansoBadge)).label,
+        '2',
+      );
+      shared.invitationList = <InvitationRow>[invitationRow('s_1')];
+      await tester.tap(find.text('Shared with you'));
+      await tester.pumpAndSettle();
+      expect(topOf(router), '/shared');
+      expect(invitations.state.invitations.length, 1);
     });
 
     testWidgets('the search field opens search; settings opens settings', (

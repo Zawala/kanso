@@ -14,6 +14,8 @@ import '../../search/views/pages/search_page.dart';
 import '../../settings/views/pages/fonts_page.dart';
 import '../../settings/views/pages/licences_page.dart';
 import '../../settings/views/pages/settings_page.dart';
+import '../../sharing/views/pages/join_link_page.dart';
+import '../../sharing/views/pages/shared_with_you_page.dart';
 import '../../shell/views/widgets/browse_shell.dart';
 import '../../themes/views/pages/theme_picker_page.dart';
 import '../bridge/api/types.dart';
@@ -33,7 +35,8 @@ import 'layout_class_notifier.dart';
 /// * Settings is a shell of its own on top of the root navigator, so it
 ///   opens over what the person was doing and closes back to it, with
 ///   Theme, Fonts and Licences sliding inside it. It is a sheet on a tablet
-///   and a page on a phone.
+///   and a page on a phone. Shared with you, and Join with a link inside
+///   it, are in that shell too.
 /// * `kanso://open/…` links and the short forms (`/note/:id`,
 ///   `/notebook/:id`) land on the addresses above; an address that is
 ///   nothing goes to All Notes.
@@ -161,6 +164,22 @@ class KansoRouter {
                   pageBuilder: (context, state) => CupertinoPage<void>(
                     key: state.pageKey,
                     child: const LicencesPage(),
+                  ),
+                ),
+              ],
+            ),
+            GoRoute(
+              path: KansoRoutes.shared,
+              pageBuilder: (context, state) => CupertinoPage<void>(
+                key: state.pageKey,
+                child: const SharedWithYouPage(),
+              ),
+              routes: <RouteBase>[
+                GoRoute(
+                  path: 'join',
+                  pageBuilder: (context, state) => CupertinoPage<void>(
+                    key: state.pageKey,
+                    child: const JoinLinkPage(),
                   ),
                 ),
               ],

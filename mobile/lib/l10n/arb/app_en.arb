@@ -828,5 +828,595 @@
   "backupNoticeOk": "OK",
   "@backupNoticeOk": {
     "description": "Dismisses the notice about device backups."
+  },
+  "shareTitle": "Share",
+  "@shareTitle": {
+    "description": "The title of the sheet that shares a note, and the label of the button that opens it."
+  },
+  "shareClose": "Close",
+  "@shareClose": {
+    "description": "Closes the share sheet."
+  },
+  "shareLoading": "Loading sharing",
+  "@shareLoading": {
+    "description": "Says to a screen reader that a note's sharing is being read."
+  },
+  "shareLockedNote": "Locked notes can’t be shared.",
+  "@shareLockedNote": {
+    "description": "All the share sheet says of a locked note."
+  },
+  "shareSignedOut": "Sharing lets people you choose read, comment on or edit a note with you, end-to-end encrypted. It needs a Kanso account: sign in, or create one, then share.",
+  "@shareSignedOut": {
+    "description": "The share sheet's message while no account is signed in."
+  },
+  "shareSignIn": "Sign in…",
+  "@shareSignIn": {
+    "description": "Opens Settings to sign in, from the share sheet."
+  },
+  "shareFailedTitle": "Sharing didn’t load",
+  "@shareFailedTitle": {
+    "description": "The title of the card shown when a note's sharing could not be read."
+  },
+  "shareFailedMessage": "Something went wrong reading this note’s sharing. Try again.",
+  "@shareFailedMessage": {
+    "description": "The message of the card shown when a note's sharing could not be read."
+  },
+  "shareIntro": "Invite people by their Kanso username to read, comment on or edit this note with you. It stays end-to-end encrypted: your sync server passes it on without reading it.",
+  "@shareIntro": {
+    "description": "What the share sheet says of a note that is not shared yet."
+  },
+  "shareSharedWithYou": "{owner} shared this note with you. You {access}.",
+  "@shareSharedWithYou": {
+    "description": "What the share sheet says to someone a note was shared with.",
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      },
+      "access": {
+        "type": "String"
+      }
+    }
+  },
+  "shareAccessView": "can read it",
+  "@shareAccessView": {
+    "description": "What a viewer can do with a shared note, to finish 'You …'."
+  },
+  "shareAccessComment": "can read it and comment on it",
+  "@shareAccessComment": {
+    "description": "What a commenter can do with a shared note, to finish 'You …'."
+  },
+  "shareAccessEdit": "can edit it",
+  "@shareAccessEdit": {
+    "description": "What an editor can do with a shared note, to finish 'You …'."
+  },
+  "shareUsernameHint": "Username",
+  "@shareUsernameHint": {
+    "description": "The hint in the field for the username of the person to invite."
+  },
+  "shareInvite": "Invite",
+  "@shareInvite": {
+    "description": "Invites the person whose username is typed."
+  },
+  "shareInviteRoleLabel": "What the person you invite can do",
+  "@shareInviteRoleLabel": {
+    "description": "Names the choice of role for an invitation, to a screen reader."
+  },
+  "shareRoleOwner": "Owner",
+  "@shareRoleOwner": {
+    "description": "A person who owns a shared note."
+  },
+  "shareRoleEditor": "Can edit",
+  "@shareRoleEditor": {
+    "description": "A person who can edit a shared note."
+  },
+  "shareRoleCommenter": "Can comment",
+  "@shareRoleCommenter": {
+    "description": "A person who can comment on a shared note."
+  },
+  "shareRoleViewer": "Can view",
+  "@shareRoleViewer": {
+    "description": "A person who can only read a shared note."
+  },
+  "shareInvited": "Invited {username}. The note shows for them once they accept.",
+  "@shareInvited": {
+    "description": "Says that a person was invited.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "shareStopped": "Sharing stopped. Everyone keeps a private copy of the note as it is.",
+  "@shareStopped": {
+    "description": "Says that the owner stopped sharing a note."
+  },
+  "shareLeft": "You left the note. Your copy of it is private now.",
+  "@shareLeft": {
+    "description": "Says that the person left a shared note."
+  },
+  "shareProblemNameMissing": "Type the username of the person to invite.",
+  "@shareProblemNameMissing": {
+    "description": "Says that no username was typed."
+  },
+  "shareProblemLinkMissing": "Paste the invite link first.",
+  "@shareProblemLinkMissing": {
+    "description": "Says that no invite link was typed."
+  },
+  "shareProblemOffline": "Couldn’t reach your sync server. Check your connection and try again.",
+  "@shareProblemOffline": {
+    "description": "Says that the sync server could not be reached while sharing."
+  },
+  "shareProblemSignedOut": "Your account signed this device out. Sign in again to share.",
+  "@shareProblemSignedOut": {
+    "description": "Says that the account signed the device out while sharing."
+  },
+  "shareProblemUnexpected": "Something went wrong. Try again.",
+  "@shareProblemUnexpected": {
+    "description": "Says that a step of sharing failed for no reason the person can act on."
+  },
+  "sharePeople": "People",
+  "@sharePeople": {
+    "description": "The label above the people a note is shared with."
+  },
+  "shareMemberInvited": "Invited, hasn’t accepted yet",
+  "@shareMemberInvited": {
+    "description": "Says that a person has not accepted their invitation."
+  },
+  "shareMemberDeclined": "Declined",
+  "@shareMemberDeclined": {
+    "description": "Says that a person declined their invitation."
+  },
+  "shareMemberLeft": "Left",
+  "@shareMemberLeft": {
+    "description": "Says that a person left the note."
+  },
+  "shareMemberYou": "You",
+  "@shareMemberYou": {
+    "description": "Marks the person's own row in the list of people."
+  },
+  "shareMemberUnchecked": "Can’t be checked",
+  "@shareMemberUnchecked": {
+    "description": "Says that a person's keys changed or could not be checked."
+  },
+  "shareMemberVerified": "Fingerprint verified",
+  "@shareMemberVerified": {
+    "description": "Says that a person's fingerprint was compared and matches."
+  },
+  "shareMemberAcceptKey": "Accept the new key",
+  "@shareMemberAcceptKey": {
+    "description": "Reviews the new keys of a person whose keys changed."
+  },
+  "shareMemberRemove": "Remove from note",
+  "@shareMemberRemove": {
+    "description": "Removes a person from a shared note, or cancels their invitation."
+  },
+  "shareMemberRoleLabel": "Change what {username} can do",
+  "@shareMemberRoleLabel": {
+    "description": "Names the button that changes a person's role, to a screen reader.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "shareRequests": "Asked to join",
+  "@shareRequests": {
+    "description": "The label above the people who asked to join through a link."
+  },
+  "shareRequestAsked": "{username} asked to join",
+  "@shareRequestAsked": {
+    "description": "Says that a person asked to join through a link.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "shareRequestDetail": "{role} · Fingerprint {fingerprint}",
+  "@shareRequestDetail": {
+    "description": "Under a request to join: the role the link gives and the person's fingerprint.",
+    "placeholders": {
+      "role": {
+        "type": "String"
+      },
+      "fingerprint": {
+        "type": "String"
+      }
+    }
+  },
+  "shareApprove": "Approve",
+  "@shareApprove": {
+    "description": "Lets in a person who asked to join."
+  },
+  "shareDecline": "Decline",
+  "@shareDecline": {
+    "description": "Turns away a person who asked to join, or declines an invitation."
+  },
+  "shareLinks": "Invite links",
+  "@shareLinks": {
+    "description": "The label above a note's invite links."
+  },
+  "shareLinkExpired": "{role}, expired",
+  "@shareLinkExpired": {
+    "description": "An invite link that has expired.",
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "shareLinkDaysLeft": "{days, plural, =1{{role}, for 1 more day} other{{role}, for {days} more days}}",
+  "@shareLinkDaysLeft": {
+    "description": "An invite link and how long it still works.",
+    "placeholders": {
+      "role": {
+        "type": "String"
+      },
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "shareLinkCancel": "Cancel link",
+  "@shareLinkCancel": {
+    "description": "Cancels an invite link."
+  },
+  "shareLinkMake": "Make link",
+  "@shareLinkMake": {
+    "description": "Makes an invite link."
+  },
+  "shareLinkRoleLabel": "What people who join with the link can do",
+  "@shareLinkRoleLabel": {
+    "description": "Names the choice of role for a link, to a screen reader."
+  },
+  "shareLinkDaysLabel": "How long the link works",
+  "@shareLinkDaysLabel": {
+    "description": "Names the choice of days for a link, to a screen reader."
+  },
+  "shareLinkDays": "{days, plural, =1{1 day} other{{days} days}}",
+  "@shareLinkDays": {
+    "description": "How many days a link works.",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "shareLinkAddress": "Invite link",
+  "@shareLinkAddress": {
+    "description": "Names the made link, to a screen reader."
+  },
+  "shareLinkCopy": "Copy",
+  "@shareLinkCopy": {
+    "description": "Copies the invite link."
+  },
+  "shareLinkCopied": "Copied",
+  "@shareLinkCopied": {
+    "description": "Says that the invite link was copied."
+  },
+  "shareLinkSend": "Send",
+  "@shareLinkSend": {
+    "description": "Sends the invite link through the system's share sheet."
+  },
+  "shareLinkNote": "Anyone with the link can ask to join; you approve each of them here. Copy it now: it can’t be shown again.",
+  "@shareLinkNote": {
+    "description": "Says what an invite link does and that it can be seen once."
+  },
+  "shareStop": "Stop sharing",
+  "@shareStop": {
+    "description": "Stops sharing a note."
+  },
+  "shareStopEveryone": "Stop sharing for everyone",
+  "@shareStopEveryone": {
+    "description": "Confirms stopping the sharing of a note."
+  },
+  "shareLeave": "Leave",
+  "@shareLeave": {
+    "description": "Leaves a shared note."
+  },
+  "shareLeaveNote": "Leave the note",
+  "@shareLeaveNote": {
+    "description": "Confirms leaving a shared note."
+  },
+  "shareStopWarning": "Stopping sharing ends the note for everyone in it. Each of them keeps a private copy of it as it is now.",
+  "@shareStopWarning": {
+    "description": "Warns before the owner stops sharing."
+  },
+  "shareLeaveWarning": "Leaving takes you out of the note. You keep a private copy of it as it is now.",
+  "@shareLeaveWarning": {
+    "description": "Warns before the person leaves a shared note."
+  },
+  "shareKeepSharing": "Keep sharing",
+  "@shareKeepSharing": {
+    "description": "Cancels stopping or leaving."
+  },
+  "shareBack": "Back",
+  "@shareBack": {
+    "description": "Goes back from a question about someone's keys."
+  },
+  "shareVerifyIntro": "You’re sharing with {username} for the first time. Compare this fingerprint with the one they see in Settings › Account, in person or on a call. If it matches, nobody is standing between you.",
+  "@shareVerifyIntro": {
+    "description": "Asks the person to compare a fingerprint before the first share with someone.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "shareVerifyConfirm": "Mark as verified and invite",
+  "@shareVerifyConfirm": {
+    "description": "Marks a fingerprint as compared and invites the person."
+  },
+  "shareKeyChangedIntro": "{username}’s keys changed since you last shared with them. That happens when they set up their account again, and also when someone tries to read what you share. Ask them which fingerprint they see now before you trust it.",
+  "@shareKeyChangedIntro": {
+    "description": "Warns that someone's keys changed.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "shareKeyBefore": "Before",
+  "@shareKeyBefore": {
+    "description": "The label above the fingerprint pinned before."
+  },
+  "shareKeyNow": "Now",
+  "@shareKeyNow": {
+    "description": "The label above the fingerprint the server gives now."
+  },
+  "shareKeyTrust": "Trust the new keys",
+  "@shareKeyTrust": {
+    "description": "Pins the new keys of someone whose keys changed."
+  },
+  "shareKeyDontInvite": "Don’t invite",
+  "@shareKeyDontInvite": {
+    "description": "Turns down inviting someone whose keys changed."
+  },
+  "shareKeyNotNow": "Not now",
+  "@shareKeyNotNow": {
+    "description": "Leaves the question about a member's new keys."
+  },
+  "shareFingerprintLabel": "{username}’s fingerprint",
+  "@shareFingerprintLabel": {
+    "description": "Names a fingerprint, to a screen reader.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "sharedWithYouTitle": "Shared with you",
+  "@sharedWithYouTitle": {
+    "description": "The title of the screen of invitations, and the library's row for it."
+  },
+  "sharedWithYouEmptyTitle": "Nothing shared with you",
+  "@sharedWithYouEmptyTitle": {
+    "description": "The title of the empty list of invitations."
+  },
+  "sharedWithYouEmptyMessage": "When someone shares a note with you, it waits here until you accept it.",
+  "@sharedWithYouEmptyMessage": {
+    "description": "The message of the empty list of invitations."
+  },
+  "sharedWithYouSignedOutTitle": "Sign in to get shared notes",
+  "@sharedWithYouSignedOutTitle": {
+    "description": "The title shown while no account is signed in."
+  },
+  "sharedWithYouSignedOutMessage": "Notes other people share with you reach this phone once it is signed in to a Kanso account. Sign in from Settings.",
+  "@sharedWithYouSignedOutMessage": {
+    "description": "The message shown while no account is signed in."
+  },
+  "sharedWithYouFailedTitle": "Shared notes didn’t load",
+  "@sharedWithYouFailedTitle": {
+    "description": "The title of the card shown when invitations could not be read."
+  },
+  "sharedWithYouFailedMessage": "Something went wrong looking for notes shared with you. Try again.",
+  "@sharedWithYouFailedMessage": {
+    "description": "The message of the card shown when invitations could not be read."
+  },
+  "sharedWithYouLoading": "Loading shared notes",
+  "@sharedWithYouLoading": {
+    "description": "Says to a screen reader that invitations are being read."
+  },
+  "sharedInvitationFrom": "A note from {from}",
+  "@sharedInvitationFrom": {
+    "description": "The title of an invitation; the note's own title is sealed until it is accepted.",
+    "placeholders": {
+      "from": {
+        "type": "String"
+      }
+    }
+  },
+  "sharedAccept": "Accept",
+  "@sharedAccept": {
+    "description": "Accepts an invitation to a shared note."
+  },
+  "sharedJoinWithLink": "Join with a link",
+  "@sharedJoinWithLink": {
+    "description": "Opens the screen that joins a note with an invite link."
+  },
+  "joinTitle": "Join with a link",
+  "@joinTitle": {
+    "description": "The title of the screen that joins a note with an invite link."
+  },
+  "joinMessage": "Paste the invite link you were sent. The note’s owner lets you in, and the note comes to your library once they do.",
+  "@joinMessage": {
+    "description": "Says what joining with a link does."
+  },
+  "joinHint": "Invite link",
+  "@joinHint": {
+    "description": "The hint in the field for an invite link."
+  },
+  "joinButton": "Join",
+  "@joinButton": {
+    "description": "Asks to join the note an invite link is for."
+  },
+  "joinAsked": "Asked {owner} to let you in. The note shows in your library once they approve.",
+  "@joinAsked": {
+    "description": "Says who was asked to let the person in.",
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      }
+    }
+  },
+  "joinAnother": "Join another note",
+  "@joinAnother": {
+    "description": "Goes back to an empty field to join another note."
+  },
+  "galleryTitle": "Gallery",
+  "@galleryTitle": {
+    "description": "The label above the community's themes on the theme page."
+  },
+  "gallerySearchHint": "Search themes",
+  "@gallerySearchHint": {
+    "description": "The hint in the gallery's search field."
+  },
+  "gallerySearchClear": "Clear search",
+  "@gallerySearchClear": {
+    "description": "Clears the gallery's search field."
+  },
+  "galleryFilterLabel": "Order of the themes",
+  "@galleryFilterLabel": {
+    "description": "Names the choice of order, to a screen reader."
+  },
+  "galleryFilterPopular": "Popular",
+  "@galleryFilterPopular": {
+    "description": "Orders the gallery's themes by how many installed them."
+  },
+  "galleryFilterRecent": "Recently updated",
+  "@galleryFilterRecent": {
+    "description": "Orders the gallery's themes by when they were updated."
+  },
+  "galleryBadgeOfficial": "Official",
+  "@galleryBadgeOfficial": {
+    "description": "A badge on a theme made by Kanso."
+  },
+  "galleryBadgeCommunity": "Community",
+  "@galleryBadgeCommunity": {
+    "description": "A badge on a theme made by the community."
+  },
+  "galleryBadgeIcons": "Icons",
+  "@galleryBadgeIcons": {
+    "description": "A badge on a theme that draws icons rather than colours."
+  },
+  "galleryBadgeWithdrawn": "Withdrawn",
+  "@galleryBadgeWithdrawn": {
+    "description": "A badge on an installed theme the catalog withdrew."
+  },
+  "galleryBy": "by {author}",
+  "@galleryBy": {
+    "description": "Who made a theme.",
+    "placeholders": {
+      "author": {
+        "type": "String"
+      }
+    }
+  },
+  "galleryVersion": "Version {version}",
+  "@galleryVersion": {
+    "description": "A theme's version.",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "galleryInstalls": "{count, plural, =1{1 install} other{{count} installs}}",
+  "@galleryInstalls": {
+    "description": "How many times a theme was installed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "galleryInstall": "Install",
+  "@galleryInstall": {
+    "description": "Installs a theme from the gallery."
+  },
+  "galleryInstalled": "Installed",
+  "@galleryInstalled": {
+    "description": "Says that a theme from the gallery is installed."
+  },
+  "galleryUpdate": "Update",
+  "@galleryUpdate": {
+    "description": "Updates an installed theme to the gallery's newer version."
+  },
+  "galleryRemove": "Remove",
+  "@galleryRemove": {
+    "description": "Removes an installed theme."
+  },
+  "galleryInstalling": "Installing…",
+  "@galleryInstalling": {
+    "description": "Says that a theme is being installed."
+  },
+  "galleryUpdating": "Updating…",
+  "@galleryUpdating": {
+    "description": "Says that a theme is being updated."
+  },
+  "galleryRemoving": "Removing…",
+  "@galleryRemoving": {
+    "description": "Says that a theme is being removed."
+  },
+  "galleryNeedsNewer": "Needs a newer Kanso",
+  "@galleryNeedsNewer": {
+    "description": "Says that a theme can't be installed by this version."
+  },
+  "galleryLoading": "Loading the gallery",
+  "@galleryLoading": {
+    "description": "Says to a screen reader that the gallery is being read."
+  },
+  "galleryFailedTitle": "The gallery didn’t load",
+  "@galleryFailedTitle": {
+    "description": "The title of the card shown when the gallery could not be read."
+  },
+  "galleryFailedMessage": "Couldn’t reach the theme gallery. Check your connection and try again.",
+  "@galleryFailedMessage": {
+    "description": "The message of the card shown when the gallery could not be read."
+  },
+  "galleryStale": "Showing the last list. Couldn’t reach the gallery just now.",
+  "@galleryStale": {
+    "description": "Says that the gallery shown may be old."
+  },
+  "galleryRefreshing": "Checking for new themes…",
+  "@galleryRefreshing": {
+    "description": "Says that the gallery is being fetched again."
+  },
+  "galleryNoResultsTitle": "No themes match",
+  "@galleryNoResultsTitle": {
+    "description": "The title shown when a search finds no theme."
+  },
+  "galleryNoResultsMessage": "Nothing in the gallery matches “{query}”. Try another word.",
+  "@galleryNoResultsMessage": {
+    "description": "The message shown when a search finds no theme.",
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "galleryEmptyTitle": "The gallery is empty",
+  "@galleryEmptyTitle": {
+    "description": "The title shown when the gallery has no themes."
+  },
+  "galleryEmptyMessage": "There are no themes to show yet.",
+  "@galleryEmptyMessage": {
+    "description": "The message shown when the gallery has no themes."
+  },
+  "galleryProblemOffline": "Couldn’t reach the gallery. Check your connection and try again.",
+  "@galleryProblemOffline": {
+    "description": "Says that the gallery could not be reached while installing."
+  },
+  "galleryProblemUnexpected": "Something went wrong. Try again.",
+  "@galleryProblemUnexpected": {
+    "description": "Says that installing or removing a theme failed for no reason the person can act on."
+  },
+  "sharedWithYouRefresh": "Look for new shared notes",
+  "@sharedWithYouRefresh": {
+    "description": "Reads the invitations again, as a screen reader says it."
+  },
+  "joinSentTitle": "Request sent",
+  "@joinSentTitle": {
+    "description": "The title of the card that says a request to join was sent."
   }
 }

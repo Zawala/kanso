@@ -41,6 +41,13 @@ abstract final class KansoRoutes {
   static const String settingsFonts = '/settings/fonts';
   static const String settingsLicences = '/settings/licences';
 
+  /// Shared with you, the notes other people shared with this account: a
+  /// sheet on a tablet and a page on a phone, like Settings.
+  static const String shared = '/shared';
+
+  /// Join with a link, inside [shared].
+  static const String sharedJoin = '/shared/join';
+
   /// The design gallery: in the development environment only.
   static const String design = '/design';
 

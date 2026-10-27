@@ -23,13 +23,15 @@ import '../../../core/views/widgets/kanso_pressable.dart';
 import '../../../core/views/widgets/kanso_search_field.dart';
 import '../../../core/views/widgets/kanso_section_header.dart';
 import '../../../core/views/widgets/kanso_sidebar_row.dart';
+import '../../../sharing/views/widgets/shared_with_you_row.dart';
 import 'library_header.dart';
 import 'library_loading_rows.dart';
 import 'library_place_row.dart';
 
 /// The library: the app's mark and settings, a search field, then All
 /// Notes, Templates (when there is a notebook of that role), Pinned and
-/// Recent, the notebooks with their counts, the tags and Trash.
+/// Recent, Shared with you (with how many invitations wait), the notebooks
+/// with their counts, the tags and Trash.
 ///
 /// A drawer on a phone, the first pane on a tablet. The place [location]
 /// is listing is selected. Its rows come from the `LibraryIndexBloc`
@@ -148,6 +150,10 @@ class LibraryPane extends StatelessWidget {
                         icon: KansoIcons.clock,
                         label: l10n.libraryRecent,
                         selected: current == const ListPlace.recent(),
+                      ),
+                      SharedWithYouRow(
+                        onOpen: () =>
+                            leave(() => context.push(KansoRoutes.shared)),
                       ),
                       KansoSectionHeader(label: l10n.libraryNotebooks),
                       if (index.notebooks.every(

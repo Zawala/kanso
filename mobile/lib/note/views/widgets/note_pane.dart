@@ -15,6 +15,7 @@ import '../../../core/state/navigation_history/navigation_history_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
+import '../../../sharing/views/widgets/share_note_button.dart';
 import '../../models/data/note_screen_status.dart';
 import '../../state/note/note_bloc.dart';
 import 'locked_note_pane.dart';
@@ -56,6 +57,7 @@ class NotePane extends StatelessWidget {
                 onBack: () => leave(context),
                 onGoBack: steps.canGoBack ? goBack : null,
                 onGoForward: steps.canGoForward ? goForward : null,
+                trailing: const <Widget>[ShareNoteButton()],
               ),
               Expanded(
                 child: BlocBuilder<LibraryIndexBloc, LibraryIndexState>(
