@@ -25,7 +25,9 @@ fn journal_today(&self, now: LocalTime) -> Result<MadeNote>
 fn journal_step(&self, open_note: Option<String>, now: LocalTime, forward: bool) -> Result<Option<MadeNote>>
 fn journal_open_day(&self, day: DayDate, now: LocalTime) -> Result<MadeNote>
 fn journal_month(&self, year: i32, month: u32, week_start: u32, today: DayDate) -> Result<MonthGrid>
-fn daily_date_of(note_id: String) -> Option<DayDate>        // associated, no library
+fn daily_date_of(note_id: String) -> Option<DayDate>        // associated, no library, sync
+fn journal_week_start(first_weekday: u32) -> u32            // associated, sync: Foundation's/Java's
+                                                            // 1 = Sunday .. 7 = Saturday -> 0 = Monday .. 6 = Sunday
 
 pub struct MonthGrid { year: i32, month: u32, title: String, weekday_labels: Vec<String>, weeks: Vec<Vec<CalendarDay>> }
 pub struct CalendarDay { date: DayDate, in_month: bool, has_note: bool, is_today: bool }
@@ -39,7 +41,8 @@ fn set_daily_template(&self, template_id: Option<String>) -> Result<()>
 
 // Boards: over the notes a ListQuery lists (the trash never shows)
 pub enum BoardKind { Notes, Tasks }
-pub enum BoardLane { Status(NoteStatusDto), Todo, Done }
+pub enum BoardLane { Status { status: String }, Todo, Done }   // status as NoteRow.status says it:
+                                                               // none, active, onHold, completed, dropped
 fn board(&self, kind: BoardKind, query: ListQuery) -> Result<BoardView>
 fn move_card(&self, card: CardKey, to: BoardLane, now_ms: i64) -> Result<CardMoved>
 pub struct BoardView { kind, columns: Vec<BoardColumn> }
@@ -47,6 +50,9 @@ pub struct BoardColumn { lane: BoardLane, label: String, cards: Vec<BoardCard> }
 pub struct BoardCard { key: CardKey, title: String, note_title: String, snippet: String, due: Option<String>, checked: bool, locked: bool }
 pub enum CardKey { Note { id }, Task { note_id, line, text } }
 pub enum CardMoved { Changed, Unchanged, Missing }
+fn due_chip(due: String, checked: bool, now: LocalTime) -> Result<Option<DueChipRow>>   // associated, sync
+pub struct DueChipRow { label: String, tone: DueTone, tooltip: String }
+pub enum DueTone { Plain, Today, Overdue, Done }
 
 // Reminders
 fn reminders_plan(&self, now_utc_ms: i64, offset_ms: i64, can_notify: bool) -> Result<ReminderPlan>
@@ -63,6 +69,14 @@ false: reminders are off in Settings or the OS said no. Otherwise it records
 reminder the OS already showed at its time is not shown again when the app
 next opens. `schedule` holds at most 60 reminders within the next 30 days,
 soonest first (iOS keeps 64 pending notifications per app).
+
+The record of what this device has shown (`app.remindersShown`, local, never
+synced) holds a scheduled reminder under its fire time, so a plan made after
+that time doesn't show it again; one scheduled for a time still to come counts
+as to come, not shown, and is in `schedule` again. A reminder the system never
+showed because notifications were off when it fell due is not shown late if it
+was scheduled (this keeps one reminder from showing twice; the desktop has no
+such gap because it shows the reminder itself).
 
 A reminder carries only what the desktop's notification shows: the task's
 words as a list shows them (`tasks::display_text`) as the title, and "when ·
@@ -104,5 +118,7 @@ when it comes back to the foreground. The notification category / channel is
 `kanso-due:` link; `kanso_render::html` draws such a link as
 `<span class="kanso-due kanso-due-{tone}" title="Due …">Today 09:00</span>`
 when `PageOptions::due` is given, with the chip colours in the page's
-stylesheet. `Renderer::preview_html` does both, so the preview (step 7) shows
-chips without doing anything.
+stylesheet. `Renderer::preview_html_at(id, palette, now: LocalTime)` does both. Chips read
+"Today" and "Overdue" against a clock, so the library needs the phone's local
+time: `preview_html(id, palette)` has none and leaves each date as written
+(the preview of step 7 calls `previewHtmlAt` to get chips).

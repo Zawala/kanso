@@ -12,6 +12,7 @@ import 'browse_blocs.dart';
 import 'fixture_library_repository.dart';
 import 'golden.dart';
 import 'kanso_viewport.dart';
+import 'page_fixtures.dart';
 import 'pump_browse_app.dart';
 
 /// Takes a picture of the whole app, as a device of [viewport] draws it, once
@@ -35,6 +36,7 @@ Future<void> expectAppGoldenOnBothPlatforms(
   String at = '/notes',
   FixtureLibraryRepository Function()? library,
   Future<BackupNoticeBloc> Function()? backupNotice,
+  PageFixtures Function()? fixtures,
   Future<void> Function(WidgetTester tester, BrowseApp app)? interact,
 }) async {
   tester.platformDispatcher
@@ -70,6 +72,7 @@ Future<void> expectAppGoldenOnBothPlatforms(
           safeArea: viewport.safeArea,
           tabletDevice: viewport.tablet,
           backupNotice: backupNotice == null ? null : await backupNotice(),
+          fixtures: fixtures?.call(),
         );
         if (interact != null) {
           await interact(tester, app);

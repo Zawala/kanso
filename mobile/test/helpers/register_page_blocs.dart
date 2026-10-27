@@ -5,7 +5,14 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart' show addTearDown;
+import 'package:kanso/board/state/board/board_bloc.dart';
 import 'package:kanso/injection.dart';
+import 'package:kanso/journal/state/calendar/calendar_bloc.dart';
+import 'package:kanso/journal/state/journal/journal_bloc.dart';
+import 'package:kanso/reminders/state/reminders_settings/reminders_settings_bloc.dart';
+import 'package:kanso/reminders/utils/reminders_coordinator.dart';
+import 'package:kanso/templates/state/daily_template/daily_template_bloc.dart';
+import 'package:kanso/templates/state/template_picker/template_picker_bloc.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
@@ -18,6 +25,8 @@ import 'fixture_about_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_licences_repository.dart';
 import 'fixture_renderer_repository.dart';
+import 'fixture_reminders_repository.dart';
+import 'page_fixtures.dart';
 import 'seeded_appearance_bloc.dart';
 
 /// Registers, for a test that builds the app's pages, the BLoCs the pages
@@ -26,7 +35,9 @@ import 'seeded_appearance_bloc.dart';
 void registerPageBlocs(
   FixtureLibraryRepository library, [
   FixtureRendererRepository? renderer,
+  PageFixtures? fixtures,
 ]) {
+  final page = fixtures ?? PageFixtures();
   final haptics = RecordingHaptics();
   if (getIt.isRegistered<NoteListBloc>()) {
     getIt.unregister<NoteListBloc>();
@@ -59,6 +70,31 @@ void registerPageBlocs(
   }
   getIt.registerFactory<ThemePickerBloc>(
     () => ThemePickerBloc(renderer ?? FixtureRendererRepository()),
+  );
+  void replace<T extends Object>(T Function() make) {
+    if (getIt.isRegistered<T>()) {
+      getIt.unregister<T>();
+    }
+    getIt.registerFactory<T>(make);
+  }
+
+  replace<JournalBloc>(() => JournalBloc(page.journal, page.journal));
+  replace<CalendarBloc>(() => CalendarBloc(page.journal));
+  replace<TemplatePickerBloc>(() => TemplatePickerBloc(page.journal));
+  replace<DailyTemplateBloc>(() => DailyTemplateBloc(page.journal));
+  replace<BoardBloc>(() => BoardBloc(page.boards, library));
+  final coordinator = RemindersCoordinator(
+    ForgetfulPreferencesRepository(),
+    FixtureRemindersRepository(),
+    page.notifier,
+    library,
+  );
+  replace<RemindersSettingsBloc>(
+    () => RemindersSettingsBloc(
+      ForgetfulPreferencesRepository(),
+      page.notifier,
+      coordinator,
+    ),
   );
   addTearDown(() => unawaited(getIt.reset()));
 }

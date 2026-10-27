@@ -12,6 +12,8 @@ import 'types.dart';
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
 abstract class KansoLibrary implements RustOpaqueInterface {
+  Future<BoardView> board({required BoardKind kind, required ListQuery query});
+
   Future<int> change({required List<String> ids, required NoteChange change});
 
   /// The IDs of what changed, in batches, until Dart stops listening.
@@ -21,9 +23,65 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<NotebookRow> createNotebook({required String name, String? parentId});
 
+  static DayDate? dailyDateOf({required String noteId}) => KansoCore
+      .instance
+      .api
+      .crateApiLibraryKansoLibraryDailyDateOf(noteId: noteId);
+
+  Future<String?> dailyTemplate();
+
+  static DueChipRow? dueChip({
+    required String due,
+    required bool checked,
+    required LocalTime now,
+  }) => KansoCore.instance.api.crateApiLibraryKansoLibraryDueChip(
+    due: due,
+    checked: checked,
+    now: now,
+  );
+
+  Future<MonthGrid> journalMonth({
+    required int year,
+    required int month,
+    required int weekStart,
+    required DayDate today,
+  });
+
+  Future<MadeNote> journalOpenDay({
+    required DayDate day,
+    required LocalTime now,
+  });
+
+  Future<MadeNote?> journalStep({
+    String? openNote,
+    required LocalTime now,
+    required bool forward,
+  });
+
+  Future<MadeNote> journalToday({required LocalTime now});
+
+  static int journalWeekStart({required int firstWeekday}) => KansoCore
+      .instance
+      .api
+      .crateApiLibraryKansoLibraryJournalWeekStart(firstWeekday: firstWeekday);
+
   Future<NoteList> list({required ListQuery query});
 
   KansoLocks locks();
+
+  Future<CardMoved> moveCard({
+    required CardKey card,
+    required BoardLane to,
+    required int nowMs,
+  });
+
+  Future<MadeNote> newFromTemplate({
+    required String templateId,
+    String? bookId,
+    required LocalTime now,
+  });
+
+  Future<MadeNote> newTemplate();
 
   Future<NoteView> note({required String id});
 
@@ -39,6 +97,18 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<Table> queryView({required String source, String? selfId});
 
+  Future<TaskPlace?> reminderAnswer({
+    required String key,
+    required ReminderAnswer answer,
+    required int nowUtcMs,
+  });
+
+  Future<ReminderPlan> remindersPlan({
+    required int nowUtcMs,
+    required int offsetMs,
+    required bool canNotify,
+  });
+
   KansoRenderer renderer();
 
   Future<Saved> save({
@@ -53,9 +123,13 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required int limit,
   });
 
+  Future<void> setDailyTemplate({String? templateId});
+
   KansoSync syncing();
 
   Future<List<TagRow>> tags();
+
+  Future<List<TemplateRow>> templates();
 
   Future<void> trash({required String id});
 }

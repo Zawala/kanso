@@ -5,9 +5,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../journal/views/widgets/journal_opener.dart';
+import '../../../journal/views/widgets/journal_strip.dart';
 import '../../state/note_list/note_list_bloc.dart';
 import 'note_list_bar.dart';
 import 'note_list_body.dart';
@@ -25,6 +28,11 @@ class NoteListPane extends StatelessWidget {
 
   final String? openNoteId;
 
+  /// Whether [place] is the Journal notebook.
+  static bool _isJournal(ListPlace place, LibraryIndexState index) =>
+      place is ListPlace_Notebook &&
+      index.notebook(place.id)?.role == NotebookRole.journal;
+
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
@@ -35,7 +43,8 @@ class NoteListPane extends StatelessWidget {
             builder: (context, state) {
               final bloc = context.read<NoteListBloc>();
               final error = state.actionError;
-              return PopScope(
+              return JournalOpener(
+                child: PopScope(
                 // Back, on a phone that has one, ends choosing before it
                 // leaves.
                 canPop: !state.selecting,
@@ -49,6 +58,8 @@ class NoteListPane extends StatelessWidget {
                     Column(
                       children: <Widget>[
                         NoteListBar(state: state, index: index),
+                        if (_isJournal(state.place, index))
+                          const JournalStrip(),
                         Expanded(
                           child: NoteListBody(
                             state: state,
@@ -73,6 +84,7 @@ class NoteListPane extends StatelessWidget {
                         ),
                       ),
                   ],
+                ),
                 ),
               );
             },

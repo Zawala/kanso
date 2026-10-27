@@ -7,9 +7,12 @@
 //! hands the facade's callback a stream sink. `types` mirrors the facade's
 //! data types field by field, so the compiler checks that they still match.
 
+pub mod board;
 pub mod diagnostics;
+pub mod journal;
 pub mod library;
 pub mod locks;
+pub mod reminders;
 pub mod renderer;
 pub mod sync;
 pub mod types;

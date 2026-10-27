@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../board/views/pages/board_page.dart';
 import '../../crash/views/pages/crash_reports_page.dart';
 import '../../design/views/pages/design_gallery_page.dart';
 import '../../note/views/pages/note_page.dart';
@@ -192,7 +193,29 @@ class KansoRouter {
       path: path,
       pageBuilder: (context, state) =>
           _listPage(state, single: NoteListPage(place: place(state))),
-      routes: <RouteBase>[_noteRoute()],
+      routes: <RouteBase>[_noteRoute(), _boardRoute(place)],
+    );
+  }
+
+  /// The board of a place's notes: a page of its own on a phone, the note
+  /// pane beside the list in a wide window.
+  GoRoute _boardRoute(ListPlace Function(GoRouterState) place) {
+    return GoRoute(
+      path: KansoRoutes.board,
+      pageBuilder: (context, state) {
+        final kind = state.uri.queryParameters['kind'] == BoardKind.tasks.name
+            ? BoardKind.tasks
+            : BoardKind.notes;
+        return layoutClass.value == LayoutClass.single
+            ? CupertinoPage<void>(
+                key: state.pageKey,
+                child: BoardPage(place: place(state), kind: kind),
+              )
+            : NoTransitionPage<void>(
+                key: state.pageKey,
+                child: BoardPage(place: place(state), kind: kind, inPane: true),
+              );
+      },
     );
   }
 

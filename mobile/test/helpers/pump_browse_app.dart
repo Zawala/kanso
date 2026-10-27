@@ -24,6 +24,7 @@ import 'browse_blocs.dart';
 import 'crash_samples.dart';
 import 'fixture_library_repository.dart';
 import 'register_page_blocs.dart';
+import 'page_fixtures.dart';
 import 'seeded_appearance_bloc.dart';
 
 /// The boundary around the app that a picture is taken of.
@@ -53,7 +54,8 @@ class BrowseApp {
 /// [tabletDevice] says whether the display is a tablet's, which a narrow
 /// window of one (a Split View half) is not enough to tell; it defaults to
 /// what the window's own size says. [backupNotice] is the notice's BLoC; it
-/// defaults to one that is not shown. The app is inside a repaint boundary,
+/// defaults to one that is not shown. [fixtures] are what the journal,
+/// boards and reminders read. The app is inside a repaint boundary,
 /// [appBoundaryKey], to take a picture of.
 Future<BrowseApp> pumpBrowseApp(
   WidgetTester tester,
@@ -65,11 +67,12 @@ Future<BrowseApp> pumpBrowseApp(
   EdgeInsets safeArea = EdgeInsets.zero,
   bool? tabletDevice,
   BackupNoticeBloc? backupNotice,
+  PageFixtures? fixtures,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start(library);
-  registerPageBlocs(blocs.library);
+  registerPageBlocs(blocs.library, null, fixtures);
   final padding = FakeViewPadding(
     left: safeArea.left * devicePixelRatio,
     top: safeArea.top * devicePixelRatio,

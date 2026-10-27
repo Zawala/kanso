@@ -2,8 +2,8 @@
 
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    BuiltinTheme, DiagramKind, KansoError, PaletteDto, Renderer, SpanRow, StyledRun, SvgRow,
-    ThemeTokens,
+    BuiltinTheme, DiagramKind, KansoError, LocalTime, PaletteDto, Renderer, SpanRow, StyledRun,
+    SvgRow, ThemeTokens,
 };
 
 #[frb(opaque)]
@@ -16,6 +16,15 @@ impl KansoRenderer {
 
     pub fn preview_html(&self, id: String, palette: PaletteDto) -> Result<String, KansoError> {
         self.0.preview_html(&id, palette)
+    }
+
+    pub fn preview_html_at(
+        &self,
+        id: String,
+        palette: PaletteDto,
+        now: LocalTime,
+    ) -> Result<String, KansoError> {
+        self.0.preview_html_at(&id, palette, now)
     }
 
     pub fn highlight(text: String, start: u32, end: u32) -> Result<Vec<SpanRow>, KansoError> {

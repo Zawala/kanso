@@ -15,6 +15,7 @@ import 'library_fixtures.dart';
 /// answers from a field a test can change, and records what it was asked.
 class FixtureLibraryRepository implements LibraryRepository {
   FixtureLibraryRepository() {
+    notes[mockDailyNote.id] = mockDailyNote;
     for (final row in mockRows) {
       if (row.id == MockIds.syncDesign) {
         notes[row.id] = mockOpenNote;

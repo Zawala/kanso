@@ -4,9 +4,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/bridge/api/types.dart';
+import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
+import '../../../core/models/data/browse_location.dart';
 import '../../../core/models/data/list_options.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/status_label.dart';
@@ -14,6 +17,7 @@ import '../../../core/views/widgets/kanso_check_row.dart';
 import '../../../core/views/widgets/kanso_divider.dart';
 import '../../../core/views/widgets/kanso_pressable.dart';
 import '../../../core/views/widgets/kanso_section_header.dart';
+import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../state/note_list/note_list_bloc.dart';
 
 /// How the list is sorted and narrowed, as the desktop's list menu has it:
@@ -32,6 +36,13 @@ class ListOptionsSheet extends StatelessWidget {
     'completed',
     'dropped',
   ];
+
+  /// Closes the sheet and shows the board of [place]'s notes.
+  void _openBoard(BuildContext context, ListPlace place, BoardKind kind) {
+    final router = GoRouter.of(context);
+    Navigator.of(context).pop();
+    router.go(BrowseLocation.place(place, board: kind).location);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +134,21 @@ class ListOptionsSheet extends StatelessWidget {
                 checked: options.statusOnly == status,
                 onTap: () => choose(options.copyWith(statusOnly: status)),
               ),
+            if (state.place is! ListPlace_Trash) ...<Widget>[
+              KansoSectionHeader(label: l10n.listOptionsBoard),
+              KansoSettingsRow(
+                icon: KansoIcons.fileText,
+                label: l10n.boardNotes,
+                chevron: true,
+                onTap: () => _openBoard(context, state.place, BoardKind.notes),
+              ),
+              KansoSettingsRow(
+                icon: KansoIcons.listChecks,
+                label: l10n.boardTasks,
+                chevron: true,
+                onTap: () => _openBoard(context, state.place, BoardKind.tasks),
+              ),
+            ],
             if (ListOptions.narrowsToPinned(state.place)) ...<Widget>[
               const KansoDivider(indent: KansoSpacing.md),
               KansoCheckRow(

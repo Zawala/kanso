@@ -8,16 +8,21 @@
 
 use std::sync::Arc;
 
+use kanso_core::dates::DateTime;
 use kanso_engine::highlight;
+use kanso_engine::tasks;
 use kanso_engine::text::{byte_to_utf16, utf16_to_byte};
 use kanso_render::{Failure, Job, Kind, Outcome, Palette, Rgb, html, render_blocking};
 
 use crate::boundary::guard;
 use crate::builtin_themes;
+use crate::due::Chips;
 use crate::errors::KansoError;
+use crate::journal::time_of;
 use crate::library::{Inner, Library};
 use crate::model::{
-    BuiltinTheme, DiagramKind, PaletteDto, Range16, SpanRow, StyledRun, SvgRow, ThemeTokens,
+    BuiltinTheme, DiagramKind, LocalTime, PaletteDto, Range16, SpanRow, StyledRun, SvgRow,
+    ThemeTokens,
 };
 use crate::theme_tokens;
 
@@ -30,29 +35,58 @@ pub struct Renderer {
 impl Renderer {
     /// A note as a standalone HTML page in `palette`'s colors, its math and
     /// diagrams drawn and its images inlined. [`KansoError::Locked`] while
-    /// the note is locked and closed.
+    /// the note is locked and closed. A task's due date shows as written;
+    /// [`Renderer::preview_html_at`] draws it as a chip.
     pub fn preview_html(&self, id: &str, palette: PaletteDto) -> Result<String, KansoError> {
-        guard(|| {
-            let library = Library {
-                inner: self.inner.clone(),
-            };
-            let (note, text) = library.readable_text(id)?.ok_or(KansoError::Locked)?;
-            let store = &self.inner.store;
-            let attachments = |file: &str| {
-                store
-                    .attachment(file)
-                    .ok()
-                    .flatten()
-                    .map(|(content_type, blob)| (content_type, blob.data))
-            };
-            Ok(html::page_with(
-                &note.title,
-                &text,
-                &palette_of(palette),
-                &attachments,
-                &html::PageOptions::default(),
-            ))
-        })
+        guard(|| self.preview(id, palette, None))
+    }
+
+    /// [`Renderer::preview_html`] with each task's due date drawn as a chip
+    /// ("Today 09:00", "Overdue · Yesterday") worked out at the phone's local
+    /// time `now`.
+    pub fn preview_html_at(
+        &self,
+        id: &str,
+        palette: PaletteDto,
+        now: LocalTime,
+    ) -> Result<String, KansoError> {
+        guard(|| self.preview(id, palette, Some(time_of(now)?)))
+    }
+
+    fn preview(
+        &self,
+        id: &str,
+        palette: PaletteDto,
+        now: Option<DateTime>,
+    ) -> Result<String, KansoError> {
+        let library = Library {
+            inner: self.inner.clone(),
+        };
+        let (note, text) = library.readable_text(id)?.ok_or(KansoError::Locked)?;
+        let store = &self.inner.store;
+        let attachments = |file: &str| {
+            store
+                .attachment(file)
+                .ok()
+                .flatten()
+                .map(|(content_type, blob)| (content_type, blob.data))
+        };
+        let chips = now.map(|now| Chips { now });
+        let options = html::PageOptions {
+            due: chips.as_ref().map(|chips| chips as &dyn html::DueChips),
+            ..html::PageOptions::default()
+        };
+        let text = match chips {
+            Some(_) => tasks::rewrite_for_preview(&text),
+            None => std::borrow::Cow::Borrowed(text.as_str()),
+        };
+        Ok(html::page_with(
+            &note.title,
+            &text,
+            &palette_of(palette),
+            &attachments,
+            &options,
+        ))
     }
 
     /// The runs of `text` between `start` and `end` (UTF-16 units) that the

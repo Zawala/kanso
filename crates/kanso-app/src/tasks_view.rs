@@ -24,6 +24,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::dates::DateTime;
 use kanso_core::tasks::{Due, TaskGroup, task_group};
+use kanso_engine::tasks::TaskId;
 use kanso_store::{CheckOff, Origin, Store, StoreError, TaskQuery, TaskRow};
 
 use crate::clock::Clock;
@@ -70,24 +71,6 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("enter", OpenTask, context),
         KeyBinding::new("secondary-z", UndoCheckOff, context),
     ]);
-}
-
-/// A task as the list knows it: its note, its line and its words.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct TaskId {
-    pub note_id: String,
-    pub line: u32,
-    pub text: String,
-}
-
-impl TaskId {
-    pub(crate) fn of(row: &TaskRow) -> TaskId {
-        TaskId {
-            note_id: row.note_id.clone(),
-            line: row.line,
-            text: row.text.clone(),
-        }
-    }
 }
 
 /// A line of the list: a group's header or a task (an index into the

@@ -37,6 +37,9 @@ pub struct PageOptions<'a> {
     /// Colors a fenced code block by its language; `None` leaves code as
     /// plain text.
     pub highlight: Option<&'a dyn Highlighter>,
+    /// Draws a `kanso-due:` link as a due-date chip; `None` leaves such a
+    /// link as an ordinary link.
+    pub due: Option<&'a dyn DueChips>,
 }
 
 impl Default for PageOptions<'_> {
@@ -46,6 +49,7 @@ impl Default for PageOptions<'_> {
             mono: None,
             size: 16.,
             highlight: None,
+            due: None,
         }
     }
 }
@@ -67,6 +71,62 @@ pub trait Highlighter: Send + Sync {
     /// The styles for `code` in `lang` (the fence's info string), or `None`
     /// when Kanso has no grammar for it.
     fn highlight(&self, lang: &str, code: &str) -> Option<Vec<CodeSpan>>;
+}
+
+/// The scheme of the links a task's due date is written as for the preview
+/// (`kanso_engine::tasks::DUE_SCHEME`, which this crate doesn't depend on).
+pub const DUE_LINK_PREFIX: &str = "kanso-due:";
+
+/// How near a due date feels, which sets the chip's colors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DueTone {
+    /// Upcoming.
+    Plain,
+    /// Due today.
+    Today,
+    /// Past, and the task isn't done.
+    Overdue,
+    /// The task is done.
+    Done,
+}
+
+impl DueTone {
+    /// The chip's class: `kanso-due-plain`, `kanso-due-today`, and so on.
+    fn class(self) -> &'static str {
+        match self {
+            DueTone::Plain => "kanso-due-plain",
+            DueTone::Today => "kanso-due-today",
+            DueTone::Overdue => "kanso-due-overdue",
+            DueTone::Done => "kanso-due-done",
+        }
+    }
+}
+
+/// A due-date chip: what it says and how it looks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DueChip {
+    pub label: String,
+    pub tone: DueTone,
+    /// The tooltip, "Due Sunday, 25 October 2026 at 09:00".
+    pub tooltip: String,
+}
+
+/// Works out due-date chips. Dates read relative to now ("Tomorrow"), so
+/// the caller, which knows the time, does it.
+pub trait DueChips: Send + Sync {
+    /// The chip for a `kanso-due:` link's address, or `None` when it isn't
+    /// a date.
+    fn chip(&self, url: &str) -> Option<DueChip>;
+}
+
+/// A chip as the span the page holds. Everything it says is escaped.
+fn due_chip_markup(chip: &DueChip) -> String {
+    format!(
+        r#"<span class="kanso-due {}" title="{}">{}</span>"#,
+        chip.tone.class(),
+        escape(&chip.tooltip),
+        escape(&chip.label)
+    )
 }
 
 /// The parse options the preview uses, with math.
@@ -485,6 +545,11 @@ fn collect(
                     }),
             }
         }
+        // A due date written for the preview: the chip.
+        Node::Link(link) if link.url.starts_with(DUE_LINK_PREFIX) => options
+            .due
+            .and_then(|due| due.chip(&link.url))
+            .map(|chip| Piece::Inline(due_chip_markup(&chip))),
         // In a site, an ID link to a published note links to its page.
         Node::Link(link) if site.is_some() => linked_note_id(&link.url)
             .and_then(|id| site.and_then(|site| (site.resolve)(NoteRef::Id(&id))))
@@ -727,6 +792,9 @@ pub fn stylesheet(p: &Palette, options: &PageOptions<'_>) -> String {
         .map(|color| format!("h1,h2,h3,h4,h5,h6{{color:{}}}", c(color)))
         .unwrap_or_default();
     let h6_color = c(p.task_done);
+    // The chip for a date gone by: Kanso's own red for the scheme, as the
+    // palette has no color for errors.
+    let danger = Rgb(if p.dark { 0xC96E63 } else { 0xA6493F });
     let check_stroke = if p.dark { "black" } else { "white" };
     let check = format!(
         "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.25 8.25 3 3 6.5-7' fill='none' stroke='{check_stroke}' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")"
@@ -783,6 +851,10 @@ figure svg{{max-width:100%;height:auto}}
 .kanso-math-display{{display:block;text-align:center;margin:.4em 0}}
 .kanso-diagram,.kanso-drawing{{display:block}}
 .kanso-missing{{color:{muted};font-style:italic}}
+.kanso-due{{display:inline-block;padding:0 .5em;border-radius:.7em;font-size:.85em;line-height:1.5;white-space:nowrap;color:{muted};background:{chipfill}}}
+.kanso-due-today{{color:{accent};background:{chiptoday}}}
+.kanso-due-overdue{{color:{danger};background:{chipoverdue}}}
+.kanso-due-done{{background:{chipdone}}}
 .kanso-wikilink{{border-bottom:1px dotted {muted}}}
 a.kanso-wikilink{{border-bottom:0}}
 .kanso-site-nav{{margin:0 0 1.2rem;font-size:.9rem}}
@@ -838,6 +910,11 @@ ul.kanso-site-index{{list-style:none;padding:0}}
         codetext = code_text,
         link = c(p.accent),
         check = check,
+        chipfill = c(p.surface),
+        chiptoday = c(p.accent.over(p.background, 0.16)),
+        danger = c(danger),
+        chipoverdue = c(danger.over(p.background, 0.16)),
+        chipdone = c(p.surface.over(p.background, 0.6)),
     )
 }
 
@@ -1437,6 +1514,7 @@ mod tests {
             mono: Some("Iosevka"),
             size: 18.,
             highlight: None,
+            due: None,
         };
         let css = stylesheet(&Palette::LIGHT, &options);
         let width = crate::typography::readable_width(18., false);
@@ -1468,6 +1546,93 @@ mod tests {
         assert!(!css.contains("46rem"), "{css}");
     }
 
+    /// Chips for any `kanso-due:` address, with the words it is given.
+    struct Chips(DueChip);
+
+    impl DueChips for Chips {
+        fn chip(&self, url: &str) -> Option<DueChip> {
+            url.starts_with(DUE_LINK_PREFIX).then(|| self.0.clone())
+        }
+    }
+
+    fn chip(label: &str, tooltip: &str, tone: DueTone) -> Chips {
+        Chips(DueChip {
+            label: label.into(),
+            tone,
+            tooltip: tooltip.into(),
+        })
+    }
+
+    #[test]
+    fn a_due_link_is_a_chip_when_chips_are_given() {
+        let note = "- [ ] Pay rent [@2026-10-25](kanso-due:2026-10-25)\n";
+        let chips = chip("Overdue · Today", "Due Sunday", DueTone::Overdue);
+        let options = PageOptions {
+            due: Some(&chips),
+            ..PageOptions::default()
+        };
+        let html = body_with(note, &Palette::LIGHT, &none, None, &options);
+        assert!(
+            html.contains(
+                r#"Pay rent <span class="kanso-due kanso-due-overdue" title="Due Sunday">Overdue · Today</span>"#
+            ),
+            "{html}"
+        );
+        assert!(!html.contains("kanso-due:"), "{html}");
+        assert!(!html.contains("kansopiece"), "{html}");
+        // Without chips, the link is an ordinary one that goes nowhere.
+        let plain = body(note, &Palette::LIGHT, &none);
+        assert!(plain.contains("<a>@2026-10-25</a>"), "{plain}");
+        assert!(!plain.contains("kanso-due\""), "{plain}");
+        // A chip works inside a site, whose links have their own arm.
+        let site = Site {
+            resolve: &|_| None,
+            home: "Work",
+        };
+        let in_site = body_with(note, &Palette::LIGHT, &none, Some(&site), &options);
+        assert!(in_site.contains("kanso-due-overdue"), "{in_site}");
+        // Every tone has its colors in the page.
+        let css = stylesheet(&Palette::DARK, &PageOptions::default());
+        for tone in ["", "-today", "-overdue", "-done"] {
+            assert!(css.contains(&format!(".kanso-due{tone}{{")), "{css}");
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(128))]
+
+        /// Invariants: whatever a chip says, it is text in a span: no tag
+        /// of its own, no way out of the title attribute. A note with no due
+        /// links reads the same with chips as without.
+        #[test]
+        fn prop_chips_never_inject_markup(
+            label in "[<>&\"'a-z0-9 ]{0,30}",
+            tooltip in "[<>&\"'a-z0-9 =]{0,30}",
+            note in "[a-z <>&\"\n#*-]{0,60}",
+        ) {
+            let chips = chip(&label, &tooltip, DueTone::Today);
+            let options = PageOptions { due: Some(&chips), ..PageOptions::default() };
+            let html = body_with(
+                &format!("[x](kanso-due:2026-10-25)"),
+                &Palette::LIGHT,
+                &none,
+                None,
+                &options,
+            );
+            let inner = html
+                .split_once("<span class=\"kanso-due kanso-due-today\" title=\"")
+                .and_then(|(_, rest)| rest.split_once("</span>"))
+                .map(|(inside, _)| inside.to_owned());
+            let inner = inner.expect("a chip");
+            let (title, text) = inner.split_once("\">").expect("a closed attribute");
+            prop_assert!(!title.contains(['"', '<', '>']), "{title}");
+            prop_assert!(!text.contains(['<', '>']), "{text}");
+            prop_assert_eq!(text, escape(&label));
+            let with = body_with(&note, &Palette::LIGHT, &none, None, &options);
+            prop_assert_eq!(with, body(&note, &Palette::LIGHT, &none));
+        }
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(128))]
 
@@ -1491,6 +1656,7 @@ mod tests {
                 mono: Some(&mono),
                 size,
                 highlight: None,
+                due: None,
             };
             let css = stylesheet(&palette, &options);
             prop_assert_eq!(css.matches('{').count(), css.matches('}').count());

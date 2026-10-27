@@ -51,6 +51,12 @@ abstract class KansoRenderer implements RustOpaqueInterface {
 
   Future<String> previewHtml({required String id, required PaletteDto palette});
 
+  Future<String> previewHtmlAt({
+    required String id,
+    required PaletteDto palette,
+    required LocalTime now,
+  });
+
   static Future<bool> setFonts({required List<Uint8List> fonts}) => KansoCore
       .instance
       .api

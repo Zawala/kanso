@@ -28,6 +28,9 @@ abstract final class KansoRoutes {
   /// `/note/:noteId`.
   static const String note = 'note';
 
+  /// The board of a place's notes is that address plus `/board?kind=`.
+  static const String board = 'board';
+
   /// A note by its id alone: redirects to the note in All Notes.
   static const String noteById = '/note';
 

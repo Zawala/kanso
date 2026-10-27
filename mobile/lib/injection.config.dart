@@ -13,6 +13,7 @@
 import 'package:get_it/get_it.dart' as _i174;
 import 'package:injectable/injectable.dart' as _i526;
 
+import 'board/state/board/board_bloc.dart' as _i553;
 import 'core/bridge/api/library.dart' as _i455;
 import 'core/bridge/api/locks.dart' as _i983;
 import 'core/bridge/api/renderer.dart' as _i832;
@@ -22,24 +23,34 @@ import 'core/configs/core_module.dart' as _i418;
 import 'core/models/data/design_gallery_access.dart' as _i289;
 import 'core/models/data/library_folder.dart' as _i72;
 import 'core/models/repos/abs/about_repository.dart' as _i80;
+import 'core/models/repos/abs/board_repository.dart' as _i235;
 import 'core/models/repos/abs/diagnostics_repository.dart' as _i984;
 import 'core/models/repos/abs/haptics_repository.dart' as _i1056;
+import 'core/models/repos/abs/journal_repository.dart' as _i169;
 import 'core/models/repos/abs/library_repository.dart' as _i38;
 import 'core/models/repos/abs/licences_repository.dart' as _i951;
 import 'core/models/repos/abs/patch_repository.dart' as _i909;
 import 'core/models/repos/abs/preferences_repository.dart' as _i384;
+import 'core/models/repos/abs/reminder_notifier.dart' as _i874;
+import 'core/models/repos/abs/reminders_repository.dart' as _i58;
 import 'core/models/repos/abs/renderer_repository.dart' as _i732;
 import 'core/models/repos/abs/session_repository.dart' as _i333;
 import 'core/models/repos/abs/sync_repository.dart' as _i601;
+import 'core/models/repos/abs/templates_repository.dart' as _i460;
+import 'core/models/repos/impl/channel_reminder_notifier.dart' as _i740;
 import 'core/models/repos/impl/file_preferences_repository.dart' as _i207;
 import 'core/models/repos/impl/flutter_haptics_repository.dart' as _i438;
 import 'core/models/repos/impl/flutter_licences_repository.dart' as _i1025;
 import 'core/models/repos/impl/package_info_about_repository.dart' as _i489;
+import 'core/models/repos/impl/rust_board_repository.dart' as _i418;
 import 'core/models/repos/impl/rust_diagnostics_repository.dart' as _i1062;
+import 'core/models/repos/impl/rust_journal_repository.dart' as _i212;
 import 'core/models/repos/impl/rust_library_repository.dart' as _i152;
+import 'core/models/repos/impl/rust_reminders_repository.dart' as _i429;
 import 'core/models/repos/impl/rust_renderer_repository.dart' as _i820;
 import 'core/models/repos/impl/rust_session_repository.dart' as _i899;
 import 'core/models/repos/impl/rust_sync_repository.dart' as _i564;
+import 'core/models/repos/impl/rust_templates_repository.dart' as _i213;
 import 'core/models/repos/impl/shorebird_patch_repository.dart' as _i989;
 import 'core/router/kanso_router.dart' as _i388;
 import 'core/router/layout_class_notifier.dart' as _i609;
@@ -55,13 +66,20 @@ import 'crash/models/repos/abs/crash_report_repository.dart' as _i288;
 import 'crash/models/repos/impl/platform_crash_context_repository.dart'
     as _i756;
 import 'crash/state/crash_reports/crash_reports_bloc.dart' as _i815;
+import 'journal/state/calendar/calendar_bloc.dart' as _i390;
+import 'journal/state/journal/journal_bloc.dart' as _i686;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
+import 'reminders/state/reminders_settings/reminders_settings_bloc.dart'
+    as _i420;
+import 'reminders/utils/reminders_coordinator.dart' as _i303;
 import 'search/state/search/search_bloc.dart' as _i696;
 import 'settings/state/about/about_bloc.dart' as _i380;
 import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
 import 'settings/state/licences/licences_bloc.dart' as _i570;
 import 'shell/state/library_pane/library_pane_bloc.dart' as _i612;
+import 'templates/state/daily_template/daily_template_bloc.dart' as _i615;
+import 'templates/state/template_picker/template_picker_bloc.dart' as _i828;
 import 'themes/state/theme_picker/theme_picker_bloc.dart' as _i149;
 
 const String _development = 'development';
@@ -82,6 +100,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
     gh.lazySingleton<_i984.DiagnosticsRepository>(
       () => _i1062.RustDiagnosticsRepository(),
+    );
+    gh.lazySingleton<_i874.ReminderNotifier>(
+      () => _i740.ChannelReminderNotifier(),
     );
     gh.lazySingleton<_i1056.HapticsRepository>(
       () => _i438.FlutterHapticsRepository(),
@@ -178,8 +199,23 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i732.RendererRepository>(),
       ),
     );
+    gh.lazySingleton<_i169.JournalRepository>(
+      () => _i212.RustJournalRepository(gh<_i455.KansoLibrary>()),
+    );
     gh.lazySingleton<_i38.LibraryRepository>(
       () => _i152.RustLibraryRepository(gh<_i455.KansoLibrary>()),
+    );
+    gh.lazySingleton<_i235.BoardRepository>(
+      () => _i418.RustBoardRepository(gh<_i455.KansoLibrary>()),
+    );
+    gh.lazySingleton<_i460.TemplatesRepository>(
+      () => _i213.RustTemplatesRepository(gh<_i455.KansoLibrary>()),
+    );
+    gh.factory<_i553.BoardBloc>(
+      () => _i553.BoardBloc(
+        gh<_i235.BoardRepository>(),
+        gh<_i38.LibraryRepository>(),
+      ),
     );
     gh.factory<_i861.LibraryIndexBloc>(
       () => _i861.LibraryIndexBloc(gh<_i38.LibraryRepository>()),
@@ -192,6 +228,15 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i696.SearchBloc>(
       () => _i696.SearchBloc(gh<_i38.LibraryRepository>()),
+    );
+    gh.lazySingleton<_i58.RemindersRepository>(
+      () => _i429.RustRemindersRepository(gh<_i455.KansoLibrary>()),
+    );
+    gh.factory<_i686.JournalBloc>(
+      () => _i686.JournalBloc(
+        gh<_i169.JournalRepository>(),
+        gh<_i460.TemplatesRepository>(),
+      ),
     );
     gh.factory<_i351.NoteListBloc>(
       () => _i351.NoteListBloc(
@@ -206,14 +251,38 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i732.RendererRepository>(),
       ),
     );
+    gh.factory<_i390.CalendarBloc>(
+      () => _i390.CalendarBloc(gh<_i169.JournalRepository>()),
+    );
     gh.lazySingleton<_i601.SyncRepository>(
       () => _i564.RustSyncRepository(gh<_i591.KansoSync>()),
     );
     gh.lazySingleton<_i333.SessionRepository>(
       () => _i899.RustSessionRepository(gh<_i983.KansoLocks>()),
     );
+    gh.factory<_i615.DailyTemplateBloc>(
+      () => _i615.DailyTemplateBloc(gh<_i460.TemplatesRepository>()),
+    );
+    gh.factory<_i828.TemplatePickerBloc>(
+      () => _i828.TemplatePickerBloc(gh<_i460.TemplatesRepository>()),
+    );
+    gh.lazySingleton<_i303.RemindersCoordinator>(
+      () => _i303.RemindersCoordinator(
+        gh<_i384.PreferencesRepository>(),
+        gh<_i58.RemindersRepository>(),
+        gh<_i874.ReminderNotifier>(),
+        gh<_i38.LibraryRepository>(),
+      ),
+    );
     gh.factory<_i185.SyncStatusBloc>(
       () => _i185.SyncStatusBloc(gh<_i601.SyncRepository>()),
+    );
+    gh.factory<_i420.RemindersSettingsBloc>(
+      () => _i420.RemindersSettingsBloc(
+        gh<_i384.PreferencesRepository>(),
+        gh<_i874.ReminderNotifier>(),
+        gh<_i303.RemindersCoordinator>(),
+      ),
     );
     return this;
   }

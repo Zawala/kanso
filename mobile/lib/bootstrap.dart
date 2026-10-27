@@ -15,6 +15,7 @@ import 'crash/models/repos/abs/crash_report_repository.dart';
 import 'crash/utils/crash_capture.dart';
 import 'injection.dart';
 import 'providers.dart';
+import 'reminders/utils/reminders_coordinator.dart';
 
 /// Prepares the app and runs it for [environment].
 Future<void> bootstrap(AppEnvironment environment) async {
@@ -39,7 +40,10 @@ Future<void> bootstrap(AppEnvironment environment) async {
   runApp(
     AppProviders(
       appearance: appearance,
-      child: App(router: getIt<KansoRouter>()),
+      child: App(
+        router: getIt<KansoRouter>(),
+        reminders: getIt<RemindersCoordinator>(),
+      ),
     ),
   );
 }

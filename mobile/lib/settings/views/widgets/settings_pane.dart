@@ -19,6 +19,8 @@ import '../../../core/views/widgets/kanso_grouped_section.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
+import '../../../reminders/views/widgets/reminders_section.dart';
+import '../../../templates/views/widgets/daily_template_section.dart';
 import '../../state/about/about_bloc.dart';
 
 /// Settings: a close button, a centred title and rows grouped in rounded
@@ -120,6 +122,10 @@ class SettingsPane extends StatelessWidget {
                     );
                   },
                 ),
+                const SizedBox(height: KansoSpacing.lg),
+                const DailyTemplateSection(dividerIndent: iconInset),
+                const SizedBox(height: KansoSpacing.lg),
+                const RemindersSection(dividerIndent: iconInset),
                 const SizedBox(height: KansoSpacing.lg),
                 KansoGroupedSection(
                   title: l10n.settingsPrivacy,

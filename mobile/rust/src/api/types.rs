@@ -9,11 +9,14 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview, ListPlace,
-    ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow,
-    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved,
-    SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
+    BoardCard, BoardColumn, BoardKind, BoardLane, BoardView, BuiltinTheme, CalendarDay, CardKey,
+    CardMoved, ColorRow, DateField, DayDate, DiagramKind, DueChipRow, DueTone, Hit, KansoError,
+    LibraryOverview, ListPlace, ListQuery, ListShape, LocalTime, LockEvent, LockReason, LockState,
+    MadeNote, MonthGrid, NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole,
+    NotebookRow, PaletteDto, Property, PropertyKind, Range16, ReminderAnswer, ReminderNote,
+    ReminderPlan, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase,
+    SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, TaskPlace,
+    TemplateRow, ThemeTokens,
 };
 
 #[frb(mirror(KansoError))]
@@ -365,4 +368,151 @@ pub struct _SvgRow {
     pub width: f32,
     pub height: f32,
     pub baseline: Option<f32>,
+}
+
+#[frb(mirror(LocalTime))]
+pub struct _LocalTime {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
+    pub hour: u32,
+    pub minute: u32,
+    pub second: u32,
+}
+
+#[frb(mirror(DayDate))]
+pub struct _DayDate {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
+}
+
+#[frb(mirror(MadeNote))]
+pub struct _MadeNote {
+    pub id: String,
+    pub cursor16: Option<u32>,
+    pub title_first: bool,
+}
+
+#[frb(mirror(CalendarDay))]
+pub struct _CalendarDay {
+    pub date: DayDate,
+    pub in_month: bool,
+    pub has_note: bool,
+    pub is_today: bool,
+}
+
+#[frb(mirror(MonthGrid))]
+pub struct _MonthGrid {
+    pub year: i32,
+    pub month: u32,
+    pub title: String,
+    pub weekday_labels: Vec<String>,
+    pub weeks: Vec<Vec<CalendarDay>>,
+}
+
+#[frb(mirror(TemplateRow))]
+pub struct _TemplateRow {
+    pub id: String,
+    pub title: String,
+}
+
+#[frb(mirror(BoardKind))]
+pub enum _BoardKind {
+    Notes,
+    Tasks,
+}
+
+#[frb(mirror(BoardLane))]
+pub enum _BoardLane {
+    Status { status: String },
+    Todo,
+    Done,
+}
+
+#[frb(mirror(CardKey))]
+pub enum _CardKey {
+    Note {
+        id: String,
+    },
+    Task {
+        note_id: String,
+        line: u32,
+        text: String,
+    },
+}
+
+#[frb(mirror(BoardCard))]
+pub struct _BoardCard {
+    pub key: CardKey,
+    pub title: String,
+    pub note_title: String,
+    pub snippet: String,
+    pub due: Option<String>,
+    pub checked: bool,
+    pub locked: bool,
+}
+
+#[frb(mirror(BoardColumn))]
+pub struct _BoardColumn {
+    pub lane: BoardLane,
+    pub label: String,
+    pub cards: Vec<BoardCard>,
+}
+
+#[frb(mirror(BoardView))]
+pub struct _BoardView {
+    pub kind: BoardKind,
+    pub columns: Vec<BoardColumn>,
+}
+
+#[frb(mirror(CardMoved))]
+pub enum _CardMoved {
+    Changed,
+    Unchanged,
+    Missing,
+}
+
+#[frb(mirror(DueTone))]
+pub enum _DueTone {
+    Plain,
+    Today,
+    Overdue,
+    Done,
+}
+
+#[frb(mirror(DueChipRow))]
+pub struct _DueChipRow {
+    pub label: String,
+    pub tone: DueTone,
+    pub tooltip: String,
+}
+
+#[frb(mirror(ReminderNote))]
+pub struct _ReminderNote {
+    pub key: String,
+    pub note_id: String,
+    pub line: u32,
+    pub title: String,
+    pub body: String,
+    pub fire_at: LocalTime,
+}
+
+#[frb(mirror(ReminderPlan))]
+pub struct _ReminderPlan {
+    pub show_now: Vec<ReminderNote>,
+    pub schedule: Vec<ReminderNote>,
+}
+
+#[frb(mirror(ReminderAnswer))]
+pub enum _ReminderAnswer {
+    Open,
+    MarkDone,
+    Dismiss,
+}
+
+#[frb(mirror(TaskPlace))]
+pub struct _TaskPlace {
+    pub note_id: String,
+    pub line: u32,
 }

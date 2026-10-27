@@ -44,6 +44,11 @@ abstract class Preferences with _$Preferences {
     /// Whether the notice that this phone's notes are not in device backups
     /// has been shown.
     @Default(false) bool backupNoticeSeen,
+
+    /// Whether Kanso shows a notification when a task with a time comes due
+    /// (the desktop's `reminders.enabled`, which is on unless turned off).
+    /// The system's permission is asked separately.
+    @Default(true) bool remindersEnabled,
   }) = _Preferences;
 
   factory Preferences.fromJson(Map<String, dynamic> json) =>

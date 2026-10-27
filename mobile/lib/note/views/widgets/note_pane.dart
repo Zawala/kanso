@@ -15,6 +15,8 @@ import '../../../core/state/navigation_history/navigation_history_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
+import '../../../journal/views/widgets/journal_opener.dart';
+import '../../../journal/views/widgets/note_journal_actions.dart';
 import '../../models/data/note_screen_status.dart';
 import '../../state/note/note_bloc.dart';
 import 'locked_note_pane.dart';
@@ -49,10 +51,12 @@ class NotePane extends StatelessWidget {
               history.add(const NavigationHistoryEvent.backRequested());
           void goForward() =>
               history.add(const NavigationHistoryEvent.forwardRequested());
-          return Column(
+          return JournalOpener(
+            child: Column(
             children: <Widget>[
               NoteTopBar(
                 phone: !inPane,
+                trailing: const <Widget>[NoteJournalActions()],
                 onBack: () => leave(context),
                 onGoBack: steps.canGoBack ? goBack : null,
                 onGoForward: steps.canGoForward ? goForward : null,
@@ -111,6 +115,7 @@ class NotePane extends StatelessWidget {
                   onSettings: () => context.push(KansoRoutes.settings),
                 ),
             ],
+            ),
           );
         },
       ),

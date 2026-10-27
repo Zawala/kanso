@@ -42,15 +42,19 @@
 
 pub mod background;
 mod backup;
+mod board;
 pub mod boundary;
 mod builtin_themes;
 pub mod diagnostics;
+mod due;
 mod errors;
+mod journal;
 mod library;
 mod locks;
 mod matching;
 mod model;
 mod notes;
+mod reminders;
 mod renderer;
 pub mod secrets;
 mod stream;
@@ -61,6 +65,7 @@ pub use errors::KansoError;
 pub use library::Library;
 pub use locks::LockSession;
 pub use model::*;
+pub use reminders::SCHEDULE_LIMIT;
 pub use renderer::Renderer;
 pub use stream::Sink;
 pub use syncing::SyncHandle;
