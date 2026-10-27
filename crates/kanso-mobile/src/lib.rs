@@ -64,6 +64,7 @@ pub mod background;
 mod backup;
 pub mod boundary;
 mod builtin_themes;
+mod comments_model;
 pub mod diagnostics;
 mod errors;
 mod gallery;
@@ -84,6 +85,8 @@ pub mod secrets;
 mod sharing;
 mod sharing_model;
 mod stream;
+mod sync_model;
+mod sync_words;
 mod syncing;
 mod theme_tokens;
 
@@ -91,6 +94,7 @@ pub use account::AccountHandle;
 pub use account_model::*;
 pub use account_settings::AccountSettings;
 pub use approvals::Approvals;
+pub use comments_model::*;
 pub use errors::KansoError;
 pub use gallery::Gallery;
 pub use gallery_model::*;
@@ -101,6 +105,7 @@ pub use renderer::Renderer;
 pub use sharing::SharedNotes;
 pub use sharing_model::*;
 pub use stream::Sink;
+pub use sync_model::*;
 pub use syncing::SyncHandle;
 
 /// Where secrets live: the seam the Keychain, the Keystore and the tests'

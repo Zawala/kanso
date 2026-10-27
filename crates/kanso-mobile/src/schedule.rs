@@ -5,6 +5,12 @@
 //! worked. Behind, nothing runs: the system's background jobs
 //! (`background.rs`) carry on from there.
 //!
+//! The sync settings decide the rest: the interval is the person's choice,
+//! and with "sync automatically" off the account is not synced on its own at
+//! all (not on opening, after an edit or on the interval), as the desktop's
+//! `apply_sync_settings` does; shared notes still sync on the interval, so
+//! invitations and mentions come, and Sync now always works.
+//!
 //! [`Driver`] is the rules, pure and told the time, so a test can walk it
 //! through any order of edits, trips to the back and ticks.
 //! [`AutoSync`] is what a library keeps: the driver, and the two threads
@@ -26,11 +32,8 @@ use kanso_sync::{SyncError, SyncReport, meta_keys};
 use crate::boundary::{held, panic_message};
 use crate::library::Inner;
 use crate::sharing::SharedNotes;
+use crate::sync_model::SyncSettingsRow;
 use crate::syncing::{Ran, SyncHandle};
-
-/// The desktop's default time between automatic syncs (its setting's
-/// default, 5 minutes). Phones have no setting for it yet.
-const DEFAULT_INTERVAL_SECS: u64 = 300;
 
 /// How long to wait before looking again whether an account is signed in,
 /// while none is.
@@ -46,12 +49,19 @@ pub(crate) struct Timing {
     pub(crate) interval_ms: i64,
 }
 
-impl Default for Timing {
-    fn default() -> Timing {
+impl Timing {
+    /// The delays for these sync settings.
+    pub(crate) fn of(settings: SyncSettingsRow) -> Timing {
         Timing {
             after_edit_ms: millis(AFTER_EDIT),
-            interval_ms: millis(interval(DEFAULT_INTERVAL_SECS)),
+            interval_ms: millis(interval(u64::from(settings.interval_secs))),
         }
+    }
+}
+
+impl Default for Timing {
+    fn default() -> Timing {
+        Timing::of(SyncSettingsRow::default())
     }
 }
 
@@ -66,6 +76,12 @@ pub(crate) struct Driver {
     scheduler: Scheduler,
     timing: Timing,
     foreground: bool,
+    /// "Sync automatically": with it off nothing starts an account sync on
+    /// its own.
+    enabled: bool,
+    /// Only the shared notes are due: an interval came while automatic sync
+    /// is off.
+    shared_due: bool,
     /// A sync is wanted at once: the app came to the front, or one was
     /// asked for while another ran.
     now: bool,
@@ -78,7 +94,22 @@ impl Driver {
     pub(crate) fn new(timing: Timing) -> Driver {
         Driver {
             timing,
+            enabled: true,
             ..Driver::default()
+        }
+    }
+
+    /// The sync settings changed: new delays and whether sync runs on its
+    /// own. Like the desktop's, the schedule starts over: in front, it is
+    /// due at once (the account if automatic sync is on, else the shared
+    /// notes) and then on the new interval.
+    pub(crate) fn set_settings(&mut self, timing: Timing, enabled: bool, now: i64) {
+        self.timing = timing;
+        self.enabled = enabled;
+        self.edit_due = None;
+        if self.foreground {
+            self.now = true;
+            self.interval_due = Some(now + timing.interval_ms);
         }
     }
 
@@ -111,7 +142,7 @@ impl Driver {
     /// A local edit: a sync in [`Timing::after_edit_ms`]. A second edit
     /// before then moves it, as the desktop's does.
     pub(crate) fn edited(&mut self, now: i64) {
-        if self.foreground {
+        if self.foreground && self.enabled {
             self.edit_due = Some(now + self.timing.after_edit_ms);
         }
     }
@@ -150,7 +181,17 @@ impl Driver {
             self.interval_due = Some(now + SIGNED_OUT_RECHECK_MS.min(self.timing.interval_ms));
             return false;
         }
+        if !self.enabled {
+            self.shared_due = true;
+            return false;
+        }
         matches!(self.scheduler.request(false, false, now), Request::Start)
+    }
+
+    /// Takes whether the shared notes alone are due, as they are on the
+    /// interval while automatic sync is off.
+    pub(crate) fn take_shared_due(&mut self) -> bool {
+        std::mem::take(&mut self.shared_due)
     }
 
     /// The sync [`Driver::poll`] started could not run, or was refused by
@@ -209,12 +250,15 @@ pub(crate) struct AutoSync {
     shared: Arc<Shared>,
 }
 
-impl Default for AutoSync {
-    fn default() -> AutoSync {
+impl AutoSync {
+    /// The schedule for a library with these sync settings.
+    pub(crate) fn new(settings: SyncSettingsRow) -> AutoSync {
+        let mut driver = Driver::new(Timing::of(settings));
+        driver.enabled = settings.enabled;
         AutoSync {
             shared: Arc::new(Shared {
                 state: Mutex::new(State {
-                    driver: Driver::new(Timing::default()),
+                    driver,
                     closed: false,
                     cancel: None,
                     started: false,
@@ -222,6 +266,12 @@ impl Default for AutoSync {
                 wake: Condvar::new(),
             }),
         }
+    }
+}
+
+impl Default for AutoSync {
+    fn default() -> AutoSync {
+        AutoSync::new(SyncSettingsRow::default())
     }
 }
 
@@ -246,6 +296,16 @@ impl AutoSync {
             self.start(library);
         }
         drop(state);
+        self.shared.wake.notify_all();
+    }
+
+    /// The sync settings changed: the schedule follows at once.
+    pub(crate) fn apply_settings(&self, settings: SyncSettingsRow) {
+        held(&self.shared.state).driver.set_settings(
+            Timing::of(settings),
+            settings.enabled,
+            now_ms(),
+        );
         self.shared.wake.notify_all();
     }
 
@@ -340,6 +400,11 @@ fn round(shared: &Shared, inner: &Arc<Inner>) {
     let cancel = {
         let mut state = held(&shared.state);
         if !state.driver.poll(signed_in, now_ms()) {
+            let shared_only = state.driver.take_shared_due();
+            drop(state);
+            if shared_only {
+                sync_shared(inner);
+            }
             return;
         }
         let cancel = Arc::new(AtomicBool::new(false));
@@ -373,16 +438,21 @@ fn round(shared: &Shared, inner: &Arc<Inner>) {
         worked &= state.driver.in_front();
     }
     if worked {
-        // Invitations, notes shared with this account, their logs and
-        // mentions come with the account's own sync. Offline or signed out,
-        // there is nothing to say: the next round tries again.
-        let _ = crate::boundary::guard(|| {
-            SharedNotes {
-                inner: inner.clone(),
-            }
-            .sync_shared()
-        });
+        sync_shared(inner);
     }
+}
+
+/// Invitations, notes shared with this account, their logs and mentions come
+/// with the account's own sync, and on the interval while automatic sync is
+/// off. Offline or signed out, there is nothing to say: the next round tries
+/// again.
+fn sync_shared(inner: &Arc<Inner>) {
+    let _ = crate::boundary::guard(|| {
+        SharedNotes {
+            inner: inner.clone(),
+        }
+        .sync_shared()
+    });
 }
 
 #[cfg(test)]
@@ -406,6 +476,8 @@ mod tests {
         /// The running sync ends: well, or with a problem.
         Finish(Ending),
         SignIn(bool),
+        /// "Sync automatically" turned on or off.
+        Automatic(bool),
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -430,6 +502,7 @@ mod tests {
             ]
             .prop_map(Step::Finish),
             1 => any::<bool>().prop_map(Step::SignIn),
+            1 => any::<bool>().prop_map(Step::Automatic),
         ]
     }
 
@@ -447,6 +520,7 @@ mod tests {
             let mut now = 1_000i64;
             let mut foreground = false;
             let mut signed_in = true;
+            let mut automatic = true;
             let mut running = false;
             let mut starts = 0usize;
             for step in steps {
@@ -461,11 +535,16 @@ mod tests {
                         driver.set_foreground(false, now);
                     }
                     Step::SignIn(state) => signed_in = state,
+                    Step::Automatic(on) => {
+                        automatic = on;
+                        driver.set_settings(TIMING, on, now);
+                    }
                     Step::Tick(by) => {
                         now += by;
                         if driver.poll(signed_in, now) {
                             prop_assert!(foreground, "a sync started behind");
                             prop_assert!(signed_in, "a sync started signed out");
+                            prop_assert!(automatic, "an automatic sync started while it is off");
                             prop_assert!(!running, "two syncs at once");
                             running = true;
                             starts += 1;
@@ -518,6 +597,75 @@ mod tests {
             prop_assert!(driver.poll(true, now + TIMING.after_edit_ms));
             driver.finished(Some(Ok(SyncReport::default())), now + TIMING.after_edit_ms);
             prop_assert!(!driver.poll(true, now + TIMING.after_edit_ms + 1));
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(96))]
+
+        /// The interval it is given is the interval it keeps: after the
+        /// sync the front starts, the next is due exactly one interval
+        /// later, and a change of setting moves it to the new interval from
+        /// then.
+        #[test]
+        fn prop_the_schedule_keeps_the_interval_it_is_given(
+            first in prop::sample::select(kanso_engine::sync::words::SYNC_INTERVALS.to_vec()),
+            second in prop::sample::select(kanso_engine::sync::words::SYNC_INTERVALS.to_vec()),
+        ) {
+            let settings = |minutes: u64| SyncSettingsRow {
+                enabled: true,
+                interval_secs: u32::try_from(minutes * 60).unwrap(),
+            };
+            let timing = Timing::of(settings(first));
+            prop_assert_eq!(timing.interval_ms, i64::try_from(first * 60_000).unwrap());
+            let mut driver = Driver::new(timing);
+            driver.set_foreground(true, 0);
+            prop_assert!(driver.poll(true, 0));
+            driver.finished(Some(Ok(SyncReport::default())), 0);
+            prop_assert!(!driver.poll(true, timing.interval_ms - 1));
+            prop_assert!(driver.poll(true, timing.interval_ms));
+            driver.finished(Some(Ok(SyncReport::default())), timing.interval_ms);
+            // The setting changes: due at once, then on the new interval.
+            let now = timing.interval_ms + 10;
+            let changed = Timing::of(settings(second));
+            driver.set_settings(changed, true, now);
+            prop_assert!(driver.poll(true, now));
+            driver.finished(Some(Ok(SyncReport::default())), now);
+            prop_assert!(!driver.poll(true, now + changed.interval_ms - 1));
+            prop_assert!(driver.poll(true, now + changed.interval_ms));
+        }
+
+        /// With automatic sync off nothing starts on its own however long
+        /// the app stays in front or whatever is edited, the shared notes
+        /// are due on the interval, and turning it on again syncs at once.
+        #[test]
+        fn prop_a_schedule_that_is_off_never_syncs_by_itself(
+            minutes in prop::sample::select(kanso_engine::sync::words::SYNC_INTERVALS.to_vec()),
+            edits in prop::collection::vec(0i64..100_000, 0..10),
+            rounds in 1usize..6,
+        ) {
+            let timing = Timing::of(SyncSettingsRow {
+                enabled: false,
+                interval_secs: u32::try_from(minutes * 60).unwrap(),
+            });
+            let mut driver = Driver::new(timing);
+            driver.set_settings(timing, false, 0);
+            driver.set_foreground(true, 0);
+            let mut now = 0;
+            // The front is due at once, for the shared notes only.
+            prop_assert!(!driver.poll(true, now));
+            prop_assert!(driver.take_shared_due());
+            for at in edits {
+                driver.edited(now + at);
+            }
+            for _ in 0..rounds {
+                now += timing.interval_ms;
+                prop_assert!(!driver.poll(true, now), "started while off");
+                prop_assert!(driver.take_shared_due(), "the shared notes missed their interval");
+                prop_assert!(!driver.take_shared_due());
+            }
+            driver.set_settings(timing, true, now);
+            prop_assert!(driver.poll(true, now));
         }
     }
 

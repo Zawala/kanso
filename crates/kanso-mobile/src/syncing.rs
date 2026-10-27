@@ -29,11 +29,22 @@ use crate::boundary::{guard, held};
 use crate::errors::KansoError;
 use crate::library::Inner;
 use crate::model::{ServerInfo, SyncPhase, SyncProblemKind, SyncReportRow, SyncStatus};
+use crate::sync_model::SyncAccount;
+use crate::sync_words::{details_of, reason_kind};
 
 /// Sign-in and sync of one library.
 #[derive(Clone)]
 pub struct SyncHandle {
     pub(crate) inner: Arc<Inner>,
+}
+
+/// A session the server ended, kept until the person signs in or out again,
+/// so the status can say why this phone is signed out.
+#[derive(Clone, Debug)]
+pub(crate) struct Ended {
+    pub(crate) username: String,
+    pub(crate) server: String,
+    pub(crate) reason: kanso_sync::SignOutReason,
 }
 
 /// How a sync attempt ended, for the callers that map it themselves (the
@@ -124,6 +135,7 @@ impl SyncHandle {
                     .map_err(|err| account_error(&err, ErrorContext::Account))?;
             }
             *held(&self.inner.sync_state) = SyncState::Off;
+            *held(&self.inner.ended) = None;
             self.notify();
             Ok(())
         })
@@ -228,6 +240,11 @@ impl SyncHandle {
             Err(err) => match kanso_sync::problem(err) {
                 // The server ended this device's session: sign out.
                 Some(SyncProblem::SignedOut(reason)) => {
+                    *held(&self.inner.ended) = Some(Ended {
+                        username: session.username.clone(),
+                        server: session.server.clone(),
+                        reason,
+                    });
                     if let Some(library_id) = &library_id {
                         forget_ended_session(
                             self.inner.secrets.as_ref(),
@@ -276,7 +293,42 @@ impl SyncHandle {
     pub(crate) fn current_status(&self) -> Result<SyncStatus, KansoError> {
         let session = self.load_session()?;
         let state = held(&self.inner.sync_state).clone();
-        Ok(status_of(session.as_ref(), &state))
+        let mut status = status_of(session.as_ref(), &state);
+        if session.is_some() {
+            *held(&self.inner.ended) = None;
+            status.conflicted_title = self.conflicted_title(&state);
+        } else if let Ok(Some(locked)) = crate::account_runtime::locked_session(&self.inner) {
+            status.account = SyncAccount::Locked;
+            status.username = Some(locked.username.clone());
+            status.server = Some(locked.server.clone());
+        } else if let Some(ended) = held(&self.inner.ended).clone() {
+            status.account = SyncAccount::SessionEnded;
+            status.username = Some(ended.username);
+            status.server = Some(ended.server);
+            status.signed_out_reason = Some(reason_kind(ended.reason));
+        }
+        Ok(status)
+    }
+
+    /// The title of the first note the last sync's conflicts were in, if
+    /// that note is still here.
+    fn conflicted_title(&self, state: &SyncState) -> Option<String> {
+        let SyncState::Synced {
+            conflicts,
+            conflicted,
+            ..
+        } = state
+        else {
+            return None;
+        };
+        if *conflicts == 0 {
+            return None;
+        }
+        conflicted
+            .iter()
+            .find_map(|id| self.inner.store.note(id).ok().flatten())
+            .map(|note| note.title)
+            .filter(|title| !title.trim().is_empty())
     }
 
     /// Tells the status listeners where sync stands.
@@ -334,7 +386,19 @@ pub(crate) fn status_of(session: Option<&Session>, state: &SyncState) -> SyncSta
         phase: SyncPhase::Idle,
         username: Some(session.username.clone()),
         server: Some(session.server.clone()),
+        account: SyncAccount::SignedIn,
         ..SyncStatus::default()
+    };
+    let with_problem = |status: SyncStatus, problem: &SyncProblem| {
+        let details = details_of(problem);
+        SyncStatus {
+            problem: Some(problem_kind(problem)),
+            resume_at_ms: details.resume_at_ms,
+            skipped_count: details.skipped_count,
+            quota: details.quota,
+            signed_out_reason: details.signed_out_reason,
+            ..status
+        }
     };
     match state {
         SyncState::Off => signed_in,
@@ -347,18 +411,25 @@ pub(crate) fn status_of(session: Option<&Session>, state: &SyncState) -> SyncSta
             conflicts,
             problem,
             ..
-        } => SyncStatus {
-            phase: SyncPhase::Synced,
-            last_synced_ms: Some(*at_ms),
-            conflicts: count(*conflicts),
-            problem: problem.as_ref().map(problem_kind),
-            ..signed_in
-        },
-        SyncState::Failed(problem) => SyncStatus {
-            phase: SyncPhase::Failed,
-            problem: Some(problem_kind(problem)),
-            ..signed_in
-        },
+        } => {
+            let status = SyncStatus {
+                phase: SyncPhase::Synced,
+                last_synced_ms: Some(*at_ms),
+                conflicts: count(*conflicts),
+                ..signed_in
+            };
+            match problem {
+                Some(problem) => with_problem(status, problem),
+                None => status,
+            }
+        }
+        SyncState::Failed(problem) => with_problem(
+            SyncStatus {
+                phase: SyncPhase::Failed,
+                ..signed_in
+            },
+            problem,
+        ),
     }
 }
 
@@ -428,27 +499,18 @@ pub(crate) fn failure(failure: Failure) -> KansoError {
     }
 }
 
+/// A real session of the account "ada", on an in-memory server, made once.
 #[cfg(test)]
-mod tests {
-    use kanso_engine::strategies;
-    use kanso_sync::{Password, Session, SignOutReason};
-    use proptest::prelude::*;
-
-    use std::sync::OnceLock;
-
-    use super::*;
-
-    static SESSION: OnceLock<Session> = OnceLock::new();
-
-    /// A real session of the account "ada", on an in-memory server.
-    fn session() -> Session {
+pub(crate) fn test_session() -> &'static Session {
+    static SESSION: std::sync::OnceLock<Session> = std::sync::OnceLock::new();
+    SESSION.get_or_init(|| {
         let server = kanso_sync::MemoryServer::new();
         let device = kanso_sync::DeviceIdentity::from_parts(
             "l_00000000000000000000000000000001",
             "Phone",
             [1; 32],
         );
-        let password = Password::new("correct horse battery", "ada").unwrap();
+        let password = kanso_sync::Password::new("correct horse battery", "ada").unwrap();
         kanso_sync::sign_up(
             &server,
             &kanso_sync::MemorySecrets::new(),
@@ -460,7 +522,16 @@ mod tests {
         )
         .unwrap()
         .session
-    }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use kanso_engine::strategies;
+    use kanso_sync::SignOutReason;
+    use proptest::prelude::*;
+
+    use super::*;
 
     proptest! {
         /// A signed-out library says so whatever sync last said; a signed-in
@@ -478,7 +549,7 @@ mod tests {
                 SyncState::Synced { at_ms, conflicts, conflicted: Vec::new(), problem: None },
                 SyncState::Failed(problem.clone()),
             ];
-            let signed_in = SESSION.get_or_init(session);
+            let signed_in = test_session();
             for state in &states {
                 prop_assert_eq!(status_of(None, state), SyncStatus::default());
                 let status = status_of(Some(signed_in), state);

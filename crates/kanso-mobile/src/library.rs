@@ -59,6 +59,8 @@ pub(crate) struct Inner {
     pub(crate) shared: SharedState,
     /// The sync schedule while the app is in front (`schedule.rs`).
     pub(crate) auto: AutoSync,
+    /// The session the server ended, until the person signs in or out.
+    pub(crate) ended: Mutex<Option<crate::syncing::Ended>>,
     /// Where the gallery reads its index from and what it trusts; `None` is
     /// the real server and the keys compiled in. Tests set their own.
     pub(crate) gallery_source: Mutex<Option<crate::gallery_net::Source>>,
@@ -284,6 +286,7 @@ fn open_inner(
         return Ok(Library { inner });
     }
     let store = Arc::new(Store::open(&key)?);
+    let settings = crate::sync_words::read_settings(&store).unwrap_or_default();
     let mut keys = KeySession::default();
     if let Some(params) = params {
         keys.set_params(params);
@@ -301,7 +304,8 @@ fn open_inner(
         sync_gate: Mutex::new(()),
         sync_cancel: Mutex::new(None),
         shared: SharedState::new(collab),
-        auto: AutoSync::default(),
+        auto: AutoSync::new(settings),
+        ended: Mutex::new(None),
         gallery_source: Mutex::new(None),
         approver: Approver::default(),
     });
