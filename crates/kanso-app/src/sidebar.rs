@@ -1848,9 +1848,7 @@ mod tests {
         SIGN_IN_TO_SYNC, SyncState, Tone, api_icon, footer_name, initials, sync_line, tone_icon,
     };
     use kanso_engine::sync::words::{WAITING_FOR_APPROVAL, problem_label};
-    use std::collections::HashSet;
 
-    use super::{BookFolds, flat_tag_ids, visible_book_rows, visible_tag_rows};
     use super::{mention_badge, shows_shared};
     use crate::account_words::step_label;
     use crate::grouping::utc_label;
