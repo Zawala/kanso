@@ -85,6 +85,13 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // The capture tests (src/androidTest) run in Kanso's process.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // The capture tests share the iOS tests' files.
+    sourceSets {
+        getByName("androidTest").assets.srcDir("../../integration_test/media")
     }
 
     // The JVM unit tests run with TestNG (see the dependencies below).
@@ -143,6 +150,16 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-testng:2.3.20")
     // org.json for the JVM (the platform's stubs do nothing in unit tests); Apache-2.0.
     testImplementation("com.vaadin.external.google:android-json:0.0.20131108.vaadin1")
+
+    // The capture tests (src/androidTest): AndroidX Test's runner and
+    // UI Automator (both Apache-2.0). JUnit 4 comes with them, as it does
+    // with Flutter's integration_test; none of this is part of the app.
+    androidTestImplementation("androidx.test:runner:1.3.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.2")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.2.0")
+    // The test provider runs in the test package's own process, which has
+    // no Kotlin runtime unless it brings one (Apache-2.0).
+    androidTestImplementation("org.jetbrains.kotlin:kotlin-stdlib")
 }
 
 flutter {

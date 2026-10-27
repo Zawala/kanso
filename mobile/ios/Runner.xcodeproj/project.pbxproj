@@ -28,11 +28,13 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		A008767961D2137DE911EF54 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43F841394749C627692336EF /* Foundation.framework */; };
 		A4B1C0DE00000000000000F2 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A4B1C0DE00000000000000F1 /* PrivacyInfo.xcprivacy */; };
 		B69D9DA81E62862DC1D2563F /* KansoLibraryLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F5DE67EEABE44BDA59B4EBC /* KansoLibraryLocation.swift */; };
 		BB1A0688790E97746A06B89A /* DropWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D33A7BEC3A8936FFE828B942 /* DropWriterTests.swift */; };
 		C9E94BDC087DFFE5E00B40A9 /* KansoWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB3D86356FEF1A35DE99D2D /* KansoWidgets.swift */; };
 		D07B4C74BDEF2BE7413AC1CB /* WidgetPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9572412C9A933370F4DB7C /* WidgetPalette.swift */; };
+		D93E4B8C90D029ED01B2380F /* CaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92F088FED550A2CCD71B9EAD /* CaptureUITests.swift */; };
 		E284B9603BE8AADC6F58B4BA /* KansoWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = DE68850E941F7AE9842B13EA /* KansoWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -43,6 +45,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 56617FE41EE4C4F625E7DC42;
 			remoteInfo = KansoWidgets;
+		};
+		21BD01CA0133B88405DF6671 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
+			remoteInfo = Runner;
 		};
 		331C8085294A63A400263BE5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -89,6 +98,7 @@
 		11E2E7783D8992E344FD8EA1 /* ShareExtension.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
+		20DC480D7D242FB15B12412A /* CaptureUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CaptureUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C9572412C9A933370F4DB7C /* WidgetPalette.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WidgetPalette.swift; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -103,6 +113,7 @@
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
+		92F088FED550A2CCD71B9EAD /* CaptureUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CaptureUITests.swift; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
 		97C146EE1CF9000F007C117D /* Runner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Runner.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -124,6 +135,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		7362F9E6D08F6E00B0EC17E9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A008767961D2137DE911EF54 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		7FE745073A066B8F23545D36 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -172,6 +191,15 @@
 			path = RunnerTests;
 			sourceTree = "<group>";
 		};
+		61BD212F36E91AE8B0A24F31 /* CaptureUITests */ = {
+			isa = PBXGroup;
+			children = (
+				92F088FED550A2CCD71B9EAD /* CaptureUITests.swift */,
+			);
+			name = CaptureUITests;
+			path = CaptureUITests;
+			sourceTree = "<group>";
+		};
 		62A572246F7CD8D2F74833BF /* iOS */ = {
 			isa = PBXGroup;
 			children = (
@@ -211,6 +239,7 @@
 				D1A38FAA4AEC126E6E869C75 /* ShareExtension */,
 				0FD7F3472F41277BEA3D00ED /* KansoWidgets */,
 				8C93C606149D4DE254DD1410 /* Frameworks */,
+				61BD212F36E91AE8B0A24F31 /* CaptureUITests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -221,6 +250,7 @@
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 				377CAD686C14402918C27351 /* ShareExtension.appex */,
 				DE68850E941F7AE9842B13EA /* KansoWidgets.appex */,
+				20DC480D7D242FB15B12412A /* CaptureUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -270,6 +300,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		3168CF72FFDF46D0F67F77AC /* CaptureUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC87D3A524CC5F117C2811EF /* Build configuration list for PBXNativeTarget "CaptureUITests" */;
+			buildPhases = (
+				50BBDD557438005056D0B94F /* Sources */,
+				7362F9E6D08F6E00B0EC17E9 /* Frameworks */,
+				85A3F1A77EB2A5B941987D5F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B3B074A0C4737FC04434E331 /* PBXTargetDependency */,
+			);
+			name = CaptureUITests;
+			productName = CaptureUITests;
+			productReference = 20DC480D7D242FB15B12412A /* CaptureUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		331C8080294A63A400263BE5 /* RunnerTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 331C8087294A63A400263BE5 /* Build configuration list for PBXNativeTarget "RunnerTests" */;
@@ -387,6 +435,7 @@
 				331C8080294A63A400263BE5 /* RunnerTests */,
 				4951F00FC7FF897EB1C9BAE4 /* ShareExtension */,
 				56617FE41EE4C4F625E7DC42 /* KansoWidgets */,
+				3168CF72FFDF46D0F67F77AC /* CaptureUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -404,6 +453,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				3A44218211EA0C052B29759A /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		85A3F1A77EB2A5B941987D5F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -483,6 +539,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		50BBDD557438005056D0B94F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D93E4B8C90D029ED01B2380F /* CaptureUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		97C146EA1CF9000F007C117D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -520,6 +584,12 @@
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
+		};
+		B3B074A0C4737FC04434E331 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = Runner;
+			target = 97C146ED1CF9000F007C117D /* Runner */;
+			targetProxy = 21BD01CA0133B88405DF6671 /* PBXContainerItemProxy */;
 		};
 		DC83B8527936B7242E62945A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -625,6 +695,23 @@
 			};
 			name = Profile;
 		};
+		304B998074E8E8855E95D97B /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.kanso.Kanso.CaptureUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Runner;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Profile;
+		};
 		331C8088294A63A400263BE5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -698,6 +785,39 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Profile;
+		};
+		6DB599CD1056675392461CBA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.kanso.Kanso.CaptureUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Runner;
+			};
+			name = Debug;
+		};
+		6EE120A9FE7C50844D527C11 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.kanso.Kanso.CaptureUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Runner;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
 		};
 		7E156479EB9E04944AAC232A /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -1035,6 +1155,16 @@
 				97C147061CF9000F007C117D /* Debug */,
 				97C147071CF9000F007C117D /* Release */,
 				249021D4217E4FDB00AE95B9 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AC87D3A524CC5F117C2811EF /* Build configuration list for PBXNativeTarget "CaptureUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6EE120A9FE7C50844D527C11 /* Release */,
+				6DB599CD1056675392461CBA /* Debug */,
+				304B998074E8E8855E95D97B /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
