@@ -6,11 +6,13 @@ import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../crash/views/pages/crash_reports_page.dart';
 import '../../design/views/pages/design_gallery_page.dart';
 import '../../note/views/pages/note_page.dart';
 import '../../note/views/widgets/no_note_selected_pane.dart';
 import '../../note_list/views/pages/note_list_page.dart';
 import '../../search/views/pages/search_page.dart';
+import '../../settings/views/pages/default_notebook_page.dart';
 import '../../settings/views/pages/fonts_page.dart';
 import '../../settings/views/pages/icon_themes_page.dart';
 import '../../settings/views/pages/licences_page.dart';
@@ -139,6 +141,13 @@ class KansoRouter {
               ),
               routes: <RouteBase>[
                 GoRoute(
+                  path: 'notebook',
+                  pageBuilder: (context, state) => CupertinoPage<void>(
+                    key: state.pageKey,
+                    child: const DefaultNotebookPage(),
+                  ),
+                ),
+                GoRoute(
                   path: 'theme',
                   pageBuilder: (context, state) => CupertinoPage<void>(
                     key: state.pageKey,
@@ -169,6 +178,13 @@ class KansoRouter {
                   pageBuilder: (context, state) => CupertinoPage<void>(
                     key: state.pageKey,
                     child: const LicencesPage(),
+                  ),
+                ),
+                GoRoute(
+                  path: 'crash-reports',
+                  pageBuilder: (context, state) => CupertinoPage<void>(
+                    key: state.pageKey,
+                    child: const CrashReportsPage(),
                   ),
                 ),
               ],

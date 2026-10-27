@@ -8,10 +8,16 @@ import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/repos/abs/about_repository.dart';
 
 /// An About repository for widget tests: version 0.1.0 build 3, and a
-/// website that records how often it was opened.
+/// website, release notes and help page that record how often they were opened.
 class FixtureAboutRepository implements AboutRepository {
   /// How many times the website was opened.
   int websiteOpens = 0;
+
+  /// How many times the release notes were opened.
+  int releaseNotesOpens = 0;
+
+  /// How many times the help page was opened.
+  int helpOpens = 0;
 
   @override
   Future<Either<ApplicationError, AppVersion>> version() async =>
@@ -22,6 +28,18 @@ class FixtureAboutRepository implements AboutRepository {
   @override
   Future<Either<ApplicationError, Unit>> openWebsite() async {
     websiteOpens++;
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> openReleaseNotes() async {
+    releaseNotesOpens++;
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> openHelp() async {
+    helpOpens++;
     return const Right<ApplicationError, Unit>(unit);
   }
 }

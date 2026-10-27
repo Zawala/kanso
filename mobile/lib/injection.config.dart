@@ -26,6 +26,7 @@ import 'core/models/repos/abs/diagnostics_repository.dart' as _i984;
 import 'core/models/repos/abs/haptics_repository.dart' as _i1056;
 import 'core/models/repos/abs/library_repository.dart' as _i38;
 import 'core/models/repos/abs/licences_repository.dart' as _i951;
+import 'core/models/repos/abs/patch_repository.dart' as _i909;
 import 'core/models/repos/abs/preferences_repository.dart' as _i384;
 import 'core/models/repos/abs/renderer_repository.dart' as _i732;
 import 'core/models/repos/abs/session_repository.dart' as _i333;
@@ -39,6 +40,7 @@ import 'core/models/repos/impl/rust_library_repository.dart' as _i152;
 import 'core/models/repos/impl/rust_renderer_repository.dart' as _i820;
 import 'core/models/repos/impl/rust_session_repository.dart' as _i899;
 import 'core/models/repos/impl/rust_sync_repository.dart' as _i564;
+import 'core/models/repos/impl/shorebird_patch_repository.dart' as _i989;
 import 'core/router/kanso_router.dart' as _i388;
 import 'core/router/layout_class_notifier.dart' as _i609;
 import 'core/state/appearance/appearance_bloc.dart' as _i551;
@@ -47,14 +49,32 @@ import 'core/state/list_navigation/list_navigation_bloc.dart' as _i907;
 import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
 import 'core/state/undo_notice/undo_notice_bloc.dart' as _i985;
+import 'crash/configs/crash_module.dart' as _i1016;
+import 'crash/models/data/crash_folder.dart' as _i392;
+import 'crash/models/repos/abs/crash_context_repository.dart' as _i1070;
+import 'crash/models/repos/abs/crash_report_repository.dart' as _i288;
+import 'crash/models/repos/impl/platform_crash_context_repository.dart'
+    as _i756;
+import 'crash/state/crash_reports/crash_reports_bloc.dart' as _i815;
+import 'editor/models/repos/abs/editor_repository.dart' as _i979;
+import 'editor/models/repos/abs/web_link_repository.dart' as _i272;
+import 'editor/models/repos/impl/rust_editor_repository.dart' as _i606;
+import 'editor/models/repos/impl/url_launcher_web_link_repository.dart'
+    as _i635;
+import 'editor/state/editor/editor_bloc.dart' as _i964;
+import 'library/state/new_notebook/new_notebook_bloc.dart' as _i991;
+import 'note/models/repos/abs/note_place_repository.dart' as _i930;
+import 'note/models/repos/impl/memory_note_place_repository.dart' as _i503;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 import 'search/state/search/search_bloc.dart' as _i696;
 import 'settings/state/about/about_bloc.dart' as _i380;
 import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
+import 'settings/state/default_notebook/default_notebook_bloc.dart' as _i925;
 import 'settings/state/icon_themes/icon_themes_bloc.dart' as _i636;
 import 'settings/state/licences/licences_bloc.dart' as _i570;
 import 'shell/state/library_pane/library_pane_bloc.dart' as _i612;
+import 'shell/state/note_creation/note_creation_bloc.dart' as _i34;
 import 'themes/state/theme_picker/theme_picker_bloc.dart' as _i149;
 
 const String _development = 'development';
@@ -69,25 +89,37 @@ extension GetItInjectableX on _i174.GetIt {
   }) async {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
     final coreModule = _$CoreModule();
+    final crashModule = _$CrashModule();
     final appModule = _$AppModule();
     gh.factory<_i612.LibraryPaneBloc>(() => _i612.LibraryPaneBloc());
     gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
     gh.lazySingleton<_i984.DiagnosticsRepository>(
       () => _i1062.RustDiagnosticsRepository(),
     );
+    gh.lazySingleton<_i930.NotePlaceRepository>(
+      () => _i503.MemoryNotePlaceRepository(),
+    );
     gh.lazySingleton<_i1056.HapticsRepository>(
       () => _i438.FlutterHapticsRepository(),
+    );
+    gh.lazySingleton<_i272.WebLinkRepository>(
+      () => _i635.UrlLauncherWebLinkRepository(),
     );
     await gh.singletonAsync<_i72.LibraryFolder>(
       () => coreModule.libraryFolder(),
       registerFor: {_development, _production},
       preResolve: true,
     );
-    gh.lazySingleton<_i80.AboutRepository>(
-      () => _i489.PackageInfoAboutRepository(),
+    await gh.singletonAsync<_i392.CrashFolder>(
+      () => crashModule.crashFolder(),
+      registerFor: {_development, _production},
+      preResolve: true,
     );
-    gh.factory<_i380.AboutBloc>(
-      () => _i380.AboutBloc(gh<_i80.AboutRepository>()),
+    gh.lazySingleton<_i80.AboutRepository>(
+      () => _i489.PackageInfoAboutRepository(gh<_i909.PatchRepository>()),
+    );
+    gh.lazySingleton<_i909.PatchRepository>(
+      () => _i989.ShorebirdPatchRepository(),
     );
     gh.lazySingleton<_i951.LicencesRepository>(
       () => _i1025.FlutterLicencesRepository(),
@@ -108,11 +140,31 @@ extension GetItInjectableX on _i174.GetIt {
       registerFor: {_integration},
       preResolve: true,
     );
+    await gh.singletonAsync<_i392.CrashFolder>(
+      () => crashModule.temporaryCrashFolder(),
+      registerFor: {_integration},
+      preResolve: true,
+    );
     gh.lazySingleton<_i384.PreferencesRepository>(
       () => _i207.FilePreferencesRepository(gh<_i72.LibraryFolder>()),
     );
+    gh.lazySingleton<_i1070.CrashContextRepository>(
+      () => _i756.PlatformCrashContextRepository(gh<_i909.PatchRepository>()),
+    );
+    gh.factory<_i380.AboutBloc>(
+      () => _i380.AboutBloc(gh<_i80.AboutRepository>()),
+    );
     gh.factory<_i897.BackupNoticeBloc>(
       () => _i897.BackupNoticeBloc(gh<_i384.PreferencesRepository>()),
+    );
+    gh.factory<_i925.DefaultNotebookBloc>(
+      () => _i925.DefaultNotebookBloc(gh<_i384.PreferencesRepository>()),
+    );
+    gh.lazySingleton<_i288.CrashReportRepository>(
+      () => crashModule.crashReports(
+        gh<_i392.CrashFolder>(),
+        gh<_i1070.CrashContextRepository>(),
+      ),
     );
     gh.singleton<_i388.KansoRouter>(
       () => _i388.KansoRouter(
@@ -123,6 +175,9 @@ extension GetItInjectableX on _i174.GetIt {
     await gh.singletonAsync<_i455.KansoLibrary>(
       () => coreModule.library(gh<_i72.LibraryFolder>()),
       preResolve: true,
+    );
+    gh.factory<_i815.CrashReportsBloc>(
+      () => _i815.CrashReportsBloc(gh<_i288.CrashReportRepository>()),
     );
     gh.lazySingleton<_i983.KansoLocks>(
       () => coreModule.locks(gh<_i455.KansoLibrary>()),
@@ -151,6 +206,16 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i38.LibraryRepository>(
       () => _i152.RustLibraryRepository(gh<_i455.KansoLibrary>()),
     );
+    gh.factory<_i618.NoteBloc>(
+      () => _i618.NoteBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i732.RendererRepository>(),
+        gh<_i930.NotePlaceRepository>(),
+      ),
+    );
+    gh.lazySingleton<_i979.EditorRepository>(
+      () => _i606.RustEditorRepository(gh<_i455.KansoLibrary>()),
+    );
     gh.factory<_i861.LibraryIndexBloc>(
       () => _i861.LibraryIndexBloc(gh<_i38.LibraryRepository>()),
     );
@@ -160,13 +225,23 @@ extension GetItInjectableX on _i174.GetIt {
     gh.factory<_i272.NavigationHistoryBloc>(
       () => _i272.NavigationHistoryBloc(gh<_i38.LibraryRepository>()),
     );
+    gh.factory<_i991.NewNotebookBloc>(
+      () => _i991.NewNotebookBloc(gh<_i38.LibraryRepository>()),
+    );
     gh.factory<_i696.SearchBloc>(
       () => _i696.SearchBloc(gh<_i38.LibraryRepository>()),
     );
-    gh.factory<_i618.NoteBloc>(
-      () => _i618.NoteBloc(
+    gh.factory<_i34.NoteCreationBloc>(
+      () => _i34.NoteCreationBloc(
         gh<_i38.LibraryRepository>(),
-        gh<_i732.RendererRepository>(),
+        gh<_i930.NotePlaceRepository>(),
+        gh<_i384.PreferencesRepository>(),
+      ),
+    );
+    gh.factory<_i964.EditorBloc>(
+      () => _i964.EditorBloc(
+        gh<_i979.EditorRepository>(),
+        gh<_i272.WebLinkRepository>(),
       ),
     );
     gh.lazySingleton<_i985.UndoNoticeBloc>(
@@ -197,5 +272,7 @@ extension GetItInjectableX on _i174.GetIt {
 }
 
 class _$CoreModule extends _i418.CoreModule {}
+
+class _$CrashModule extends _i1016.CrashModule {}
 
 class _$AppModule extends _i216.AppModule {}

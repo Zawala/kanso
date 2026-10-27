@@ -26,6 +26,12 @@ void main() {
     when(
       () => about.openWebsite(),
     ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
+    when(
+      () => about.openReleaseNotes(),
+    ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
+    when(
+      () => about.openHelp(),
+    ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
   });
 
   AboutBloc build() => AboutBloc(about);
@@ -83,6 +89,51 @@ void main() {
       },
       build: build,
       act: (bloc) => bloc.add(const AboutEvent.websiteOpened()),
+      expect: () => <AboutState>[],
+    );
+
+    blocTest<AboutBloc, AboutState>(
+      'releaseNotesOpened opens the release notes and nothing else',
+      build: build,
+      act: (bloc) => bloc.add(const AboutEvent.releaseNotesOpened()),
+      expect: () => <AboutState>[],
+      verify: (_) {
+        verify(() => about.openReleaseNotes()).called(1);
+        verifyNever(() => about.openWebsite());
+        verifyNever(() => about.openHelp());
+      },
+    );
+
+    blocTest<AboutBloc, AboutState>(
+      'helpOpened opens the help page and nothing else',
+      build: build,
+      act: (bloc) => bloc.add(const AboutEvent.helpOpened()),
+      expect: () => <AboutState>[],
+      verify: (_) {
+        verify(() => about.openHelp()).called(1);
+        verifyNever(() => about.openWebsite());
+        verifyNever(() => about.openReleaseNotes());
+      },
+    );
+
+    blocTest<AboutBloc, AboutState>(
+      'releaseNotesOpened and helpOpened that fail change nothing shown',
+      setUp: () {
+        when(() => about.openReleaseNotes()).thenAnswer(
+          (_) async => const Left<ApplicationError, Unit>(
+            ApplicationError.unexpected(message: 'No browser.'),
+          ),
+        );
+        when(() => about.openHelp()).thenAnswer(
+          (_) async => const Left<ApplicationError, Unit>(
+            ApplicationError.unexpected(message: 'No browser.'),
+          ),
+        );
+      },
+      build: build,
+      act: (bloc) => bloc
+        ..add(const AboutEvent.releaseNotesOpened())
+        ..add(const AboutEvent.helpOpened()),
       expect: () => <AboutState>[],
     );
   });

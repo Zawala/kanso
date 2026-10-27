@@ -8,7 +8,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/configs/kanso_motion.dart';
 import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
+import '../../../core/models/data/application_error.dart';
 import '../../../core/state/undo_notice/undo_notice_bloc.dart';
+import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_undo_notice.dart';
 import '../../../note_list/views/widgets/note_list_notice.dart';
 import 'undo_notice_timeout.dart';
@@ -46,7 +48,9 @@ class UndoNoticeHost extends StatelessWidget {
                   if (error != null) {
                     shown = NoteListNotice(
                       key: const ValueKey<String>('error'),
-                      error: error,
+                      message: error is LockedError
+                          ? context.l10n.noteListChangeLocked
+                          : context.l10n.noteListChangeFailed,
                       onDismiss: () =>
                           bloc.add(const UndoNoticeEvent.errorDismissed()),
                     );

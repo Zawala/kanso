@@ -183,6 +183,10 @@
   "@accessoryOutdent": {
     "description": "A keyboard shortcut that outdents a line."
   },
+  "accessoryRedo": "Redo",
+  "@accessoryRedo": {
+    "description": "What the undo key of the keyboard bar does when it is held, for a screen reader's list of actions."
+  },
   "accessoryUndo": "Undo",
   "@accessoryUndo": {
     "description": "A keyboard shortcut that undoes the last change."
@@ -194,6 +198,22 @@
   "settingsClose": "Close",
   "@settingsClose": {
     "description": "Closes a page."
+  },
+  "settingsGeneral": "General",
+  "@settingsGeneral": {
+    "description": "A section of settings."
+  },
+  "settingsDefaultNotebook": "Default notebook",
+  "@settingsDefaultNotebook": {
+    "description": "The notebook new notes go to."
+  },
+  "defaultNotebookFirst": "First notebook",
+  "@defaultNotebookFirst": {
+    "description": "The choice of the first notebook in the library as the one new notes go to."
+  },
+  "defaultNotebookFooter": "New notes go here, except those made from a notebook's own list. A locked notebook can't be chosen.",
+  "@defaultNotebookFooter": {
+    "description": "The note under the notebooks that can be the default one."
   },
   "settingsAppearance": "Appearance",
   "@settingsAppearance": {
@@ -222,6 +242,14 @@
   "settingsWebsite": "Website",
   "@settingsWebsite": {
     "description": "Opens Kanso's website."
+  },
+  "settingsReleaseNotes": "Release notes",
+  "@settingsReleaseNotes": {
+    "description": "Opens what changed in each version of Kanso, on the website."
+  },
+  "settingsHelp": "Help",
+  "@settingsHelp": {
+    "description": "Opens Kanso's help page on the website."
   },
   "settingsLicences": "Licences",
   "@settingsLicences": {
@@ -294,10 +322,6 @@
   "appearanceDark": "Dark",
   "@appearanceDark": {
     "description": "Always dark."
-  },
-  "screenNoteEdit": "Note, edit",
-  "@screenNoteEdit": {
-    "description": "The name of a mock screen."
   },
   "screenError": "Error card",
   "@screenError": {
@@ -449,6 +473,81 @@
   "textSizeLarger": "Larger",
   "@textSizeLarger": {
     "description": "The largest text size."
+  },
+  "editorTitleHint": "Title",
+  "@editorTitleHint": {
+    "description": "What the empty title field of a note being edited says."
+  },
+  "editorChangedMessage": "This note was changed elsewhere while you were editing. The version you don't keep stays in its history.",
+  "@editorChangedMessage": {
+    "description": "Says a note was changed elsewhere while it was being edited."
+  },
+  "editorKeepMine": "Keep mine",
+  "@editorKeepMine": {
+    "description": "Keeps the text typed here over a change made elsewhere."
+  },
+  "editorUseTheirs": "Use theirs",
+  "@editorUseTheirs": {
+    "description": "Takes a change made elsewhere over the text typed here."
+  },
+  "editorDeletedMessage": "This note was deleted elsewhere while you were editing.",
+  "@editorDeletedMessage": {
+    "description": "Says a note was deleted elsewhere while it was being edited."
+  },
+  "editorKeepIt": "Keep it",
+  "@editorKeepIt": {
+    "description": "Keeps a note that was deleted elsewhere, by saving it again."
+  },
+  "editorDiscard": "Discard",
+  "@editorDiscard": {
+    "description": "Lets go of a note that was deleted elsewhere."
+  },
+  "editorSaveFailed": "Your changes aren't saved yet.",
+  "@editorSaveFailed": {
+    "description": "Says that saving a note failed."
+  },
+  "editorOpeningLabel": "Opening the note",
+  "@editorOpeningLabel": {
+    "description": "What a screen reader says while a note is opened for editing."
+  },
+  "propertiesAdd": "Add property",
+  "@propertiesAdd": {
+    "description": "Adds a property to the note."
+  },
+  "propertiesName": "Name",
+  "@propertiesName": {
+    "description": "The hint of the field for the name of a new property."
+  },
+  "propertiesValue": "Value",
+  "@propertiesValue": {
+    "description": "The hint of the field for the value of a property."
+  },
+  "propertiesRemove": "Remove {name}",
+  "@propertiesRemove": {
+    "description": "Removes a property from the note; for a screen reader.",
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "propertiesConfirmAdd": "Add",
+  "@propertiesConfirmAdd": {
+    "description": "Adds the property that was just named."
+  },
+  "propertiesCancelAdd": "Cancel",
+  "@propertiesCancelAdd": {
+    "description": "Gives up on adding a property."
+  },
+  "propertiesFailed": "That property couldn't be set.",
+  "@propertiesFailed": {
+    "description": "Says that a property of the note could not be set."
+  },
+  "propertiesShow": "Show properties",
+  "@propertiesShow": {
+    "description": "What the row of properties does when it is closed, for a screen reader."
+  },
+  "propertiesHide": "Hide properties",
+  "@propertiesHide": {
+    "description": "What the row of properties does when it is open, for a screen reader."
   },
   "noteModeLabel": "View mode",
   "@noteModeLabel": {
@@ -682,6 +781,42 @@
   "@noteListChangeLocked": {
     "description": "The line shown when notes could not be moved into or out of a locked notebook."
   },
+  "libraryNewNotebook": "New notebook",
+  "@libraryNewNotebook": {
+    "description": "What the add button of the notebooks header does."
+  },
+  "newNotebookTitle": "New notebook",
+  "@newNotebookTitle": {
+    "description": "The title of the sheet that makes a notebook."
+  },
+  "newNotebookNameHint": "Name",
+  "@newNotebookNameHint": {
+    "description": "The hint, and the label, of the field for a new notebook's name."
+  },
+  "newNotebookCreate": "Create",
+  "@newNotebookCreate": {
+    "description": "The button that makes the notebook."
+  },
+  "newNotebookInvalid": "Give the notebook a name.",
+  "@newNotebookInvalid": {
+    "description": "The line shown when a new notebook's name is empty or not accepted."
+  },
+  "newNotebookFailed": "The notebook couldn't be made. Try again.",
+  "@newNotebookFailed": {
+    "description": "The line shown when a notebook could not be made."
+  },
+  "noteListNewNote": "New note",
+  "@noteListNewNote": {
+    "description": "What the add button of the note list does."
+  },
+  "noteListNewNoteLocked": "Unlock this notebook to add notes to it.",
+  "@noteListNewNoteLocked": {
+    "description": "The line shown when a new note was asked for in a notebook that is locked."
+  },
+  "noteListNewNoteFailed": "The note couldn't be made. Try again.",
+  "@noteListNewNoteFailed": {
+    "description": "The line shown when a new note could not be made."
+  },
   "noteListDismiss": "OK",
   "@noteListDismiss": {
     "description": "The button that closes the line that says a change did not happen."
@@ -729,6 +864,22 @@
   "menuSelectAll": "Select All",
   "@menuSelectAll": {
     "description": "The button of a text field's menu that selects all of its text."
+  },
+  "menuDelete": "Delete",
+  "@menuDelete": {
+    "description": "The button of the spelling menu that deletes the misspelled word."
+  },
+  "menuOpenLink": "Open link",
+  "@menuOpenLink": {
+    "description": "The button of the editor's menu that opens the link the caret is in."
+  },
+  "completionAnnouncement": "{count, plural, =1{1 suggestion} other{{count} suggestions}}, {label} selected",
+  "@completionAnnouncement": {
+    "description": "What a screen reader says when suggestions for a link or a tag appear: how many, and which one is selected.",
+    "placeholders": {
+      "count": {"type": "int"},
+      "label": {"type": "String"}
+    }
   },
   "searchIdleTitle": "Search your notes",
   "@searchIdleTitle": {
@@ -879,5 +1030,140 @@
   "backupNoticeOk": "OK",
   "@backupNoticeOk": {
     "description": "Dismisses the notice about device backups."
+  },
+  "settingsVersionPatchValue": "{version} ({build}), patch {patch}",
+  "@settingsVersionPatchValue": {
+    "description": "The app's version, the number of its build and the number of the Shorebird patch it is running.",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      },
+      "patch": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsPrivacy": "Privacy",
+  "@settingsPrivacy": {
+    "description": "A section of settings."
+  },
+  "settingsPrivacyFooter": "Kanso sends a crash report only when you choose to.",
+  "@settingsPrivacyFooter": {
+    "description": "Says under Privacy that nothing is sent on its own."
+  },
+  "crashReportsTitle": "Crash reports",
+  "@crashReportsTitle": {
+    "description": "The settings row and the page that list the crash reports waiting on the device."
+  },
+  "crashReportsLoading": "Loading crash reports",
+  "@crashReportsLoading": {
+    "description": "Says to a screen reader that the crash reports are being read."
+  },
+  "crashReportsEmptyTitle": "No crash reports",
+  "@crashReportsEmptyTitle": {
+    "description": "The title of the page when no crash report is waiting."
+  },
+  "crashReportsEmptyMessage": "If Kanso closes unexpectedly, a report waits here until you decide whether to send it.",
+  "@crashReportsEmptyMessage": {
+    "description": "Says what will appear on the Crash reports page."
+  },
+  "crashReportsIntro": "A report holds only where in Kanso’s code something went wrong. It never holds note text, titles or file names. Nothing is sent unless you send it.",
+  "@crashReportsIntro": {
+    "description": "Explains, above the list, what a crash report holds."
+  },
+  "crashReportsSendAll": "Send all",
+  "@crashReportsSendAll": {
+    "description": "Sends every crash report waiting."
+  },
+  "crashReportSubtitle": "{day} · {kind}",
+  "@crashReportSubtitle": {
+    "description": "A crash report's row: the day, and where it came from.",
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      }
+    }
+  },
+  "crashReportSend": "Send",
+  "@crashReportSend": {
+    "description": "Sends one crash report."
+  },
+  "crashReportDelete": "Delete",
+  "@crashReportDelete": {
+    "description": "Deletes one crash report without sending it."
+  },
+  "crashReportShow": "Show report",
+  "@crashReportShow": {
+    "description": "Shows the exact text of a crash report."
+  },
+  "crashReportHide": "Hide report",
+  "@crashReportHide": {
+    "description": "Hides the text of a crash report."
+  },
+  "crashReportSending": "Sending…",
+  "@crashReportSending": {
+    "description": "Says a crash report is being sent."
+  },
+  "crashKindDart": "App",
+  "@crashKindDart": {
+    "description": "The origin of a crash report: an error in Kanso's own code."
+  },
+  "crashKindIosNative": "iOS",
+  "@crashKindIosNative": {
+    "description": "The origin of a crash report: a crash the system recorded on iPhone or iPad."
+  },
+  "crashKindAndroidNative": "Android native",
+  "@crashKindAndroidNative": {
+    "description": "The origin of a crash report: a crash in native code on Android."
+  },
+  "crashKindAndroidAnr": "Android not responding",
+  "@crashKindAndroidAnr": {
+    "description": "The origin of a crash report: the app stopped responding on Android."
+  },
+  "crashKindAndroidJvm": "Android",
+  "@crashKindAndroidJvm": {
+    "description": "The origin of a crash report: an uncaught exception on Android."
+  },
+  "crashNoticeTitle": "Kanso closed unexpectedly",
+  "@crashNoticeTitle": {
+    "description": "The title of the card shown after a launch that found crash reports."
+  },
+  "crashNoticeMessage": "Send a crash report? It holds only where in Kanso’s code it happened, never note text, titles or file names.",
+  "@crashNoticeMessage": {
+    "description": "Asks whether to send crash reports and says what they hold."
+  },
+  "crashNoticeSend": "Send",
+  "@crashNoticeSend": {
+    "description": "Sends the crash reports."
+  },
+  "crashNoticeDiscard": "Don’t send",
+  "@crashNoticeDiscard": {
+    "description": "Deletes the crash reports without sending them."
+  },
+  "crashOutcomeSent": "Report sent. Thank you.",
+  "@crashOutcomeSent": {
+    "description": "Said after a crash report was sent."
+  },
+  "crashOutcomeRejected": "The report couldn’t be sent.",
+  "@crashOutcomeRejected": {
+    "description": "Said when the server did not accept a crash report."
+  },
+  "crashOutcomeTryLater": "Too many reports just now. Try again later.",
+  "@crashOutcomeTryLater": {
+    "description": "Said when the server asked to wait."
+  },
+  "crashOutcomeUnreachable": "Couldn’t reach Kanso. Try again later.",
+  "@crashOutcomeUnreachable": {
+    "description": "Said when a crash report could not be sent for lack of a connection."
+  },
+  "crashReportsFailedMessage": "The crash reports couldn’t be read.",
+  "@crashReportsFailedMessage": {
+    "description": "The message of the card shown when the crash reports could not be read."
   }
 }

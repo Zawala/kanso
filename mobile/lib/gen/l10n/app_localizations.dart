@@ -346,6 +346,12 @@ abstract class AppLocalizations {
   /// **'Outdent'**
   String get accessoryOutdent;
 
+  /// What the undo key of the keyboard bar does when it is held, for a screen reader's list of actions.
+  ///
+  /// In en, this message translates to:
+  /// **'Redo'**
+  String get accessoryRedo;
+
   /// A keyboard shortcut that undoes the last change.
   ///
   /// In en, this message translates to:
@@ -363,6 +369,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Close'**
   String get settingsClose;
+
+  /// A section of settings.
+  ///
+  /// In en, this message translates to:
+  /// **'General'**
+  String get settingsGeneral;
+
+  /// The notebook new notes go to.
+  ///
+  /// In en, this message translates to:
+  /// **'Default notebook'**
+  String get settingsDefaultNotebook;
+
+  /// The choice of the first notebook in the library as the one new notes go to.
+  ///
+  /// In en, this message translates to:
+  /// **'First notebook'**
+  String get defaultNotebookFirst;
+
+  /// The note under the notebooks that can be the default one.
+  ///
+  /// In en, this message translates to:
+  /// **'New notes go here, except those made from a notebook\'s own list. A locked notebook can\'t be chosen.'**
+  String get defaultNotebookFooter;
 
   /// A section of settings.
   ///
@@ -405,6 +435,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Website'**
   String get settingsWebsite;
+
+  /// Opens what changed in each version of Kanso, on the website.
+  ///
+  /// In en, this message translates to:
+  /// **'Release notes'**
+  String get settingsReleaseNotes;
+
+  /// Opens Kanso's help page on the website.
+  ///
+  /// In en, this message translates to:
+  /// **'Help'**
+  String get settingsHelp;
 
   /// Opens the licences of what Kanso is made of.
   ///
@@ -513,12 +555,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Dark'**
   String get appearanceDark;
-
-  /// The name of a mock screen.
-  ///
-  /// In en, this message translates to:
-  /// **'Note, edit'**
-  String get screenNoteEdit;
 
   /// The name of a mock screen.
   ///
@@ -735,6 +771,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Larger'**
   String get textSizeLarger;
+
+  /// What the empty title field of a note being edited says.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get editorTitleHint;
+
+  /// Says a note was changed elsewhere while it was being edited.
+  ///
+  /// In en, this message translates to:
+  /// **'This note was changed elsewhere while you were editing. The version you don\'t keep stays in its history.'**
+  String get editorChangedMessage;
+
+  /// Keeps the text typed here over a change made elsewhere.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep mine'**
+  String get editorKeepMine;
+
+  /// Takes a change made elsewhere over the text typed here.
+  ///
+  /// In en, this message translates to:
+  /// **'Use theirs'**
+  String get editorUseTheirs;
+
+  /// Says a note was deleted elsewhere while it was being edited.
+  ///
+  /// In en, this message translates to:
+  /// **'This note was deleted elsewhere while you were editing.'**
+  String get editorDeletedMessage;
+
+  /// Keeps a note that was deleted elsewhere, by saving it again.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep it'**
+  String get editorKeepIt;
+
+  /// Lets go of a note that was deleted elsewhere.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get editorDiscard;
+
+  /// Says that saving a note failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Your changes aren\'t saved yet.'**
+  String get editorSaveFailed;
+
+  /// What a screen reader says while a note is opened for editing.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening the note'**
+  String get editorOpeningLabel;
+
+  /// Adds a property to the note.
+  ///
+  /// In en, this message translates to:
+  /// **'Add property'**
+  String get propertiesAdd;
+
+  /// The hint of the field for the name of a new property.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get propertiesName;
+
+  /// The hint of the field for the value of a property.
+  ///
+  /// In en, this message translates to:
+  /// **'Value'**
+  String get propertiesValue;
+
+  /// Removes a property from the note; for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}'**
+  String propertiesRemove(String name);
+
+  /// Adds the property that was just named.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get propertiesConfirmAdd;
+
+  /// Gives up on adding a property.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get propertiesCancelAdd;
+
+  /// Says that a property of the note could not be set.
+  ///
+  /// In en, this message translates to:
+  /// **'That property couldn\'t be set.'**
+  String get propertiesFailed;
+
+  /// What the row of properties does when it is closed, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Show properties'**
+  String get propertiesShow;
+
+  /// What the row of properties does when it is open, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide properties'**
+  String get propertiesHide;
 
   /// Names the switch between a rendered note and its text.
   ///
@@ -1054,6 +1198,60 @@ abstract class AppLocalizations {
   /// **'Locked notebooks can\'t take or give up notes here yet.'**
   String get noteListChangeLocked;
 
+  /// What the add button of the notebooks header does.
+  ///
+  /// In en, this message translates to:
+  /// **'New notebook'**
+  String get libraryNewNotebook;
+
+  /// The title of the sheet that makes a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'New notebook'**
+  String get newNotebookTitle;
+
+  /// The hint, and the label, of the field for a new notebook's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get newNotebookNameHint;
+
+  /// The button that makes the notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get newNotebookCreate;
+
+  /// The line shown when a new notebook's name is empty or not accepted.
+  ///
+  /// In en, this message translates to:
+  /// **'Give the notebook a name.'**
+  String get newNotebookInvalid;
+
+  /// The line shown when a notebook could not be made.
+  ///
+  /// In en, this message translates to:
+  /// **'The notebook couldn\'t be made. Try again.'**
+  String get newNotebookFailed;
+
+  /// What the add button of the note list does.
+  ///
+  /// In en, this message translates to:
+  /// **'New note'**
+  String get noteListNewNote;
+
+  /// The line shown when a new note was asked for in a notebook that is locked.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock this notebook to add notes to it.'**
+  String get noteListNewNoteLocked;
+
+  /// The line shown when a new note could not be made.
+  ///
+  /// In en, this message translates to:
+  /// **'The note couldn\'t be made. Try again.'**
+  String get noteListNewNoteFailed;
+
   /// The button that closes the line that says a change did not happen.
   ///
   /// In en, this message translates to:
@@ -1125,6 +1323,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Select All'**
   String get menuSelectAll;
+
+  /// The button of the spelling menu that deletes the misspelled word.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get menuDelete;
+
+  /// The button of the editor's menu that opens the link the caret is in.
+  ///
+  /// In en, this message translates to:
+  /// **'Open link'**
+  String get menuOpenLink;
+
+  /// What a screen reader says when suggestions for a link or a tag appear: how many, and which one is selected.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 suggestion} other{{count} suggestions}}, {label} selected'**
+  String completionAnnouncement(int count, String label);
 
   /// The title shown under an empty search.
   ///
@@ -1311,6 +1527,180 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OK'**
   String get backupNoticeOk;
+
+  /// The app's version, the number of its build and the number of the Shorebird patch it is running.
+  ///
+  /// In en, this message translates to:
+  /// **'{version} ({build}), patch {patch}'**
+  String settingsVersionPatchValue(String version, String build, int patch);
+
+  /// A section of settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy'**
+  String get settingsPrivacy;
+
+  /// Says under Privacy that nothing is sent on its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso sends a crash report only when you choose to.'**
+  String get settingsPrivacyFooter;
+
+  /// The settings row and the page that list the crash reports waiting on the device.
+  ///
+  /// In en, this message translates to:
+  /// **'Crash reports'**
+  String get crashReportsTitle;
+
+  /// Says to a screen reader that the crash reports are being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading crash reports'**
+  String get crashReportsLoading;
+
+  /// The title of the page when no crash report is waiting.
+  ///
+  /// In en, this message translates to:
+  /// **'No crash reports'**
+  String get crashReportsEmptyTitle;
+
+  /// Says what will appear on the Crash reports page.
+  ///
+  /// In en, this message translates to:
+  /// **'If Kanso closes unexpectedly, a report waits here until you decide whether to send it.'**
+  String get crashReportsEmptyMessage;
+
+  /// Explains, above the list, what a crash report holds.
+  ///
+  /// In en, this message translates to:
+  /// **'A report holds only where in Kanso’s code something went wrong. It never holds note text, titles or file names. Nothing is sent unless you send it.'**
+  String get crashReportsIntro;
+
+  /// Sends every crash report waiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Send all'**
+  String get crashReportsSendAll;
+
+  /// A crash report's row: the day, and where it came from.
+  ///
+  /// In en, this message translates to:
+  /// **'{day} · {kind}'**
+  String crashReportSubtitle(String day, String kind);
+
+  /// Sends one crash report.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get crashReportSend;
+
+  /// Deletes one crash report without sending it.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get crashReportDelete;
+
+  /// Shows the exact text of a crash report.
+  ///
+  /// In en, this message translates to:
+  /// **'Show report'**
+  String get crashReportShow;
+
+  /// Hides the text of a crash report.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide report'**
+  String get crashReportHide;
+
+  /// Says a crash report is being sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending…'**
+  String get crashReportSending;
+
+  /// The origin of a crash report: an error in Kanso's own code.
+  ///
+  /// In en, this message translates to:
+  /// **'App'**
+  String get crashKindDart;
+
+  /// The origin of a crash report: a crash the system recorded on iPhone or iPad.
+  ///
+  /// In en, this message translates to:
+  /// **'iOS'**
+  String get crashKindIosNative;
+
+  /// The origin of a crash report: a crash in native code on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'Android native'**
+  String get crashKindAndroidNative;
+
+  /// The origin of a crash report: the app stopped responding on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'Android not responding'**
+  String get crashKindAndroidAnr;
+
+  /// The origin of a crash report: an uncaught exception on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'Android'**
+  String get crashKindAndroidJvm;
+
+  /// The title of the card shown after a launch that found crash reports.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso closed unexpectedly'**
+  String get crashNoticeTitle;
+
+  /// Asks whether to send crash reports and says what they hold.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a crash report? It holds only where in Kanso’s code it happened, never note text, titles or file names.'**
+  String get crashNoticeMessage;
+
+  /// Sends the crash reports.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get crashNoticeSend;
+
+  /// Deletes the crash reports without sending them.
+  ///
+  /// In en, this message translates to:
+  /// **'Don’t send'**
+  String get crashNoticeDiscard;
+
+  /// Said after a crash report was sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Report sent. Thank you.'**
+  String get crashOutcomeSent;
+
+  /// Said when the server did not accept a crash report.
+  ///
+  /// In en, this message translates to:
+  /// **'The report couldn’t be sent.'**
+  String get crashOutcomeRejected;
+
+  /// Said when the server asked to wait.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many reports just now. Try again later.'**
+  String get crashOutcomeTryLater;
+
+  /// Said when a crash report could not be sent for lack of a connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn’t reach Kanso. Try again later.'**
+  String get crashOutcomeUnreachable;
+
+  /// The message of the card shown when the crash reports could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The crash reports couldn’t be read.'**
+  String get crashReportsFailedMessage;
 }
 
 class _AppLocalizationsDelegate

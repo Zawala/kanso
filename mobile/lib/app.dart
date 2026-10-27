@@ -12,6 +12,7 @@ import 'core/utils/context_extensions.dart';
 import 'core/utils/kanso_scroll_behavior.dart';
 import 'core/views/widgets/kanso_icon_set_scope.dart';
 import 'core/views/widgets/layout_class_reporter.dart';
+import 'crash/views/widgets/crash_notice_host.dart';
 import 'gen/l10n/app_localizations.dart';
 import 'settings/views/widgets/backup_notice_host.dart';
 
@@ -49,7 +50,7 @@ class App extends StatelessWidget {
             iconSet: state.iconSet,
             child: LayoutClassReporter(
               notifier: router.layoutClass,
-              child: BackupNoticeHost(child: child!),
+              child: CrashNoticeHost(child: BackupNoticeHost(child: child!)),
             ),
           ),
         );
