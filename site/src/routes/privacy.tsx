@@ -1,7 +1,8 @@
 /**
  * Privacy, in plain words: what this website collects (nothing), and what
  * Kanso's sync server can and can't see. It summarises docs/ACCOUNTS.md
- * ("What the server can and can't see") and must change when that does.
+ * ("What the server can and can't see") and docs/CRASH-REPORTS.md, and must
+ * change when they do.
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { REPOSITORY_URL } from "../lib/release";
@@ -87,6 +88,28 @@ function Privacy() {
               the accounts design document
             </a>
             . You can also run the sync server on your own Cloudflare account.
+          </p>
+        </section>
+
+        <section id="crash-reports" aria-labelledby="crashes" className="lg:col-span-7 lg:col-start-6">
+          <h2 id="crashes" className="text-[clamp(1.5rem,1.25rem+0.9vw,2rem)] font-semibold tracking-[-0.02em]">
+            Crash reports
+          </h2>
+          <p className="mt-4 text-fg-2">
+            When Kanso on an iPhone, iPad or Android device crashes, it writes a report on the device and nothing leaves it. A
+            report is sent only if you tap Send, and the app shows you the exact text first.
+          </p>
+          <p className="mt-4 text-fg-2">
+            It holds where in Kanso's code the failure happened, the app version, the system version, the kind of device and the
+            day, and never note text, titles or file names. The sync server checks each report against that list, refuses
+            anything else, keeps the rest for 90 days and stores no IP address and no account with it.
+          </p>
+          <p className="mt-4 text-[0.9375rem] text-fg-3">
+            Every field is in{" "}
+            <a href={`${REPOSITORY_URL}/blob/master/docs/CRASH-REPORTS.md`} className="ink-link">
+              the crash reports document
+            </a>
+            .
           </p>
         </section>
       </div>

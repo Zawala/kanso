@@ -16,7 +16,9 @@ mixin _$AppVersion {
 
 /// The version people know it by: `0.1.0`.
  String get version;/// The number of the build: `1`.
- String get build;
+ String get build;/// The Shorebird patch the app is running; null without Shorebird or
+/// before the first patch.
+ int? get patch;
 /// Create a copy of AppVersion
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -27,16 +29,16 @@ $AppVersionCopyWith<AppVersion> get copyWith => _$AppVersionCopyWithImpl<AppVers
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppVersion&&(identical(other.version, version) || other.version == version)&&(identical(other.build, build) || other.build == build));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppVersion&&(identical(other.version, version) || other.version == version)&&(identical(other.build, build) || other.build == build)&&(identical(other.patch, patch) || other.patch == patch));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,version,build);
+int get hashCode => Object.hash(runtimeType,version,build,patch);
 
 @override
 String toString() {
-  return 'AppVersion(version: $version, build: $build)';
+  return 'AppVersion(version: $version, build: $build, patch: $patch)';
 }
 
 
@@ -47,7 +49,7 @@ abstract mixin class $AppVersionCopyWith<$Res>  {
   factory $AppVersionCopyWith(AppVersion value, $Res Function(AppVersion) _then) = _$AppVersionCopyWithImpl;
 @useResult
 $Res call({
- String version, String build
+ String version, String build, int? patch
 });
 
 
@@ -64,11 +66,12 @@ class _$AppVersionCopyWithImpl<$Res>
 
 /// Create a copy of AppVersion
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? version = null,Object? build = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? version = null,Object? build = null,Object? patch = freezed,}) {
   return _then(_self.copyWith(
 version: null == version ? _self.version : version // ignore: cast_nullable_to_non_nullable
 as String,build: null == build ? _self.build : build // ignore: cast_nullable_to_non_nullable
-as String,
+as String,patch: freezed == patch ? _self.patch : patch // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
@@ -153,10 +156,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String version,  String build)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String version,  String build,  int? patch)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _AppVersion() when $default != null:
-return $default(_that.version,_that.build);case _:
+return $default(_that.version,_that.build,_that.patch);case _:
   return orElse();
 
 }
@@ -174,10 +177,10 @@ return $default(_that.version,_that.build);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String version,  String build)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String version,  String build,  int? patch)  $default,) {final _that = this;
 switch (_that) {
 case _AppVersion():
-return $default(_that.version,_that.build);case _:
+return $default(_that.version,_that.build,_that.patch);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -194,10 +197,10 @@ return $default(_that.version,_that.build);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String version,  String build)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String version,  String build,  int? patch)?  $default,) {final _that = this;
 switch (_that) {
 case _AppVersion() when $default != null:
-return $default(_that.version,_that.build);case _:
+return $default(_that.version,_that.build,_that.patch);case _:
   return null;
 
 }
@@ -209,13 +212,16 @@ return $default(_that.version,_that.build);case _:
 
 
 class _AppVersion implements AppVersion {
-  const _AppVersion({required this.version, required this.build});
+  const _AppVersion({required this.version, required this.build, this.patch});
   
 
 /// The version people know it by: `0.1.0`.
 @override final  String version;
 /// The number of the build: `1`.
 @override final  String build;
+/// The Shorebird patch the app is running; null without Shorebird or
+/// before the first patch.
+@override final  int? patch;
 
 /// Create a copy of AppVersion
 /// with the given fields replaced by the non-null parameter values.
@@ -227,16 +233,16 @@ _$AppVersionCopyWith<_AppVersion> get copyWith => __$AppVersionCopyWithImpl<_App
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppVersion&&(identical(other.version, version) || other.version == version)&&(identical(other.build, build) || other.build == build));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppVersion&&(identical(other.version, version) || other.version == version)&&(identical(other.build, build) || other.build == build)&&(identical(other.patch, patch) || other.patch == patch));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,version,build);
+int get hashCode => Object.hash(runtimeType,version,build,patch);
 
 @override
 String toString() {
-  return 'AppVersion(version: $version, build: $build)';
+  return 'AppVersion(version: $version, build: $build, patch: $patch)';
 }
 
 
@@ -247,7 +253,7 @@ abstract mixin class _$AppVersionCopyWith<$Res> implements $AppVersionCopyWith<$
   factory _$AppVersionCopyWith(_AppVersion value, $Res Function(_AppVersion) _then) = __$AppVersionCopyWithImpl;
 @override @useResult
 $Res call({
- String version, String build
+ String version, String build, int? patch
 });
 
 
@@ -264,11 +270,12 @@ class __$AppVersionCopyWithImpl<$Res>
 
 /// Create a copy of AppVersion
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? version = null,Object? build = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? version = null,Object? build = null,Object? patch = freezed,}) {
   return _then(_AppVersion(
 version: null == version ? _self.version : version // ignore: cast_nullable_to_non_nullable
 as String,build: null == build ? _self.build : build // ignore: cast_nullable_to_non_nullable
-as String,
+as String,patch: freezed == patch ? _self.patch : patch // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 

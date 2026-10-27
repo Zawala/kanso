@@ -6,7 +6,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { cn } from "../lib/cn";
-import { RELEASES_URL, REPOSITORY_URL } from "../lib/release";
+import { REPOSITORY_URL } from "../lib/release";
 import { Logo } from "./Logo";
 
 export function Wordmark({ className }: { className?: string }) {
@@ -40,6 +40,9 @@ export function SiteHeader() {
       <div className="page flex h-14 items-center justify-between gap-4">
         <Wordmark />
         <nav aria-label="Main" className="flex items-center gap-0.5 text-[0.9375rem] sm:gap-1">
+          <Link to="/help" className={cn(link, "hidden sm:inline-block")}>
+            Help
+          </Link>
           <Link to="/privacy" className={cn(link, "hidden sm:inline-block")}>
             Privacy
           </Link>
@@ -70,9 +73,12 @@ export function SiteFooter() {
           <Link to="/privacy" className="ink-link">
             Privacy
           </Link>
-          <a href={RELEASES_URL} className="ink-link">
+          <Link to="/releases" className="ink-link">
             Release notes
-          </a>
+          </Link>
+          <Link to="/help" className="ink-link">
+            Help
+          </Link>
           <a href={REPOSITORY_URL} className="ink-link">
             Source code
           </a>

@@ -74,7 +74,9 @@
 //   DELETE /v2/account/sign-in/approvals/<id>         cancel or decline                     (session)
 //   GET    /v2/account/events           live approval hints, a WebSocket (session + device proof)
 //
-// /v1 and every other path answer 404. Any request with an Origin header gets
+//   POST   /v1/crash-reports            a crash report the person chose to send       (public, no session)
+//
+// Every other /v1 path and every other path answer 404. Any request with an Origin header gets
 // 403 before anything else, except on the three public routes, which hold no
 // credentials and only ever read, and Apple's callback, which takes Apple's
 // origin (or none) and relies on its state; a body with the wrong Content-Type
@@ -87,6 +89,7 @@
 import * as approvals from "./approvals";
 import * as auth from "./auth";
 import * as collab from "./collab";
+import * as crashReports from "./crash_reports";
 import { pepperKeys } from "./crypto";
 import type { Env } from "./env";
 import { error, isContentType, methodNotAllowed, notFound } from "./http";
@@ -136,6 +139,7 @@ const aasa: Handler = async (request, env) => signIn.appSiteAssociation(request,
 
 const ROUTES: Record<string, Route> = {
 	"/v2/health": { name: "health", binding: true, methods: { GET: { handler: auth.health, pepper: true } } },
+	"/v1/crash-reports": { name: "crash_reports", methods: { POST: json(crashReports.submit, true) } },
 	"/v2/auth/prelogin": { name: "prelogin", binding: true, methods: { POST: json(auth.prelogin, true) } },
 	"/v2/auth/signup": { name: "signup", binding: true, methods: { POST: json(auth.signup, true) } },
 	"/v2/auth/login": { name: "login", binding: true, methods: { POST: json(auth.login, true) } },

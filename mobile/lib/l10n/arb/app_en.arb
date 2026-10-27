@@ -243,6 +243,14 @@
   "@settingsWebsite": {
     "description": "Opens Kanso's website."
   },
+  "settingsReleaseNotes": "Release notes",
+  "@settingsReleaseNotes": {
+    "description": "Opens what changed in each version of Kanso, on the website."
+  },
+  "settingsHelp": "Help",
+  "@settingsHelp": {
+    "description": "Opens Kanso's help page on the website."
+  },
   "settingsLicences": "Licences",
   "@settingsLicences": {
     "description": "Opens the licences of what Kanso is made of."
@@ -971,5 +979,140 @@
   "backupNoticeOk": "OK",
   "@backupNoticeOk": {
     "description": "Dismisses the notice about device backups."
+  },
+  "settingsVersionPatchValue": "{version} ({build}), patch {patch}",
+  "@settingsVersionPatchValue": {
+    "description": "The app's version, the number of its build and the number of the Shorebird patch it is running.",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "build": {
+        "type": "String"
+      },
+      "patch": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsPrivacy": "Privacy",
+  "@settingsPrivacy": {
+    "description": "A section of settings."
+  },
+  "settingsPrivacyFooter": "Kanso sends a crash report only when you choose to.",
+  "@settingsPrivacyFooter": {
+    "description": "Says under Privacy that nothing is sent on its own."
+  },
+  "crashReportsTitle": "Crash reports",
+  "@crashReportsTitle": {
+    "description": "The settings row and the page that list the crash reports waiting on the device."
+  },
+  "crashReportsLoading": "Loading crash reports",
+  "@crashReportsLoading": {
+    "description": "Says to a screen reader that the crash reports are being read."
+  },
+  "crashReportsEmptyTitle": "No crash reports",
+  "@crashReportsEmptyTitle": {
+    "description": "The title of the page when no crash report is waiting."
+  },
+  "crashReportsEmptyMessage": "If Kanso closes unexpectedly, a report waits here until you decide whether to send it.",
+  "@crashReportsEmptyMessage": {
+    "description": "Says what will appear on the Crash reports page."
+  },
+  "crashReportsIntro": "A report holds only where in Kanso’s code something went wrong. It never holds note text, titles or file names. Nothing is sent unless you send it.",
+  "@crashReportsIntro": {
+    "description": "Explains, above the list, what a crash report holds."
+  },
+  "crashReportsSendAll": "Send all",
+  "@crashReportsSendAll": {
+    "description": "Sends every crash report waiting."
+  },
+  "crashReportSubtitle": "{day} · {kind}",
+  "@crashReportSubtitle": {
+    "description": "A crash report's row: the day, and where it came from.",
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      }
+    }
+  },
+  "crashReportSend": "Send",
+  "@crashReportSend": {
+    "description": "Sends one crash report."
+  },
+  "crashReportDelete": "Delete",
+  "@crashReportDelete": {
+    "description": "Deletes one crash report without sending it."
+  },
+  "crashReportShow": "Show report",
+  "@crashReportShow": {
+    "description": "Shows the exact text of a crash report."
+  },
+  "crashReportHide": "Hide report",
+  "@crashReportHide": {
+    "description": "Hides the text of a crash report."
+  },
+  "crashReportSending": "Sending…",
+  "@crashReportSending": {
+    "description": "Says a crash report is being sent."
+  },
+  "crashKindDart": "App",
+  "@crashKindDart": {
+    "description": "The origin of a crash report: an error in Kanso's own code."
+  },
+  "crashKindIosNative": "iOS",
+  "@crashKindIosNative": {
+    "description": "The origin of a crash report: a crash the system recorded on iPhone or iPad."
+  },
+  "crashKindAndroidNative": "Android native",
+  "@crashKindAndroidNative": {
+    "description": "The origin of a crash report: a crash in native code on Android."
+  },
+  "crashKindAndroidAnr": "Android not responding",
+  "@crashKindAndroidAnr": {
+    "description": "The origin of a crash report: the app stopped responding on Android."
+  },
+  "crashKindAndroidJvm": "Android",
+  "@crashKindAndroidJvm": {
+    "description": "The origin of a crash report: an uncaught exception on Android."
+  },
+  "crashNoticeTitle": "Kanso closed unexpectedly",
+  "@crashNoticeTitle": {
+    "description": "The title of the card shown after a launch that found crash reports."
+  },
+  "crashNoticeMessage": "Send a crash report? It holds only where in Kanso’s code it happened, never note text, titles or file names.",
+  "@crashNoticeMessage": {
+    "description": "Asks whether to send crash reports and says what they hold."
+  },
+  "crashNoticeSend": "Send",
+  "@crashNoticeSend": {
+    "description": "Sends the crash reports."
+  },
+  "crashNoticeDiscard": "Don’t send",
+  "@crashNoticeDiscard": {
+    "description": "Deletes the crash reports without sending them."
+  },
+  "crashOutcomeSent": "Report sent. Thank you.",
+  "@crashOutcomeSent": {
+    "description": "Said after a crash report was sent."
+  },
+  "crashOutcomeRejected": "The report couldn’t be sent.",
+  "@crashOutcomeRejected": {
+    "description": "Said when the server did not accept a crash report."
+  },
+  "crashOutcomeTryLater": "Too many reports just now. Try again later.",
+  "@crashOutcomeTryLater": {
+    "description": "Said when the server asked to wait."
+  },
+  "crashOutcomeUnreachable": "Couldn’t reach Kanso. Try again later.",
+  "@crashOutcomeUnreachable": {
+    "description": "Said when a crash report could not be sent for lack of a connection."
+  },
+  "crashReportsFailedMessage": "The crash reports couldn’t be read.",
+  "@crashReportsFailedMessage": {
+    "description": "The message of the card shown when the crash reports could not be read."
   }
 }

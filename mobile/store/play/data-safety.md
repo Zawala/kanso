@@ -6,7 +6,8 @@ submits and answers for these.
 
 ## Does your app collect or share any of the required user data types?
 
-**Collects: yes, only with a sync account. Shares: no.** Without an account the
+**Collects: yes, only with a sync account or a crash report the person sends.
+Shares: no.** Without an account, and without tapping Send on a crash report, the
 app sends nothing. Sending data to Kanso's own sync server to run sync is
 collection, not sharing; the server's host (Cloudflare) processes it on Kanso's
 behalf, which Play does not count as sharing.
@@ -31,7 +32,8 @@ for. The same applies to the App Store (guideline 5.1.1(v)).
 |---|---|---|---|---|---|
 | Personal info › **User IDs** | Yes | No | Yes (only with sync) | App functionality; Account management | The account's username; for Google, GitHub or Apple sign-in, the provider's account number, never an email or name |
 | App activity › **Other user-generated content** | No | No | n/a | n/a | Note text, titles, notebook and tag names and files leave the phone only as ciphertext the server cannot open: not collected |
-| App info and performance › Crash logs, Diagnostics | No | No | n/a | n/a | **Check** against the crash reporting decision (issue #48, open question 1) |
+| App info and performance › **Crash logs** | Yes | No | Yes (only when the person taps Send) | App functionality | Stack frames, app and OS version and device model only; never note text, titles or file names (`docs/CRASH-REPORTS.md`). Not tied to an account; kept 90 days |
+| App info and performance › Diagnostics | No | No | n/a | n/a | No performance or usage data |
 | Device or other IDs | No | No | n/a | n/a | Device IDs are per-account sync sessions, not Android advertising or hardware IDs |
 
 **Check:** the server also holds counts, rough sizes and times of notes, and the

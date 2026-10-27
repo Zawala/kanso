@@ -279,6 +279,21 @@ the list, secondary+shift+P pin the open note, secondary+`N` a new note in the p
 being listed and secondary+shift+`N` a new notebook. Find in a note and the
 command palette have none until what they act on is built.
 
+## Crash reports
+
+`lib/crash/` keeps a scrubbed crash report on the phone and sends it only when the
+person taps Send. [docs/CRASH-REPORTS.md](../docs/CRASH-REPORTS.md) is the one
+definition of a report; `lib/crash/utils/crash_grammar.dart` writes its patterns
+once, and the scrubber (`crash_scrubber.dart` and one parser per source: Dart
+stack traces, MetricKit JSON, Android tombstones (a small protobuf reader),
+ANR traces and JVM exceptions) lets through only what matches. The native code
+only drops raw files into `crash-reports/raw/` of the application support folder
+(`ios/Runner/CrashDiagnostics.swift`, `android/.../KansoCrashes.kt`, also the
+`app.kanso/crash` channel for the device model); the repository parses them,
+keeps the reports in `crash-reports/pending/`, and deletes the raw files. After
+a launch that finds reports a card asks; Settings › Privacy › Crash reports lists
+them with the exact text.
+
 ## Design proposal
 
 What is built is the real screens, with their goldens beside their tests
@@ -396,6 +411,7 @@ Every dependency is MIT, BSD or Apache licensed.
 | `dartz` | `Either` for repository results | MIT |
 | `path_provider` | The folder the library lives in | BSD-3-Clause |
 | `package_info_plus` | The version and build in Settings › About | BSD-3-Clause |
+| `shorebird_code_push` | Reads the number of the Shorebird patch the app runs (Settings › About and crash reports); it does not download patches | MIT |
 | `url_launcher` | Opens the website from Settings › About | BSD-3-Clause |
 
 The Rust library adds `core-foundation` and `core-foundation-sys` (Apple

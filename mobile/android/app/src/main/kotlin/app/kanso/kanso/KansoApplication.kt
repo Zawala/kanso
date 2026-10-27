@@ -15,5 +15,6 @@ class KansoApplication : Application() {
         KansoSecrets.attach(this)
         System.loadLibrary(KansoNative.LIBRARY)
         KansoNative.init(this)
+        KansoCrashes.start(this)
     }
 }
