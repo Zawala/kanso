@@ -576,7 +576,7 @@ pub struct _SvgRow {
 // A note's history, Replace in all notes and the backups.
 pub use kanso_mobile::{
     BackupFile, DiffHunk, DiffKind, DiffLine, NoteHistory, NoteVersion, PlannedNote, ReplaceMatch,
-    ReplaceNote, ReplaceOptions, ReplaceOutcome, ReplacePreview,
+    ReplaceNote, ReplaceOptions, ReplaceOutcome, ReplacePreview, ReplaceUndone,
 };
 
 #[frb(mirror(NoteHistory))]
@@ -671,6 +671,13 @@ pub struct _ReplaceOutcome {
     pub batch: String,
     pub replaced: u32,
     pub notes: u32,
+    pub skipped: u32,
+    pub message: String,
+}
+
+#[frb(mirror(ReplaceUndone))]
+pub struct _ReplaceUndone {
+    pub restored: u32,
     pub skipped: u32,
     pub message: String,
 }

@@ -12,6 +12,7 @@ use kanso_mobile::{
 // A note's history, Replace in all notes and the backups.
 use kanso_mobile::{
     BackupFile, DiffHunk, NoteHistory, PlannedNote, ReplaceOptions, ReplaceOutcome, ReplacePreview,
+    ReplaceUndone,
 };
 
 use super::account::KansoAccount;
@@ -187,7 +188,7 @@ impl KansoLibrary {
     }
 
     /// Undoes a replace by its batch; says what was put back.
-    pub fn replace_undo(&self, batch: String) -> Result<String, KansoError> {
+    pub fn replace_undo(&self, batch: String) -> Result<ReplaceUndone, KansoError> {
         self.0.replace_undo(&batch)
     }
 

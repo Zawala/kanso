@@ -150,6 +150,17 @@ pub struct ReplaceOutcome {
     pub message: String,
 }
 
+/// What undoing a Replace did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReplaceUndone {
+    /// Notes whose text came back.
+    pub restored: u32,
+    /// Notes left as they are: edited since the Replace, locked now or gone.
+    pub skipped: u32,
+    /// What to tell the person ("Put back 2 notes.").
+    pub message: String,
+}
+
 /// A backup of the library's database.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BackupFile {

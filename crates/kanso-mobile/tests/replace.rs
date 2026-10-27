@@ -4,7 +4,7 @@
 mod common;
 
 use common::*;
-use kanso_mobile::{KansoError, Library, PlannedNote, ReplaceOptions};
+use kanso_mobile::{KansoError, Library, NewNote, PlannedNote, ReplaceOptions};
 use kanso_store::{Origin, Put, Store};
 use kanso_sync::KdfParams;
 use kanso_sync::lock::{LockKey, LockPassword};
@@ -126,10 +126,55 @@ proptest! {
             prop_assert_eq!(&stored(&store, id), &before[i]);
         }
         // Undone once: the second undo puts nothing back.
-        prop_assert_eq!(library.replace_undo(&outcome.batch).unwrap(), "Put back 0 notes.");
+        let again = library.replace_undo(&outcome.batch).unwrap();
+        prop_assert_eq!((again.restored, again.skipped), (0, 0));
+        prop_assert_eq!(again.message, "Put back 0 notes.");
         for (i, id) in ids.iter().enumerate() {
             prop_assert_eq!(&stored(&store, id), &before[i]);
         }
+    }
+
+    /// Whatever is found and put in its place, and whether the session is
+    /// open or closed, a locked note is never listed, never carries the
+    /// find's matches into a result and is never written, even by a plan
+    /// that names it at its current revision.
+    #[test]
+    fn prop_a_locked_note_is_never_read_or_changed(
+        find in prop_oneof!["[a-z]{1,3}", Just("cat".to_owned()), Just("SEALED".to_owned()), Just("77".to_owned())],
+        with in "[xy$é]{0,3}",
+        (match_case, whole_word, regex, skip_code) in
+            (any::<bool>(), any::<bool>(), any::<bool>(), any::<bool>()),
+        open in any::<bool>(),
+    ) {
+        let v = vaults();
+        let library = &v.phone.library;
+        let store = Store::open(v.phone.path()).unwrap();
+        if open {
+            prop_assert_eq!(library.locks().unlock(LOCK_PASSWORD.into()), Ok(true));
+        } else {
+            library.locks().lock().unwrap();
+        }
+        let before = locked_rows(&v, &store);
+        let options = ReplaceOptions { find, match_case, whole_word, regex, skip_code, include_trash: true };
+        let preview = library.replace_preview(options.clone()).unwrap();
+        prop_assert!(preview.notes.iter().all(|n| n.id == v.plain));
+        prop_assert!(!everything(&preview).contains(SECRET));
+        let forged: Vec<PlannedNote> = [&v.sealed, &v.vaulted[0], &v.vaulted[1]]
+            .iter()
+            .map(|id| PlannedNote { id: (*id).clone(), rev: store.get(id).unwrap().unwrap().rev })
+            .collect();
+        let outcome = library.replace_apply(options, with, forged);
+        match outcome {
+            Ok(outcome) => {
+                prop_assert_eq!(outcome.notes, 0);
+                prop_assert!(!everything(&outcome).contains(SECRET));
+                prop_assert!(!everything(&library.replace_undo(&outcome.batch).unwrap()).contains(SECRET));
+            }
+            // A pattern that doesn't parse is refused before any note is read.
+            Err(KansoError::Invalid { .. }) => {}
+            Err(other) => prop_assert!(false, "{other:?}"),
+        }
+        prop_assert_eq!(locked_rows(&v, &store), before);
     }
 
     /// The preview's lines and ranges are in UTF-16 units: the range cuts
@@ -224,10 +269,9 @@ fn the_button_and_the_outcome_say_what_happens() {
         .unwrap();
     assert_eq!((again.notes, again.skipped), (0, 1));
     assert!(again.message.contains("changed elsewhere"));
-    assert_eq!(
-        phone.library.replace_undo(&outcome.batch).unwrap(),
-        "Put back 1 note."
-    );
+    let undone = phone.library.replace_undo(&outcome.batch).unwrap();
+    assert_eq!((undone.restored, undone.skipped), (1, 0));
+    assert_eq!(undone.message, "Put back 1 note.");
     assert_eq!(
         phone.library.note(&id).unwrap().body.as_deref(),
         Some("cat and cat")
@@ -247,9 +291,13 @@ struct Vaults {
 fn vaults() -> Vaults {
     let mut vaulted = [String::new(), String::new()];
     let mut vault = String::new();
+    let mut home = String::new();
     let phone = phone_with(
         &std::sync::Arc::new(kanso_sync::MemoryServer::new()),
         |store| {
+            // The notebook new notes go to by default is the first one, so
+            // it is not the locked one.
+            home = book(store, "Home");
             vault = book(store, "Vault");
             for (i, id) in vaulted.iter_mut().enumerate() {
                 *id = raw_note(
@@ -265,8 +313,13 @@ fn vaults() -> Vaults {
             );
         },
     );
-    let plain = note(&phone.library, "Plain", "a cat sat");
-    let sealed = note(&phone.library, "Sealed", &format!("a cat with {SECRET}"));
+    let plain = note_in(&phone.library, &home, "Plain", "a cat sat");
+    let sealed = note_in(
+        &phone.library,
+        &home,
+        "Sealed",
+        &format!("a cat with {SECRET}"),
+    );
     phone
         .library
         .locks()
@@ -279,6 +332,19 @@ fn vaults() -> Vaults {
         vaulted,
         vault,
     }
+}
+
+/// A note with a title and a body in the notebook `book`.
+fn note_in(library: &Library, book: &str, title: &str, body: &str) -> String {
+    library
+        .create(NewNote {
+            notebook_id: Some(book.to_owned()),
+            title: title.to_owned(),
+            body: body.to_owned(),
+            ..NewNote::default()
+        })
+        .unwrap()
+        .id
 }
 
 fn locked_rows(v: &Vaults, store: &Store) -> Vec<(Map<String, Value>, String)> {
@@ -329,8 +395,8 @@ fn locked_notes_are_never_previewed_or_changed_closed_or_open() {
         );
         assert!(!everything(&outcome).contains(SECRET));
         assert_eq!(locked_rows(&v, &store), before, "open: {open}");
-        let message = library.replace_undo(&outcome.batch).unwrap();
-        assert!(!message.contains(SECRET));
+        let undone = library.replace_undo(&outcome.batch).unwrap();
+        assert!(!everything(&undone).contains(SECRET));
         assert_eq!(locked_rows(&v, &store), before);
     }
     // The text, once opened, is still the text.
@@ -393,8 +459,10 @@ fn undo_leaves_a_note_that_was_locked_since() {
     library.locks().lock().unwrap();
     let held = [stored(&store, &a), stored(&store, &b)];
 
-    let message = library.replace_undo(&outcome.batch).unwrap();
-    assert!(message.starts_with("Put back 0 notes"), "{message}");
+    let undone = library.replace_undo(&outcome.batch).unwrap();
+    assert!(undone.message.starts_with("Put back 0 notes"), "{undone:?}");
+    // A locked note is left alone without a word, as the desktop does.
+    assert_eq!((undone.restored, undone.skipped), (0, 0));
     assert_eq!([stored(&store, &a), stored(&store, &b)], held);
     assert!(!format!("{held:?}").contains("cat one"));
 }

@@ -328,6 +328,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   AttachmentFile dco_decode_attachment_file(dynamic raw);
 
   @protected
+  BackupFile dco_decode_backup_file(dynamic raw);
+
+  @protected
   BindingAnswer dco_decode_binding_answer(dynamic raw);
 
   @protected
@@ -338,6 +341,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   AccountState dco_decode_box_autoadd_account_state(dynamic raw);
+
+  @protected
+  BackupFile dco_decode_box_autoadd_backup_file(dynamic raw);
 
   @protected
   BindingAnswer dco_decode_box_autoadd_binding_answer(dynamic raw);
@@ -412,6 +418,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   RecoveryKeyText dco_decode_box_autoadd_recovery_key_text(dynamic raw);
 
   @protected
+  ReplaceOptions dco_decode_box_autoadd_replace_options(dynamic raw);
+
+  @protected
   Replacement dco_decode_box_autoadd_replacement(dynamic raw);
 
   @protected
@@ -482,6 +491,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DiagramRenderer dco_decode_diagram_renderer(dynamic raw);
+
+  @protected
+  DiffHunk dco_decode_diff_hunk(dynamic raw);
+
+  @protected
+  DiffKind dco_decode_diff_kind(dynamic raw);
+
+  @protected
+  DiffLine dco_decode_diff_line(dynamic raw);
 
   @protected
   DueTone dco_decode_due_tone(dynamic raw);
@@ -559,6 +577,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<ApprovalPrompt> dco_decode_list_approval_prompt(dynamic raw);
 
   @protected
+  List<BackupFile> dco_decode_list_backup_file(dynamic raw);
+
+  @protected
   List<BindingAnswer> dco_decode_list_binding_answer(dynamic raw);
 
   @protected
@@ -578,6 +599,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<DeviceRow> dco_decode_list_device_row(dynamic raw);
+
+  @protected
+  List<DiffHunk> dco_decode_list_diff_hunk(dynamic raw);
+
+  @protected
+  List<DiffLine> dco_decode_list_diff_line(dynamic raw);
 
   @protected
   List<EditorRun> dco_decode_list_editor_run(dynamic raw);
@@ -610,6 +637,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<NoteRow> dco_decode_list_note_row(dynamic raw);
 
   @protected
+  List<NoteVersion> dco_decode_list_note_version(dynamic raw);
+
+  @protected
   List<NotebookRow> dco_decode_list_notebook_row(dynamic raw);
 
   @protected
@@ -620,6 +650,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   ListPlace dco_decode_list_place(dynamic raw);
+
+  @protected
+  List<PlannedNote> dco_decode_list_planned_note(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
@@ -640,6 +673,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<(String, ShareRole)> dco_decode_list_record_string_share_role(
     dynamic raw,
   );
+
+  @protected
+  List<ReplaceMatch> dco_decode_list_replace_match(dynamic raw);
+
+  @protected
+  List<ReplaceNote> dco_decode_list_replace_note(dynamic raw);
 
   @protected
   ListShape dco_decode_list_shape(dynamic raw);
@@ -702,10 +741,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   NoteChange dco_decode_note_change(dynamic raw);
 
   @protected
+  NoteHistory dco_decode_note_history(dynamic raw);
+
+  @protected
   NoteList dco_decode_note_list(dynamic raw);
 
   @protected
   NoteRow dco_decode_note_row(dynamic raw);
+
+  @protected
+  NoteVersion dco_decode_note_version(dynamic raw);
 
   @protected
   NoteView dco_decode_note_view(dynamic raw);
@@ -724,6 +769,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  BackupFile? dco_decode_opt_box_autoadd_backup_file(dynamic raw);
 
   @protected
   BindingAnswer? dco_decode_opt_box_autoadd_binding_answer(dynamic raw);
@@ -812,6 +860,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PersonRow dco_decode_person_row(dynamic raw);
 
   @protected
+  PlannedNote dco_decode_planned_note(dynamic raw);
+
+  @protected
   PreviewLink dco_decode_preview_link(dynamic raw);
 
   @protected
@@ -843,6 +894,24 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   RecoveryKeyText dco_decode_recovery_key_text(dynamic raw);
+
+  @protected
+  ReplaceMatch dco_decode_replace_match(dynamic raw);
+
+  @protected
+  ReplaceNote dco_decode_replace_note(dynamic raw);
+
+  @protected
+  ReplaceOptions dco_decode_replace_options(dynamic raw);
+
+  @protected
+  ReplaceOutcome dco_decode_replace_outcome(dynamic raw);
+
+  @protected
+  ReplacePreview dco_decode_replace_preview(dynamic raw);
+
+  @protected
+  ReplaceUndone dco_decode_replace_undone(dynamic raw);
 
   @protected
   Replacement dco_decode_replacement(dynamic raw);
@@ -1242,6 +1311,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   AttachmentFile sse_decode_attachment_file(SseDeserializer deserializer);
 
   @protected
+  BackupFile sse_decode_backup_file(SseDeserializer deserializer);
+
+  @protected
   BindingAnswer sse_decode_binding_answer(SseDeserializer deserializer);
 
   @protected
@@ -1254,6 +1326,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   AccountState sse_decode_box_autoadd_account_state(
     SseDeserializer deserializer,
   );
+
+  @protected
+  BackupFile sse_decode_box_autoadd_backup_file(SseDeserializer deserializer);
 
   @protected
   BindingAnswer sse_decode_box_autoadd_binding_answer(
@@ -1342,6 +1417,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  ReplaceOptions sse_decode_box_autoadd_replace_options(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   Replacement sse_decode_box_autoadd_replacement(SseDeserializer deserializer);
 
   @protected
@@ -1420,6 +1500,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DiagramRenderer sse_decode_diagram_renderer(SseDeserializer deserializer);
+
+  @protected
+  DiffHunk sse_decode_diff_hunk(SseDeserializer deserializer);
+
+  @protected
+  DiffKind sse_decode_diff_kind(SseDeserializer deserializer);
+
+  @protected
+  DiffLine sse_decode_diff_line(SseDeserializer deserializer);
 
   @protected
   DueTone sse_decode_due_tone(SseDeserializer deserializer);
@@ -1501,6 +1590,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  List<BackupFile> sse_decode_list_backup_file(SseDeserializer deserializer);
+
+  @protected
   List<BindingAnswer> sse_decode_list_binding_answer(
     SseDeserializer deserializer,
   );
@@ -1526,6 +1618,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<DeviceRow> sse_decode_list_device_row(SseDeserializer deserializer);
+
+  @protected
+  List<DiffHunk> sse_decode_list_diff_hunk(SseDeserializer deserializer);
+
+  @protected
+  List<DiffLine> sse_decode_list_diff_line(SseDeserializer deserializer);
 
   @protected
   List<EditorRun> sse_decode_list_editor_run(SseDeserializer deserializer);
@@ -1566,6 +1664,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<NoteRow> sse_decode_list_note_row(SseDeserializer deserializer);
 
   @protected
+  List<NoteVersion> sse_decode_list_note_version(SseDeserializer deserializer);
+
+  @protected
   List<NotebookRow> sse_decode_list_notebook_row(SseDeserializer deserializer);
 
   @protected
@@ -1576,6 +1677,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   ListPlace sse_decode_list_place(SseDeserializer deserializer);
+
+  @protected
+  List<PlannedNote> sse_decode_list_planned_note(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -1598,6 +1702,14 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<(String, ShareRole)> sse_decode_list_record_string_share_role(
     SseDeserializer deserializer,
   );
+
+  @protected
+  List<ReplaceMatch> sse_decode_list_replace_match(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<ReplaceNote> sse_decode_list_replace_note(SseDeserializer deserializer);
 
   @protected
   ListShape sse_decode_list_shape(SseDeserializer deserializer);
@@ -1666,10 +1778,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   NoteChange sse_decode_note_change(SseDeserializer deserializer);
 
   @protected
+  NoteHistory sse_decode_note_history(SseDeserializer deserializer);
+
+  @protected
   NoteList sse_decode_note_list(SseDeserializer deserializer);
 
   @protected
   NoteRow sse_decode_note_row(SseDeserializer deserializer);
+
+  @protected
+  NoteVersion sse_decode_note_version(SseDeserializer deserializer);
 
   @protected
   NoteView sse_decode_note_view(SseDeserializer deserializer);
@@ -1688,6 +1806,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  BackupFile? sse_decode_opt_box_autoadd_backup_file(
+    SseDeserializer deserializer,
+  );
 
   @protected
   BindingAnswer? sse_decode_opt_box_autoadd_binding_answer(
@@ -1806,6 +1929,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PersonRow sse_decode_person_row(SseDeserializer deserializer);
 
   @protected
+  PlannedNote sse_decode_planned_note(SseDeserializer deserializer);
+
+  @protected
   PreviewLink sse_decode_preview_link(SseDeserializer deserializer);
 
   @protected
@@ -1839,6 +1965,24 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   RecoveryKeyText sse_decode_recovery_key_text(SseDeserializer deserializer);
+
+  @protected
+  ReplaceMatch sse_decode_replace_match(SseDeserializer deserializer);
+
+  @protected
+  ReplaceNote sse_decode_replace_note(SseDeserializer deserializer);
+
+  @protected
+  ReplaceOptions sse_decode_replace_options(SseDeserializer deserializer);
+
+  @protected
+  ReplaceOutcome sse_decode_replace_outcome(SseDeserializer deserializer);
+
+  @protected
+  ReplacePreview sse_decode_replace_preview(SseDeserializer deserializer);
+
+  @protected
+  ReplaceUndone sse_decode_replace_undone(SseDeserializer deserializer);
 
   @protected
   Replacement sse_decode_replacement(SseDeserializer deserializer);
@@ -2295,6 +2439,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_backup_file(BackupFile self, SseSerializer serializer);
+
+  @protected
   void sse_encode_binding_answer(BindingAnswer self, SseSerializer serializer);
 
   @protected
@@ -2309,6 +2456,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_box_autoadd_account_state(
     AccountState self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_backup_file(
+    BackupFile self,
     SseSerializer serializer,
   );
 
@@ -2442,6 +2595,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_replace_options(
+    ReplaceOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_replacement(
     Replacement self,
     SseSerializer serializer,
@@ -2553,6 +2712,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_diff_hunk(DiffHunk self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_diff_kind(DiffKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_diff_line(DiffLine self, SseSerializer serializer);
+
+  @protected
   void sse_encode_due_tone(DueTone self, SseSerializer serializer);
 
   @protected
@@ -2640,6 +2808,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_list_backup_file(
+    List<BackupFile> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_binding_answer(
     List<BindingAnswer> self,
     SseSerializer serializer,
@@ -2677,6 +2851,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
     List<DeviceRow> self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_list_diff_hunk(List<DiffHunk> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_diff_line(List<DiffLine> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_editor_run(
@@ -2733,6 +2913,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_list_note_row(List<NoteRow> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_note_version(
+    List<NoteVersion> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_notebook_row(
     List<NotebookRow> self,
     SseSerializer serializer,
@@ -2749,6 +2935,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_list_place(ListPlace self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_planned_note(
+    List<PlannedNote> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -2774,6 +2966,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_list_record_string_share_role(
     List<(String, ShareRole)> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_replace_match(
+    List<ReplaceMatch> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_replace_note(
+    List<ReplaceNote> self,
     SseSerializer serializer,
   );
 
@@ -2856,10 +3060,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_note_change(NoteChange self, SseSerializer serializer);
 
   @protected
+  void sse_encode_note_history(NoteHistory self, SseSerializer serializer);
+
+  @protected
   void sse_encode_note_list(NoteList self, SseSerializer serializer);
 
   @protected
   void sse_encode_note_row(NoteRow self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_note_version(NoteVersion self, SseSerializer serializer);
 
   @protected
   void sse_encode_note_view(NoteView self, SseSerializer serializer);
@@ -2878,6 +3088,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_backup_file(
+    BackupFile? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_binding_answer(
@@ -3024,6 +3240,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_person_row(PersonRow self, SseSerializer serializer);
 
   @protected
+  void sse_encode_planned_note(PlannedNote self, SseSerializer serializer);
+
+  @protected
   void sse_encode_preview_link(PreviewLink self, SseSerializer serializer);
 
   @protected
@@ -3064,6 +3283,33 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
     RecoveryKeyText self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_replace_match(ReplaceMatch self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_replace_note(ReplaceNote self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_replace_options(
+    ReplaceOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_replace_outcome(
+    ReplaceOutcome self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_replace_preview(
+    ReplacePreview self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_replace_undone(ReplaceUndone self, SseSerializer serializer);
 
   @protected
   void sse_encode_replacement(Replacement self, SseSerializer serializer);

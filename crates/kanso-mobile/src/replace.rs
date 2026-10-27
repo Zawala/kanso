@@ -16,6 +16,7 @@ use crate::errors::KansoError;
 use crate::library::Library;
 use crate::model_history::{
     PlannedNote, ReplaceMatch, ReplaceNote, ReplaceOptions, ReplaceOutcome, ReplacePreview,
+    ReplaceUndone,
 };
 
 /// What the Replace button says, or `None` when there is nothing to do.
@@ -117,10 +118,14 @@ impl Library {
 
     /// Puts back the text each note of `batch` had, except those edited
     /// since, locked now or gone. Says what it did. A batch is undone once.
-    pub fn replace_undo(&self, batch: &str) -> Result<String, KansoError> {
+    pub fn replace_undo(&self, batch: &str) -> Result<ReplaceUndone, KansoError> {
         guard(|| {
             let report = self.inner.store.undo_replace(batch, now_ms())?;
-            Ok(replace::undo_text(&report))
+            Ok(ReplaceUndone {
+                restored: report.restored.len() as u32,
+                skipped: report.skipped.len() as u32,
+                message: replace::undo_text(&report),
+            })
         })
     }
 }

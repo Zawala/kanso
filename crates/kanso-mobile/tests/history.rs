@@ -6,7 +6,7 @@ mod common;
 
 use common::*;
 use kanso_mobile::{DiffKind, KansoError, Library, LockState};
-use kanso_store::{Origin, Put, Store};
+use kanso_store::{Origin, Put, SharedNote, SharedStatus, Store};
 use proptest::prelude::*;
 use serde_json::json;
 
@@ -79,6 +79,28 @@ fn versions_come_newest_first_with_the_words_for_why_they_were_kept() {
             .all(|v| v.title == "Plan" && v.authors.is_none())
     );
 
+    // Authors are kept against a shared note's row, so the note is shared
+    // first (the row is all that matters here).
+    store
+        .put_shared_note(&SharedNote {
+            share_id: "share-1".into(),
+            note_id: id.clone(),
+            owner_id: "owner".into(),
+            owner_name: "Ada".into(),
+            role: "owner".into(),
+            status: SharedStatus::Active,
+            epoch: 1,
+            list: String::new(),
+            list_sig: String::new(),
+            state: Vec::new(),
+            applied_seq: 0,
+            since_snapshot: 0,
+            bytes_since_snapshot: 0,
+            counter: 0,
+            needs_snapshot: false,
+            updated_at: 0,
+        })
+        .unwrap();
     store
         .add_shared_authors(&id, &["user2".to_owned(), "user3,user2".to_owned()])
         .unwrap();
@@ -144,13 +166,17 @@ fn a_diff_has_the_lines_numbers_words_and_counts_a_screen_draws() {
             .filter(|l| l.kind == DiffKind::Same)
             .all(|l| l.changed.is_empty())
     );
-    // The same text has nothing to show.
+    // The same text has nothing to show. A write that changes only the
+    // title still keeps the version it replaces, whose text is the note's.
     let current = library.note(&id).unwrap();
-    api_write(
-        &store,
-        &id,
-        "# Plan\n\nBuy oat milk 🥛\nCall Sam\nWalk\nRead\n",
-    );
+    store
+        .put(
+            kanso_core::DocType::Note,
+            json!({"_id": id, "title": "Plan, again"}),
+            Put::Merge,
+            Origin::Api,
+        )
+        .unwrap();
     let newest = library.history(&id).unwrap().versions.remove(0);
     assert_eq!(newest.body, current.body.unwrap());
     assert!(library.history_diff(&id, &newest.rev).unwrap().is_empty());
