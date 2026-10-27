@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kanso/app.dart';
+import 'package:kanso/backups/state/backups/backups_bloc.dart';
 import 'package:kanso/core/configs/kanso_layout.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/router/kanso_router.dart';
@@ -21,6 +22,7 @@ import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
+import 'package:kanso/injection.dart';
 import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
@@ -36,6 +38,7 @@ import 'crash_samples.dart';
 import 'fixture_device_lock_repository.dart';
 import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_parity_repositories.dart';
 import 'fixture_renderer_repository.dart';
 import 'fixture_session_repository.dart';
 import 'fixture_shared_notes_repository.dart';
@@ -105,6 +108,9 @@ Future<BrowseApp> pumpBrowseApp(
   FixtureSyncRepository? sync,
   FixtureSessionRepository? session,
   FixtureDeviceLockRepository? device,
+  FixtureHistoryRepository? history,
+  FixtureReplaceRepository? replace,
+  FixtureBackupsRepository? backups,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
@@ -121,6 +127,10 @@ Future<BrowseApp> pumpBrowseApp(
     blocs.undoNotice,
     gallery,
     blocs.shared,
+    null,
+    history,
+    replace,
+    backups,
   );
   final accountBlocs = (accounts ?? AccountBlocs())..register();
   final padding = FakeViewPadding(
@@ -175,6 +185,10 @@ Future<BrowseApp> pumpBrowseApp(
             value: accountBlocs.approval,
           ),
           BlocProvider<CrashReportsBloc>.value(value: quietCrashReportsBloc()),
+          BlocProvider<BackupsBloc>(
+            create: (_) =>
+                getIt<BackupsBloc>()..add(const BackupsEvent.started()),
+          ),
         ],
         child: App(router: kansoRouter),
       ),
