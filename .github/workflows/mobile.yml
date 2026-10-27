@@ -306,6 +306,7 @@ jobs:
       # Composition, autocorrect, dictation and spell check through the
       # editor with the real core.
       - run: flutter test integration_test/editor_ime_test.dart -d "$KANSO_IOS_SIM_UDID" --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
+      - run: flutter test integration_test/icons_flow_test.dart -d "$KANSO_IOS_SIM_UDID" --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
       # Scrolling 2,000 notes. A simulator draws at 60 Hz in debug mode, so
       # this only proves the frame report is made; the limits apply in
       # profile mode, on a device (see mobile/README.md).
@@ -404,6 +405,7 @@ jobs:
             flutter test integration_test/conflict_flow_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
             flutter test integration_test/locked_edit_flow_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
             flutter test integration_test/editor_ime_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
+            flutter test integration_test/icons_flow_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
             flutter test integration_test/scroll_performance_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
             flutter test integration_test/editor_typing_performance_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
 

@@ -8,6 +8,34 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'types.freezed.dart';
 
+class AttachmentFile {
+  final String id;
+  final String name;
+  final String contentType;
+  final Uint8List bytes;
+
+  const AttachmentFile({
+    required this.id,
+    required this.name,
+    required this.contentType,
+    required this.bytes,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^ name.hashCode ^ contentType.hashCode ^ bytes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AttachmentFile &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          contentType == other.contentType &&
+          bytes == other.bytes;
+}
+
 class BuiltinTheme {
   final String id;
   final String name;
@@ -49,6 +77,30 @@ class BuiltinTheme {
           source == other.source &&
           dark == other.dark &&
           tokens == other.tokens;
+}
+
+class Changed {
+  final int count;
+  final int? undo;
+  final String message;
+
+  const Changed({
+    required this.count,
+    this.undo,
+    required this.message,
+  });
+
+  @override
+  int get hashCode => count.hashCode ^ undo.hashCode ^ message.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Changed &&
+          runtimeType == other.runtimeType &&
+          count == other.count &&
+          undo == other.undo &&
+          message == other.message;
 }
 
 class ColorRow {
@@ -144,6 +196,18 @@ enum DateField {
 enum DiagramKind {
   mermaid,
   excalidraw,
+}
+
+enum DiagramRenderer {
+  pele,
+  kanso,
+}
+
+enum DueTone {
+  plain,
+  today,
+  overdue,
+  done,
 }
 
 @freezed
@@ -398,6 +462,49 @@ class Hit {
           row == other.row &&
           titleRanges == other.titleRanges &&
           snippetRanges == other.snippetRanges;
+}
+
+class IconThemeRow {
+  final String id;
+  final String name;
+  final String author;
+  final String license;
+  final String? source;
+  final String? description;
+  final List<ThemedIcon> preview;
+
+  const IconThemeRow({
+    required this.id,
+    required this.name,
+    required this.author,
+    required this.license,
+    this.source,
+    this.description,
+    required this.preview,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      name.hashCode ^
+      author.hashCode ^
+      license.hashCode ^
+      source.hashCode ^
+      description.hashCode ^
+      preview.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is IconThemeRow &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          author == other.author &&
+          license == other.license &&
+          source == other.source &&
+          description == other.description &&
+          preview == other.preview;
 }
 
 @freezed
@@ -904,6 +1011,78 @@ class PaletteDto {
           tableHeaderBackground == other.tableHeaderBackground;
 }
 
+@freezed
+sealed class PreviewLink with _$PreviewLink {
+  const PreviewLink._();
+
+  const factory PreviewLink.note({
+    required String id,
+    String? heading,
+    String? anchor,
+  }) = PreviewLink_Note;
+  const factory PreviewLink.newNote({
+    required String title,
+  }) = PreviewLink_NewNote;
+  const factory PreviewLink.tag({
+    required String name,
+  }) = PreviewLink_Tag;
+  const factory PreviewLink.heading({
+    required String id,
+  }) = PreviewLink_Heading;
+  const factory PreviewLink.web({
+    required String url,
+  }) = PreviewLink_Web;
+  const factory PreviewLink.attachment({
+    required String id,
+    required String name,
+    required String contentType,
+    required int size,
+  }) = PreviewLink_Attachment;
+  const factory PreviewLink.task({
+    required int index,
+  }) = PreviewLink_Task;
+  const factory PreviewLink.copyCode({
+    required int index,
+  }) = PreviewLink_CopyCode;
+  const factory PreviewLink.due() = PreviewLink_Due;
+  const factory PreviewLink.nothing() = PreviewLink_Nothing;
+}
+
+class PreviewOptions {
+  final String? font;
+  final String? mono;
+  final double size;
+  final int utcOffsetSecs;
+  final List<SyntaxStyleRow> code;
+
+  const PreviewOptions({
+    this.font,
+    this.mono,
+    required this.size,
+    required this.utcOffsetSecs,
+    required this.code,
+  });
+
+  @override
+  int get hashCode =>
+      font.hashCode ^
+      mono.hashCode ^
+      size.hashCode ^
+      utcOffsetSecs.hashCode ^
+      code.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewOptions &&
+          runtimeType == other.runtimeType &&
+          font == other.font &&
+          mono == other.mono &&
+          size == other.size &&
+          utcOffsetSecs == other.utcOffsetSecs &&
+          code == other.code;
+}
+
 class Property {
   final String key;
   final PropertyKind kind;
@@ -1357,6 +1536,139 @@ class TagRow {
           count == other.count;
 }
 
+class TaskBoard {
+  final List<TaskSection> groups;
+
+  const TaskBoard({
+    required this.groups,
+  });
+
+  @override
+  int get hashCode => groups.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TaskBoard &&
+          runtimeType == other.runtimeType &&
+          groups == other.groups;
+}
+
+enum TaskGroupKind {
+  overdue,
+  today,
+  upcoming,
+  noDate,
+  done,
+}
+
+class TaskItem {
+  final String key;
+  final String noteId;
+  final String noteTitle;
+  final String notebookId;
+  final String notebookName;
+  final int line;
+  final String text;
+  final String sourceText;
+  final bool checked;
+  final String? dueLabel;
+  final DueTone? dueTone;
+
+  const TaskItem({
+    required this.key,
+    required this.noteId,
+    required this.noteTitle,
+    required this.notebookId,
+    required this.notebookName,
+    required this.line,
+    required this.text,
+    required this.sourceText,
+    required this.checked,
+    this.dueLabel,
+    this.dueTone,
+  });
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      noteId.hashCode ^
+      noteTitle.hashCode ^
+      notebookId.hashCode ^
+      notebookName.hashCode ^
+      line.hashCode ^
+      text.hashCode ^
+      sourceText.hashCode ^
+      checked.hashCode ^
+      dueLabel.hashCode ^
+      dueTone.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TaskItem &&
+          runtimeType == other.runtimeType &&
+          key == other.key &&
+          noteId == other.noteId &&
+          noteTitle == other.noteTitle &&
+          notebookId == other.notebookId &&
+          notebookName == other.notebookName &&
+          line == other.line &&
+          text == other.text &&
+          sourceText == other.sourceText &&
+          checked == other.checked &&
+          dueLabel == other.dueLabel &&
+          dueTone == other.dueTone;
+}
+
+class TaskListQuery {
+  final String? notebookId;
+  final bool showDone;
+  final List<String> kept;
+
+  const TaskListQuery({
+    this.notebookId,
+    required this.showDone,
+    required this.kept,
+  });
+
+  @override
+  int get hashCode => notebookId.hashCode ^ showDone.hashCode ^ kept.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TaskListQuery &&
+          runtimeType == other.runtimeType &&
+          notebookId == other.notebookId &&
+          showDone == other.showDone &&
+          kept == other.kept;
+}
+
+class TaskSection {
+  final TaskGroupKind group;
+  final String label;
+  final List<TaskItem> items;
+
+  const TaskSection({
+    required this.group,
+    required this.label,
+    required this.items,
+  });
+
+  @override
+  int get hashCode => group.hashCode ^ label.hashCode ^ items.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TaskSection &&
+          runtimeType == other.runtimeType &&
+          group == other.group &&
+          label == other.label &&
+          items == other.items;
+}
+
 class TextChange {
   final int baseVersion;
   final int start;
@@ -1441,4 +1753,38 @@ class ThemeTokens {
           selectionAlpha == other.selectionAlpha &&
           syntax == other.syntax &&
           palette == other.palette;
+}
+
+class ThemedIcon {
+  final String name;
+  final String? svg;
+
+  const ThemedIcon({
+    required this.name,
+    this.svg,
+  });
+
+  @override
+  int get hashCode => name.hashCode ^ svg.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ThemedIcon &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          svg == other.svg;
+}
+
+@freezed
+sealed class Ticked with _$Ticked {
+  const Ticked._();
+
+  const factory Ticked.changed({
+    required String rev,
+    required int undo,
+    required String message,
+  }) = Ticked_Changed;
+  const factory Ticked.unchanged() = Ticked_Unchanged;
+  const factory Ticked.missing() = Ticked_Missing;
 }

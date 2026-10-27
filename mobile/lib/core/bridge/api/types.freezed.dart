@@ -3354,6 +3354,816 @@ String toString() {
 
 
 /// @nodoc
+mixin _$PreviewLink {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'PreviewLink()';
+}
+
+
+}
+
+/// @nodoc
+class $PreviewLinkCopyWith<$Res>  {
+$PreviewLinkCopyWith(PreviewLink _, $Res Function(PreviewLink) __);
+}
+
+
+/// Adds pattern-matching-related methods to [PreviewLink].
+extension PreviewLinkPatterns on PreviewLink {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PreviewLink_Note value)?  note,TResult Function( PreviewLink_NewNote value)?  newNote,TResult Function( PreviewLink_Tag value)?  tag,TResult Function( PreviewLink_Heading value)?  heading,TResult Function( PreviewLink_Web value)?  web,TResult Function( PreviewLink_Attachment value)?  attachment,TResult Function( PreviewLink_Task value)?  task,TResult Function( PreviewLink_CopyCode value)?  copyCode,TResult Function( PreviewLink_Due value)?  due,TResult Function( PreviewLink_Nothing value)?  nothing,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case PreviewLink_Note() when note != null:
+return note(_that);case PreviewLink_NewNote() when newNote != null:
+return newNote(_that);case PreviewLink_Tag() when tag != null:
+return tag(_that);case PreviewLink_Heading() when heading != null:
+return heading(_that);case PreviewLink_Web() when web != null:
+return web(_that);case PreviewLink_Attachment() when attachment != null:
+return attachment(_that);case PreviewLink_Task() when task != null:
+return task(_that);case PreviewLink_CopyCode() when copyCode != null:
+return copyCode(_that);case PreviewLink_Due() when due != null:
+return due(_that);case PreviewLink_Nothing() when nothing != null:
+return nothing(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PreviewLink_Note value)  note,required TResult Function( PreviewLink_NewNote value)  newNote,required TResult Function( PreviewLink_Tag value)  tag,required TResult Function( PreviewLink_Heading value)  heading,required TResult Function( PreviewLink_Web value)  web,required TResult Function( PreviewLink_Attachment value)  attachment,required TResult Function( PreviewLink_Task value)  task,required TResult Function( PreviewLink_CopyCode value)  copyCode,required TResult Function( PreviewLink_Due value)  due,required TResult Function( PreviewLink_Nothing value)  nothing,}){
+final _that = this;
+switch (_that) {
+case PreviewLink_Note():
+return note(_that);case PreviewLink_NewNote():
+return newNote(_that);case PreviewLink_Tag():
+return tag(_that);case PreviewLink_Heading():
+return heading(_that);case PreviewLink_Web():
+return web(_that);case PreviewLink_Attachment():
+return attachment(_that);case PreviewLink_Task():
+return task(_that);case PreviewLink_CopyCode():
+return copyCode(_that);case PreviewLink_Due():
+return due(_that);case PreviewLink_Nothing():
+return nothing(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PreviewLink_Note value)?  note,TResult? Function( PreviewLink_NewNote value)?  newNote,TResult? Function( PreviewLink_Tag value)?  tag,TResult? Function( PreviewLink_Heading value)?  heading,TResult? Function( PreviewLink_Web value)?  web,TResult? Function( PreviewLink_Attachment value)?  attachment,TResult? Function( PreviewLink_Task value)?  task,TResult? Function( PreviewLink_CopyCode value)?  copyCode,TResult? Function( PreviewLink_Due value)?  due,TResult? Function( PreviewLink_Nothing value)?  nothing,}){
+final _that = this;
+switch (_that) {
+case PreviewLink_Note() when note != null:
+return note(_that);case PreviewLink_NewNote() when newNote != null:
+return newNote(_that);case PreviewLink_Tag() when tag != null:
+return tag(_that);case PreviewLink_Heading() when heading != null:
+return heading(_that);case PreviewLink_Web() when web != null:
+return web(_that);case PreviewLink_Attachment() when attachment != null:
+return attachment(_that);case PreviewLink_Task() when task != null:
+return task(_that);case PreviewLink_CopyCode() when copyCode != null:
+return copyCode(_that);case PreviewLink_Due() when due != null:
+return due(_that);case PreviewLink_Nothing() when nothing != null:
+return nothing(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String id,  String? heading,  String? anchor)?  note,TResult Function( String title)?  newNote,TResult Function( String name)?  tag,TResult Function( String id)?  heading,TResult Function( String url)?  web,TResult Function( String id,  String name,  String contentType,  int size)?  attachment,TResult Function( int index)?  task,TResult Function( int index)?  copyCode,TResult Function()?  due,TResult Function()?  nothing,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case PreviewLink_Note() when note != null:
+return note(_that.id,_that.heading,_that.anchor);case PreviewLink_NewNote() when newNote != null:
+return newNote(_that.title);case PreviewLink_Tag() when tag != null:
+return tag(_that.name);case PreviewLink_Heading() when heading != null:
+return heading(_that.id);case PreviewLink_Web() when web != null:
+return web(_that.url);case PreviewLink_Attachment() when attachment != null:
+return attachment(_that.id,_that.name,_that.contentType,_that.size);case PreviewLink_Task() when task != null:
+return task(_that.index);case PreviewLink_CopyCode() when copyCode != null:
+return copyCode(_that.index);case PreviewLink_Due() when due != null:
+return due();case PreviewLink_Nothing() when nothing != null:
+return nothing();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String id,  String? heading,  String? anchor)  note,required TResult Function( String title)  newNote,required TResult Function( String name)  tag,required TResult Function( String id)  heading,required TResult Function( String url)  web,required TResult Function( String id,  String name,  String contentType,  int size)  attachment,required TResult Function( int index)  task,required TResult Function( int index)  copyCode,required TResult Function()  due,required TResult Function()  nothing,}) {final _that = this;
+switch (_that) {
+case PreviewLink_Note():
+return note(_that.id,_that.heading,_that.anchor);case PreviewLink_NewNote():
+return newNote(_that.title);case PreviewLink_Tag():
+return tag(_that.name);case PreviewLink_Heading():
+return heading(_that.id);case PreviewLink_Web():
+return web(_that.url);case PreviewLink_Attachment():
+return attachment(_that.id,_that.name,_that.contentType,_that.size);case PreviewLink_Task():
+return task(_that.index);case PreviewLink_CopyCode():
+return copyCode(_that.index);case PreviewLink_Due():
+return due();case PreviewLink_Nothing():
+return nothing();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String id,  String? heading,  String? anchor)?  note,TResult? Function( String title)?  newNote,TResult? Function( String name)?  tag,TResult? Function( String id)?  heading,TResult? Function( String url)?  web,TResult? Function( String id,  String name,  String contentType,  int size)?  attachment,TResult? Function( int index)?  task,TResult? Function( int index)?  copyCode,TResult? Function()?  due,TResult? Function()?  nothing,}) {final _that = this;
+switch (_that) {
+case PreviewLink_Note() when note != null:
+return note(_that.id,_that.heading,_that.anchor);case PreviewLink_NewNote() when newNote != null:
+return newNote(_that.title);case PreviewLink_Tag() when tag != null:
+return tag(_that.name);case PreviewLink_Heading() when heading != null:
+return heading(_that.id);case PreviewLink_Web() when web != null:
+return web(_that.url);case PreviewLink_Attachment() when attachment != null:
+return attachment(_that.id,_that.name,_that.contentType,_that.size);case PreviewLink_Task() when task != null:
+return task(_that.index);case PreviewLink_CopyCode() when copyCode != null:
+return copyCode(_that.index);case PreviewLink_Due() when due != null:
+return due();case PreviewLink_Nothing() when nothing != null:
+return nothing();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class PreviewLink_Note extends PreviewLink {
+  const PreviewLink_Note({required this.id, this.heading, this.anchor}): super._();
+  
+
+ final  String id;
+ final  String? heading;
+ final  String? anchor;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewLink_NoteCopyWith<PreviewLink_Note> get copyWith => _$PreviewLink_NoteCopyWithImpl<PreviewLink_Note>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink_Note&&(identical(other.id, id) || other.id == id)&&(identical(other.heading, heading) || other.heading == heading)&&(identical(other.anchor, anchor) || other.anchor == anchor));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,id,heading,anchor);
+
+@override
+String toString() {
+  return 'PreviewLink.note(id: $id, heading: $heading, anchor: $anchor)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewLink_NoteCopyWith<$Res> implements $PreviewLinkCopyWith<$Res> {
+  factory $PreviewLink_NoteCopyWith(PreviewLink_Note value, $Res Function(PreviewLink_Note) _then) = _$PreviewLink_NoteCopyWithImpl;
+@useResult
+$Res call({
+ String id, String? heading, String? anchor
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewLink_NoteCopyWithImpl<$Res>
+    implements $PreviewLink_NoteCopyWith<$Res> {
+  _$PreviewLink_NoteCopyWithImpl(this._self, this._then);
+
+  final PreviewLink_Note _self;
+  final $Res Function(PreviewLink_Note) _then;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,Object? heading = freezed,Object? anchor = freezed,}) {
+  return _then(PreviewLink_Note(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,heading: freezed == heading ? _self.heading : heading // ignore: cast_nullable_to_non_nullable
+as String?,anchor: freezed == anchor ? _self.anchor : anchor // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewLink_NewNote extends PreviewLink {
+  const PreviewLink_NewNote({required this.title}): super._();
+  
+
+ final  String title;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewLink_NewNoteCopyWith<PreviewLink_NewNote> get copyWith => _$PreviewLink_NewNoteCopyWithImpl<PreviewLink_NewNote>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink_NewNote&&(identical(other.title, title) || other.title == title));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,title);
+
+@override
+String toString() {
+  return 'PreviewLink.newNote(title: $title)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewLink_NewNoteCopyWith<$Res> implements $PreviewLinkCopyWith<$Res> {
+  factory $PreviewLink_NewNoteCopyWith(PreviewLink_NewNote value, $Res Function(PreviewLink_NewNote) _then) = _$PreviewLink_NewNoteCopyWithImpl;
+@useResult
+$Res call({
+ String title
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewLink_NewNoteCopyWithImpl<$Res>
+    implements $PreviewLink_NewNoteCopyWith<$Res> {
+  _$PreviewLink_NewNoteCopyWithImpl(this._self, this._then);
+
+  final PreviewLink_NewNote _self;
+  final $Res Function(PreviewLink_NewNote) _then;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? title = null,}) {
+  return _then(PreviewLink_NewNote(
+title: null == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewLink_Tag extends PreviewLink {
+  const PreviewLink_Tag({required this.name}): super._();
+  
+
+ final  String name;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewLink_TagCopyWith<PreviewLink_Tag> get copyWith => _$PreviewLink_TagCopyWithImpl<PreviewLink_Tag>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink_Tag&&(identical(other.name, name) || other.name == name));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,name);
+
+@override
+String toString() {
+  return 'PreviewLink.tag(name: $name)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewLink_TagCopyWith<$Res> implements $PreviewLinkCopyWith<$Res> {
+  factory $PreviewLink_TagCopyWith(PreviewLink_Tag value, $Res Function(PreviewLink_Tag) _then) = _$PreviewLink_TagCopyWithImpl;
+@useResult
+$Res call({
+ String name
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewLink_TagCopyWithImpl<$Res>
+    implements $PreviewLink_TagCopyWith<$Res> {
+  _$PreviewLink_TagCopyWithImpl(this._self, this._then);
+
+  final PreviewLink_Tag _self;
+  final $Res Function(PreviewLink_Tag) _then;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? name = null,}) {
+  return _then(PreviewLink_Tag(
+name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewLink_Heading extends PreviewLink {
+  const PreviewLink_Heading({required this.id}): super._();
+  
+
+ final  String id;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewLink_HeadingCopyWith<PreviewLink_Heading> get copyWith => _$PreviewLink_HeadingCopyWithImpl<PreviewLink_Heading>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink_Heading&&(identical(other.id, id) || other.id == id));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,id);
+
+@override
+String toString() {
+  return 'PreviewLink.heading(id: $id)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewLink_HeadingCopyWith<$Res> implements $PreviewLinkCopyWith<$Res> {
+  factory $PreviewLink_HeadingCopyWith(PreviewLink_Heading value, $Res Function(PreviewLink_Heading) _then) = _$PreviewLink_HeadingCopyWithImpl;
+@useResult
+$Res call({
+ String id
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewLink_HeadingCopyWithImpl<$Res>
+    implements $PreviewLink_HeadingCopyWith<$Res> {
+  _$PreviewLink_HeadingCopyWithImpl(this._self, this._then);
+
+  final PreviewLink_Heading _self;
+  final $Res Function(PreviewLink_Heading) _then;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
+  return _then(PreviewLink_Heading(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewLink_Web extends PreviewLink {
+  const PreviewLink_Web({required this.url}): super._();
+  
+
+ final  String url;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewLink_WebCopyWith<PreviewLink_Web> get copyWith => _$PreviewLink_WebCopyWithImpl<PreviewLink_Web>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink_Web&&(identical(other.url, url) || other.url == url));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,url);
+
+@override
+String toString() {
+  return 'PreviewLink.web(url: $url)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewLink_WebCopyWith<$Res> implements $PreviewLinkCopyWith<$Res> {
+  factory $PreviewLink_WebCopyWith(PreviewLink_Web value, $Res Function(PreviewLink_Web) _then) = _$PreviewLink_WebCopyWithImpl;
+@useResult
+$Res call({
+ String url
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewLink_WebCopyWithImpl<$Res>
+    implements $PreviewLink_WebCopyWith<$Res> {
+  _$PreviewLink_WebCopyWithImpl(this._self, this._then);
+
+  final PreviewLink_Web _self;
+  final $Res Function(PreviewLink_Web) _then;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? url = null,}) {
+  return _then(PreviewLink_Web(
+url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewLink_Attachment extends PreviewLink {
+  const PreviewLink_Attachment({required this.id, required this.name, required this.contentType, required this.size}): super._();
+  
+
+ final  String id;
+ final  String name;
+ final  String contentType;
+ final  int size;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewLink_AttachmentCopyWith<PreviewLink_Attachment> get copyWith => _$PreviewLink_AttachmentCopyWithImpl<PreviewLink_Attachment>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink_Attachment&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.contentType, contentType) || other.contentType == contentType)&&(identical(other.size, size) || other.size == size));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,id,name,contentType,size);
+
+@override
+String toString() {
+  return 'PreviewLink.attachment(id: $id, name: $name, contentType: $contentType, size: $size)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewLink_AttachmentCopyWith<$Res> implements $PreviewLinkCopyWith<$Res> {
+  factory $PreviewLink_AttachmentCopyWith(PreviewLink_Attachment value, $Res Function(PreviewLink_Attachment) _then) = _$PreviewLink_AttachmentCopyWithImpl;
+@useResult
+$Res call({
+ String id, String name, String contentType, int size
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewLink_AttachmentCopyWithImpl<$Res>
+    implements $PreviewLink_AttachmentCopyWith<$Res> {
+  _$PreviewLink_AttachmentCopyWithImpl(this._self, this._then);
+
+  final PreviewLink_Attachment _self;
+  final $Res Function(PreviewLink_Attachment) _then;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,Object? name = null,Object? contentType = null,Object? size = null,}) {
+  return _then(PreviewLink_Attachment(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
+as String,contentType: null == contentType ? _self.contentType : contentType // ignore: cast_nullable_to_non_nullable
+as String,size: null == size ? _self.size : size // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewLink_Task extends PreviewLink {
+  const PreviewLink_Task({required this.index}): super._();
+  
+
+ final  int index;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewLink_TaskCopyWith<PreviewLink_Task> get copyWith => _$PreviewLink_TaskCopyWithImpl<PreviewLink_Task>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink_Task&&(identical(other.index, index) || other.index == index));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,index);
+
+@override
+String toString() {
+  return 'PreviewLink.task(index: $index)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewLink_TaskCopyWith<$Res> implements $PreviewLinkCopyWith<$Res> {
+  factory $PreviewLink_TaskCopyWith(PreviewLink_Task value, $Res Function(PreviewLink_Task) _then) = _$PreviewLink_TaskCopyWithImpl;
+@useResult
+$Res call({
+ int index
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewLink_TaskCopyWithImpl<$Res>
+    implements $PreviewLink_TaskCopyWith<$Res> {
+  _$PreviewLink_TaskCopyWithImpl(this._self, this._then);
+
+  final PreviewLink_Task _self;
+  final $Res Function(PreviewLink_Task) _then;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? index = null,}) {
+  return _then(PreviewLink_Task(
+index: null == index ? _self.index : index // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewLink_CopyCode extends PreviewLink {
+  const PreviewLink_CopyCode({required this.index}): super._();
+  
+
+ final  int index;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewLink_CopyCodeCopyWith<PreviewLink_CopyCode> get copyWith => _$PreviewLink_CopyCodeCopyWithImpl<PreviewLink_CopyCode>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink_CopyCode&&(identical(other.index, index) || other.index == index));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,index);
+
+@override
+String toString() {
+  return 'PreviewLink.copyCode(index: $index)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewLink_CopyCodeCopyWith<$Res> implements $PreviewLinkCopyWith<$Res> {
+  factory $PreviewLink_CopyCodeCopyWith(PreviewLink_CopyCode value, $Res Function(PreviewLink_CopyCode) _then) = _$PreviewLink_CopyCodeCopyWithImpl;
+@useResult
+$Res call({
+ int index
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewLink_CopyCodeCopyWithImpl<$Res>
+    implements $PreviewLink_CopyCodeCopyWith<$Res> {
+  _$PreviewLink_CopyCodeCopyWithImpl(this._self, this._then);
+
+  final PreviewLink_CopyCode _self;
+  final $Res Function(PreviewLink_CopyCode) _then;
+
+/// Create a copy of PreviewLink
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? index = null,}) {
+  return _then(PreviewLink_CopyCode(
+index: null == index ? _self.index : index // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewLink_Due extends PreviewLink {
+  const PreviewLink_Due(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink_Due);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'PreviewLink.due()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class PreviewLink_Nothing extends PreviewLink {
+  const PreviewLink_Nothing(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewLink_Nothing);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'PreviewLink.nothing()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
 mixin _$SaveState {
 
 
@@ -4090,5 +4900,305 @@ as String,
 
 
 }
+
+/// @nodoc
+mixin _$Ticked {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Ticked);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'Ticked()';
+}
+
+
+}
+
+/// @nodoc
+class $TickedCopyWith<$Res>  {
+$TickedCopyWith(Ticked _, $Res Function(Ticked) __);
+}
+
+
+/// Adds pattern-matching-related methods to [Ticked].
+extension TickedPatterns on Ticked {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( Ticked_Changed value)?  changed,TResult Function( Ticked_Unchanged value)?  unchanged,TResult Function( Ticked_Missing value)?  missing,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case Ticked_Changed() when changed != null:
+return changed(_that);case Ticked_Unchanged() when unchanged != null:
+return unchanged(_that);case Ticked_Missing() when missing != null:
+return missing(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( Ticked_Changed value)  changed,required TResult Function( Ticked_Unchanged value)  unchanged,required TResult Function( Ticked_Missing value)  missing,}){
+final _that = this;
+switch (_that) {
+case Ticked_Changed():
+return changed(_that);case Ticked_Unchanged():
+return unchanged(_that);case Ticked_Missing():
+return missing(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( Ticked_Changed value)?  changed,TResult? Function( Ticked_Unchanged value)?  unchanged,TResult? Function( Ticked_Missing value)?  missing,}){
+final _that = this;
+switch (_that) {
+case Ticked_Changed() when changed != null:
+return changed(_that);case Ticked_Unchanged() when unchanged != null:
+return unchanged(_that);case Ticked_Missing() when missing != null:
+return missing(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String rev,  int undo,  String message)?  changed,TResult Function()?  unchanged,TResult Function()?  missing,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case Ticked_Changed() when changed != null:
+return changed(_that.rev,_that.undo,_that.message);case Ticked_Unchanged() when unchanged != null:
+return unchanged();case Ticked_Missing() when missing != null:
+return missing();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String rev,  int undo,  String message)  changed,required TResult Function()  unchanged,required TResult Function()  missing,}) {final _that = this;
+switch (_that) {
+case Ticked_Changed():
+return changed(_that.rev,_that.undo,_that.message);case Ticked_Unchanged():
+return unchanged();case Ticked_Missing():
+return missing();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String rev,  int undo,  String message)?  changed,TResult? Function()?  unchanged,TResult? Function()?  missing,}) {final _that = this;
+switch (_that) {
+case Ticked_Changed() when changed != null:
+return changed(_that.rev,_that.undo,_that.message);case Ticked_Unchanged() when unchanged != null:
+return unchanged();case Ticked_Missing() when missing != null:
+return missing();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class Ticked_Changed extends Ticked {
+  const Ticked_Changed({required this.rev, required this.undo, required this.message}): super._();
+  
+
+ final  String rev;
+ final  int undo;
+ final  String message;
+
+/// Create a copy of Ticked
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$Ticked_ChangedCopyWith<Ticked_Changed> get copyWith => _$Ticked_ChangedCopyWithImpl<Ticked_Changed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Ticked_Changed&&(identical(other.rev, rev) || other.rev == rev)&&(identical(other.undo, undo) || other.undo == undo)&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,rev,undo,message);
+
+@override
+String toString() {
+  return 'Ticked.changed(rev: $rev, undo: $undo, message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $Ticked_ChangedCopyWith<$Res> implements $TickedCopyWith<$Res> {
+  factory $Ticked_ChangedCopyWith(Ticked_Changed value, $Res Function(Ticked_Changed) _then) = _$Ticked_ChangedCopyWithImpl;
+@useResult
+$Res call({
+ String rev, int undo, String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$Ticked_ChangedCopyWithImpl<$Res>
+    implements $Ticked_ChangedCopyWith<$Res> {
+  _$Ticked_ChangedCopyWithImpl(this._self, this._then);
+
+  final Ticked_Changed _self;
+  final $Res Function(Ticked_Changed) _then;
+
+/// Create a copy of Ticked
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? rev = null,Object? undo = null,Object? message = null,}) {
+  return _then(Ticked_Changed(
+rev: null == rev ? _self.rev : rev // ignore: cast_nullable_to_non_nullable
+as String,undo: null == undo ? _self.undo : undo // ignore: cast_nullable_to_non_nullable
+as int,message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class Ticked_Unchanged extends Ticked {
+  const Ticked_Unchanged(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Ticked_Unchanged);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'Ticked.unchanged()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class Ticked_Missing extends Ticked {
+  const Ticked_Missing(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Ticked_Missing);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'Ticked.missing()';
+}
+
+
+}
+
+
+
 
 // dart format on

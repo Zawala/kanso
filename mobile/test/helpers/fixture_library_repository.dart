@@ -40,10 +40,53 @@ class FixtureLibraryRepository implements LibraryRepository {
       Right<ApplicationError, List<Hit>>(mockHits);
 
   /// What `change` answers.
-  Either<ApplicationError, int> changeResult =
-      const Right<ApplicationError, int>(
-        1,
+  Either<ApplicationError, Changed> changeResult =
+      const Right<ApplicationError, Changed>(
+        Changed(count: 1, undo: 1, message: 'Pinned 1 note.'),
       );
+
+  /// What `undo` answers.
+  Either<ApplicationError, int> undoResult = const Right<ApplicationError, int>(
+    1,
+  );
+
+  /// What `tasks` answers; a failure shows the Tasks list's error state.
+  Either<ApplicationError, TaskBoard> tasksResult =
+      const Right<ApplicationError, TaskBoard>(mockTaskBoard);
+
+  /// What `overdueTasks` answers.
+  int overdueValue = mockOverdueTasks;
+
+  /// What `setTask` answers.
+  Either<ApplicationError, Ticked> setTaskResult =
+      const Right<ApplicationError, Ticked>(
+        Ticked.changed(rev: 'r2', undo: 7, message: 'Ticked off “Call Sam”'),
+      );
+
+  /// When set, `tasks` waits for it: tasks that are still loading.
+  Completer<void>? tasksGate;
+
+  /// The queries `tasks` was asked.
+  final List<TaskListQuery> taskQueries = <TaskListQuery>[];
+
+  /// The ticks `setTask` was asked for: note, line, text, checked.
+  final List<(String, int, String, bool)> tasksSet =
+      <(String, int, String, bool)>[];
+
+  /// The boxes `toggleTaskAt` was asked to tick: note, index, rev.
+  final List<(String, int, String)> boxesToggled = <(String, int, String)>[];
+
+  /// The titles `createLinkedNote` was asked for, with the note linking.
+  final List<(String, String)> linkedMade = <(String, String)>[];
+
+  /// What `attachment` answers.
+  Either<ApplicationError, AttachmentFile> attachmentResult =
+      const Left<ApplicationError, AttachmentFile>(
+        ApplicationError.notFound(message: 'No such file.'),
+      );
+
+  /// The tickets `undo` was asked to take back.
+  final List<int> undone = <int>[];
 
   /// When set, `list` waits for it: a list that is still loading.
   Completer<void>? listGate;
@@ -84,7 +127,13 @@ class FixtureLibraryRepository implements LibraryRepository {
       Right<ApplicationError, LibraryOverview>(overviewValue);
 
   @override
-  Future<Either<ApplicationError, int>> change(
+  Future<Either<ApplicationError, int>> undo(int ticket) async {
+    undone.add(ticket);
+    return undoResult;
+  }
+
+  @override
+  Future<Either<ApplicationError, Changed>> change(
     List<String> ids,
     NoteChange change,
   ) async {
@@ -130,6 +179,56 @@ class FixtureLibraryRepository implements LibraryRepository {
     await searchGate?.future;
     return searchResult;
   }
+
+  @override
+  Future<Either<ApplicationError, TaskBoard>> tasks(
+    TaskListQuery query,
+  ) async {
+    taskQueries.add(query);
+    await tasksGate?.future;
+    return tasksResult;
+  }
+
+  @override
+  Future<Either<ApplicationError, int>> overdueTasks() async =>
+      Right<ApplicationError, int>(overdueValue);
+
+  @override
+  Future<Either<ApplicationError, Ticked>> setTask({
+    required String noteId,
+    required int line,
+    required String text,
+    required bool checked,
+  }) async {
+    tasksSet.add((noteId, line, text, checked));
+    return setTaskResult;
+  }
+
+  @override
+  Future<Either<ApplicationError, Ticked>> toggleTaskAt({
+    required String noteId,
+    required int index,
+    required String baseRev,
+  }) async {
+    boxesToggled.add((noteId, index, baseRev));
+    return setTaskResult;
+  }
+
+  @override
+  Future<Either<ApplicationError, Saved>> createLinkedNote({
+    required String title,
+    required String fromNote,
+  }) async {
+    linkedMade.add((title, fromNote));
+    return Right<ApplicationError, Saved>(
+      Saved(id: 'note:linked-${linkedMade.length}', rev: '1'),
+    );
+  }
+
+  @override
+  Future<Either<ApplicationError, AttachmentFile>> attachment(
+    String id,
+  ) async => attachmentResult;
 
   @override
   Stream<List<String>> changes() => changeStream.stream;

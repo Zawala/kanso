@@ -65,6 +65,12 @@ abstract final class KansoSizes {
   /// 340: a message card's width.
   static const double messageCardWidth = 340;
 
+  /// 420: the widest a notice afloat at the foot of the screen gets.
+  static const double noticeWidth = 420;
+
+  /// 291: the height of a phone's keyboard, in logical pixels.
+  static const double keyboardHeight = 291;
+
   /// 0.85: the share of the width a drawer takes on a phone.
   static const double drawerFraction = 0.85;
 

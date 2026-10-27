@@ -9,14 +9,16 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    BuiltinTheme, ColorRow, Completion, CompletionItem, CompletionKind, DateField, DiagramKind,
-    EditCommand, EditOutcome, EditorContext, EditorEvent, EditorRun, EditorSnapshot, FormatKind,
-    HistoryState, Hit, KansoError, LibraryOverview, LinkTarget, ListPlace, ListQuery, ListShape,
-    LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow, NoteView,
-    NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Replacement, RunBatch,
-    SaveState, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase,
-    SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow,
-    TextChange, ThemeTokens,
+    AttachmentFile, BuiltinTheme, Changed, ColorRow, Completion, CompletionItem, CompletionKind,
+    DateField, DiagramKind, DiagramRenderer, DueTone, EditCommand, EditOutcome, EditorContext,
+    EditorEvent, EditorRun, EditorSnapshot, FormatKind, HistoryState, Hit, IconThemeRow,
+    KansoError, LibraryOverview, LinkTarget, ListPlace, ListQuery, ListShape, LockEvent,
+    LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole,
+    NotebookRow, PaletteDto, PreviewLink, PreviewOptions, Property, PropertyKind, Range16,
+    Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun,
+    SvgRow, SyncPhase, SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow,
+    TagRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange,
+    ThemeTokens, ThemedIcon, Ticked,
 };
 
 #[frb(mirror(KansoError))]
@@ -118,11 +120,80 @@ pub struct _LibraryOverview {
     pub trash: u32,
 }
 
+#[frb(mirror(TaskListQuery))]
+pub struct _TaskListQuery {
+    pub notebook_id: Option<String>,
+    pub show_done: bool,
+    pub kept: Vec<String>,
+}
+
+#[frb(mirror(TaskGroupKind))]
+pub enum _TaskGroupKind {
+    Overdue,
+    Today,
+    Upcoming,
+    NoDate,
+    Done,
+}
+
+#[frb(mirror(DueTone))]
+pub enum _DueTone {
+    Plain,
+    Today,
+    Overdue,
+    Done,
+}
+
+#[frb(mirror(TaskItem))]
+pub struct _TaskItem {
+    pub key: String,
+    pub note_id: String,
+    pub note_title: String,
+    pub notebook_id: String,
+    pub notebook_name: String,
+    pub line: u32,
+    pub text: String,
+    pub source_text: String,
+    pub checked: bool,
+    pub due_label: Option<String>,
+    pub due_tone: Option<DueTone>,
+}
+
+#[frb(mirror(TaskSection))]
+pub struct _TaskSection {
+    pub group: TaskGroupKind,
+    pub label: String,
+    pub items: Vec<TaskItem>,
+}
+
+#[frb(mirror(TaskBoard))]
+pub struct _TaskBoard {
+    pub groups: Vec<TaskSection>,
+}
+
+#[frb(mirror(Ticked))]
+pub enum _Ticked {
+    Changed {
+        rev: String,
+        undo: u64,
+        message: String,
+    },
+    Unchanged,
+    Missing,
+}
+
 #[frb(mirror(NoteChange))]
 pub enum _NoteChange {
     TogglePin,
     Move { notebook_id: String },
     Trash,
+}
+
+#[frb(mirror(Changed))]
+pub struct _Changed {
+    pub count: u32,
+    pub undo: Option<u64>,
+    pub message: String,
 }
 
 #[frb(mirror(SearchScope))]
@@ -354,6 +425,23 @@ pub struct _BuiltinTheme {
     pub tokens: ThemeTokens,
 }
 
+#[frb(mirror(ThemedIcon))]
+pub struct _ThemedIcon {
+    pub name: String,
+    pub svg: Option<String>,
+}
+
+#[frb(mirror(IconThemeRow))]
+pub struct _IconThemeRow {
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub license: String,
+    pub source: Option<String>,
+    pub description: Option<String>,
+    pub preview: Vec<ThemedIcon>,
+}
+
 #[frb(mirror(StyledRun))]
 pub struct _StyledRun {
     pub range: Range16,
@@ -514,4 +602,62 @@ pub enum _LinkTarget {
     Note { id: String },
     NewNote { title: String },
     Web { url: String },
+}
+
+#[frb(mirror(PreviewOptions))]
+pub struct _PreviewOptions {
+    pub font: Option<String>,
+    pub mono: Option<String>,
+    pub size: f32,
+    pub utc_offset_secs: i32,
+    pub code: Vec<SyntaxStyleRow>,
+}
+
+#[frb(mirror(PreviewLink))]
+pub enum _PreviewLink {
+    Note {
+        id: String,
+        heading: Option<String>,
+        anchor: Option<String>,
+    },
+    NewNote {
+        title: String,
+    },
+    Tag {
+        name: String,
+    },
+    Heading {
+        id: String,
+    },
+    Web {
+        url: String,
+    },
+    Attachment {
+        id: String,
+        name: String,
+        content_type: String,
+        size: u64,
+    },
+    Task {
+        index: u32,
+    },
+    CopyCode {
+        index: u32,
+    },
+    Due,
+    Nothing,
+}
+
+#[frb(mirror(AttachmentFile))]
+pub struct _AttachmentFile {
+    pub id: String,
+    pub name: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+}
+
+#[frb(mirror(DiagramRenderer))]
+pub enum _DiagramRenderer {
+    Pele,
+    Kanso,
 }

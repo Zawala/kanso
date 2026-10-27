@@ -14,9 +14,11 @@ import '../../note_list/views/pages/note_list_page.dart';
 import '../../search/views/pages/search_page.dart';
 import '../../settings/views/pages/default_notebook_page.dart';
 import '../../settings/views/pages/fonts_page.dart';
+import '../../settings/views/pages/icon_themes_page.dart';
 import '../../settings/views/pages/licences_page.dart';
 import '../../settings/views/pages/settings_page.dart';
 import '../../shell/views/widgets/browse_shell.dart';
+import '../../tasks/views/pages/tasks_page.dart';
 import '../../themes/views/pages/theme_picker_page.dart';
 import '../bridge/api/types.dart';
 import '../models/data/browse_location.dart';
@@ -34,8 +36,8 @@ import 'layout_class_notifier.dart';
 ///   opened from one is that address plus `/note/:noteId`.
 /// * Settings is a shell of its own on top of the root navigator, so it
 ///   opens over what the person was doing and closes back to it, with
-///   Theme, Fonts and Licences sliding inside it. It is a sheet on a tablet
-///   and a page on a phone.
+///   Theme, Icons, Fonts and Licences sliding inside it. It is a sheet on a
+///   tablet and a page on a phone.
 /// * `kanso://open/…` links and the short forms (`/note/:id`,
 ///   `/notebook/:id`) land on the addresses above; an address that is
 ///   nothing goes to All Notes.
@@ -110,6 +112,12 @@ class KansoRouter {
               (state) => ListPlace.tag(id: state.pathParameters['tagId']!),
             ),
             GoRoute(
+              path: KansoRoutes.tasks,
+              pageBuilder: (context, state) =>
+                  _listPage(state, single: const TasksPage()),
+              routes: <RouteBase>[_noteRoute()],
+            ),
+            GoRoute(
               path: KansoRoutes.search,
               pageBuilder: (context, state) => _listPage(
                 state,
@@ -151,6 +159,13 @@ class KansoRouter {
                   pageBuilder: (context, state) => CupertinoPage<void>(
                     key: state.pageKey,
                     child: const ThemePickerPage(),
+                  ),
+                ),
+                GoRoute(
+                  path: 'icons',
+                  pageBuilder: (context, state) => CupertinoPage<void>(
+                    key: state.pageKey,
+                    child: const IconThemesPage(),
                   ),
                 ),
                 GoRoute(

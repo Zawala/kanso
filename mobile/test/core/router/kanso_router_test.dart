@@ -21,6 +21,7 @@ import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 import 'package:kanso/note/views/pages/note_page.dart';
@@ -49,7 +50,7 @@ Future<GoRouter> _pump(
   final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start();
-  registerPageBlocs(blocs.library);
+  registerPageBlocs(blocs.library, null, blocs.undoNotice);
   final history = blocs.history;
   tester.view
     ..physicalSize = size
@@ -73,6 +74,7 @@ Future<GoRouter> _pump(
         BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
+        BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
         BlocProvider<NoteCreationBloc>.value(value: blocs.creation),
         BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),

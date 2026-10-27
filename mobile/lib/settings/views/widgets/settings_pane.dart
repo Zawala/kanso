@@ -26,11 +26,11 @@ import '../../state/default_notebook/default_notebook_bloc.dart';
 /// Settings: a close button, a centred title and rows grouped in rounded
 /// sections, each with an icon, a label and its current value.
 ///
-/// Only what works is here: how the app looks (themes, fonts, text size),
-/// the state of sync with the note that the notes are not in device backups,
-/// and what the app is (its version, its website, its licences). It needs
-/// the app's `AppearanceBloc` and `SyncStatusBloc` and an [AboutBloc] above
-/// it.
+/// Only what works is here: how the app looks (themes, icons, fonts, text
+/// size), the state of sync with the note that the notes are not in device
+/// backups, and what the app is (its version, its website, its licences). It
+/// needs the app's `AppearanceBloc` and `SyncStatusBloc` and an [AboutBloc]
+/// above it.
 class SettingsPane extends StatelessWidget {
   const SettingsPane({super.key});
 
@@ -117,6 +117,13 @@ class SettingsPane extends StatelessWidget {
                           value: theme,
                           chevron: true,
                           onTap: () => context.push(KansoRoutes.settingsTheme),
+                        ),
+                        KansoSettingsRow(
+                          icon: KansoIcons.shapes,
+                          label: l10n.settingsIcons,
+                          value: appearance.iconSet.name,
+                          chevron: true,
+                          onTap: () => context.push(KansoRoutes.settingsIcons),
                         ),
                         KansoSettingsRow(
                           icon: KansoIcons.typeface,

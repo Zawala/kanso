@@ -202,10 +202,10 @@ void librarySuite(OpenLibrary open) {
         final first = await makeNote(library, 'First', 'a');
         final second = await makeNote(library, 'Second', 'b');
         expect(
-          await library.change(
+          (await library.change(
             ids: <String>[first],
             change: const NoteChange.togglePin(),
-          ),
+          )).count,
           1,
         );
         final all = await library.list(query: everyNote);
@@ -262,10 +262,10 @@ void librarySuite(OpenLibrary open) {
       final b = await makeNote(library, 'B', 'b');
       final garden = await library.createNotebook(name: 'Garden');
       expect(
-        await library.change(
+        (await library.change(
           ids: <String>[a, b],
           change: NoteChange.move(notebookId: garden.id),
-        ),
+        )).count,
         2,
       );
       expect(
@@ -273,18 +273,18 @@ void librarySuite(OpenLibrary open) {
         garden.id,
       );
       expect(
-        await library.change(
+        (await library.change(
           ids: <String>[a, b],
           change: NoteChange.move(notebookId: garden.id),
-        ),
+        )).count,
         0,
         reason: 'already there',
       );
       expect(
-        await library.change(
+        (await library.change(
           ids: <String>[a],
           change: const NoteChange.trash(),
-        ),
+        )).count,
         1,
       );
       expect((await library.overview()).trash, 1);
@@ -294,6 +294,78 @@ void librarySuite(OpenLibrary open) {
           change: const NoteChange.togglePin(),
         ),
         throwsA(isA<KansoError_NotFound>()),
+      );
+    });
+
+    test('a change says what to tell, and Undo takes it back', () async {
+      final library = await open();
+      final a = await makeNote(library, 'A', 'a');
+      final b = await makeNote(library, 'B', 'b');
+      final garden = await library.createNotebook(name: 'Garden');
+      final before = (await library.note(id: a)).notebookId;
+
+      final moved = await library.change(
+        ids: <String>[a, b],
+        change: NoteChange.move(notebookId: garden.id),
+      );
+      expect(moved.count, 2);
+      expect(moved.message, 'Moved 2 notes to Garden.');
+      expect(moved.undo, isNotNull);
+      expect((await library.note(id: a)).notebookId, garden.id);
+
+      expect(await library.undo(ticket: moved.undo!), 2);
+      expect((await library.note(id: a)).notebookId, before);
+      expect((await library.note(id: b)).notebookId, before);
+      expect(
+        await library.undo(ticket: moved.undo!),
+        0,
+        reason: 'a ticket is used once',
+      );
+
+      final nothing = await library.change(
+        ids: <String>[a],
+        change: NoteChange.move(notebookId: before),
+      );
+      expect((nothing.count, nothing.undo, nothing.message), (0, null, ''));
+    });
+
+    test('Undo keeps a field that changed again since', () async {
+      final library = await open();
+      final a = await makeNote(library, 'A', 'a');
+      final garden = await library.createNotebook(name: 'Garden');
+      final shed = await library.createNotebook(name: 'Shed');
+      final moved = await library.change(
+        ids: <String>[a],
+        change: NoteChange.move(notebookId: garden.id),
+      );
+      await library.change(
+        ids: <String>[a],
+        change: NoteChange.move(notebookId: shed.id),
+      );
+      expect(await library.undo(ticket: moved.undo!), 0);
+      expect((await library.note(id: a)).notebookId, shed.id);
+    });
+
+    test('a ticked task is taken back with its ticket', () async {
+      final library = await open();
+      final saved = await library.create(
+        note: const NewNote(title: 'Todo', body: '- [ ] one\n- [ ] two'),
+      );
+      final ticked = await library.setTask(
+        noteId: saved.id,
+        line: 0,
+        text: 'one',
+        checked: true,
+      );
+      expect(ticked, isA<Ticked_Changed>());
+      expect(
+        (await library.note(id: saved.id)).body,
+        contains('- [x] one'),
+      );
+      expect(await library.undo(ticket: (ticked as Ticked_Changed).undo), 1);
+      expect(
+        (await library.note(id: saved.id)).body,
+        contains('- [ ] one'),
       );
     });
 
@@ -442,11 +514,129 @@ void librarySuite(OpenLibrary open) {
       expect(heard.any(written.contains), isTrue);
     });
 
+    test('lists open tasks in groups, ticks one and takes it back', () async {
+      final library = await open();
+      final id = await makeNote(
+        library,
+        'Plan',
+        '- [ ] Pay rent @2020-01-01\n- [ ] Later @2999-01-01\n- [ ] Plain\n',
+      );
+      final board = await library.tasks(
+        query: const TaskListQuery(
+          showDone: false,
+          kept: <String>[],
+        ),
+      );
+      expect(
+        board.groups.map((group) => group.group),
+        <TaskGroupKind>[
+          TaskGroupKind.overdue,
+          TaskGroupKind.upcoming,
+          TaskGroupKind.noDate,
+        ],
+      );
+      expect(
+        board.groups.map((group) => group.label),
+        <String>['Overdue', 'Upcoming', 'No date'],
+      );
+      final rent = board.groups.first.items.single;
+      expect(rent.text, 'Pay rent');
+      expect(rent.sourceText, 'Pay rent @2020-01-01');
+      expect(rent.noteId, id);
+      expect(rent.noteTitle, 'Plan');
+      expect(rent.line, 0);
+      expect(rent.dueTone, DueTone.overdue);
+      expect(rent.dueLabel, startsWith('Overdue'));
+      expect(await library.overdueTasks(), 1);
+
+      final ticked = await library.setTask(
+        noteId: id,
+        line: rent.line,
+        text: rent.sourceText,
+        checked: true,
+      );
+      expect(ticked, isA<Ticked_Changed>());
+      expect(await library.overdueTasks(), 0);
+      final kept = await library.tasks(
+        query: TaskListQuery(
+          showDone: false,
+          kept: <String>[rent.key],
+        ),
+      );
+      expect(kept.groups.first.group, TaskGroupKind.overdue);
+      expect(kept.groups.first.items.single.checked, isTrue);
+
+      expect(await library.undo(ticket: (ticked as Ticked_Changed).undo), 1);
+      expect(await library.overdueTasks(), 1);
+    });
+
+    test('leaves the tasks of locked notes out', () async {
+      final library = await open();
+      final visible = await makeNote(library, 'Seen', '- [ ] open @2020-01-01');
+      final hidden = await makeNote(library, 'Hidden', '- [ ] SEALEDTASK');
+      final locks = library.locks();
+      await locks.lockNote(id: hidden, password: lockPassword);
+      expect(await locks.isUnlocked(), isTrue);
+      for (var round = 0; round < 2; round++) {
+        final board = await library.tasks(
+          query: const TaskListQuery(
+            showDone: true,
+            kept: <String>[],
+          ),
+        );
+        final items = board.groups.expand((group) => group.items).toList();
+        expect(items.map((item) => item.noteId), <String>[visible]);
+        expect(items.map((item) => item.text), isNot(contains('SEALEDTASK')));
+        expect(await library.overdueTasks(), 1);
+        await locks.lock();
+      }
+    });
+
     test('the parts of a library come from it', () async {
       final library = await open();
       expect(library.locks(), isA<Object>());
       expect(library.syncing(), isA<Object>());
       expect(library.renderer(), isA<Object>());
+    });
+    test('a task box in the page is ticked against the text drawn', () async {
+      final library = await open();
+      final id = await makeNote(library, 'Chores', '- [ ] Sweep\n');
+      final rev = (await library.note(id: id)).rev;
+      final ticked = await library.toggleTaskAt(
+        noteId: id,
+        index: 0,
+        baseRev: rev,
+      );
+      expect(ticked, isA<Ticked_Changed>());
+      expect((await library.note(id: id)).body, contains('- [x] Sweep'));
+      // A page drawn before the tick is out of date.
+      await expectLater(
+        library.toggleTaskAt(noteId: id, index: 0, baseRev: rev),
+        throwsA(isA<KansoError_Conflict>()),
+      );
+    });
+
+    test('a wiki-link to no note makes it, once', () async {
+      final library = await open();
+      final from = await makeNote(library, 'From', '[[Seed]]');
+      final made = await library.createLinkedNote(
+        title: 'Seed',
+        fromNote: from,
+      );
+      expect((await library.note(id: made.id)).title, 'Seed');
+      final again = await library.createLinkedNote(
+        title: 'Seed',
+        fromNote: from,
+      );
+      expect(again.id, made.id);
+    });
+
+    test('an attachment no readable note links is not found', () async {
+      final library = await open();
+      await expectLater(
+        library.attachment(id: 'file:nope'),
+        throwsA(isA<KansoError_NotFound>()),
+      );
     });
   });
 }

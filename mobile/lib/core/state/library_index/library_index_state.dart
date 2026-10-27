@@ -19,6 +19,9 @@ abstract class LibraryIndexState with _$LibraryIndexState {
     )
     LibraryOverview overview,
 
+    /// How many open tasks are overdue: the badge of the Tasks row.
+    @Default(0) int overdueTasks,
+
     /// Why the last reading failed, while [status] is failed.
     ApplicationError? error,
   }) = _LibraryIndexState;

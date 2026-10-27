@@ -100,6 +100,7 @@ pinned note, a locked one):
 | `search_flow_test.dart` | Type a word and see what matched highlighted; narrow to titles; open a hit |
 | `new_note_flow_test.dart` | The Default notebook chosen in Settings; + makes a note in it, opened to write its title; a note made from a tag's list is tagged; ⌘N; a new notebook, and a note made in its own list |
 | `open_flow_test.dart` | `kanso://open/note/…`, `…/notebook/…` and `…/search?q=…` as the platform hands them over; a note that is not there; a locked note |
+| `icons_flow_test.dart` | Settings › Appearance › Icons lists the icon themes with Lucide in use; choosing Phosphor draws the app's icons from its SVGs at once and the Icons row names it; choosing Lucide again puts Kanso's own icons back |
 
 ```sh
 flutter test integration_test/browse_flow_test.dart -d <simulator or emulator>
@@ -412,7 +413,9 @@ Every dependency is MIT, BSD or Apache licensed.
 | `path_provider` | The folder the library lives in | BSD-3-Clause |
 | `package_info_plus` | The version and build in Settings › About | BSD-3-Clause |
 | `shorebird_code_push` | Reads the number of the Shorebird patch the app runs (Settings › About and crash reports); it does not download patches | MIT |
+| `share_plus` | Hands an attachment tapped in a preview to the system's share sheet | BSD-3-Clause |
 | `url_launcher` | Opens the website from Settings › About | BSD-3-Clause |
+| `webview_flutter` | Shows a note's preview page, with every tapped address handed to the Rust core | BSD-3-Clause |
 
 The Rust library adds `core-foundation` and `core-foundation-sys` (Apple
 targets only, MIT or Apache-2.0, already in the iOS tree through

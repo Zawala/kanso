@@ -16,6 +16,7 @@ import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
@@ -25,6 +26,7 @@ import 'package:kanso/shell/state/note_creation/note_creation_bloc.dart';
 import 'browse_blocs.dart';
 import 'crash_samples.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_renderer_repository.dart';
 import 'register_page_blocs.dart';
 import 'seeded_appearance_bloc.dart';
 
@@ -48,7 +50,8 @@ class BrowseApp {
 
 /// Pumps the whole app, as `main` builds it but over the mock library, open
 /// at [at] in a window of [size], light. [library] is the library to use
-/// when a test has made one.
+/// when a test has made one; [renderer] likewise for the renderer the pages
+/// make their BLoCs on.
 ///
 /// [devicePixelRatio] and [safeArea] (in logical pixels) are the window's
 /// density and the status bar and home indicator the platform reports.
@@ -63,6 +66,7 @@ Future<BrowseApp> pumpBrowseApp(
   String at = '/notes',
   AppearanceState appearance = const AppearanceState(),
   FixtureLibraryRepository? library,
+  FixtureRendererRepository? renderer,
   double devicePixelRatio = 1,
   EdgeInsets safeArea = EdgeInsets.zero,
   bool? tabletDevice,
@@ -71,7 +75,7 @@ Future<BrowseApp> pumpBrowseApp(
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start(library);
-  registerPageBlocs(blocs.library);
+  registerPageBlocs(blocs.library, renderer, blocs.undoNotice);
   final padding = FakeViewPadding(
     left: safeArea.left * devicePixelRatio,
     top: safeArea.top * devicePixelRatio,
@@ -106,6 +110,7 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
           BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
           BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
+          BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
           BlocProvider<NoteCreationBloc>.value(value: blocs.creation),
           BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
           BlocProvider<BackupNoticeBloc>.value(

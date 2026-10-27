@@ -13,7 +13,7 @@ import '../../../core/utils/list_labels.dart';
 import '../../../core/utils/status_label.dart';
 import '../../models/data/source_line.dart';
 import 'note_metadata_block.dart';
-import 'note_source_text.dart';
+import 'note_preview.dart';
 
 /// A note that is open: its title, a compact block of its facts, and its
 /// text, which scrolls with them.
@@ -82,11 +82,7 @@ class NoteBody extends StatelessWidget {
             gutter,
             MediaQuery.paddingOf(context).bottom + KansoSpacing.lg,
           ),
-          sliver: NoteSourceText(
-            text: note.body ?? '',
-            lines: lines,
-            onEditAt: onEditAt,
-          ),
+          sliver: NotePreview(note: note, lines: lines, onEditAt: onEditAt),
         ),
       ],
     );

@@ -7,6 +7,7 @@ import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/models/repos/impl/rust_library_repository.dart';
 import 'package:kanso/core/models/repos/impl/rust_renderer_repository.dart';
+import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/note/models/data/note_screen_status.dart';
 import 'package:kanso/note/models/repos/impl/memory_note_place_repository.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
@@ -100,6 +101,7 @@ void main() {
       repository,
       ForgetfulPreferencesRepository(),
       haptics,
+      UndoNoticeBloc(repository, haptics),
     )..add(const NoteListEvent.started(ListPlace.all()));
     addTearDown(list.close);
     final listState = await list.stream.firstWhere(

@@ -279,6 +279,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsFonts => 'Fonts';
 
   @override
+  String get settingsIcons => 'Icons';
+
+  @override
+  String get iconsTitle => 'Icons';
+
+  @override
+  String get iconsFooter =>
+      'The icon themes of the desktop app. Choosing one changes every icon at once; an icon a theme doesn’t draw stays Kanso’s own.';
+
+  @override
+  String iconsCredit(String author, String license) {
+    return '$author, $license';
+  }
+
+  @override
+  String iconsPreview(String name) {
+    return 'Icons in $name';
+  }
+
+  @override
+  String get iconsLoading => 'Loading icon themes';
+
+  @override
+  String get iconsFailedTitle => 'The icon themes didn’t load';
+
+  @override
+  String get iconsFailedMessage =>
+      'Something went wrong reading the icon themes. Try again.';
+
+  @override
+  String get iconsEmptyTitle => 'No icon themes';
+
+  @override
+  String get iconsEmptyMessage => 'Kanso’s own icons are in use.';
+
+  @override
   String get settingsBack => 'Back';
 
   @override
@@ -612,6 +648,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noteListDismiss => 'OK';
 
   @override
+  String get undoNoticeUndo => 'Undo';
+
+  @override
   String get noteLoading => 'Loading the note';
 
   @override
@@ -873,4 +912,124 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get crashReportsFailedMessage => 'The crash reports couldn’t be read.';
+
+  @override
+  String get screenNoteEdit => 'Note, edit';
+
+  @override
+  String get libraryTasks => 'Tasks';
+
+  @override
+  String libraryTasksOverdue(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count overdue tasks',
+      one: '1 overdue task',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String tasksCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tasks',
+      one: '1 task',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tasksFilter => 'Filter tasks';
+
+  @override
+  String get tasksFilterTitle => 'Filter tasks';
+
+  @override
+  String get tasksAllNotebooks => 'All notebooks';
+
+  @override
+  String get tasksShowCompleted => 'Show Completed';
+
+  @override
+  String get tasksNotebooksHeader => 'Notebook';
+
+  @override
+  String get tasksEmptyTitle => 'No tasks yet';
+
+  @override
+  String get tasksEmptyMessage =>
+      'Write “- [ ] Call Sam @2026-10-25” in any note, and it shows here.';
+
+  @override
+  String tasksEmptyNotebookTitle(String notebook) {
+    return 'No tasks in $notebook';
+  }
+
+  @override
+  String get tasksAllDoneTitle => 'All done';
+
+  @override
+  String get tasksAllDoneMessage => 'Every task is ticked off.';
+
+  @override
+  String get tasksLoading => 'Loading tasks';
+
+  @override
+  String get tasksFailedTitle => 'The tasks didn\'t load';
+
+  @override
+  String get tasksFailedMessage =>
+      'Something went wrong reading the tasks on this device. Try again.';
+
+  @override
+  String get tasksMoved =>
+      'That task changed in its note. The list is up to date now.';
+
+  @override
+  String get tasksChangeFailed => 'Couldn\'t change the task. Try again.';
+
+  @override
+  String get tasksTickOff => 'Tick off';
+
+  @override
+  String get tasksTickBack => 'Mark not done';
+
+  @override
+  String get tasksOpenNote => 'Open note';
+
+  @override
+  String tasksRowContext(String note, String notebook) {
+    return '$note · $notebook';
+  }
+
+  @override
+  String tasksRowDue(String due) {
+    return 'Due $due';
+  }
+
+  @override
+  String get previewLabel => 'The note\'s preview';
+
+  @override
+  String get previewFailed => 'The preview couldn\'t be drawn.';
+
+  @override
+  String get previewLinkFailed => 'That link couldn\'t be opened.';
+
+  @override
+  String get previewLinkLocked => 'Unlock your notes to open that.';
+
+  @override
+  String get attachmentDone => 'Done';
+
+  @override
+  String get attachmentShare => 'Share';
+
+  @override
+  String attachmentDetails(String type, String size) {
+    return '$type · $size';
+  }
 }

@@ -15,6 +15,9 @@ abstract final class KansoRoutes {
   static const String recent = '/recent';
   static const String trash = '/trash';
 
+  /// Tasks, across the notes.
+  static const String tasks = '/tasks';
+
   /// A notebook is `/notebooks/:notebookId`.
   static const String notebooks = '/notebooks';
 
@@ -39,6 +42,7 @@ abstract final class KansoRoutes {
   static const String settings = '/settings';
   static const String settingsNotebook = '/settings/notebook';
   static const String settingsTheme = '/settings/theme';
+  static const String settingsIcons = '/settings/icons';
   static const String settingsFonts = '/settings/fonts';
   static const String settingsLicences = '/settings/licences';
   static const String settingsCrashReports = '/settings/crash-reports';

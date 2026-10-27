@@ -163,6 +163,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
+  AttachmentFile dco_decode_attachment_file(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
@@ -170,6 +173,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   Completion dco_decode_box_autoadd_completion(dynamic raw);
+
+  @protected
+  DueTone dco_decode_box_autoadd_due_tone(dynamic raw);
 
   @protected
   EditCommand dco_decode_box_autoadd_edit_command(dynamic raw);
@@ -205,6 +211,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PaletteDto dco_decode_box_autoadd_palette_dto(dynamic raw);
 
   @protected
+  PreviewOptions dco_decode_box_autoadd_preview_options(dynamic raw);
+
+  @protected
   Range16 dco_decode_box_autoadd_range_16(dynamic raw);
 
   @protected
@@ -217,6 +226,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   SyncProblemKind dco_decode_box_autoadd_sync_problem_kind(dynamic raw);
 
   @protected
+  TaskListQuery dco_decode_box_autoadd_task_list_query(dynamic raw);
+
+  @protected
   TextChange dco_decode_box_autoadd_text_change(dynamic raw);
 
   @protected
@@ -227,6 +239,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   BuiltinTheme dco_decode_builtin_theme(dynamic raw);
+
+  @protected
+  Changed dco_decode_changed(dynamic raw);
 
   @protected
   ColorRow dco_decode_color_row(dynamic raw);
@@ -245,6 +260,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DiagramKind dco_decode_diagram_kind(dynamic raw);
+
+  @protected
+  DiagramRenderer dco_decode_diagram_renderer(dynamic raw);
+
+  @protected
+  DueTone dco_decode_due_tone(dynamic raw);
 
   @protected
   EditCommand dco_decode_edit_command(dynamic raw);
@@ -283,6 +304,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
+  IconThemeRow dco_decode_icon_theme_row(dynamic raw);
+
+  @protected
   KansoError dco_decode_kanso_error(dynamic raw);
 
   @protected
@@ -308,6 +332,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<Hit> dco_decode_list_hit(dynamic raw);
+
+  @protected
+  List<IconThemeRow> dco_decode_list_icon_theme_row(dynamic raw);
 
   @protected
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
@@ -355,6 +382,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<TagRow> dco_decode_list_tag_row(dynamic raw);
 
   @protected
+  List<TaskItem> dco_decode_list_task_item(dynamic raw);
+
+  @protected
+  List<TaskSection> dco_decode_list_task_section(dynamic raw);
+
+  @protected
+  List<ThemedIcon> dco_decode_list_themed_icon(dynamic raw);
+
+  @protected
   LockEvent dco_decode_lock_event(dynamic raw);
 
   @protected
@@ -388,6 +424,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int? dco_decode_opt_CastedPrimitive_i_64(dynamic raw);
 
   @protected
+  int? dco_decode_opt_CastedPrimitive_u_64(dynamic raw);
+
+  @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
@@ -395,6 +434,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   Completion? dco_decode_opt_box_autoadd_completion(dynamic raw);
+
+  @protected
+  DueTone? dco_decode_opt_box_autoadd_due_tone(dynamic raw);
 
   @protected
   EditOutcome? dco_decode_opt_box_autoadd_edit_outcome(dynamic raw);
@@ -428,6 +470,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PaletteDto dco_decode_palette_dto(dynamic raw);
+
+  @protected
+  PreviewLink dco_decode_preview_link(dynamic raw);
+
+  @protected
+  PreviewOptions dco_decode_preview_options(dynamic raw);
 
   @protected
   Property dco_decode_property(dynamic raw);
@@ -493,10 +541,31 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   TagRow dco_decode_tag_row(dynamic raw);
 
   @protected
+  TaskBoard dco_decode_task_board(dynamic raw);
+
+  @protected
+  TaskGroupKind dco_decode_task_group_kind(dynamic raw);
+
+  @protected
+  TaskItem dco_decode_task_item(dynamic raw);
+
+  @protected
+  TaskListQuery dco_decode_task_list_query(dynamic raw);
+
+  @protected
+  TaskSection dco_decode_task_section(dynamic raw);
+
+  @protected
   TextChange dco_decode_text_change(dynamic raw);
 
   @protected
   ThemeTokens dco_decode_theme_tokens(dynamic raw);
+
+  @protected
+  ThemedIcon dco_decode_themed_icon(dynamic raw);
+
+  @protected
+  Ticked dco_decode_ticked(dynamic raw);
 
   @protected
   int dco_decode_u_16(dynamic raw);
@@ -639,6 +708,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  AttachmentFile sse_decode_attachment_file(SseDeserializer deserializer);
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
@@ -646,6 +718,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   Completion sse_decode_box_autoadd_completion(SseDeserializer deserializer);
+
+  @protected
+  DueTone sse_decode_box_autoadd_due_tone(SseDeserializer deserializer);
 
   @protected
   EditCommand sse_decode_box_autoadd_edit_command(SseDeserializer deserializer);
@@ -685,6 +760,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PaletteDto sse_decode_box_autoadd_palette_dto(SseDeserializer deserializer);
 
   @protected
+  PreviewOptions sse_decode_box_autoadd_preview_options(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   Range16 sse_decode_box_autoadd_range_16(SseDeserializer deserializer);
 
   @protected
@@ -699,6 +779,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  TaskListQuery sse_decode_box_autoadd_task_list_query(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   TextChange sse_decode_box_autoadd_text_change(SseDeserializer deserializer);
 
   @protected
@@ -709,6 +794,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   BuiltinTheme sse_decode_builtin_theme(SseDeserializer deserializer);
+
+  @protected
+  Changed sse_decode_changed(SseDeserializer deserializer);
 
   @protected
   ColorRow sse_decode_color_row(SseDeserializer deserializer);
@@ -727,6 +815,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DiagramKind sse_decode_diagram_kind(SseDeserializer deserializer);
+
+  @protected
+  DiagramRenderer sse_decode_diagram_renderer(SseDeserializer deserializer);
+
+  @protected
+  DueTone sse_decode_due_tone(SseDeserializer deserializer);
 
   @protected
   EditCommand sse_decode_edit_command(SseDeserializer deserializer);
@@ -765,6 +859,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
+  IconThemeRow sse_decode_icon_theme_row(SseDeserializer deserializer);
+
+  @protected
   KansoError sse_decode_kanso_error(SseDeserializer deserializer);
 
   @protected
@@ -794,6 +891,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<Hit> sse_decode_list_hit(SseDeserializer deserializer);
+
+  @protected
+  List<IconThemeRow> sse_decode_list_icon_theme_row(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<Uint8List> sse_decode_list_list_prim_u_8_strict(
@@ -845,6 +947,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<TagRow> sse_decode_list_tag_row(SseDeserializer deserializer);
 
   @protected
+  List<TaskItem> sse_decode_list_task_item(SseDeserializer deserializer);
+
+  @protected
+  List<TaskSection> sse_decode_list_task_section(SseDeserializer deserializer);
+
+  @protected
+  List<ThemedIcon> sse_decode_list_themed_icon(SseDeserializer deserializer);
+
+  @protected
   LockEvent sse_decode_lock_event(SseDeserializer deserializer);
 
   @protected
@@ -878,6 +989,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int? sse_decode_opt_CastedPrimitive_i_64(SseDeserializer deserializer);
 
   @protected
+  int? sse_decode_opt_CastedPrimitive_u_64(SseDeserializer deserializer);
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
@@ -887,6 +1001,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   Completion? sse_decode_opt_box_autoadd_completion(
     SseDeserializer deserializer,
   );
+
+  @protected
+  DueTone? sse_decode_opt_box_autoadd_due_tone(SseDeserializer deserializer);
 
   @protected
   EditOutcome? sse_decode_opt_box_autoadd_edit_outcome(
@@ -932,6 +1049,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PaletteDto sse_decode_palette_dto(SseDeserializer deserializer);
+
+  @protected
+  PreviewLink sse_decode_preview_link(SseDeserializer deserializer);
+
+  @protected
+  PreviewOptions sse_decode_preview_options(SseDeserializer deserializer);
 
   @protected
   Property sse_decode_property(SseDeserializer deserializer);
@@ -997,10 +1120,31 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   TagRow sse_decode_tag_row(SseDeserializer deserializer);
 
   @protected
+  TaskBoard sse_decode_task_board(SseDeserializer deserializer);
+
+  @protected
+  TaskGroupKind sse_decode_task_group_kind(SseDeserializer deserializer);
+
+  @protected
+  TaskItem sse_decode_task_item(SseDeserializer deserializer);
+
+  @protected
+  TaskListQuery sse_decode_task_list_query(SseDeserializer deserializer);
+
+  @protected
+  TaskSection sse_decode_task_section(SseDeserializer deserializer);
+
+  @protected
   TextChange sse_decode_text_change(SseDeserializer deserializer);
 
   @protected
   ThemeTokens sse_decode_theme_tokens(SseDeserializer deserializer);
+
+  @protected
+  ThemedIcon sse_decode_themed_icon(SseDeserializer deserializer);
+
+  @protected
+  Ticked sse_decode_ticked(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_16(SseDeserializer deserializer);
@@ -1165,6 +1309,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
+  void sse_encode_attachment_file(
+    AttachmentFile self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
@@ -1175,6 +1325,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
     Completion self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_box_autoadd_due_tone(DueTone self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_edit_command(
@@ -1237,6 +1390,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_preview_options(
+    PreviewOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_range_16(Range16 self, SseSerializer serializer);
 
   @protected
@@ -1258,6 +1417,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_task_list_query(
+    TaskListQuery self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_text_change(
     TextChange self,
     SseSerializer serializer,
@@ -1271,6 +1436,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_builtin_theme(BuiltinTheme self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_changed(Changed self, SseSerializer serializer);
 
   @protected
   void sse_encode_color_row(ColorRow self, SseSerializer serializer);
@@ -1295,6 +1463,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_diagram_kind(DiagramKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_diagram_renderer(
+    DiagramRenderer self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_due_tone(DueTone self, SseSerializer serializer);
 
   @protected
   void sse_encode_edit_command(EditCommand self, SseSerializer serializer);
@@ -1336,6 +1513,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
+  void sse_encode_icon_theme_row(IconThemeRow self, SseSerializer serializer);
+
+  @protected
   void sse_encode_kanso_error(KansoError self, SseSerializer serializer);
 
   @protected
@@ -1373,6 +1553,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_list_hit(List<Hit> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_icon_theme_row(
+    List<IconThemeRow> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_list_prim_u_8_strict(
@@ -1435,6 +1621,21 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_list_tag_row(List<TagRow> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_task_item(List<TaskItem> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_task_section(
+    List<TaskSection> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_themed_icon(
+    List<ThemedIcon> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_lock_event(LockEvent self, SseSerializer serializer);
 
   @protected
@@ -1468,6 +1669,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_opt_CastedPrimitive_i_64(int? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_CastedPrimitive_u_64(int? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
@@ -1476,6 +1680,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_opt_box_autoadd_completion(
     Completion? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_due_tone(
+    DueTone? self,
     SseSerializer serializer,
   );
 
@@ -1532,6 +1742,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_palette_dto(PaletteDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_link(PreviewLink self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_options(
+    PreviewOptions self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_property(Property self, SseSerializer serializer);
@@ -1603,10 +1822,31 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_tag_row(TagRow self, SseSerializer serializer);
 
   @protected
+  void sse_encode_task_board(TaskBoard self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_task_group_kind(TaskGroupKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_task_item(TaskItem self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_task_list_query(TaskListQuery self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_task_section(TaskSection self, SseSerializer serializer);
+
+  @protected
   void sse_encode_text_change(TextChange self, SseSerializer serializer);
 
   @protected
   void sse_encode_theme_tokens(ThemeTokens self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_themed_icon(ThemedIcon self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ticked(Ticked self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_16(int self, SseSerializer serializer);

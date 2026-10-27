@@ -22,6 +22,7 @@ use crate::renderer::Renderer;
 use crate::secrets;
 use crate::stream::Listeners;
 use crate::syncing::SyncHandle;
+use crate::undo::UndoBook;
 use crate::{Secrets, boundary};
 
 /// How often the auto-lock timer looks at the clock.
@@ -43,6 +44,8 @@ pub(crate) struct Inner {
     pub(crate) sync_gate: Mutex<()>,
     /// Set to stop the sync that is running.
     pub(crate) sync_cancel: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>,
+    /// The changes the Undo notice can take back.
+    pub(crate) undo: Mutex<UndoBook>,
     /// The notes open for editing.
     pub(crate) editors: Editors,
 }
@@ -230,6 +233,7 @@ fn open_inner(
         status_listeners: Listeners::default(),
         sync_gate: Mutex::new(()),
         sync_cancel: Mutex::new(None),
+        undo: Mutex::new(UndoBook::default()),
         // A library made for tests saves typing when a test says so.
         editors: Editors::new(manual_autosave),
     });

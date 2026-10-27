@@ -28,11 +28,13 @@ import '../../../core/views/widgets/kanso_sidebar_row.dart';
 import 'library_header.dart';
 import 'library_loading_rows.dart';
 import 'library_place_row.dart';
+import 'library_tasks_row.dart';
 import 'new_notebook_sheet.dart';
 
 /// The library: the app's mark and settings, a search field, then All
-/// Notes, Templates (when there is a notebook of that role), Pinned and
-/// Recent, the notebooks with their counts, the tags and Trash.
+/// Notes, Templates (when there is a notebook of that role), Pinned,
+/// Recent and Tasks (with the overdue ones counted), the notebooks with
+/// their counts, the tags and Trash.
 ///
 /// A drawer on a phone, the first pane on a tablet. The place [location]
 /// is listing is selected. Its rows come from the `LibraryIndexBloc`
@@ -151,6 +153,10 @@ class LibraryPane extends StatelessWidget {
                         icon: KansoIcons.clock,
                         label: l10n.libraryRecent,
                         selected: current == const ListPlace.recent(),
+                      ),
+                      LibraryTasksRow(
+                        overdue: index.overdueTasks,
+                        selected: here is TasksLocation,
                       ),
                       KansoSectionHeader(
                         label: l10n.libraryNotebooks,

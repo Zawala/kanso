@@ -48,6 +48,7 @@ import 'core/state/library_index/library_index_bloc.dart' as _i861;
 import 'core/state/list_navigation/list_navigation_bloc.dart' as _i907;
 import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
+import 'core/state/undo_notice/undo_notice_bloc.dart' as _i985;
 import 'crash/configs/crash_module.dart' as _i1016;
 import 'crash/models/data/crash_folder.dart' as _i392;
 import 'crash/models/repos/abs/crash_context_repository.dart' as _i1070;
@@ -65,14 +66,17 @@ import 'library/state/new_notebook/new_notebook_bloc.dart' as _i991;
 import 'note/models/repos/abs/note_place_repository.dart' as _i930;
 import 'note/models/repos/impl/memory_note_place_repository.dart' as _i503;
 import 'note/state/note/note_bloc.dart' as _i618;
+import 'note/state/preview/preview_bloc.dart' as _i435;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 import 'search/state/search/search_bloc.dart' as _i696;
 import 'settings/state/about/about_bloc.dart' as _i380;
 import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
 import 'settings/state/default_notebook/default_notebook_bloc.dart' as _i925;
+import 'settings/state/icon_themes/icon_themes_bloc.dart' as _i636;
 import 'settings/state/licences/licences_bloc.dart' as _i570;
 import 'shell/state/library_pane/library_pane_bloc.dart' as _i612;
 import 'shell/state/note_creation/note_creation_bloc.dart' as _i34;
+import 'tasks/state/tasks/tasks_bloc.dart' as _i470;
 import 'themes/state/theme_picker/theme_picker_bloc.dart' as _i149;
 
 const String _development = 'development';
@@ -189,6 +193,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i732.RendererRepository>(
       () => _i820.RustRendererRepository(gh<_i832.KansoRenderer>()),
     );
+    gh.factory<_i636.IconThemesBloc>(
+      () => _i636.IconThemesBloc(gh<_i732.RendererRepository>()),
+    );
     gh.factory<_i149.ThemePickerBloc>(
       () => _i149.ThemePickerBloc(gh<_i732.RendererRepository>()),
     );
@@ -239,10 +246,9 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i272.WebLinkRepository>(),
       ),
     );
-    gh.factory<_i351.NoteListBloc>(
-      () => _i351.NoteListBloc(
+    gh.lazySingleton<_i985.UndoNoticeBloc>(
+      () => _i985.UndoNoticeBloc(
         gh<_i38.LibraryRepository>(),
-        gh<_i384.PreferencesRepository>(),
         gh<_i1056.HapticsRepository>(),
       ),
     );
@@ -252,8 +258,32 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i333.SessionRepository>(
       () => _i899.RustSessionRepository(gh<_i983.KansoLocks>()),
     );
+    gh.factory<_i435.PreviewBloc>(
+      () => _i435.PreviewBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i732.RendererRepository>(),
+        gh<_i272.WebLinkRepository>(),
+        gh<_i985.UndoNoticeBloc>(),
+        gh<_i1056.HapticsRepository>(),
+      ),
+    );
     gh.factory<_i185.SyncStatusBloc>(
       () => _i185.SyncStatusBloc(gh<_i601.SyncRepository>()),
+    );
+    gh.factory<_i351.NoteListBloc>(
+      () => _i351.NoteListBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i384.PreferencesRepository>(),
+        gh<_i1056.HapticsRepository>(),
+        gh<_i985.UndoNoticeBloc>(),
+      ),
+    );
+    gh.factory<_i470.TasksBloc>(
+      () => _i470.TasksBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i1056.HapticsRepository>(),
+        gh<_i985.UndoNoticeBloc>(),
+      ),
     );
     return this;
   }

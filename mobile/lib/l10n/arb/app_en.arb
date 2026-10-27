@@ -347,6 +347,59 @@
   "@settingsFonts": {
     "description": "The settings row that opens the fonts of notes."
   },
+  "settingsIcons": "Icons",
+  "@settingsIcons": {
+    "description": "The settings row that opens the icon themes."
+  },
+  "iconsTitle": "Icons",
+  "@iconsTitle": {
+    "description": "The title of the page where the icon theme is chosen."
+  },
+  "iconsFooter": "The icon themes of the desktop app. Choosing one changes every icon at once; an icon a theme doesn’t draw stays Kanso’s own.",
+  "@iconsFooter": {
+    "description": "Explains the icon themes, under the list."
+  },
+  "iconsCredit": "{author}, {license}",
+  "@iconsCredit": {
+    "description": "Who made an icon theme and under which licence, when both are known.",
+    "placeholders": {
+      "author": {
+        "type": "String"
+      },
+      "license": {
+        "type": "String"
+      }
+    }
+  },
+  "iconsPreview": "Icons in {name}",
+  "@iconsPreview": {
+    "description": "Says to a screen reader what a row of sample icons shows.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "iconsLoading": "Loading icon themes",
+  "@iconsLoading": {
+    "description": "Says to a screen reader that the icon themes are being read."
+  },
+  "iconsFailedTitle": "The icon themes didn’t load",
+  "@iconsFailedTitle": {
+    "description": "The title of the card shown when the icon themes could not be read."
+  },
+  "iconsFailedMessage": "Something went wrong reading the icon themes. Try again.",
+  "@iconsFailedMessage": {
+    "description": "The message of the card shown when the icon themes could not be read."
+  },
+  "iconsEmptyTitle": "No icon themes",
+  "@iconsEmptyTitle": {
+    "description": "The title of the card shown when there are no icon themes to choose from."
+  },
+  "iconsEmptyMessage": "Kanso’s own icons are in use.",
+  "@iconsEmptyMessage": {
+    "description": "The message of the card shown when there are no icon themes to choose from."
+  },
   "settingsBack": "Back",
   "@settingsBack": {
     "description": "Goes back to the page before."
@@ -479,7 +532,9 @@
   "@propertiesRemove": {
     "description": "Removes a property from the note; for a screen reader.",
     "placeholders": {
-      "name": {"type": "String"}
+      "name": {
+        "type": "String"
+      }
     }
   },
   "propertiesConfirmAdd": "Add",
@@ -774,6 +829,10 @@
   "@noteListDismiss": {
     "description": "The button that closes the line that says a change did not happen."
   },
+  "undoNoticeUndo": "Undo",
+  "@undoNoticeUndo": {
+    "description": "The button on the notice that follows a change to notes and takes the change back."
+  },
   "noteLoading": "Loading the note",
   "@noteLoading": {
     "description": "What a screen reader says while a note is read."
@@ -826,8 +885,12 @@
   "@completionAnnouncement": {
     "description": "What a screen reader says when suggestions for a link or a tag appear: how many, and which one is selected.",
     "placeholders": {
-      "count": {"type": "int"},
-      "label": {"type": "String"}
+      "count": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
     }
   },
   "searchIdleTitle": "Search your notes",
@@ -1114,5 +1177,165 @@
   "crashReportsFailedMessage": "The crash reports couldn’t be read.",
   "@crashReportsFailedMessage": {
     "description": "The message of the card shown when the crash reports could not be read."
+  },
+  "screenNoteEdit": "Note, edit",
+  "@screenNoteEdit": {
+    "description": "The name of a mock screen."
+  },
+  "libraryTasks": "Tasks",
+  "@libraryTasks": {
+    "description": "The library row for tasks across the notes, and the title of their list."
+  },
+  "libraryTasksOverdue": "{count, plural, =1{1 overdue task} other{{count} overdue tasks}}",
+  "@libraryTasksOverdue": {
+    "description": "Says how many tasks are overdue, on the Tasks row (read by a screen reader).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tasksCount": "{count, plural, =1{1 task} other{{count} tasks}}",
+  "@tasksCount": {
+    "description": "How many tasks the list holds.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tasksFilter": "Filter tasks",
+  "@tasksFilter": {
+    "description": "The button that opens which notebook's tasks to show."
+  },
+  "tasksFilterTitle": "Filter tasks",
+  "@tasksFilterTitle": {
+    "description": "The title of the sheet that narrows the tasks."
+  },
+  "tasksAllNotebooks": "All notebooks",
+  "@tasksAllNotebooks": {
+    "description": "The choice that shows the tasks of every notebook."
+  },
+  "tasksShowCompleted": "Show Completed",
+  "@tasksShowCompleted": {
+    "description": "The switch that shows done tasks too."
+  },
+  "tasksNotebooksHeader": "Notebook",
+  "@tasksNotebooksHeader": {
+    "description": "The heading above the notebooks a task list can be narrowed to."
+  },
+  "tasksEmptyTitle": "No tasks yet",
+  "@tasksEmptyTitle": {
+    "description": "The title when no note has a task."
+  },
+  "tasksEmptyMessage": "Write “- [ ] Call Sam @2026-10-25” in any note, and it shows here.",
+  "@tasksEmptyMessage": {
+    "description": "Says how to make a task."
+  },
+  "tasksEmptyNotebookTitle": "No tasks in {notebook}",
+  "@tasksEmptyNotebookTitle": {
+    "description": "The title when the notebook picked has no tasks.",
+    "placeholders": {
+      "notebook": {
+        "type": "String"
+      }
+    }
+  },
+  "tasksAllDoneTitle": "All done",
+  "@tasksAllDoneTitle": {
+    "description": "The title when every task is ticked off."
+  },
+  "tasksAllDoneMessage": "Every task is ticked off.",
+  "@tasksAllDoneMessage": {
+    "description": "Says every task is done."
+  },
+  "tasksLoading": "Loading tasks",
+  "@tasksLoading": {
+    "description": "Says to a screen reader that the tasks are loading."
+  },
+  "tasksFailedTitle": "The tasks didn't load",
+  "@tasksFailedTitle": {
+    "description": "The title of the card shown when the tasks could not be read."
+  },
+  "tasksFailedMessage": "Something went wrong reading the tasks on this device. Try again.",
+  "@tasksFailedMessage": {
+    "description": "The message of the card shown when the tasks could not be read."
+  },
+  "tasksMoved": "That task changed in its note. The list is up to date now.",
+  "@tasksMoved": {
+    "description": "Says a task was changed in its note before it could be ticked."
+  },
+  "tasksChangeFailed": "Couldn't change the task. Try again.",
+  "@tasksChangeFailed": {
+    "description": "Says ticking a task did not happen."
+  },
+  "tasksTickOff": "Tick off",
+  "@tasksTickOff": {
+    "description": "The action that ticks a task off, for a screen reader."
+  },
+  "tasksTickBack": "Mark not done",
+  "@tasksTickBack": {
+    "description": "The action that clears a ticked task, for a screen reader."
+  },
+  "tasksOpenNote": "Open note",
+  "@tasksOpenNote": {
+    "description": "The action that opens the note a task is in, for a screen reader."
+  },
+  "tasksRowContext": "{note} · {notebook}",
+  "@tasksRowContext": {
+    "description": "The quiet line under a task: its note and its notebook.",
+    "placeholders": {
+      "note": {
+        "type": "String"
+      },
+      "notebook": {
+        "type": "String"
+      }
+    }
+  },
+  "tasksRowDue": "Due {due}",
+  "@tasksRowDue": {
+    "description": "A task's due date, for a screen reader.",
+    "placeholders": {
+      "due": {
+        "type": "String"
+      }
+    }
+  },
+  "previewLabel": "The note's preview",
+  "@previewLabel": {
+    "description": "Read by a screen reader for the note's rendered page."
+  },
+  "previewFailed": "The preview couldn't be drawn.",
+  "@previewFailed": {
+    "description": "Shown instead of a note's rendered page when it could not be made."
+  },
+  "previewLinkFailed": "That link couldn't be opened.",
+  "@previewLinkFailed": {
+    "description": "Said when a tap on a link in the preview did nothing."
+  },
+  "previewLinkLocked": "Unlock your notes to open that.",
+  "@previewLinkLocked": {
+    "description": "Said when a tap in the preview leads to a locked note or notebook."
+  },
+  "attachmentDone": "Done",
+  "@attachmentDone": {
+    "description": "Closes an attachment's sheet or full-screen image."
+  },
+  "attachmentShare": "Share",
+  "@attachmentShare": {
+    "description": "Hands an attachment to the system's share sheet, to open, save or send it."
+  },
+  "attachmentDetails": "{type} · {size}",
+  "@attachmentDetails": {
+    "description": "An attachment's file type and size.",
+    "placeholders": {
+      "type": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
   }
 }

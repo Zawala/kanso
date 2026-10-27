@@ -592,6 +592,66 @@ abstract class AppLocalizations {
   /// **'Fonts'**
   String get settingsFonts;
 
+  /// The settings row that opens the icon themes.
+  ///
+  /// In en, this message translates to:
+  /// **'Icons'**
+  String get settingsIcons;
+
+  /// The title of the page where the icon theme is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Icons'**
+  String get iconsTitle;
+
+  /// Explains the icon themes, under the list.
+  ///
+  /// In en, this message translates to:
+  /// **'The icon themes of the desktop app. Choosing one changes every icon at once; an icon a theme doesn’t draw stays Kanso’s own.'**
+  String get iconsFooter;
+
+  /// Who made an icon theme and under which licence, when both are known.
+  ///
+  /// In en, this message translates to:
+  /// **'{author}, {license}'**
+  String iconsCredit(String author, String license);
+
+  /// Says to a screen reader what a row of sample icons shows.
+  ///
+  /// In en, this message translates to:
+  /// **'Icons in {name}'**
+  String iconsPreview(String name);
+
+  /// Says to a screen reader that the icon themes are being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading icon themes'**
+  String get iconsLoading;
+
+  /// The title of the card shown when the icon themes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The icon themes didn’t load'**
+  String get iconsFailedTitle;
+
+  /// The message of the card shown when the icon themes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the icon themes. Try again.'**
+  String get iconsFailedMessage;
+
+  /// The title of the card shown when there are no icon themes to choose from.
+  ///
+  /// In en, this message translates to:
+  /// **'No icon themes'**
+  String get iconsEmptyTitle;
+
+  /// The message of the card shown when there are no icon themes to choose from.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso’s own icons are in use.'**
+  String get iconsEmptyMessage;
+
   /// Goes back to the page before.
   ///
   /// In en, this message translates to:
@@ -1198,6 +1258,12 @@ abstract class AppLocalizations {
   /// **'OK'**
   String get noteListDismiss;
 
+  /// The button on the notice that follows a change to notes and takes the change back.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get undoNoticeUndo;
+
   /// What a screen reader says while a note is read.
   ///
   /// In en, this message translates to:
@@ -1635,6 +1701,192 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The crash reports couldn’t be read.'**
   String get crashReportsFailedMessage;
+
+  /// The name of a mock screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Note, edit'**
+  String get screenNoteEdit;
+
+  /// The library row for tasks across the notes, and the title of their list.
+  ///
+  /// In en, this message translates to:
+  /// **'Tasks'**
+  String get libraryTasks;
+
+  /// Says how many tasks are overdue, on the Tasks row (read by a screen reader).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 overdue task} other{{count} overdue tasks}}'**
+  String libraryTasksOverdue(int count);
+
+  /// How many tasks the list holds.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 task} other{{count} tasks}}'**
+  String tasksCount(int count);
+
+  /// The button that opens which notebook's tasks to show.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter tasks'**
+  String get tasksFilter;
+
+  /// The title of the sheet that narrows the tasks.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter tasks'**
+  String get tasksFilterTitle;
+
+  /// The choice that shows the tasks of every notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'All notebooks'**
+  String get tasksAllNotebooks;
+
+  /// The switch that shows done tasks too.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Completed'**
+  String get tasksShowCompleted;
+
+  /// The heading above the notebooks a task list can be narrowed to.
+  ///
+  /// In en, this message translates to:
+  /// **'Notebook'**
+  String get tasksNotebooksHeader;
+
+  /// The title when no note has a task.
+  ///
+  /// In en, this message translates to:
+  /// **'No tasks yet'**
+  String get tasksEmptyTitle;
+
+  /// Says how to make a task.
+  ///
+  /// In en, this message translates to:
+  /// **'Write “- [ ] Call Sam @2026-10-25” in any note, and it shows here.'**
+  String get tasksEmptyMessage;
+
+  /// The title when the notebook picked has no tasks.
+  ///
+  /// In en, this message translates to:
+  /// **'No tasks in {notebook}'**
+  String tasksEmptyNotebookTitle(String notebook);
+
+  /// The title when every task is ticked off.
+  ///
+  /// In en, this message translates to:
+  /// **'All done'**
+  String get tasksAllDoneTitle;
+
+  /// Says every task is done.
+  ///
+  /// In en, this message translates to:
+  /// **'Every task is ticked off.'**
+  String get tasksAllDoneMessage;
+
+  /// Says to a screen reader that the tasks are loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading tasks'**
+  String get tasksLoading;
+
+  /// The title of the card shown when the tasks could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The tasks didn\'t load'**
+  String get tasksFailedTitle;
+
+  /// The message of the card shown when the tasks could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the tasks on this device. Try again.'**
+  String get tasksFailedMessage;
+
+  /// Says a task was changed in its note before it could be ticked.
+  ///
+  /// In en, this message translates to:
+  /// **'That task changed in its note. The list is up to date now.'**
+  String get tasksMoved;
+
+  /// Says ticking a task did not happen.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t change the task. Try again.'**
+  String get tasksChangeFailed;
+
+  /// The action that ticks a task off, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Tick off'**
+  String get tasksTickOff;
+
+  /// The action that clears a ticked task, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark not done'**
+  String get tasksTickBack;
+
+  /// The action that opens the note a task is in, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Open note'**
+  String get tasksOpenNote;
+
+  /// The quiet line under a task: its note and its notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'{note} · {notebook}'**
+  String tasksRowContext(String note, String notebook);
+
+  /// A task's due date, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Due {due}'**
+  String tasksRowDue(String due);
+
+  /// Read by a screen reader for the note's rendered page.
+  ///
+  /// In en, this message translates to:
+  /// **'The note\'s preview'**
+  String get previewLabel;
+
+  /// Shown instead of a note's rendered page when it could not be made.
+  ///
+  /// In en, this message translates to:
+  /// **'The preview couldn\'t be drawn.'**
+  String get previewFailed;
+
+  /// Said when a tap on a link in the preview did nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'That link couldn\'t be opened.'**
+  String get previewLinkFailed;
+
+  /// Said when a tap in the preview leads to a locked note or notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock your notes to open that.'**
+  String get previewLinkLocked;
+
+  /// Closes an attachment's sheet or full-screen image.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get attachmentDone;
+
+  /// Hands an attachment to the system's share sheet, to open, save or send it.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get attachmentShare;
+
+  /// An attachment's file type and size.
+  ///
+  /// In en, this message translates to:
+  /// **'{type} · {size}'**
+  String attachmentDetails(String type, String size);
 }
 
 class _AppLocalizationsDelegate

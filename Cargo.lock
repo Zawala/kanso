@@ -4657,6 +4657,7 @@ name = "kanso-mobile"
 version = "0.8.4"
 dependencies = [
  "async-channel",
+ "chrono",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "jni",
@@ -4731,6 +4732,7 @@ version = "0.8.4"
 dependencies = [
  "base64 0.22.1",
  "flate2",
+ "kanso-core",
  "markdown",
  "mermaid-svg",
  "proptest",

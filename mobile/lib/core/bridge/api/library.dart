@@ -13,12 +13,22 @@ import 'types.dart';
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
 abstract class KansoLibrary implements RustOpaqueInterface {
-  Future<int> change({required List<String> ids, required NoteChange change});
+  Future<AttachmentFile> attachment({required String id});
+
+  Future<Changed> change({
+    required List<String> ids,
+    required NoteChange change,
+  });
 
   /// The IDs of what changed, in batches, until Dart stops listening.
   Stream<List<String>> changes();
 
   Future<Saved> create({required NewNote note});
+
+  Future<Saved> createLinkedNote({
+    required String title,
+    required String fromNote,
+  });
 
   Future<NotebookRow> createNotebook({required String name, String? parentId});
 
@@ -36,6 +46,9 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// Opens (creating if needed) the library whose database file is `path`.
   static Future<KansoLibrary> open({required String path}) =>
       KansoCore.instance.api.crateApiLibraryKansoLibraryOpen(path: path);
+
+  /// How many open tasks are overdue (the Tasks place's badge).
+  Future<int> overdueTasks();
 
   Future<LibraryOverview> overview();
 
@@ -57,9 +70,30 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required int limit,
   });
 
+  Future<Ticked> setTask({
+    required String noteId,
+    required int line,
+    required String text,
+    required bool checked,
+  });
+
   KansoSync syncing();
 
   Future<List<TagRow>> tags();
 
+  /// The Tasks place: open tasks across the notes, in groups; locked
+  /// notes are left out.
+  Future<TaskBoard> tasks({required TaskListQuery query});
+
+  /// Ticks (or clears) the `index`-th task box of a note drawn at
+  /// `base_rev`.
+  Future<Ticked> toggleTaskAt({
+    required String noteId,
+    required int index,
+    required String baseRev,
+  });
+
   Future<void> trash({required String id});
+
+  Future<int> undo({required int ticket});
 }

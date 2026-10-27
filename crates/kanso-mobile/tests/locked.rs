@@ -47,7 +47,7 @@ fn tag_name(i: usize) -> String {
 fn body_of(i: usize) -> String {
     let m = marker(i);
     format!(
-        "---\nowner: {m}\nlevel: {m}\n---\nThe plan {m} is here. #{tag}\n- [ ] do {m}\n- [x] done {m}\n",
+        "---\nowner: {m}\nlevel: {m}\n---\nThe plan {m} is here. #{tag}\n- [ ] do {m}\n- [x] done {m}\n```rust\nlet code = \"{m}\";\n```\n",
         tag = tag_name(i)
     )
 }
@@ -110,6 +110,18 @@ enum Op {
     EditCalls(usize),
     EditType(usize),
     TypeThenLock(usize),
+    /// The page of a note that links every note by wiki-link and by
+    /// address and lists them in a query view.
+    PreviewHub,
+    /// What a tapped address in the hub's page is, for note `i`: with a
+    /// heading, so the anchor looks into the note's text.
+    PreviewLink(usize),
+    /// The first code block of note `i`.
+    CodeBlock(usize),
+    /// Ticks the first task of note `i`, as the page last drew it.
+    Toggle(usize),
+    /// A note made from a wiki-link in note `i`.
+    CreateLinked(usize),
 }
 
 fn ops() -> impl Strategy<Value = Vec<Op>> {
@@ -143,6 +155,11 @@ fn ops() -> impl Strategy<Value = Vec<Op>> {
             3 => index.clone().prop_map(Op::EditCalls),
             2 => index.clone().prop_map(Op::EditType),
             2 => index.clone().prop_map(Op::TypeThenLock),
+            2 => Just(Op::PreviewHub),
+            2 => index.clone().prop_map(Op::PreviewLink),
+            2 => index.clone().prop_map(Op::CodeBlock),
+            2 => index.clone().prop_map(Op::Toggle),
+            1 => index.clone().prop_map(Op::CreateLinked),
         ],
         1..24,
     )
@@ -225,6 +242,17 @@ proptest! {
         let mut sessions: Vec<Option<EditorSession>> = (0..NOTES).map(|_| None).collect();
         let mut alive = [false; NOTES];
         let mut logs: Vec<(usize, Log)> = Vec::new();
+        let hub = note(
+            library,
+            "Hub",
+            &format!(
+                "{}\n```query\nfrom: SECRET\ncolumns: owner, level\n```\n",
+                (0..NOTES)
+                    .map(|i| format!("[[Note {i}#Plan]] [there](inkdrop://note/{}#Plan)", ids[i].trim_start_matches("note:")))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+        );
 
         for op in ops {
             // What is closed as this call starts, and what it returns, as text.
@@ -273,7 +301,10 @@ proptest! {
                         .unwrap();
                     // Locked notes are never listed, open or not.
                     for row in &table.rows {
-                        let at = ids.iter().position(|id| *id == row.id).unwrap();
+                        // (The hub holds the word in its query; it isn't one of the notes.)
+                        let Some(at) = ids.iter().position(|id| *id == row.id) else {
+                            continue;
+                        };
                         prop_assert!(!locked[at]);
                     }
                     returned.push(format!("{table:?}"));
@@ -351,7 +382,7 @@ proptest! {
                     };
                     // Pinning, trashing and moving between unlocked
                     // notebooks are allowed on a locked note, open or not.
-                    let written = library.change(vec![ids[*i].clone()], change).unwrap();
+                    let written = library.change(vec![ids[*i].clone()], change).unwrap().count;
                     if *kind == 1 {
                         trashed[*i] = true;
                     }
@@ -502,6 +533,61 @@ proptest! {
                         let view = library.note(&ids[*i]).unwrap();
                         prop_assert!(view.body.as_deref().is_some_and(|b| b.contains(&typed)), "{:?}", view.body);
                     }
+                }
+                Op::PreviewHub => {
+                    let page = library.renderer().preview_html(&hub, palette()).unwrap();
+                    // The other side: a locked note is linked, whatever its lock.
+                    for id in &ids {
+                        prop_assert!(page.contains(id.trim_start_matches("note:")), "{id} not linked");
+                    }
+                    returned.push(page);
+                }
+                Op::PreviewLink(i) => {
+                    let url = format!("inkdrop://note/{}#Plan", ids[*i].trim_start_matches("note:"));
+                    let target = library.renderer().link_target(&hub, &url).unwrap();
+                    match &target {
+                        kanso_mobile::PreviewLink::Note { id, heading, anchor } => {
+                            prop_assert_eq!(id, &ids[*i]);
+                            prop_assert_eq!(heading.as_deref(), Some("Plan"));
+                            // An anchor is only known from text that can be read.
+                            if is_closed(&locked, open, *i) {
+                                prop_assert_eq!(anchor, &None);
+                            }
+                        }
+                        // Trashed notes are not targets.
+                        kanso_mobile::PreviewLink::Nothing => prop_assert!(trashed[*i]),
+                        other => prop_assert!(false, "{other:?}"),
+                    }
+                    returned.push(format!("{target:?}"));
+                }
+                Op::CodeBlock(i) => match library.renderer().code_block(&ids[*i], 0) {
+                    Ok(code) => {
+                        prop_assert!(!is_closed(&locked, open, *i));
+                        prop_assert!(code.contains(&marker(*i)), "{code}");
+                        returned.push(code);
+                    }
+                    Err(err) => {
+                        prop_assert_eq!(err, KansoError::Locked);
+                        prop_assert!(is_closed(&locked, open, *i));
+                    }
+                },
+                Op::Toggle(i) => {
+                    let rev = library.note(&ids[*i]).unwrap().rev;
+                    match library.toggle_task_at(&ids[*i], 0, &rev) {
+                        Ok(ticked) => {
+                            prop_assert!(!is_closed(&locked, open, *i));
+                            if locked[*i] { open = true; }
+                            returned.push(format!("{ticked:?}"));
+                        }
+                        Err(err) => {
+                            prop_assert_eq!(err, KansoError::Locked);
+                            prop_assert!(is_closed(&locked, open, *i));
+                        }
+                    }
+                }
+                Op::CreateLinked(i) => {
+                    let made = library.create_linked_note("Brand new", &ids[*i]).unwrap();
+                    returned.push(format!("{made:?}"));
                 }
                 Op::Create => {
                     let saved = library
