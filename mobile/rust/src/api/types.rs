@@ -10,10 +10,11 @@ use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
     BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview, ListPlace,
-    ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow,
-    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved,
-    SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
+    ListQuery, ListShape, LockEvent, LockReason, LockState, LockStatus, NewNote, NoteChange,
+    NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind,
+    Range16, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase,
+    SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow,
+    ThemeTokens,
 };
 
 #[frb(mirror(KansoError))]
@@ -226,6 +227,14 @@ pub struct _TableRow {
 pub enum _LockReason {
     Manual,
     Idle,
+    Background,
+}
+
+#[frb(mirror(LockStatus))]
+pub struct _LockStatus {
+    pub has_lock_password: bool,
+    pub unlocked: bool,
+    pub biometrics_on: bool,
 }
 
 #[frb(mirror(LockEvent))]

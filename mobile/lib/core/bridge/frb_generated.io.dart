@@ -94,6 +94,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int dco_decode_CastedPrimitive_i_64(dynamic raw);
 
   @protected
+  int dco_decode_CastedPrimitive_u_64(dynamic raw);
+
+  @protected
   KansoLibrary
   dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
     dynamic raw,
@@ -264,6 +267,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   LockState dco_decode_lock_state(dynamic raw);
 
   @protected
+  LockStatus dco_decode_lock_status(dynamic raw);
+
+  @protected
   NewNote dco_decode_new_note(dynamic raw);
 
   @protected
@@ -286,6 +292,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   int? dco_decode_opt_CastedPrimitive_i_64(dynamic raw);
+
+  @protected
+  int? dco_decode_opt_CastedPrimitive_u_64(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
@@ -375,6 +384,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int dco_decode_u_32(dynamic raw);
 
   @protected
+  BigInt dco_decode_u_64(dynamic raw);
+
+  @protected
   int dco_decode_u_8(dynamic raw);
 
   @protected
@@ -436,6 +448,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   int sse_decode_CastedPrimitive_i_64(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_CastedPrimitive_u_64(SseDeserializer deserializer);
 
   @protected
   KansoLibrary
@@ -622,6 +637,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   LockState sse_decode_lock_state(SseDeserializer deserializer);
 
   @protected
+  LockStatus sse_decode_lock_status(SseDeserializer deserializer);
+
+  @protected
   NewNote sse_decode_new_note(SseDeserializer deserializer);
 
   @protected
@@ -644,6 +662,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   int? sse_decode_opt_CastedPrimitive_i_64(SseDeserializer deserializer);
+
+  @protected
+  int? sse_decode_opt_CastedPrimitive_u_64(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
@@ -737,6 +758,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int sse_decode_u_32(SseDeserializer deserializer);
 
   @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_u_8(SseDeserializer deserializer);
 
   @protected
@@ -809,6 +833,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_CastedPrimitive_i_64(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_CastedPrimitive_u_64(int self, SseSerializer serializer);
 
   @protected
   void
@@ -1031,6 +1058,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_lock_state(LockState self, SseSerializer serializer);
 
   @protected
+  void sse_encode_lock_status(LockStatus self, SseSerializer serializer);
+
+  @protected
   void sse_encode_new_note(NewNote self, SseSerializer serializer);
 
   @protected
@@ -1053,6 +1083,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_opt_CastedPrimitive_i_64(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_CastedPrimitive_u_64(int? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
@@ -1152,6 +1185,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);

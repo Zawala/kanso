@@ -74,7 +74,7 @@ class KansoCore
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 759027719;
+  int get rustContentHash => 1244532001;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -169,6 +169,22 @@ abstract class KansoCoreApi extends BaseApi {
     required String id,
   });
 
+  Future<int> crateApiLocksKansoLocksBeginBiometricEnrollment({
+    required KansoLocks that,
+  });
+
+  Future<int?> crateApiLocksKansoLocksBeginBiometricUnlock({
+    required KansoLocks that,
+  });
+
+  Future<bool> crateApiLocksKansoLocksBiometricsOn({required KansoLocks that});
+
+  Future<int> crateApiLocksKansoLocksChangePassword({
+    required KansoLocks that,
+    required String old,
+    required String new_,
+  });
+
   Future<bool> crateApiLocksKansoLocksIsNoteUnlocked({
     required KansoLocks that,
     required String id,
@@ -176,9 +192,15 @@ abstract class KansoCoreApi extends BaseApi {
 
   Future<bool> crateApiLocksKansoLocksIsUnlocked({required KansoLocks that});
 
+  Future<String> crateApiLocksKansoLocksLibraryId({required KansoLocks that});
+
   Future<void> crateApiLocksKansoLocksLock({required KansoLocks that});
 
   Stream<LockEvent> crateApiLocksKansoLocksLockEvents({
+    required KansoLocks that,
+  });
+
+  Future<void> crateApiLocksKansoLocksLockForBackground({
     required KansoLocks that,
   });
 
@@ -188,8 +210,54 @@ abstract class KansoCoreApi extends BaseApi {
     required String password,
   });
 
+  Future<Saved> crateApiLocksKansoLocksLockNoteWithSession({
+    required KansoLocks that,
+    required String id,
+  });
+
+  Future<int> crateApiLocksKansoLocksLockNotebook({
+    required KansoLocks that,
+    required String bookId,
+    String? password,
+  });
+
+  Future<LockStatus> crateApiLocksKansoLocksLockStatus({
+    required KansoLocks that,
+  });
+
+  Future<bool> crateApiLocksKansoLocksNotebookIsOpen({
+    required KansoLocks that,
+    required String bookId,
+  });
+
+  Future<Saved> crateApiLocksKansoLocksRemoveNoteLock({
+    required KansoLocks that,
+    required String id,
+  });
+
+  Future<void> crateApiLocksKansoLocksRemoveNotebookLock({
+    required KansoLocks that,
+    required String bookId,
+  });
+
+  Future<void> crateApiLocksKansoLocksTurnOffBiometrics({
+    required KansoLocks that,
+  });
+
   Future<bool> crateApiLocksKansoLocksUnlock({
     required KansoLocks that,
+    required String password,
+  });
+
+  Future<bool> crateApiLocksKansoLocksUnlockNote({
+    required KansoLocks that,
+    required String id,
+    required String password,
+  });
+
+  Future<bool> crateApiLocksKansoLocksUnlockNotebook({
+    required KansoLocks that,
+    required String bookId,
     required String password,
   });
 
@@ -984,6 +1052,152 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  Future<int> crateApiLocksKansoLocksBeginBiometricEnrollment({
+    required KansoLocks that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_CastedPrimitive_u_64,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksBeginBiometricEnrollmentConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksBeginBiometricEnrollmentConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_begin_biometric_enrollment",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<int?> crateApiLocksKansoLocksBeginBiometricUnlock({
+    required KansoLocks that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_CastedPrimitive_u_64,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksBeginBiometricUnlockConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksBeginBiometricUnlockConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_begin_biometric_unlock",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<bool> crateApiLocksKansoLocksBiometricsOn({required KansoLocks that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 21,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksBiometricsOnConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksBiometricsOnConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_biometrics_on",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<int> crateApiLocksKansoLocksChangePassword({
+    required KansoLocks that,
+    required String old,
+    required String new_,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          sse_encode_String(old, serializer);
+          sse_encode_String(new_, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 22,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_32,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksChangePasswordConstMeta,
+        argValues: [that, old, new_],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksChangePasswordConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_change_password",
+        argNames: ["that", "old", "new_"],
+      );
+
+  @override
   Future<bool> crateApiLocksKansoLocksIsNoteUnlocked({
     required KansoLocks that,
     required String id,
@@ -1000,7 +1214,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1034,7 +1248,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1056,6 +1270,40 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  Future<String> crateApiLocksKansoLocksLibraryId({required KansoLocks that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 25,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksLibraryIdConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksLibraryIdConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_library_id",
+        argNames: ["that"],
+      );
+
+  @override
   Future<void> crateApiLocksKansoLocksLock({required KansoLocks that}) {
     return handler.executeNormal(
       NormalTask(
@@ -1068,7 +1316,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1107,7 +1355,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 22,
+              funcId: 27,
               port: port_,
             );
           },
@@ -1131,6 +1379,42 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  Future<void> crateApiLocksKansoLocksLockForBackground({
+    required KansoLocks that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 28,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksLockForBackgroundConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksLockForBackgroundConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_lock_for_background",
+        argNames: ["that"],
+      );
+
+  @override
   Future<Saved> crateApiLocksKansoLocksLockNote({
     required KansoLocks that,
     required String id,
@@ -1149,7 +1433,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1171,6 +1455,270 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  Future<Saved> crateApiLocksKansoLocksLockNoteWithSession({
+    required KansoLocks that,
+    required String id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 30,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_saved,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksLockNoteWithSessionConstMeta,
+        argValues: [that, id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksLockNoteWithSessionConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_lock_note_with_session",
+        argNames: ["that", "id"],
+      );
+
+  @override
+  Future<int> crateApiLocksKansoLocksLockNotebook({
+    required KansoLocks that,
+    required String bookId,
+    String? password,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          sse_encode_String(bookId, serializer);
+          sse_encode_opt_String(password, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 31,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_32,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksLockNotebookConstMeta,
+        argValues: [that, bookId, password],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksLockNotebookConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_lock_notebook",
+        argNames: ["that", "bookId", "password"],
+      );
+
+  @override
+  Future<LockStatus> crateApiLocksKansoLocksLockStatus({
+    required KansoLocks that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 32,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_lock_status,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksLockStatusConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksLockStatusConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_lock_status",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<bool> crateApiLocksKansoLocksNotebookIsOpen({
+    required KansoLocks that,
+    required String bookId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          sse_encode_String(bookId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 33,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksNotebookIsOpenConstMeta,
+        argValues: [that, bookId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksNotebookIsOpenConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_notebook_is_open",
+        argNames: ["that", "bookId"],
+      );
+
+  @override
+  Future<Saved> crateApiLocksKansoLocksRemoveNoteLock({
+    required KansoLocks that,
+    required String id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 34,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_saved,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksRemoveNoteLockConstMeta,
+        argValues: [that, id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksRemoveNoteLockConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_remove_note_lock",
+        argNames: ["that", "id"],
+      );
+
+  @override
+  Future<void> crateApiLocksKansoLocksRemoveNotebookLock({
+    required KansoLocks that,
+    required String bookId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          sse_encode_String(bookId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 35,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksRemoveNotebookLockConstMeta,
+        argValues: [that, bookId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksRemoveNotebookLockConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_remove_notebook_lock",
+        argNames: ["that", "bookId"],
+      );
+
+  @override
+  Future<void> crateApiLocksKansoLocksTurnOffBiometrics({
+    required KansoLocks that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 36,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksTurnOffBiometricsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksTurnOffBiometricsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_turn_off_biometrics",
+        argNames: ["that"],
+      );
+
+  @override
   Future<bool> crateApiLocksKansoLocksUnlock({
     required KansoLocks that,
     required String password,
@@ -1187,7 +1735,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1209,6 +1757,86 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  Future<bool> crateApiLocksKansoLocksUnlockNote({
+    required KansoLocks that,
+    required String id,
+    required String password,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          sse_encode_String(password, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 38,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksUnlockNoteConstMeta,
+        argValues: [that, id, password],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksUnlockNoteConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_unlock_note",
+        argNames: ["that", "id", "password"],
+      );
+
+  @override
+  Future<bool> crateApiLocksKansoLocksUnlockNotebook({
+    required KansoLocks that,
+    required String bookId,
+    required String password,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
+            that,
+            serializer,
+          );
+          sse_encode_String(bookId, serializer);
+          sse_encode_String(password, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 39,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLocksKansoLocksUnlockNotebookConstMeta,
+        argValues: [that, bookId, password],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLocksKansoLocksUnlockNotebookConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLocks_unlock_notebook",
+        argNames: ["that", "bookId", "password"],
+      );
+
+  @override
   Future<ThemeTokens> crateApiRendererKansoRendererBuiltinThemeTokens({
     required String id,
   }) {
@@ -1220,7 +1848,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1250,7 +1878,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1287,7 +1915,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 42,
             port: port_,
           );
         },
@@ -1324,7 +1952,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 43,
             port: port_,
           );
         },
@@ -1361,7 +1989,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 44,
             port: port_,
           );
         },
@@ -1401,7 +2029,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 45,
             port: port_,
           );
         },
@@ -1434,7 +2062,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 46,
             port: port_,
           );
         },
@@ -1473,7 +2101,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 47,
             port: port_,
           );
         },
@@ -1506,7 +2134,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 48,
             port: port_,
           );
         },
@@ -1544,7 +2172,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 49,
             port: port_,
           );
         },
@@ -1574,7 +2202,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 50,
             port: port_,
           );
         },
@@ -1618,7 +2246,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 51,
             port: port_,
           );
         },
@@ -1652,7 +2280,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 52,
             port: port_,
           );
         },
@@ -1686,7 +2314,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 53,
             port: port_,
           );
         },
@@ -1725,7 +2353,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 39,
+              funcId: 54,
               port: port_,
             );
           },
@@ -1763,7 +2391,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 55,
             port: port_,
           );
         },
@@ -1794,7 +2422,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 56,
             port: port_,
           );
         },
@@ -1825,7 +2453,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 57,
             port: port_,
           );
         },
@@ -1855,7 +2483,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 58,
             port: port_,
           );
         },
@@ -1885,7 +2513,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 44,
+            funcId: 59,
             port: port_,
           );
         },
@@ -1915,7 +2543,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 45,
+            funcId: 60,
             port: port_,
           );
         },
@@ -2047,6 +2675,14 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
 
   @protected
   int dco_decode_CastedPrimitive_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError(
+      'Not implemented in this codec, please use the other one',
+    );
+  }
+
+  @protected
+  int dco_decode_CastedPrimitive_u_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError(
       'Not implemented in this codec, please use the other one',
@@ -2503,6 +3139,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  LockStatus dco_decode_lock_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return LockStatus(
+      hasLockPassword: dco_decode_bool(arr[0]),
+      unlocked: dco_decode_bool(arr[1]),
+      biometricsOn: dco_decode_bool(arr[2]),
+    );
+  }
+
+  @protected
   NewNote dco_decode_new_note(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2617,6 +3266,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   int? dco_decode_opt_CastedPrimitive_i_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_CastedPrimitive_i_64(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_CastedPrimitive_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_CastedPrimitive_u_64(raw);
   }
 
   @protected
@@ -2932,6 +3587,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  BigInt dco_decode_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeU64(raw);
+  }
+
+  @protected
   int dco_decode_u_8(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -3056,6 +3717,13 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   int sse_decode_CastedPrimitive_i_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_64(deserializer);
+    return inner.toInt();
+  }
+
+  @protected
+  int sse_decode_CastedPrimitive_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_u_64(deserializer);
     return inner.toInt();
   }
 
@@ -3632,6 +4300,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  LockStatus sse_decode_lock_status(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_hasLockPassword = sse_decode_bool(deserializer);
+    var var_unlocked = sse_decode_bool(deserializer);
+    var var_biometricsOn = sse_decode_bool(deserializer);
+    return LockStatus(
+      hasLockPassword: var_hasLockPassword,
+      unlocked: var_unlocked,
+      biometricsOn: var_biometricsOn,
+    );
+  }
+
+  @protected
   NewNote sse_decode_new_note(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_notebookId = sse_decode_opt_String(deserializer);
@@ -3770,6 +4451,17 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_CastedPrimitive_i_64(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  int? sse_decode_opt_CastedPrimitive_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_CastedPrimitive_u_64(deserializer));
     } else {
       return null;
     }
@@ -4138,6 +4830,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getBigUint64();
+  }
+
+  @protected
   int sse_decode_u_8(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8();
@@ -4271,6 +4969,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   void sse_encode_CastedPrimitive_i_64(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_64(sseEncodeCastedPrimitiveI64(self), serializer);
+  }
+
+  @protected
+  void sse_encode_CastedPrimitive_u_64(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(sseEncodeCastedPrimitiveU64(self), serializer);
   }
 
   @protected
@@ -4814,6 +5518,14 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_lock_status(LockStatus self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.hasLockPassword, serializer);
+    sse_encode_bool(self.unlocked, serializer);
+    sse_encode_bool(self.biometricsOn, serializer);
+  }
+
+  @protected
   void sse_encode_new_note(NewNote self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_opt_String(self.notebookId, serializer);
@@ -4906,6 +5618,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_CastedPrimitive_i_64(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_CastedPrimitive_u_64(
+    int? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_CastedPrimitive_u_64(self, serializer);
     }
   }
 
@@ -5187,6 +5912,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putBigUint64(self);
+  }
+
+  @protected
   void sse_encode_u_8(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self);
@@ -5340,11 +6071,39 @@ class KansoLocksImpl extends RustOpaque implements KansoLocks {
         KansoCore.instance.api.rust_arc_decrement_strong_count_KansoLocksPtr,
   );
 
+  Future<int> beginBiometricEnrollment() =>
+      KansoCore.instance.api.crateApiLocksKansoLocksBeginBiometricEnrollment(
+        that: this,
+      );
+
+  Future<int?> beginBiometricUnlock() =>
+      KansoCore.instance.api.crateApiLocksKansoLocksBeginBiometricUnlock(
+        that: this,
+      );
+
+  Future<bool> biometricsOn() =>
+      KansoCore.instance.api.crateApiLocksKansoLocksBiometricsOn(
+        that: this,
+      );
+
+  Future<int> changePassword({required String old, required String new_}) =>
+      KansoCore.instance.api.crateApiLocksKansoLocksChangePassword(
+        that: this,
+        old: old,
+        new_: new_,
+      );
+
   Future<bool> isNoteUnlocked({required String id}) => KansoCore.instance.api
       .crateApiLocksKansoLocksIsNoteUnlocked(that: this, id: id);
 
   Future<bool> isUnlocked() =>
       KansoCore.instance.api.crateApiLocksKansoLocksIsUnlocked(
+        that: this,
+      );
+
+  /// The library's ID, which names the platform's biometric key or item.
+  Future<String> libraryId() =>
+      KansoCore.instance.api.crateApiLocksKansoLocksLibraryId(
         that: this,
       );
 
@@ -5358,6 +6117,11 @@ class KansoLocksImpl extends RustOpaque implements KansoLocks {
         that: this,
       );
 
+  Future<void> lockForBackground() =>
+      KansoCore.instance.api.crateApiLocksKansoLocksLockForBackground(
+        that: this,
+      );
+
   Future<Saved> lockNote({required String id, required String password}) =>
       KansoCore.instance.api.crateApiLocksKansoLocksLockNote(
         that: this,
@@ -5365,8 +6129,59 @@ class KansoLocksImpl extends RustOpaque implements KansoLocks {
         password: password,
       );
 
+  Future<Saved> lockNoteWithSession({required String id}) => KansoCore
+      .instance
+      .api
+      .crateApiLocksKansoLocksLockNoteWithSession(that: this, id: id);
+
+  Future<int> lockNotebook({required String bookId, String? password}) =>
+      KansoCore.instance.api.crateApiLocksKansoLocksLockNotebook(
+        that: this,
+        bookId: bookId,
+        password: password,
+      );
+
+  Future<LockStatus> lockStatus() =>
+      KansoCore.instance.api.crateApiLocksKansoLocksLockStatus(
+        that: this,
+      );
+
+  Future<bool> notebookIsOpen({required String bookId}) => KansoCore
+      .instance
+      .api
+      .crateApiLocksKansoLocksNotebookIsOpen(that: this, bookId: bookId);
+
+  Future<Saved> removeNoteLock({required String id}) => KansoCore.instance.api
+      .crateApiLocksKansoLocksRemoveNoteLock(that: this, id: id);
+
+  Future<void> removeNotebookLock({required String bookId}) => KansoCore
+      .instance
+      .api
+      .crateApiLocksKansoLocksRemoveNotebookLock(that: this, bookId: bookId);
+
+  Future<void> turnOffBiometrics() =>
+      KansoCore.instance.api.crateApiLocksKansoLocksTurnOffBiometrics(
+        that: this,
+      );
+
   Future<bool> unlock({required String password}) => KansoCore.instance.api
       .crateApiLocksKansoLocksUnlock(that: this, password: password);
+
+  Future<bool> unlockNote({required String id, required String password}) =>
+      KansoCore.instance.api.crateApiLocksKansoLocksUnlockNote(
+        that: this,
+        id: id,
+        password: password,
+      );
+
+  Future<bool> unlockNotebook({
+    required String bookId,
+    required String password,
+  }) => KansoCore.instance.api.crateApiLocksKansoLocksUnlockNotebook(
+    that: this,
+    bookId: bookId,
+    password: password,
+  );
 }
 
 @sealed
