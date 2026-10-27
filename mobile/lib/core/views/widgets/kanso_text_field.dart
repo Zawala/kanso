@@ -23,7 +23,8 @@ import 'kanso_text_context_menu.dart';
 /// alike. The text is the [controller]'s, which the caller owns.
 ///
 /// A [obscure] field shows dots. [mono] sets the text in the code font, for a
-/// key. Without [enabled] the field is dimmed and takes no input.
+/// key. Without [enabled] the field is dimmed and takes no input. Under it
+/// is the [error], in the danger colour, or else the [help].
 class KansoTextField extends StatefulWidget {
   const KansoTextField({
     required this.controller,
@@ -32,6 +33,8 @@ class KansoTextField extends StatefulWidget {
     this.obscure = false,
     this.mono = false,
     this.invalid = false,
+    this.help,
+    this.error,
     this.enabled = true,
     this.autofocus = false,
     this.keyboardType = TextInputType.text,
@@ -49,6 +52,13 @@ class KansoTextField extends StatefulWidget {
   final bool obscure;
   final bool mono;
   final bool invalid;
+
+  /// Advice under the field, such as how long a password must be.
+  final String? help;
+
+  /// What is wrong with the text, under the field in the danger colour; the
+  /// field is drawn as [invalid] while there is one.
+  final String? error;
   final bool enabled;
   final bool autofocus;
   final TextInputType keyboardType;
@@ -119,7 +129,8 @@ class _KansoTextFieldState extends State<KansoTextField>
           builder: (context, _) {
             final focused = focusNode.hasFocus;
             final empty = widget.controller.text.isEmpty;
-            final outline = widget.invalid
+            final invalid = widget.invalid || widget.error != null;
+            final outline = invalid
                 ? colors.danger
                 : focused
                 ? colors.accent
@@ -136,7 +147,7 @@ class _KansoTextFieldState extends State<KansoTextField>
                   borderRadius: KansoRadii.mediumBorder,
                   border: Border.all(
                     color: outline,
-                    width: focused || widget.invalid ? 1.5 : 1,
+                    width: focused || invalid ? 1.5 : 1,
                   ),
                 ),
                 child: Stack(
@@ -186,6 +197,16 @@ class _KansoTextFieldState extends State<KansoTextField>
             );
           },
         ),
+        if (widget.error ?? widget.help case final line?)
+          Padding(
+            padding: const EdgeInsets.only(top: KansoSpacing.xxs),
+            child: Text(
+              line,
+              style: typography.meta.copyWith(
+                color: widget.error == null ? null : colors.danger,
+              ),
+            ),
+          ),
       ],
     );
   }

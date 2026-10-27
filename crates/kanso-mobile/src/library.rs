@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::Duration;
 
@@ -48,6 +49,11 @@ pub(crate) struct Inner {
     pub(crate) account: crate::account_runtime::Runtime,
     /// The lock keys typed this session.
     pub(crate) keys: Mutex<KeySession>,
+    /// How many times the notes were locked. A password or biometric unlock
+    /// notes it when it starts and adds its key only if it is unchanged, so
+    /// a lock that happens meanwhile is not undone. Changed only under the
+    /// `keys` mutex.
+    pub(crate) lock_gen: AtomicU64,
     pub(crate) lock_events: Listeners<LockEvent>,
     /// What the last sync said.
     pub(crate) sync_state: Mutex<SyncState>,
@@ -312,6 +318,7 @@ fn open_inner(
         backend,
         account: crate::account_runtime::Runtime::default(),
         keys: Mutex::new(keys),
+        lock_gen: AtomicU64::new(0),
         lock_events: Listeners::default(),
         sync_state: Mutex::new(SyncState::Off),
         status_listeners: Listeners::default(),

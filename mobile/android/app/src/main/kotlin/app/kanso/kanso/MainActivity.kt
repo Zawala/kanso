@@ -1,7 +1,7 @@
 package app.kanso.kanso
 
 import androidx.glance.appwidget.updateAll
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
@@ -9,7 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-class MainActivity : FlutterActivity() {
+/** A `FragmentActivity`, which `BiometricPrompt` needs. */
+class MainActivity : FlutterFragmentActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

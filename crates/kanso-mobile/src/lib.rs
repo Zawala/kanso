@@ -18,7 +18,9 @@
 //! - [`LockSession`] (`library.locks()`) holds the lock password's keys. A
 //!   locked note's text, snippet, properties, tasks and preview never come
 //!   back while it is closed; only its title and its lock show in a list.
-//!   Keys never cross this edge.
+//!   Keys never cross this edge. Locking a note or a notebook, removing a
+//!   lock, changing the lock password and unlocking with biometrics
+//!   ([`biometrics`]: a ticket the native plugin answers) are here too.
 //! - [`EditorSession`] (`library.edit(id)`) is a note open for editing: the
 //!   text the shell's field shows, with the undo history, the editor's
 //!   commands, the colors of the text, completion, autosave and the
@@ -71,6 +73,7 @@ mod approvals;
 mod approver_model;
 pub mod background;
 mod backup;
+pub mod biometrics;
 pub mod boundary;
 mod builtin_themes;
 pub mod capture;

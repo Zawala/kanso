@@ -2,10 +2,11 @@
 // Created 2026-10-25.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide LockState;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/browse_location.dart';
@@ -18,6 +19,7 @@ import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
 import '../../../editor/views/widgets/note_editor_pane.dart';
+import '../../../lock/views/widgets/privacy_cover_sync.dart';
 import '../../../sharing/state/comments/comments_bloc.dart';
 import '../../../sharing/state/shared_note_status/shared_note_status_bloc.dart';
 import '../../../sharing/views/widgets/comments_button.dart';
@@ -31,6 +33,8 @@ import 'note_body.dart';
 import 'note_bottom_bar.dart';
 import 'note_info_sheet.dart';
 import 'note_loading_pane.dart';
+import 'note_lock_menu_button.dart';
+import 'note_lock_sync.dart';
 import 'note_mode_shortcuts.dart';
 import 'note_mode_toggle.dart';
 import 'note_not_found_pane.dart';
@@ -50,6 +54,19 @@ class NotePane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return NoteLockSync(
+      // The cover is on exactly while an open locked note is shown.
+      child: BlocSelector<NoteBloc, NoteState, bool>(
+        selector: (state) =>
+            state.status == NoteScreenStatus.ready &&
+            state.note?.lock is LockState_Open,
+        builder: (context, secure) =>
+            PrivacyCoverSync(secure: secure, child: content(context)),
+      ),
+    );
+  }
+
+  Widget content(BuildContext context) {
     final l10n = context.l10n;
     final gutter = inPane ? KansoSpacing.lg : KansoSpacing.md;
     final history = context.read<NavigationHistoryBloc>();
@@ -130,6 +147,7 @@ class NotePane extends StatelessWidget {
                             },
                           ),
                         const ShareNoteButton(),
+                        const NoteLockMenuButton(),
                       ],
                     ),
                     if (hasStatus && readable)
@@ -175,6 +193,7 @@ class NotePane extends StatelessWidget {
                                       NoteScreenStatus.locked
                                           when note != null =>
                                         LockedNotePane(
+                                          noteId: note.id,
                                           title: note.title,
                                           gutter: gutter,
                                         ),

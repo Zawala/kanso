@@ -1345,6 +1345,7 @@ sealed class LockEvent with _$LockEvent {
 enum LockReason {
   manual,
   idle,
+  background,
 }
 
 @freezed
@@ -1356,6 +1357,31 @@ sealed class LockState with _$LockState {
   const factory LockState.closed({
     String? reason,
   }) = LockState_Closed;
+}
+
+class LockStatus {
+  final bool hasLockPassword;
+  final bool unlocked;
+  final bool biometricsOn;
+
+  const LockStatus({
+    required this.hasLockPassword,
+    required this.unlocked,
+    required this.biometricsOn,
+  });
+
+  @override
+  int get hashCode =>
+      hasLockPassword.hashCode ^ unlocked.hashCode ^ biometricsOn.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LockStatus &&
+          runtimeType == other.runtimeType &&
+          hasLockPassword == other.hasLockPassword &&
+          unlocked == other.unlocked &&
+          biometricsOn == other.biometricsOn;
 }
 
 class LockedInfo {

@@ -19,6 +19,8 @@ import 'core/views/widgets/capture_inbox_host.dart';
 import 'core/views/widgets/widget_colors_host.dart';
 import 'crash/state/crash_reports/crash_reports_bloc.dart';
 import 'injection.dart';
+import 'lock/state/lock_status/lock_status_bloc.dart';
+import 'lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'settings/state/backup_notice/backup_notice_bloc.dart';
 import 'settings/state/default_notebook/default_notebook_bloc.dart';
 import 'settings/state/sync_settings/sync_settings_bloc.dart';
@@ -59,6 +61,13 @@ class AppProviders extends StatelessWidget {
         BlocProvider<SyncStatusBloc>(
           create: (_) =>
               getIt<SyncStatusBloc>()..add(const SyncStatusEvent.started()),
+        ),
+        BlocProvider<LockStatusBloc>(
+          create: (_) =>
+              getIt<LockStatusBloc>()..add(const LockStatusEvent.started()),
+        ),
+        BlocProvider<PrivacyCoverBloc>(
+          create: (_) => getIt<PrivacyCoverBloc>(),
         ),
         BlocProvider<BackupNoticeBloc>(
           create: (_) =>
