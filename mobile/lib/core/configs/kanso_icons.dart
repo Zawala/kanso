@@ -19,6 +19,7 @@ enum KansoIcons {
   book('book'),
   bookOpen('book-open'),
   calendar('calendar'),
+  caseSensitive('case-sensitive'),
   check('check'),
   chevronDown('chevron-down'),
   chevronLeft('chevron-left'),
@@ -31,7 +32,9 @@ enum KansoIcons {
   circleX('circle-x'),
   clock('clock'),
   cloud('cloud'),
+  codeXml('code-xml'),
   copy('copy'),
+  databaseBackup('database-backup'),
   download('download'),
   ellipsis('ellipsis'),
   externalLink('external-link'),
@@ -65,6 +68,8 @@ enum KansoIcons {
   pin('pin'),
   plus('plus'),
   refreshCw('refresh-cw'),
+  regex('regex'),
+  replaceAll('replace-all'),
   scanFace('scan-face'),
   scale('scale'),
   search('search'),
@@ -84,6 +89,7 @@ enum KansoIcons {
   undo('undo-2'),
   user('user'),
   users('users'),
+  wholeWord('whole-word'),
   close('x');
 
   const KansoIcons(this.lucideName);

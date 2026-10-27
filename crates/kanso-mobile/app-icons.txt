@@ -14,6 +14,7 @@ bold
 book
 book-open
 calendar
+case-sensitive
 check
 chevron-down
 chevron-left
@@ -26,7 +27,9 @@ circle-user
 circle-x
 clock recent
 cloud
+code-xml
 copy
+database-backup
 download
 ellipsis
 external-link
@@ -60,6 +63,8 @@ pencil
 pin pinned
 plus
 refresh-cw
+regex
+replace-all
 scale
 scan-face
 search
@@ -78,4 +83,5 @@ type
 undo-2
 user
 users
+whole-word
 x
