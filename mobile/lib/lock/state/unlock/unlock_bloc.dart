@@ -72,7 +72,8 @@ class UnlockBloc extends Bloc<UnlockEvent, UnlockState> {
     emit(const UnlockState(status: UnlockStatus.working));
     final ticket = await _session.beginBiometricUnlock();
     final id = await _session.libraryId();
-    final failure = ticket.fold<ApplicationError?>((e) => e, (_) => null) ??
+    final failure =
+        ticket.fold<ApplicationError?>((e) => e, (_) => null) ??
         id.fold<ApplicationError?>((e) => e, (_) => null);
     if (failure != null) {
       emit(UnlockState(status: UnlockStatus.failed, error: failure));

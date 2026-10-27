@@ -15,6 +15,7 @@ import '../../../core/utils/tag_row_color.dart';
 import '../../../core/views/widgets/kanso_note_row.dart';
 import '../../../core/views/widgets/kanso_swipe_actions.dart';
 import '../../../core/views/widgets/kanso_tag_chip.dart';
+import '../../../lock/state/lock_status/lock_status_bloc.dart';
 import '../../state/note_list/note_list_bloc.dart';
 import 'move_sheet.dart';
 
@@ -61,6 +62,9 @@ class NoteListRow extends StatelessWidget {
     final l10n = context.l10n;
     final colors = context.colors;
     final bloc = context.read<NoteListBloc>();
+    final unlocked =
+        row.locked &&
+        context.select<LockStatusBloc, bool>((lock) => lock.state.unlocked);
     final inTrash = context.select<NoteListBloc, bool>(
       (list) => list.state.inTrash,
     );
@@ -113,12 +117,15 @@ class NoteListRow extends StatelessWidget {
       onArmed: () => bloc.add(const NoteListEvent.swipeArmed()),
       child: KansoNoteRow(
         title: row.title.trim().isEmpty ? l10n.noteUntitled : row.title,
-        excerpt: row.locked ? l10n.noteListLocked : row.snippet,
+        excerpt: !row.locked
+            ? row.snippet
+            : (unlocked ? l10n.noteListUnlocked : l10n.noteListLocked),
         notebook: index.notebookPath(row.notebookId) ?? '',
         time: time,
         status: noteStatusOf(row.status),
         pinned: row.pinned,
         locked: row.locked,
+        unlocked: unlocked,
         selected: open,
         checked: checked,
         onTap: onTap,

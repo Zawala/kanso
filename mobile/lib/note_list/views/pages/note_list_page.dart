@@ -10,8 +10,10 @@ import '../../../core/state/list_navigation/list_navigation_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../injection.dart';
 import '../../state/note_list/note_list_bloc.dart';
+import '../widgets/note_list_lock_sync.dart';
 import '../widgets/note_list_navigation_sync.dart';
 import '../widgets/note_list_pane.dart';
+import '../widgets/notebook_gate_host.dart';
 
 /// The notes of a library place. Each place has its own list, read when it
 /// is opened and given up when it is left.
@@ -36,10 +38,15 @@ class NoteListPage extends StatelessWidget {
         return getIt<NoteListBloc>()..add(NoteListEvent.started(place));
       },
       child: NoteListNavigationSync(
-        child: Scaffold(
-          resizeToAvoidBottomInset: false,
-          backgroundColor: context.colors.list,
-          body: NoteListPane(openNoteId: openNoteId),
+        child: NoteListLockSync(
+          child: NotebookGateHost(
+            place: place,
+            child: Scaffold(
+              resizeToAvoidBottomInset: false,
+              backgroundColor: context.colors.list,
+              body: NoteListPane(openNoteId: openNoteId),
+            ),
+          ),
         ),
       ),
     );

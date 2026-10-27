@@ -2,7 +2,6 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-
 /// Where turning biometric unlock on or off is.
 enum BiometricsStatus {
   idle,

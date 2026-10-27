@@ -12,6 +12,7 @@ import 'core/utils/context_extensions.dart';
 import 'core/utils/kanso_scroll_behavior.dart';
 import 'core/views/widgets/layout_class_reporter.dart';
 import 'gen/l10n/app_localizations.dart';
+import 'lock/views/widgets/lock_lifecycle_host.dart';
 import 'settings/views/widgets/backup_notice_host.dart';
 
 /// The Kanso app: the themes chosen (drawn from the theme files' tokens),
@@ -46,7 +47,9 @@ class App extends StatelessWidget {
           routerConfig: router.config,
           builder: (context, child) => LayoutClassReporter(
             notifier: router.layoutClass,
-            child: BackupNoticeHost(child: child!),
+            child: LockLifecycleHost(
+              child: BackupNoticeHost(child: child!),
+            ),
           ),
         );
       },

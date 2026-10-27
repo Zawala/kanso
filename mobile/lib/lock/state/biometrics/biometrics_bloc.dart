@@ -22,8 +22,7 @@ part 'biometrics_state.dart';
 /// the secret to the core; turning it off forgets the keys kept for it.
 @injectable
 class BiometricsBloc extends Bloc<BiometricsEvent, BiometricsState> {
-  BiometricsBloc(this._session, this._device)
-    : super(const BiometricsState()) {
+  BiometricsBloc(this._session, this._device) : super(const BiometricsState()) {
     on<BiometricsTurnedOnEvent>(_onTurnedOn, transformer: droppable());
     on<BiometricsTurnedOffEvent>(_onTurnedOff, transformer: droppable());
   }
@@ -43,7 +42,8 @@ class BiometricsBloc extends Bloc<BiometricsEvent, BiometricsState> {
     }
     final ticket = await _session.beginBiometricEnrollment();
     final id = await _session.libraryId();
-    final failure = ticket.fold<ApplicationError?>((e) => e, (_) => null) ??
+    final failure =
+        ticket.fold<ApplicationError?>((e) => e, (_) => null) ??
         id.fold<ApplicationError?>((e) => e, (_) => null);
     if (failure != null) {
       emit(
@@ -82,7 +82,8 @@ class BiometricsBloc extends Bloc<BiometricsEvent, BiometricsState> {
     emit(const BiometricsState(status: BiometricsStatus.working));
     final id = await _session.libraryId();
     final off = await _session.turnOffBiometrics();
-    final failure = off.fold<ApplicationError?>((e) => e, (_) => null) ??
+    final failure =
+        off.fold<ApplicationError?>((e) => e, (_) => null) ??
         id.fold<ApplicationError?>((e) => e, (_) => null);
     if (failure != null) {
       emit(BiometricsState(status: BiometricsStatus.failed, error: failure));

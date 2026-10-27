@@ -1066,10 +1066,6 @@
   "@lockNotebookMenuTitle": {
     "description": "The title of the notebook's menu."
   },
-  "lockNotebookLockedLabel": "Locked",
-  "@lockNotebookLockedLabel": {
-    "description": "What a screen reader says of a locked notebook."
-  },
   "noteRowLocked": "Locked",
   "@noteRowLocked": {
     "description": "What a screen reader says of a locked note."

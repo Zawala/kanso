@@ -1564,12 +1564,6 @@ abstract class AppLocalizations {
   /// **'Notebook actions'**
   String get lockNotebookMenuTitle;
 
-  /// What a screen reader says of a locked notebook.
-  ///
-  /// In en, this message translates to:
-  /// **'Locked'**
-  String get lockNotebookLockedLabel;
-
   /// What a screen reader says of a locked note.
   ///
   /// In en, this message translates to:

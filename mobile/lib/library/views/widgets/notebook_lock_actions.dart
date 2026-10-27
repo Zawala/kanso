@@ -51,8 +51,7 @@ List<NotebookSheetAction> notebookLockActions(
           NotebookSheetAction(
             label: l10n.lockUnlockNotebookMenu,
             icon: KansoIcons.lockOpen,
-            onTap: () =>
-                UnlockSheet.open(host, target: target, status: status),
+            onTap: () => UnlockSheet.open(host, target: target, status: status),
           ),
         NotebookSheetAction(
           label: l10n.lockRemoveNotebookMenu,

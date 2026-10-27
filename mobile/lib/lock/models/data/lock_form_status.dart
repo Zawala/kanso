@@ -2,7 +2,6 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-
 /// Where a form that locks, or changes the lock password, is.
 enum LockFormStatus {
   /// Reading what the form needs.

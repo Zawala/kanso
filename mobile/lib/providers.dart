@@ -11,6 +11,8 @@ import 'core/state/list_navigation/list_navigation_bloc.dart';
 import 'core/state/navigation_history/navigation_history_bloc.dart';
 import 'core/state/sync_status/sync_status_bloc.dart';
 import 'injection.dart';
+import 'lock/state/lock_status/lock_status_bloc.dart';
+import 'lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'settings/state/backup_notice/backup_notice_bloc.dart';
 import 'shell/state/library_pane/library_pane_bloc.dart';
 
@@ -40,6 +42,13 @@ class AppProviders extends StatelessWidget {
         BlocProvider<SyncStatusBloc>(
           create: (_) =>
               getIt<SyncStatusBloc>()..add(const SyncStatusEvent.started()),
+        ),
+        BlocProvider<LockStatusBloc>(
+          create: (_) =>
+              getIt<LockStatusBloc>()..add(const LockStatusEvent.started()),
+        ),
+        BlocProvider<PrivacyCoverBloc>(
+          create: (_) => getIt<PrivacyCoverBloc>(),
         ),
         BlocProvider<BackupNoticeBloc>(
           create: (_) =>

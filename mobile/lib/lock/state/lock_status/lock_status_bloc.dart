@@ -26,8 +26,7 @@ part 'lock_status_state.dart';
 /// sight.
 @injectable
 class LockStatusBloc extends Bloc<LockStatusEvent, LockStatusState> {
-  LockStatusBloc(this._session, this._device)
-    : super(const LockStatusState()) {
+  LockStatusBloc(this._session, this._device) : super(const LockStatusState()) {
     on<LockStatusStartedEvent>(_onStarted, transformer: sequential());
     on<LockStatusRefreshedEvent>(
       (event, emit) => _read(emit),

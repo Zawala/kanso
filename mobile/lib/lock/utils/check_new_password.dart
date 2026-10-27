@@ -2,7 +2,6 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-
 import '../models/data/password_check.dart';
 
 /// The fewest characters a lock password has.

@@ -2,7 +2,6 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-
 import '../../core/bridge/api/types.dart';
 
 /// What the notebook's menu can do about its lock.

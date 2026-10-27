@@ -20,6 +20,7 @@ import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../state/about/about_bloc.dart';
+import 'locked_notes_section.dart';
 
 /// Settings: a close button, a centred title and rows grouped in rounded
 /// sections, each with an icon, a label and its current value.
@@ -121,6 +122,7 @@ class SettingsPane extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: KansoSpacing.lg),
+                const LockedNotesSection(dividerIndent: iconInset),
                 BlocBuilder<AboutBloc, AboutState>(
                   builder: (context, about) {
                     final version = about.version;

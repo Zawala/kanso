@@ -831,9 +831,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get lockNotebookMenuTitle => 'Notebook actions';
 
   @override
-  String get lockNotebookLockedLabel => 'Locked';
-
-  @override
   String get noteRowLocked => 'Locked';
 
   @override

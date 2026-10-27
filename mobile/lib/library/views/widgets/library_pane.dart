@@ -23,9 +23,11 @@ import '../../../core/views/widgets/kanso_pressable.dart';
 import '../../../core/views/widgets/kanso_search_field.dart';
 import '../../../core/views/widgets/kanso_section_header.dart';
 import '../../../core/views/widgets/kanso_sidebar_row.dart';
+import '../../../lock/utils/notebook_lock_rule.dart';
 import 'library_header.dart';
 import 'library_loading_rows.dart';
 import 'library_place_row.dart';
+import 'notebook_actions_sheet.dart';
 
 /// The library: the app's mark and settings, a search field, then All
 /// Notes, Templates (when there is a notebook of that role), Pinned and
@@ -174,6 +176,11 @@ class LibraryPane extends StatelessWidget {
                             chevron: true,
                             selected:
                                 current == ListPlace.notebook(id: notebook.id),
+                            locked:
+                                notebookLockRule(notebook, index.notebooks) !=
+                                NotebookLockRule.lock,
+                            onLongPress: () =>
+                                NotebookActionsSheet.show(context, notebook),
                           ),
                       const SizedBox(height: KansoSpacing.xs),
                       KansoSectionHeader(label: l10n.libraryTags),

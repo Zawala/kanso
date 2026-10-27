@@ -2,7 +2,6 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-
 import 'package:dartz/dartz.dart';
 import 'package:kanso_lock/kanso_lock.dart';
 
