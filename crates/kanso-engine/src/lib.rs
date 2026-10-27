@@ -57,6 +57,7 @@ pub mod attach;
 pub mod backup;
 pub mod batch;
 pub mod capture;
+pub mod catalogue;
 pub mod daily;
 pub mod edit;
 pub mod editor_settings;
