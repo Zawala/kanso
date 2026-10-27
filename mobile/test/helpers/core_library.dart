@@ -26,6 +26,10 @@ Future<void> initCoreForTests() async {
   );
 }
 
+/// The file [initCoreForTests] loads, for a test that calls the library's C
+/// entries (`kanso_biometric_answer`) directly.
+File builtCoreLibrary() => _builtLibrary();
+
 /// A library of its own, empty, in a new temporary folder that is removed
 /// when the test ends. On a computer its secrets are in memory: never the
 /// developer's own Keychain.
