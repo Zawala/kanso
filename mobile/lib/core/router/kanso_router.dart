@@ -15,6 +15,7 @@ import '../../capture/views/pages/daily_note_page.dart';
 import '../../capture/views/pages/new_note_page.dart';
 import '../../crash/views/pages/crash_reports_page.dart';
 import '../../design/views/pages/design_gallery_page.dart';
+import '../../import/views/pages/import_page.dart';
 import '../../note/views/pages/note_page.dart';
 import '../../note/views/widgets/no_note_selected_pane.dart';
 import '../../note_list/views/pages/note_list_page.dart';
@@ -52,7 +53,8 @@ import 'layout_class_notifier.dart';
 ///   Theme, Icons, Fonts, Licences, Crash reports and the account's screens
 ///   (Account, Sign in, Open your notes, Reset your password, Your recovery
 ///   key) sliding inside it. It is a sheet on a tablet and a page on a phone.
-///   Shared with you, and Join with a link inside it, are in that shell too.
+///   Shared with you, and Join with a link inside it, and Import notes are
+///   in that shell too.
 /// * `kanso://open/…` links and the short forms (`/note/:id`,
 ///   `/notebook/:id`) land on the addresses above; an address that is
 ///   nothing goes to All Notes.
@@ -274,6 +276,22 @@ class KansoRouter {
                   },
                 ),
               ],
+            ),
+            GoRoute(
+              path: KansoRoutes.import,
+              pageBuilder: (context, state) {
+                return CupertinoPage<void>(
+                  key: state.pageKey,
+                  child: ImportPage(
+                    path: state
+                        .uri
+                        .queryParameters[KansoRoutes.importPathParameter],
+                    kind: state
+                        .uri
+                        .queryParameters[KansoRoutes.importKindParameter],
+                  ),
+                );
+              },
             ),
             GoRoute(
               path: KansoRoutes.shared,

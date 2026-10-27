@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/models/data/layout_class.dart';
 import 'package:kanso/note_list/views/widgets/note_list_view.dart';
+import 'package:kanso/settings/views/widgets/settings_pane.dart';
 
 import '../../../helpers/app_golden.dart';
 import '../../../helpers/fixture_library_repository.dart';
@@ -99,7 +100,16 @@ Future<void> _push(WidgetTester tester, BrowseApp app, String path) async {
 
 Future<void> _settings(WidgetTester tester, BrowseApp app) async {
   await _push(tester, app, '/settings');
-  await tester.ensureVisible(find.text('Change lock password…'));
+  await tester.scrollUntilVisible(
+    find.text('Change lock password…'),
+    200,
+    scrollable: find
+        .descendant(
+          of: find.byType(SettingsPane),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
   await tester.pumpAndSettle();
 }
 

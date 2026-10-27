@@ -16,6 +16,7 @@ import 'core/views/widgets/kanso_icon_set_scope.dart';
 import 'core/views/widgets/layout_class_reporter.dart';
 import 'crash/views/widgets/crash_notice_host.dart';
 import 'gen/l10n/app_localizations.dart';
+import 'import/views/widgets/opened_documents_host.dart';
 import 'lock/views/widgets/lock_lifecycle_host.dart';
 import 'settings/views/widgets/backup_notice_host.dart';
 
@@ -59,7 +60,10 @@ class App extends StatelessWidget {
                 child: CrashNoticeHost(
                   child: LockLifecycleHost(
                     child: BackupNoticeHost(
-                      child: DeviceApprovalHost(child: child!),
+                      child: OpenedDocumentsHost(
+                        router: router.config,
+                        child: DeviceApprovalHost(child: child!),
+                      ),
                     ),
                   ),
                 ),

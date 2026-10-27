@@ -21,6 +21,9 @@ import kanso_background
       CrashDiagnostics.shared.register(with: registrar.messenger())
     }
     registerWidgetChannel(engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "KansoFiles") {
+      KansoFiles.shared.register(with: registrar.messenger())
+    }
   }
 
   /// `app.kanso.kanso/widgets`: the app asks for the home-screen widgets to

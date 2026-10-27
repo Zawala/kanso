@@ -65,6 +65,32 @@ abstract final class KansoRoutes {
   /// Join with a link, inside [shared].
   static const String sharedJoin = '/shared/join';
 
+  /// Import notes, in the same shell as Settings. With `path` it reads that
+  /// file or folder instead of asking for one (see [importFile]).
+  static const String import = '/import';
+
+  /// The query parameter that gives the file or folder to import.
+  static const String importPathParameter = 'path';
+
+  /// The query parameter that says which source the file is (one of the
+  /// names `import_sources` lists), when that is known.
+  static const String importKindParameter = 'kind';
+
+  /// The address that imports the file or folder at [path] (a readable local
+  /// path that stays where it is until the flow ends), as a [kind] when it
+  /// is known. With one possible source the flow goes straight to what the
+  /// file holds; with several it asks which; with none it says the file is
+  /// not an export.
+  static String importFile(String path, {String? kind}) {
+    return Uri(
+      path: import,
+      queryParameters: <String, String>{
+        importPathParameter: path,
+        if (kind != null && kind.isNotEmpty) importKindParameter: kind,
+      },
+    ).toString();
+  }
+
   /// Settings › Account: the signed-in account's page.
   static const String settingsAccount = '/settings/account';
 

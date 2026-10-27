@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/import/state/opened_documents/opened_documents_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 
 import 'account_blocs.dart';
@@ -56,6 +57,7 @@ Future<void> expectAppGoldenOnBothPlatforms(
   FixtureSyncRepository Function()? sync,
   FixtureSessionRepository Function()? session,
   FixtureDeviceLockRepository Function()? device,
+  OpenedDocumentsBloc? openedDocuments,
   Future<void> Function(WidgetTester tester, BrowseApp app)? interact,
 }) async {
   tester.platformDispatcher
@@ -99,6 +101,7 @@ Future<void> expectAppGoldenOnBothPlatforms(
           sync: sync?.call(),
           session: session?.call(),
           device: device?.call(),
+          openedDocuments: openedDocuments,
         );
         if (interact != null) {
           await interact(tester, app);

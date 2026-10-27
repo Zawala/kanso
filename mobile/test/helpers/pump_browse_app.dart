@@ -2,12 +2,15 @@
 // Created 2026-10-26.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kanso/app.dart';
+import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/configs/kanso_layout.dart';
+import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
@@ -21,6 +24,11 @@ import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
+import 'package:kanso/import/models/data/import_pick.dart';
+import 'package:kanso/import/models/data/opened_batch.dart';
+import 'package:kanso/import/models/repos/abs/import_files_repository.dart';
+import 'package:kanso/import/models/repos/abs/import_repository.dart';
+import 'package:kanso/import/state/opened_documents/opened_documents_bloc.dart';
 import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
@@ -105,6 +113,7 @@ Future<BrowseApp> pumpBrowseApp(
   FixtureSyncRepository? sync,
   FixtureSessionRepository? session,
   FixtureDeviceLockRepository? device,
+  OpenedDocumentsBloc? openedDocuments,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
@@ -123,6 +132,16 @@ Future<BrowseApp> pumpBrowseApp(
     blocs.shared,
   );
   final accountBlocs = (accounts ?? AccountBlocs())..register();
+  final opened =
+      openedDocuments ??
+      OpenedDocumentsBloc(
+        _IdleImportRepository(),
+        _IdleImportFilesRepository(),
+      );
+  if (openedDocuments == null) {
+    opened.add(const OpenedDocumentsEvent.started());
+    addTearDown(opened.close);
+  }
   final padding = FakeViewPadding(
     left: safeArea.left * devicePixelRatio,
     top: safeArea.top * devicePixelRatio,
@@ -175,6 +194,7 @@ Future<BrowseApp> pumpBrowseApp(
             value: accountBlocs.approval,
           ),
           BlocProvider<CrashReportsBloc>.value(value: quietCrashReportsBloc()),
+          BlocProvider<OpenedDocumentsBloc>.value(value: opened),
         ],
         child: App(router: kansoRouter),
       ),
@@ -188,4 +208,57 @@ Future<BrowseApp> pumpBrowseApp(
     kansoRouter.layoutClass,
     accountBlocs,
   );
+}
+
+class _IdleImportRepository implements ImportRepository {
+  @override
+  List<ImportSource> sources() => const <ImportSource>[];
+
+  @override
+  Either<ApplicationError, List<String>> kindsFor(String path) =>
+      const Right<ApplicationError, List<String>>(<String>[]);
+
+  @override
+  Stream<ImportEvent> plan(String kind, String path) =>
+      const Stream<ImportEvent>.empty();
+
+  @override
+  Stream<ImportEvent> run(String kind, String path) =>
+      const Stream<ImportEvent>.empty();
+
+  @override
+  Future<Either<ApplicationError, OpenedDocuments>> openDocuments(
+    List<OpenedFile> files,
+    String staging,
+  ) async => const Right<ApplicationError, OpenedDocuments>(
+    OpenedDocuments(problems: <String>[]),
+  );
+}
+
+class _IdleImportFilesRepository implements ImportFilesRepository {
+  @override
+  Stream<Unit> get arrivals => const Stream<Unit>.empty();
+
+  @override
+  Future<Either<ApplicationError, ImportPick?>> pickFile(
+    List<String> extensions,
+  ) async => const Right<ApplicationError, ImportPick?>(null);
+
+  @override
+  Future<Either<ApplicationError, ImportPick?>> pickFolder() async =>
+      const Right<ApplicationError, ImportPick?>(null);
+
+  @override
+  Future<Either<ApplicationError, Unit>> clearPicked() async =>
+      const Right<ApplicationError, Unit>(unit);
+
+  @override
+  Future<Either<ApplicationError, OpenedBatch>> takeOpened() async =>
+      const Right<ApplicationError, OpenedBatch>(
+        OpenedBatch(files: <OpenedFile>[], staging: ''),
+      );
+
+  @override
+  Future<Either<ApplicationError, Unit>> discardOpened() async =>
+      const Right<ApplicationError, Unit>(unit);
 }

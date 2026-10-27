@@ -102,6 +102,12 @@ import 'editor/models/repos/impl/rust_editor_repository.dart' as _i606;
 import 'editor/models/repos/impl/url_launcher_web_link_repository.dart'
     as _i635;
 import 'editor/state/editor/editor_bloc.dart' as _i964;
+import 'import/models/repos/abs/import_files_repository.dart' as _i26;
+import 'import/models/repos/abs/import_repository.dart' as _i242;
+import 'import/models/repos/impl/channel_import_files_repository.dart' as _i196;
+import 'import/models/repos/impl/rust_import_repository.dart' as _i903;
+import 'import/state/import_flow/import_flow_bloc.dart' as _i513;
+import 'import/state/opened_documents/opened_documents_bloc.dart' as _i979;
 import 'library/state/new_notebook/new_notebook_bloc.dart' as _i991;
 import 'lock/models/repos/abs/device_lock_repository.dart' as _i279;
 import 'lock/models/repos/impl/plugin_device_lock_repository.dart' as _i64;
@@ -201,6 +207,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.singleton<_i289.DesignGalleryAccess>(
       () => appModule.closedGallery,
       registerFor: {_production, _integration},
+    );
+    gh.lazySingleton<_i26.ImportFilesRepository>(
+      () => _i196.ChannelImportFilesRepository(),
     );
     gh.singleton<_i289.DesignGalleryAccess>(
       () => appModule.developmentGallery,
@@ -313,6 +322,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i465.ApprovalsRepository>(
       () => _i99.RustApprovalsRepository(gh<_i283.KansoApprovals>()),
     );
+    gh.lazySingleton<_i242.ImportRepository>(
+      () => _i903.RustImportRepository(gh<_i455.KansoLibrary>()),
+    );
     gh.lazySingleton<_i23.CaptureRepository>(
       () => _i824.RustCaptureRepository(
         gh<_i455.KansoLibrary>(),
@@ -352,6 +364,18 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i384.PreferencesRepository>(),
         gh<_i23.CaptureRepository>(),
         gh<_i900.MediaPickerRepository>(),
+      ),
+    );
+    gh.factory<_i513.ImportFlowBloc>(
+      () => _i513.ImportFlowBloc(
+        gh<_i242.ImportRepository>(),
+        gh<_i26.ImportFilesRepository>(),
+      ),
+    );
+    gh.factory<_i979.OpenedDocumentsBloc>(
+      () => _i979.OpenedDocumentsBloc(
+        gh<_i242.ImportRepository>(),
+        gh<_i26.ImportFilesRepository>(),
       ),
     );
     gh.factory<_i351.NoteListBloc>(
