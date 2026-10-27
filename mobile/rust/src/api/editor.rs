@@ -102,6 +102,11 @@ impl KansoEditor {
         self.0.keep_mine()
     }
 
+    /// Stores an image or a PDF and puts it in the text over the selection.
+    pub fn attach(&self, file: ShareFile) -> Result<EditOutcome, KansoError> {
+        self.0.attach(file)
+    }
+
     /// Comments on the selected words of a shared note; the new comment's ID.
     pub fn comment_on_selection(&self, body: String) -> Result<String, KansoError> {
         self.0.comment_on_selection(body)

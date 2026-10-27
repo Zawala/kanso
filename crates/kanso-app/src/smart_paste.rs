@@ -11,6 +11,8 @@ use crate::markdown_edit::Edit;
 // phones' share sheets use as well.
 pub use kanso_engine::attach::{attach_image, image_markdown, stored_as, too_large};
 pub use kanso_engine::capture::is_url;
+// Shared with the phones' editor, which attaches the same way.
+pub use kanso_engine::edit::block_insert;
 
 /// A web address pasted over selected words on one line makes them a
 /// link: `[words](address)`, with the cursor after it. `None` when the
@@ -103,36 +105,6 @@ pub fn tidy(markdown: &str) -> String {
     out
 }
 
-/// Puts `block` (images, say) over `range` as a paragraph of its own: a
-/// blank line from the text before and after it, so the preview shows it
-/// alone and offers its sizes. The cursor goes after it.
-pub fn block_insert(text: &str, range: Range<usize>, block: &str) -> Edit {
-    let start = range.start.min(text.len());
-    let end = range.end.clamp(start, text.len());
-    let before = &text[..start];
-    let after = &text[end..];
-    let lead = if before.is_empty() || before.ends_with("\n\n") {
-        ""
-    } else if before.ends_with('\n') {
-        "\n"
-    } else {
-        "\n\n"
-    };
-    let trail = if after.is_empty() || after.starts_with("\n\n") {
-        ""
-    } else if after.starts_with('\n') {
-        "\n"
-    } else {
-        "\n\n"
-    };
-    let cursor = start + lead.len() + block.len();
-    Edit {
-        range: start..end,
-        text: format!("{lead}{block}{trail}"),
-        selection: cursor..cursor,
-    }
-}
-
 /// An `<img>` tag on its own: `<img src="<attachment link>" width="320">`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImgTag {
@@ -208,38 +180,6 @@ mod tests {
             cases: 256,
             failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
             ..ProptestConfig::default()
-        }
-    }
-
-    #[test]
-    fn blocks_stand_alone() {
-        let image = "![](inkdrop://file:a)";
-        let at = |text: &str, i: usize| block_insert(text, i..i, image).apply(text);
-        assert_eq!(at("", 0), image);
-        assert_eq!(at("words", 5), format!("words\n\n{image}"));
-        assert_eq!(at("words\n", 6), format!("words\n\n{image}"));
-        assert_eq!(at("a b", 1), format!("a\n\n{image}\n\n b"));
-        assert_eq!(at("a\n\nb", 2), format!("a\n\n{image}\n\nb"));
-        let edit = block_insert("ab", 1..1, image);
-        assert_eq!(edit.selection.start, 3 + image.len());
-    }
-
-    proptest! {
-        #![proptest_config(config())]
-        /// The block ends up a paragraph of its own, only newlines are
-        /// added, and the cursor is after it.
-        #[test]
-        fn prop_blocks_are_paragraphs(text in "[a-z\n]{0,12}", i in any::<prop::sample::Index>()) {
-            let image = "![](inkdrop://file:a)";
-            let at = i.index(text.len() + 1);
-            let edit = block_insert(&text, at..at, image);
-            let out = edit.apply(&text);
-            let start = out.find(image).unwrap();
-            let end = start + image.len();
-            prop_assert!(start == 0 || out[..start].ends_with("\n\n"));
-            prop_assert!(end == out.len() || out[end..].starts_with("\n\n"));
-            prop_assert_eq!(edit.selection, end..end);
-            prop_assert_eq!(out.replace(image, "").replace('\n', ""), text.replace('\n', ""));
         }
     }
 

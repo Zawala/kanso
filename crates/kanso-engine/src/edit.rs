@@ -44,6 +44,36 @@ impl Edit {
     }
 }
 
+/// Puts `block` (images, say) over `range` as a paragraph of its own: a
+/// blank line from the text before and after it, so the preview shows it
+/// alone and offers its sizes. The cursor goes after it.
+pub fn block_insert(text: &str, range: Range<usize>, block: &str) -> Edit {
+    let start = range.start.min(text.len());
+    let end = range.end.clamp(start, text.len());
+    let before = &text[..start];
+    let after = &text[end..];
+    let lead = if before.is_empty() || before.ends_with("\n\n") {
+        ""
+    } else if before.ends_with('\n') {
+        "\n"
+    } else {
+        "\n\n"
+    };
+    let trail = if after.is_empty() || after.starts_with("\n\n") {
+        ""
+    } else if after.starts_with('\n') {
+        "\n"
+    } else {
+        "\n\n"
+    };
+    let cursor = start + lead.len() + block.len();
+    Edit {
+        range: start..end,
+        text: format!("{lead}{block}{trail}"),
+        selection: cursor..cursor,
+    }
+}
+
 /// Tab (or Shift-Tab, with `out`): the next (previous) table cell in a
 /// table, a list item in (out) a level with what hangs under it, and
 /// otherwise `None`, which leaves Tab to the editor's own indent.
@@ -551,6 +581,38 @@ mod tests {
                 let again = table::format_table(&moved, edit.selection.start);
                 prop_assert!(again.is_none_or(|e| e.apply(&moved) == moved));
             }
+        }
+    }
+
+    #[test]
+    fn blocks_stand_alone() {
+        let image = "![](inkdrop://file:a)";
+        let at = |text: &str, i: usize| block_insert(text, i..i, image).apply(text);
+        assert_eq!(at("", 0), image);
+        assert_eq!(at("words", 5), format!("words\n\n{image}"));
+        assert_eq!(at("words\n", 6), format!("words\n\n{image}"));
+        assert_eq!(at("a b", 1), format!("a\n\n{image}\n\n b"));
+        assert_eq!(at("a\n\nb", 2), format!("a\n\n{image}\n\nb"));
+        let edit = block_insert("ab", 1..1, image);
+        assert_eq!(edit.selection.start, 3 + image.len());
+    }
+
+    proptest! {
+        #![proptest_config(config())]
+        /// The block ends up a paragraph of its own, only newlines are
+        /// added, and the cursor is after it.
+        #[test]
+        fn prop_blocks_are_paragraphs(text in "[a-z\n]{0,12}", i in any::<prop::sample::Index>()) {
+            let image = "![](inkdrop://file:a)";
+            let at = i.index(text.len() + 1);
+            let edit = block_insert(&text, at..at, image);
+            let out = edit.apply(&text);
+            let start = out.find(image).unwrap();
+            let end = start + image.len();
+            prop_assert!(start == 0 || out[..start].ends_with("\n\n"));
+            prop_assert!(end == out.len() || out[end..].starts_with("\n\n"));
+            prop_assert_eq!(edit.selection, end..end);
+            prop_assert_eq!(out.replace(image, "").replace('\n', ""), text.replace('\n', ""));
         }
     }
 }

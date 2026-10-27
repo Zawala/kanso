@@ -79,12 +79,16 @@ use crate::library::{Inner, Library};
 use crate::model::{
     Completion, CompletionItem, CompletionKind, EditCommand, EditOutcome, EditorContext,
     EditorEvent, EditorRun, EditorSnapshot, FormatKind, HistoryState, LinkTarget, LockState,
-    Property, Range16, Replacement, RunBatch, SaveState, TextChange,
+    Property, Range16, Replacement, RunBatch, SaveState, ShareFile, TextChange,
 };
 use crate::notes::property_row;
 use crate::sharing::SharedNotes;
 use crate::sharing_model::CursorMark;
 use crate::stream::Listeners;
+
+/// Why a locked note takes no attachment.
+const LOCKED_ATTACHMENT: &str =
+    "Files can't be attached to a locked note yet: they would be stored unsealed.";
 
 /// How long the titles for completion are kept before they are read again
 /// (the desktop's `WIKI_REFRESH_DELAY`).
@@ -493,6 +497,38 @@ impl EditorSession {
         guard(|| {
             self.shared
                 .run(|st, _| Ok(self.shared.command(st, command)))
+        })
+    }
+
+    /// Stores `file`, an image or a PDF, as an attachment and puts it in the
+    /// text over the selection as a paragraph of its own, as the desktop
+    /// does with a pasted or dropped file: one undo step. Refused for a
+    /// locked note, whose attachments would be stored unsealed (#44), and,
+    /// in a sentence for the person, for a file that is neither.
+    pub fn attach(&self, file: ShareFile) -> Result<EditOutcome, KansoError> {
+        guard(|| {
+            let plain = |st: &State| {
+                if st.lock == LockView::Plain {
+                    Ok(())
+                } else {
+                    Err(KansoError::invalid(LOCKED_ATTACHMENT))
+                }
+            };
+            self.shared.run(|st, _| plain(st))?;
+            // Written with the state let go: typing goes on meanwhile.
+            let attached = kanso_engine::attach::attach_file(
+                &self.shared.inner.store,
+                &file.bytes,
+                &file.name,
+                file.content_type.as_deref(),
+                None,
+            )
+            .map_err(KansoError::invalid)?;
+            self.shared.run(|st, _| {
+                plain(st)?;
+                let edit = edit::block_insert(&st.text, st.selection.clone(), &attached.markdown);
+                Ok(self.shared.edited(st, edit, Some(Grouping::Own)))
+            })
         })
     }
 
