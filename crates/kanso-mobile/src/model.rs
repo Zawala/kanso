@@ -520,6 +520,9 @@ pub struct PreviewOptions {
     /// How far local time is ahead of UTC, in seconds: due chips say
     /// "Today" and "Overdue" by the phone's day.
     pub utc_offset_secs: i32,
+    /// How code blocks are colored: the theme's syntax styles (the
+    /// `syntax` of [`ThemeTokens`]). Empty leaves code uncolored.
+    pub code: Vec<SyntaxStyleRow>,
 }
 
 impl Default for PreviewOptions {
@@ -529,6 +532,7 @@ impl Default for PreviewOptions {
             mono: None,
             size: 16.,
             utc_offset_secs: 0,
+            code: Vec::new(),
         }
     }
 }

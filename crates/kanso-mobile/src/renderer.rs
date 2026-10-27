@@ -10,12 +10,12 @@ use std::sync::Arc;
 
 use kanso_engine::highlight;
 use kanso_engine::text::{byte_to_utf16, utf16_to_byte};
-use kanso_render::{Failure, Job, Kind, Outcome, Palette, Rgb, html, render_blocking};
+use kanso_render::{Failure, Job, Kind, Outcome, Palette, Rgb, render_blocking};
 
 use crate::boundary::guard;
 use crate::builtin_themes;
 use crate::errors::KansoError;
-use crate::library::{Inner, Library};
+use crate::library::Inner;
 use crate::model::{
     BuiltinTheme, DiagramKind, PaletteDto, PreviewOptions, Range16, SpanRow, StyledRun, SvgRow,
     ThemeTokens,
