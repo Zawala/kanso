@@ -4426,6 +4426,198 @@ abstract class AppLocalizations {
   /// **'Done'**
   String get lockDone;
 
+  /// No description provided for @importTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Import notes'**
+  String get importTitle;
+
+  /// No description provided for @importEmptyButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Import notes'**
+  String get importEmptyButton;
+
+  /// No description provided for @importIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Bring notes in from another app. Kanso only reads what you choose, and importing again updates the notes it made without undoing your edits.'**
+  String get importIntro;
+
+  /// No description provided for @importSourcesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from'**
+  String get importSourcesLabel;
+
+  /// No description provided for @importPickFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a file'**
+  String get importPickFile;
+
+  /// No description provided for @importPickFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a folder'**
+  String get importPickFolder;
+
+  /// No description provided for @importPickTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from {source}'**
+  String importPickTitle(Object source);
+
+  /// No description provided for @importPicking.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for your choice…'**
+  String get importPicking;
+
+  /// No description provided for @importReadingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading your notes'**
+  String get importReadingTitle;
+
+  /// No description provided for @importReadingMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is written yet.'**
+  String get importReadingMessage;
+
+  /// No description provided for @importWritingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Importing'**
+  String get importWritingTitle;
+
+  /// No description provided for @importWritingMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep Kanso open until it finishes.'**
+  String get importWritingMessage;
+
+  /// No description provided for @importSummaryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready to import'**
+  String get importSummaryTitle;
+
+  /// No description provided for @importSummaryFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'From {name}'**
+  String importSummaryFrom(Object name);
+
+  /// No description provided for @importSummaryEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to import'**
+  String get importSummaryEmptyTitle;
+
+  /// No description provided for @importSummaryEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso found no notes in {name}.'**
+  String importSummaryEmptyMessage(Object name);
+
+  /// No description provided for @importButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get importButton;
+
+  /// No description provided for @importChooseAnother.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose another'**
+  String get importChooseAnother;
+
+  /// No description provided for @importDoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Import finished'**
+  String get importDoneTitle;
+
+  /// No description provided for @importOpenFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the first note'**
+  String get importOpenFirst;
+
+  /// No description provided for @importDoneButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get importDoneButton;
+
+  /// No description provided for @importSkippedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped'**
+  String get importSkippedTitle;
+
+  /// No description provided for @importRejectedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Not imported'**
+  String get importRejectedTitle;
+
+  /// No description provided for @importFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The import didn’t finish'**
+  String get importFailedTitle;
+
+  /// No description provided for @importTryAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get importTryAgain;
+
+  /// No description provided for @importProblemPickFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso couldn’t read what you chose. Try choosing it again.'**
+  String get importProblemPickFailed;
+
+  /// No description provided for @importProblemNotAnExport.
+  ///
+  /// In en, this message translates to:
+  /// **'That file isn’t an export Kanso can read.'**
+  String get importProblemNotAnExport;
+
+  /// No description provided for @importProblemUnexpected.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Try again.'**
+  String get importProblemUnexpected;
+
+  /// No description provided for @openedDocumentsFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The file wasn’t opened'**
+  String get openedDocumentsFailedTitle;
+
+  /// No description provided for @openedDocumentsFailedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso couldn’t add it to your notes. Try opening it again.'**
+  String get openedDocumentsFailedMessage;
+
+  /// No description provided for @openedDocumentsProblemsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Some files weren’t opened'**
+  String get openedDocumentsProblemsTitle;
+
+  /// No description provided for @openedDocumentsOk.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get openedDocumentsOk;
+
   /// The title of the screen that lists the library's backups, and its row in Settings.
   ///
   /// In en, this message translates to:

@@ -9,6 +9,7 @@ import 'api/approvals.dart';
 import 'api/diagnostics.dart';
 import 'api/editor.dart';
 import 'api/gallery.dart';
+import 'api/import.dart';
 import 'api/library.dart';
 import 'api/locks.dart';
 import 'api/renderer.dart';
@@ -274,6 +275,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  RustStreamSink<ImportEvent> dco_decode_StreamSink_import_event_Sse(
+    dynamic raw,
+  );
+
+  @protected
   RustStreamSink<List<String>> dco_decode_StreamSink_list_String_Sse(
     dynamic raw,
   );
@@ -374,6 +380,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   GalleryColors dco_decode_box_autoadd_gallery_colors(dynamic raw);
+
+  @protected
+  ImportPhase dco_decode_box_autoadd_import_phase(dynamic raw);
+
+  @protected
+  ImportProgress dco_decode_box_autoadd_import_progress(dynamic raw);
+
+  @protected
+  ImportSummary dco_decode_box_autoadd_import_summary(dynamic raw);
 
   @protected
   LinkTarget dco_decode_box_autoadd_link_target(dynamic raw);
@@ -541,6 +556,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   double dco_decode_f_32(dynamic raw);
 
   @protected
+  double dco_decode_f_64(dynamic raw);
+
+  @protected
   FormatKind dco_decode_format_kind(dynamic raw);
 
   @protected
@@ -566,6 +584,24 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   IconThemeRow dco_decode_icon_theme_row(dynamic raw);
+
+  @protected
+  ImportEvent dco_decode_import_event(dynamic raw);
+
+  @protected
+  ImportFound dco_decode_import_found(dynamic raw);
+
+  @protected
+  ImportPhase dco_decode_import_phase(dynamic raw);
+
+  @protected
+  ImportProgress dco_decode_import_progress(dynamic raw);
+
+  @protected
+  ImportSource dco_decode_import_source(dynamic raw);
+
+  @protected
+  ImportSummary dco_decode_import_summary(dynamic raw);
 
   @protected
   InvitationRow dco_decode_invitation_row(dynamic raw);
@@ -634,6 +670,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<IconThemeRow> dco_decode_list_icon_theme_row(dynamic raw);
 
   @protected
+  List<ImportSource> dco_decode_list_import_source(dynamic raw);
+
+  @protected
   List<InvitationRow> dco_decode_list_invitation_row(dynamic raw);
 
   @protected
@@ -656,6 +695,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<NotebookRow> dco_decode_list_notebook_row(dynamic raw);
+
+  @protected
+  List<OpenedFile> dco_decode_list_opened_file(dynamic raw);
 
   @protected
   List<String?> dco_decode_list_opt_String(dynamic raw);
@@ -786,6 +828,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   NotebookRow dco_decode_notebook_row(dynamic raw);
 
   @protected
+  OpenedDocuments dco_decode_opened_documents(dynamic raw);
+
+  @protected
+  OpenedFile dco_decode_opened_file(dynamic raw);
+
+  @protected
   int? dco_decode_opt_CastedPrimitive_i_64(dynamic raw);
 
   @protected
@@ -817,6 +865,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   GalleryColors? dco_decode_opt_box_autoadd_gallery_colors(dynamic raw);
+
+  @protected
+  ImportPhase? dco_decode_opt_box_autoadd_import_phase(dynamic raw);
 
   @protected
   LinkTarget? dco_decode_opt_box_autoadd_link_target(dynamic raw);
@@ -1283,6 +1334,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  RustStreamSink<ImportEvent> sse_decode_StreamSink_import_event_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RustStreamSink<List<String>> sse_decode_StreamSink_list_String_Sse(
     SseDeserializer deserializer,
   );
@@ -1395,6 +1451,19 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   GalleryColors sse_decode_box_autoadd_gallery_colors(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ImportPhase sse_decode_box_autoadd_import_phase(SseDeserializer deserializer);
+
+  @protected
+  ImportProgress sse_decode_box_autoadd_import_progress(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ImportSummary sse_decode_box_autoadd_import_summary(
     SseDeserializer deserializer,
   );
 
@@ -1580,6 +1649,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   double sse_decode_f_32(SseDeserializer deserializer);
 
   @protected
+  double sse_decode_f_64(SseDeserializer deserializer);
+
+  @protected
   FormatKind sse_decode_format_kind(SseDeserializer deserializer);
 
   @protected
@@ -1605,6 +1677,24 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   IconThemeRow sse_decode_icon_theme_row(SseDeserializer deserializer);
+
+  @protected
+  ImportEvent sse_decode_import_event(SseDeserializer deserializer);
+
+  @protected
+  ImportFound sse_decode_import_found(SseDeserializer deserializer);
+
+  @protected
+  ImportPhase sse_decode_import_phase(SseDeserializer deserializer);
+
+  @protected
+  ImportProgress sse_decode_import_progress(SseDeserializer deserializer);
+
+  @protected
+  ImportSource sse_decode_import_source(SseDeserializer deserializer);
+
+  @protected
+  ImportSummary sse_decode_import_summary(SseDeserializer deserializer);
 
   @protected
   InvitationRow sse_decode_invitation_row(SseDeserializer deserializer);
@@ -1685,6 +1775,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  List<ImportSource> sse_decode_list_import_source(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<InvitationRow> sse_decode_list_invitation_row(
     SseDeserializer deserializer,
   );
@@ -1713,6 +1808,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<NotebookRow> sse_decode_list_notebook_row(SseDeserializer deserializer);
+
+  @protected
+  List<OpenedFile> sse_decode_list_opened_file(SseDeserializer deserializer);
 
   @protected
   List<String?> sse_decode_list_opt_String(SseDeserializer deserializer);
@@ -1853,6 +1951,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   NotebookRow sse_decode_notebook_row(SseDeserializer deserializer);
 
   @protected
+  OpenedDocuments sse_decode_opened_documents(SseDeserializer deserializer);
+
+  @protected
+  OpenedFile sse_decode_opened_file(SseDeserializer deserializer);
+
+  @protected
   int? sse_decode_opt_CastedPrimitive_i_64(SseDeserializer deserializer);
 
   @protected
@@ -1892,6 +1996,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   GalleryColors? sse_decode_opt_box_autoadd_gallery_colors(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ImportPhase? sse_decode_opt_box_autoadd_import_phase(
     SseDeserializer deserializer,
   );
 
@@ -2424,6 +2533,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_import_event_Sse(
+    RustStreamSink<ImportEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_StreamSink_list_String_Sse(
     RustStreamSink<List<String>> self,
     SseSerializer serializer,
@@ -2573,6 +2688,24 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_box_autoadd_gallery_colors(
     GalleryColors self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_import_phase(
+    ImportPhase self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_import_progress(
+    ImportProgress self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_import_summary(
+    ImportSummary self,
     SseSerializer serializer,
   );
 
@@ -2832,6 +2965,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_f_32(double self, SseSerializer serializer);
 
   @protected
+  void sse_encode_f_64(double self, SseSerializer serializer);
+
+  @protected
   void sse_encode_format_kind(FormatKind self, SseSerializer serializer);
 
   @protected
@@ -2857,6 +2993,27 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_icon_theme_row(IconThemeRow self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_import_event(ImportEvent self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_import_found(ImportFound self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_import_phase(ImportPhase self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_import_progress(
+    ImportProgress self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_import_source(ImportSource self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_import_summary(ImportSummary self, SseSerializer serializer);
 
   @protected
   void sse_encode_invitation_row(InvitationRow self, SseSerializer serializer);
@@ -2964,6 +3121,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_list_import_source(
+    List<ImportSource> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_invitation_row(
     List<InvitationRow> self,
     SseSerializer serializer,
@@ -3005,6 +3168,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_list_notebook_row(
     List<NotebookRow> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_opened_file(
+    List<OpenedFile> self,
     SseSerializer serializer,
   );
 
@@ -3177,6 +3346,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_notebook_row(NotebookRow self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opened_documents(
+    OpenedDocuments self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opened_file(OpenedFile self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_CastedPrimitive_i_64(int? self, SseSerializer serializer);
 
   @protected
@@ -3224,6 +3402,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_opt_box_autoadd_gallery_colors(
     GalleryColors? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_import_phase(
+    ImportPhase? self,
     SseSerializer serializer,
   );
 

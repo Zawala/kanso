@@ -5,9 +5,10 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    AttachmentFile, CaptureOutcome, Changed, DropsSaved, Hit, KansoError, Library, LibraryOverview,
-    ListQuery, LocalTime, NewNote, NoteChange, NoteList, NoteView, NotebookRow, Property, Saved,
-    SearchScope, Share, Table, TagRow, TaskBoard, TaskListQuery, Ticked,
+    AttachmentFile, CaptureOutcome, Changed, DropsSaved, Hit, ImportEvent, KansoError, Library,
+    LibraryOverview, ListQuery, LocalTime, NewNote, NoteChange, NoteList, NoteView, NotebookRow,
+    OpenedDocuments, OpenedFile, Property, Saved, SearchScope, Share, Table, TagRow, TaskBoard,
+    TaskListQuery, Ticked,
 };
 // A note's history, Replace in all notes and the backups.
 use kanso_mobile::{
@@ -172,6 +173,33 @@ impl KansoLibrary {
         self.0.changes(move |ids| sink.add(ids).is_ok());
     }
 
+    /// What importing `path` as a `kind` would do (one of `import_sources`):
+    /// progress, then one summary or one failure. Writes nothing. Returns at
+    /// once; the work runs on a thread of its own.
+    pub fn import_plan(&self, kind: String, path: String, sink: StreamSink<ImportEvent>) {
+        self.0
+            .import_plan(&kind, &path, move |event| sink.add(event).is_ok());
+    }
+
+    /// Imports `path` as a `kind`: progress, then one summary or one
+    /// failure. Returns at once; the notes written reach `changes`.
+    pub fn import(&self, kind: String, path: String, sink: StreamSink<ImportEvent>) {
+        self.0
+            .import(&kind, &path, move |event| sink.add(event).is_ok());
+    }
+
+    /// Opens the Markdown or text files the system handed over, each into
+    /// the Inbox; the last note opened and what went wrong with the others.
+    /// Copies of a document the platform names (`identity`) are staged under
+    /// `staging` so opening it again updates the same note.
+    pub fn open_documents(
+        &self,
+        files: Vec<OpenedFile>,
+        staging: String,
+    ) -> Result<OpenedDocuments, KansoError> {
+        self.0.open_documents(files, &staging)
+    }
+
     /// The note's saved versions, newest first, beside the note now.
     pub fn history(&self, id: String) -> Result<NoteHistory, KansoError> {
         self.0.history(&id)
@@ -228,7 +256,6 @@ impl KansoLibrary {
     pub fn delete_backup(&self, path: String) -> Result<(), KansoError> {
         self.0.delete_backup(&path)
     }
-
     #[frb(sync)]
     pub fn locks(&self) -> KansoLocks {
         KansoLocks::new(self.0.locks())

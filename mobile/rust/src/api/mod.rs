@@ -13,6 +13,7 @@ pub mod approvals;
 pub mod diagnostics;
 pub mod editor;
 pub mod gallery;
+pub mod import;
 pub mod library;
 pub mod locks;
 pub mod renderer;

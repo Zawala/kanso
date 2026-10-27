@@ -19,6 +19,7 @@ import 'core/state/widget_colors/widget_colors_bloc.dart';
 import 'core/views/widgets/capture_inbox_host.dart';
 import 'core/views/widgets/widget_colors_host.dart';
 import 'crash/state/crash_reports/crash_reports_bloc.dart';
+import 'import/state/opened_documents/opened_documents_bloc.dart';
 import 'injection.dart';
 import 'lock/state/lock_status/lock_status_bloc.dart';
 import 'lock/state/privacy_cover/privacy_cover_bloc.dart';
@@ -94,6 +95,11 @@ class AppProviders extends StatelessWidget {
         BlocProvider<CrashReportsBloc>(
           create: (_) =>
               getIt<CrashReportsBloc>()..add(const CrashReportsEvent.started()),
+        ),
+        BlocProvider<OpenedDocumentsBloc>(
+          create: (_) =>
+              getIt<OpenedDocumentsBloc>()
+                ..add(const OpenedDocumentsEvent.started()),
         ),
         BlocProvider<ListNavigationBloc>(
           create: (_) => getIt<ListNavigationBloc>(),

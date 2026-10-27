@@ -257,6 +257,10 @@ mod tests {
         #[test]
         fn prop_list_parses_only_valid_names(names in prop::collection::btree_set(name(), 0..10)) {
             let dir = tempfile::tempdir().unwrap();
+            // `.` and `..` name folders rather than files, so a write to
+            // either would fail for a reason the listing knows nothing about.
+            let names: BTreeSet<String> =
+                names.into_iter().filter(|n| n != "." && n != "..").collect();
             for name in &names {
                 std::fs::write(dir.path().join(name), b"x").unwrap();
             }

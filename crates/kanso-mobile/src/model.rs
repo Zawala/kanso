@@ -683,6 +683,106 @@ pub struct SvgRow {
     pub baseline: Option<f32>,
 }
 
+// MARK: Import
+
+/// One place notes can be imported from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportSource {
+    /// The name the engine takes (`Library::import`'s `kind`).
+    pub kind: String,
+    pub label: String,
+    /// What to pick, in a sentence.
+    pub hint: String,
+    /// Whether the source can be a file, or a folder.
+    pub picks_files: bool,
+    pub picks_folders: bool,
+    /// The file extensions a file picker offers, lowercase, no dot.
+    pub extensions: Vec<String>,
+}
+
+/// The stage an import is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImportPhase {
+    /// Reading every note once to learn titles and paths.
+    Reading,
+    Notebooks,
+    Notes,
+}
+
+/// Where an import is.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImportProgress {
+    /// `None` before the import has said (it is starting).
+    pub phase: Option<ImportPhase>,
+    /// What the desktop's bar says, e.g. "Notes and attachments… 3 of 12".
+    pub label: String,
+    pub done: u64,
+    /// 0 while not known yet.
+    pub total: u64,
+    /// 0 to 1; 0 while the total is not known.
+    pub fraction: f64,
+}
+
+/// What a source holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImportFound {
+    pub notes: u64,
+    pub notebooks: u64,
+    pub tags: u64,
+    pub attachments: u64,
+}
+
+/// What a plan or an import came to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportSummary {
+    /// The source kind it ran for.
+    pub kind: String,
+    /// True for a plan: nothing was written.
+    pub dry_run: bool,
+    pub found: ImportFound,
+    /// Nothing to import: the source holds no notes.
+    pub empty: bool,
+    /// The desktop's summary lines.
+    pub lines: Vec<String>,
+    /// What was left out and why, a line per reason.
+    pub skipped: Vec<String>,
+    /// Empty when everything was imported, else a header and the first few.
+    pub rejected: Vec<String>,
+    /// The first note imported, to open it.
+    pub first_note: Option<String>,
+}
+
+/// What an import tells the shell: progress, then one of the other two.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ImportEvent {
+    Progress(ImportProgress),
+    Done(ImportSummary),
+    /// The import didn't run; a sentence for a person.
+    Failed(String),
+}
+
+/// A file the system handed over to open.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OpenedFile {
+    /// Where the file can be read now.
+    pub path: String,
+    /// Its name as the person knows it.
+    pub name: String,
+    /// The platform's own name for the document (an Android content URI)
+    /// when `path` is a temporary copy; `None` when `path` is the real,
+    /// stable file.
+    pub identity: Option<String>,
+}
+
+/// What opening files came to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OpenedDocuments {
+    /// The last note opened, to show.
+    pub note_id: Option<String>,
+    /// What went wrong with the others, a sentence each.
+    pub problems: Vec<String>,
+}
+
 /// What saving the shared items waiting in the inbox folder did
 /// ([`Library::save_drops`](crate::Library::save_drops)).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

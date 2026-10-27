@@ -21,6 +21,8 @@ kanso-core.workspace = true
 # The highlighter (`highlight`, with the grammars for fenced code) is the
 # phones' editor colors.
 kanso-engine.workspace = true
+# Importing: another app's export, or a folder of Markdown, and opening files.
+kanso-import.workspace = true
 # The theme gallery: the signed catalog, its checks and the installer, and the
 # updater's fetch (every redirect hop is held to the gallery's address rules).
 kanso-gallery.workspace = true

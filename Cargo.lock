@@ -4675,6 +4675,7 @@ dependencies = [
  "kanso-core",
  "kanso-engine",
  "kanso-gallery",
+ "kanso-import",
  "kanso-mobile",
  "kanso-render",
  "kanso-store",

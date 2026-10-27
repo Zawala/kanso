@@ -14,18 +14,20 @@ pub use kanso_mobile::{
     ColorRow, CommentPlacement, CommentRow, Completion, CompletionItem, CompletionKind, CursorMark,
     DateField, DeviceRow, DiagramKind, DiagramRenderer, DropsSaved, DueTone, EditCommand,
     EditOutcome, EditorContext, EditorEvent, EditorRun, EditorSnapshot, FormatKind, GalleryColors,
-    GalleryItem, GalleryKind, HistoryState, Hit, IconThemeRow, InvitationRow, JoinRow, KansoError,
+    GalleryItem, GalleryKind, HistoryState, Hit, IconThemeRow, ImportEvent, ImportFound,
+    ImportPhase, ImportProgress, ImportSource, ImportSummary, InvitationRow, JoinRow, KansoError,
     LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveStatus,
     LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MemberRow, MentionSpan,
-    NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto,
-    PasskeyFailure, PasskeyRequest, PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow,
-    PreviewLink, PreviewOptions, PromptState, Property, PropertyKind, ProviderEvent, ProviderKind,
-    QuotaLimit, Range16, RecoveryKeyText, Replacement, RunBatch, SaveState, Saved, SearchScope,
-    ServerInfo, ServerMethods, Share, ShareFile, ShareInfo, ShareLinkRow, ShareRole, SharedEvent,
-    SignOutReasonKind, SignedUp, SortKey, SpanRow, StyledRun, SvgRow, SyncAccount,
-    SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus,
-    SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagRow, TaskBoard, TaskGroupKind,
-    TaskItem, TaskListQuery, TaskSection, TextChange, ThemeTokens, ThemedIcon, Ticked,
+    NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, OpenedDocuments,
+    OpenedFile, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind, PasskeyRow,
+    PersonLookup, PersonRow, PreviewLink, PreviewOptions, PromptState, Property, PropertyKind,
+    ProviderEvent, ProviderKind, QuotaLimit, Range16, RecoveryKeyText, Replacement, RunBatch,
+    SaveState, Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo,
+    ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow, StyledRun,
+    SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow,
+    SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagRow,
+    TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange, ThemeTokens,
+    ThemedIcon, Ticked,
 };
 
 #[frb(mirror(KansoError))]
@@ -579,6 +581,72 @@ pub struct _SvgRow {
     pub width: f32,
     pub height: f32,
     pub baseline: Option<f32>,
+}
+
+#[frb(mirror(ImportSource))]
+pub struct _ImportSource {
+    pub kind: String,
+    pub label: String,
+    pub hint: String,
+    pub picks_files: bool,
+    pub picks_folders: bool,
+    pub extensions: Vec<String>,
+}
+
+#[frb(mirror(ImportPhase))]
+pub enum _ImportPhase {
+    Reading,
+    Notebooks,
+    Notes,
+}
+
+#[frb(mirror(ImportProgress))]
+pub struct _ImportProgress {
+    pub phase: Option<ImportPhase>,
+    pub label: String,
+    pub done: u64,
+    pub total: u64,
+    pub fraction: f64,
+}
+
+#[frb(mirror(ImportFound))]
+pub struct _ImportFound {
+    pub notes: u64,
+    pub notebooks: u64,
+    pub tags: u64,
+    pub attachments: u64,
+}
+
+#[frb(mirror(ImportSummary))]
+pub struct _ImportSummary {
+    pub kind: String,
+    pub dry_run: bool,
+    pub found: ImportFound,
+    pub empty: bool,
+    pub lines: Vec<String>,
+    pub skipped: Vec<String>,
+    pub rejected: Vec<String>,
+    pub first_note: Option<String>,
+}
+
+#[frb(mirror(ImportEvent))]
+pub enum _ImportEvent {
+    Progress(ImportProgress),
+    Done(ImportSummary),
+    Failed(String),
+}
+
+#[frb(mirror(OpenedFile))]
+pub struct _OpenedFile {
+    pub path: String,
+    pub name: String,
+    pub identity: Option<String>,
+}
+
+#[frb(mirror(OpenedDocuments))]
+pub struct _OpenedDocuments {
+    pub note_id: Option<String>,
+    pub problems: Vec<String>,
 }
 
 // A note's history, Replace in all notes and the backups.

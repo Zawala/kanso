@@ -96,6 +96,12 @@ class SettingsPane extends StatelessWidget {
                                 onTap: () =>
                                     context.push(KansoRoutes.settingsNotebook),
                               ),
+                              KansoSettingsRow(
+                                icon: KansoIcons.download,
+                                label: l10n.importTitle,
+                                chevron: true,
+                                onTap: () => context.push(KansoRoutes.import),
+                              ),
                             ],
                           );
                         },

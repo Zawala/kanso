@@ -60,7 +60,6 @@
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use jni::objects::{JByteArray, JClass, JObject, JString};
 use std::ffi::CString;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 

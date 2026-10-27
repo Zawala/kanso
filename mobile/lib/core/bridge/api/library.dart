@@ -79,6 +79,15 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// What changed from version `rev` to the note now, section by section.
   Future<List<DiffHunk>> historyDiff({required String id, required String rev});
 
+  /// Imports `path` as a `kind`: progress, then one summary or one
+  /// failure. Returns at once; the notes written reach `changes`.
+  Stream<ImportEvent> import_({required String kind, required String path});
+
+  /// What importing `path` as a `kind` would do (one of `import_sources`):
+  /// progress, then one summary or one failure. Writes nothing. Returns at
+  /// once; the work runs on a thread of its own.
+  Stream<ImportEvent> importPlan({required String kind, required String path});
+
   Future<NoteList> list({required ListQuery query});
 
   KansoLocks locks();
@@ -90,6 +99,15 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// Opens (creating if needed) the library whose database file is `path`.
   static Future<KansoLibrary> open({required String path}) =>
       KansoCore.instance.api.crateApiLibraryKansoLibraryOpen(path: path);
+
+  /// Opens the Markdown or text files the system handed over, each into
+  /// the Inbox; the last note opened and what went wrong with the others.
+  /// Copies of a document the platform names (`identity`) are staged under
+  /// `staging` so opening it again updates the same note.
+  Future<OpenedDocuments> openDocuments({
+    required List<OpenedFile> files,
+    required String staging,
+  });
 
   /// How many open tasks are overdue (the Tasks place's badge).
   Future<int> overdueTasks();

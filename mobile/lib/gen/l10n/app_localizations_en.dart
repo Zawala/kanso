@@ -2532,6 +2532,112 @@ class AppLocalizationsEn extends AppLocalizations {
   String get lockDone => 'Done';
 
   @override
+  String get importTitle => 'Import notes';
+
+  @override
+  String get importEmptyButton => 'Import notes';
+
+  @override
+  String get importIntro =>
+      'Bring notes in from another app. Kanso only reads what you choose, and importing again updates the notes it made without undoing your edits.';
+
+  @override
+  String get importSourcesLabel => 'Import from';
+
+  @override
+  String get importPickFile => 'Choose a file';
+
+  @override
+  String get importPickFolder => 'Choose a folder';
+
+  @override
+  String importPickTitle(Object source) {
+    return 'Import from $source';
+  }
+
+  @override
+  String get importPicking => 'Waiting for your choice…';
+
+  @override
+  String get importReadingTitle => 'Reading your notes';
+
+  @override
+  String get importReadingMessage => 'Nothing is written yet.';
+
+  @override
+  String get importWritingTitle => 'Importing';
+
+  @override
+  String get importWritingMessage => 'Keep Kanso open until it finishes.';
+
+  @override
+  String get importSummaryTitle => 'Ready to import';
+
+  @override
+  String importSummaryFrom(Object name) {
+    return 'From $name';
+  }
+
+  @override
+  String get importSummaryEmptyTitle => 'Nothing to import';
+
+  @override
+  String importSummaryEmptyMessage(Object name) {
+    return 'Kanso found no notes in $name.';
+  }
+
+  @override
+  String get importButton => 'Import';
+
+  @override
+  String get importChooseAnother => 'Choose another';
+
+  @override
+  String get importDoneTitle => 'Import finished';
+
+  @override
+  String get importOpenFirst => 'Open the first note';
+
+  @override
+  String get importDoneButton => 'Done';
+
+  @override
+  String get importSkippedTitle => 'Skipped';
+
+  @override
+  String get importRejectedTitle => 'Not imported';
+
+  @override
+  String get importFailedTitle => 'The import didn’t finish';
+
+  @override
+  String get importTryAgain => 'Try again';
+
+  @override
+  String get importProblemPickFailed =>
+      'Kanso couldn’t read what you chose. Try choosing it again.';
+
+  @override
+  String get importProblemNotAnExport =>
+      'That file isn’t an export Kanso can read.';
+
+  @override
+  String get importProblemUnexpected => 'Something went wrong. Try again.';
+
+  @override
+  String get openedDocumentsFailedTitle => 'The file wasn’t opened';
+
+  @override
+  String get openedDocumentsFailedMessage =>
+      'Kanso couldn’t add it to your notes. Try opening it again.';
+
+  @override
+  String get openedDocumentsProblemsTitle => 'Some files weren’t opened';
+
+  @override
+  String get openedDocumentsOk => 'OK';
+
+  @override
   String get backupsTitle => 'Backups';
 
   @override

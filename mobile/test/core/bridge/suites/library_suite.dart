@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanso/core/bridge/api/import.dart';
 import 'package:kanso/core/bridge/api/library.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:path/path.dart' as p;
@@ -19,6 +20,44 @@ import 'open_library.dart';
 /// emulator (`integration_test`).
 void librarySuite(OpenLibrary open) {
   group('KansoLibrary', () {
+    test('imports an export and opens a Markdown document', () async {
+      final library = await open();
+      final folder = await Directory.systemTemp.createTemp('kanso_import_');
+      addTearDown(() => folder.delete(recursive: true));
+      final export = File('${folder.path}/export.md');
+      await export.writeAsString('# Export\n\nFrom another app.');
+      final document = File('${folder.path}/opened.md');
+      await document.writeAsString('# Opened\n\nFrom another app.');
+
+      final sources = importSources();
+      expect(sources.map((source) => source.kind), contains('markdown'));
+      expect(importKindsFor(path: export.path), contains('markdown'));
+
+      final preview = await library
+          .importPlan(kind: 'markdown', path: export.path)
+          .toList();
+      final planned = preview.whereType<ImportEvent_Done>().single.field0;
+      expect(planned.dryRun, isTrue);
+      expect(planned.found.notes, 1);
+
+      final imported = await library
+          .import_(kind: 'markdown', path: export.path)
+          .toList();
+      expect(
+        imported.whereType<ImportEvent_Done>().single.field0.dryRun,
+        isFalse,
+      );
+
+      final opened = await library.openDocuments(
+        files: <OpenedFile>[
+          OpenedFile(path: document.path, name: document.uri.pathSegments.last),
+        ],
+        staging: '${folder.path}/staging',
+      );
+      expect(opened.noteId, isNotNull);
+      expect(opened.problems, isEmpty);
+    });
+
     test('history, Replace and backups work through the bridge', () async {
       final library = await open();
       expect(backupsSummary(), isNotEmpty);
@@ -74,7 +113,6 @@ void librarySuite(OpenLibrary open) {
       expect(await library.backups(), isNotEmpty);
       await library.deleteBackup(path: manual.path);
     });
-
     test('a new library holds no notes', () async {
       final library = await open();
       expect((await library.list(query: everyNote)).rows, isEmpty);

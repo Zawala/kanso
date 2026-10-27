@@ -1,5 +1,7 @@
 package app.kanso.kanso
 
+import android.content.Intent
+import android.os.Bundle
 import androidx.glance.appwidget.updateAll
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -12,10 +14,19 @@ import kotlinx.coroutines.launch
 /** A `FragmentActivity`, which `BiometricPrompt` needs. */
 class MainActivity : FlutterFragmentActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val files by lazy { KansoFiles(this) }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) {
+            files.handleIntent(intent)
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         KansoCrashes.register(flutterEngine)
+        files.register(flutterEngine)
         // `app.kanso.kanso/widgets`: the app asks for the home-screen widget
         // to be drawn again once it has written its colors (`widget.json`).
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.kanso.kanso/widgets")
@@ -33,5 +44,19 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                 }
             }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        files.handleIntent(intent)
+    }
+
+    @Deprecated("The document picker result comes back through here.")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!files.handleResult(requestCode, resultCode, data)) {
+            @Suppress("DEPRECATION")
+            super.onActivityResult(requestCode, resultCode, data)
+        }
     }
 }

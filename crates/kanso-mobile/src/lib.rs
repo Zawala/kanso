@@ -44,6 +44,13 @@
 //!   each file's pinned hash.
 //! - [`background`] is the sync that runs with no app: the code behind the
 //!   C entry `kanso_background_sync` that `mobile/rust` exports.
+//! - [`import`] brings notes in from another app's export or a folder of
+//!   Markdown (`Library::import_plan` shows what would happen and writes
+//!   nothing, `Library::import` does it, both as a stream of progress ending in
+//!   one summary, with the words the desktop uses), lists the sources a phone
+//!   can read ([`import::import_sources`], [`import::import_kinds_for`]) and
+//!   opens the files other apps share (`Library::open_documents`). What an
+//!   import writes is announced on [`Library::changes`].
 //! - [`capture`] saves what other apps shared into Kanso: the drops the
 //!   share extension, App Intents and the Android share activity leave in the
 //!   library's `inbox/` folder, each one note in the Inbox. The C entry
@@ -96,6 +103,7 @@ mod gallery_net;
 mod gallery_store;
 mod history;
 mod icons;
+pub mod import;
 mod library;
 mod locks;
 mod matching;
