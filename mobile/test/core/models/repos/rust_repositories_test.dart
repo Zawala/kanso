@@ -65,16 +65,27 @@ void main() {
       );
     });
 
-    test('a change returns how many notes were written', () async {
-      const change = NoteChange.move(notebookId: 'b_2');
-      when(
-        () => library.change(ids: <String>['n_1', 'n_2'], change: change),
-      ).thenAnswer((_) async => 2);
-      expect(
-        await repository.change(<String>['n_1', 'n_2'], change),
-        const Right<ApplicationError, int>(2),
-      );
-    });
+    test(
+      'a change returns how many notes were written, and its ticket',
+      () async {
+        const change = NoteChange.move(notebookId: 'b_2');
+        when(
+          () => library.change(ids: <String>['n_1', 'n_2'], change: change),
+        ).thenAnswer(
+          (_) async => const Changed(
+            count: 2,
+            undo: 5,
+            message: 'Moved 2 notes to Work.',
+          ),
+        );
+        expect(
+          await repository.change(<String>['n_1', 'n_2'], change),
+          const Right<ApplicationError, Changed>(
+            Changed(count: 2, undo: 5, message: 'Moved 2 notes to Work.'),
+          ),
+        );
+      },
+    );
 
     test('a change into a locked notebook is a locked error', () async {
       when(
@@ -82,7 +93,7 @@ void main() {
           ids: <String>['n_1'],
           change: const NoteChange.togglePin(),
         ),
-      ).thenAnswer((_) => Future<int>.error(const KansoError.locked()));
+      ).thenAnswer((_) => Future<Changed>.error(const KansoError.locked()));
       final result = await repository.change(
         <String>['n_1'],
         const NoteChange.togglePin(),

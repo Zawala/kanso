@@ -99,7 +99,7 @@ class _ChangePasswordSheetState extends State<ChangePasswordSheet> {
                   ),
                   KansoTextField(
                     label: l10n.lockFieldNew,
-                    hint: l10n.lockFieldPasswordHint,
+                    help: l10n.lockFieldPasswordHint,
                     controller: next,
                     obscure: true,
                     enabled: !working,

@@ -15,10 +15,13 @@
 //!   crate that is built into the library.
 //! - [`biometric`] defines `kanso_biometric_answer`, the C function the
 //!   native lock plugin hands a biometric check's answer to.
+//! - [`passkey`] defines `kanso_passkey_answer`, the C function the passkey
+//!   plugin calls with the platform sheet's answer, so the PRF output goes
+//!   from the plugin to Rust and never through Dart.
 //! - `android` (Android only) defines `Java_app_kanso_kanso_KansoNative_init`,
 //!   which hands the app's `Context` to the certificate verifier and the
-//!   Keystore bridge, and `..._biometricAnswer`, the JNI form of
-//!   `kanso_biometric_answer`.
+//!   Keystore bridge, and the JNI forms of the background sync and the two
+//!   answers above.
 //!
 //! The library is built in three crate types: `staticlib` (iOS links it),
 //! `cdylib` (Android loads it; `flutter test` loads it on a computer) and
@@ -27,6 +30,7 @@
 pub mod api;
 pub mod background;
 pub mod biometric;
+pub mod passkey;
 
 #[cfg(target_os = "android")]
 mod android;

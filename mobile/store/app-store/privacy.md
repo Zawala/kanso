@@ -14,9 +14,10 @@ are not collected.
 
 ## Do you or your third-party partners collect data from this app?
 
-**Yes, but only if the person signs in to sync.** Without an account the app sends
-nothing anywhere. Kanso has no analytics, advertising, attribution or crash
-reporting SDK in the app, and no third-party partners whose code is in the app.
+**Yes: with a sync account, and when the person sends a crash report.** Without
+an account, and without tapping Send on a crash report, the app sends nothing
+anywhere. Kanso has no analytics, advertising, attribution or crash reporting SDK
+in the app, and no third-party partners whose code is in the app.
 
 ## Data used to track you
 
@@ -41,20 +42,29 @@ address for at most two days. A keyed hash the owner cannot reverse is not an
 address; Apple lists no "IP address" type apart from Device ID and Location. The
 draft does not declare it.
 
+## Data not linked to you
+
+| Data type (Apple's name) | What it is here | Purpose | Linked to identity | Tracking |
+|---|---|---|---|---|
+| Diagnostics › **Crash Data** | A crash report the person chose to send: where in Kanso's code it failed (stack frames), the app and OS versions and the device model. Never note text, titles or file names (`docs/CRASH-REPORTS.md`). Sent without a session or device ID; the server stores no IP address with it and deletes it after 90 days | App Functionality | No | No |
+
+Crash reports are sent only when the person taps Send, so they could arguably be
+*optional disclosure* under Apple's rules. They are declared anyway: declaring is
+never wrong, and it keeps the label honest if the prompt changes.
+
 ## Data not collected
 
 Contacts, health, financial info, location, sensitive info, browsing history,
-search history (searches run on the device), purchases, usage data, diagnostics,
+search history (searches run on the device), purchases, usage data, performance
+data and other diagnostics,
 photos, audio and the content of notes, as far as the server is concerned
 (end-to-end encrypted).
 
 ## Things that change these answers
 
-- **Crash reporting** (issue #48 open question). The recommended option (the person
-  taps Send on a report without note text) is optional disclosure under Apple's
-  rules only if it meets every criterion listed on the page above; a Sentry-style
-  SDK would add *Diagnostics › Crash Data* (not linked, App Functionality or
-  Analytics). Update this file with the owner's answer.
+- **Crash reporting** (#48, provisional decision 1 of 2026-10-26: on-device
+  reports the person chooses to send, no SDK). Declared above. If the owner picks a
+  crash SDK instead, its own data (and any linking) must be declared.
 - **Ask your notes** (step 12). If it ships in this release, the person's chosen AI
   service receives the note text they ask about, from their own key. Declare
   *User Content › Other User Content* as collected by that third party, linked
@@ -68,7 +78,7 @@ photos, audio and the content of notes, as far as the server is concerned
 ## The privacy manifest
 
 `mobile/ios/Runner/PrivacyInfo.xcprivacy` declares the same: no tracking, the User
-ID above, and two required-reason APIs (file timestamps `C617.1`, user defaults
+ID and Crash Data above, and two required-reason APIs (file timestamps `C617.1`, user defaults
 `CA92.1`). Flutter's engine and each plugin carry manifests of their own. After the
 first TestFlight upload, Apple emails any required-reason API it finds that is not
 declared (ITMS-91053); add it to the manifest and this file if it does.

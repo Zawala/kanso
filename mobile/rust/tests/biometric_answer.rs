@@ -40,6 +40,7 @@ fn an_enrolment_and_an_unlock_go_through_the_c_entry() {
             notebook_id: None,
             title: "Plan".into(),
             body: "the secret plan".into(),
+            ..Default::default()
         })
         .unwrap()
         .id;

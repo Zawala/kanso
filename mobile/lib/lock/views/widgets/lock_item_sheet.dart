@@ -106,7 +106,7 @@ class _LockItemSheetState extends State<LockItemSheet> {
             if (state.mode != LockMode.confirm)
               KansoTextField(
                 label: l10n.lockFieldPassword,
-                hint: setting ? l10n.lockFieldPasswordHint : null,
+                help: setting ? l10n.lockFieldPasswordHint : null,
                 controller: password,
                 obscure: true,
                 autofocus: true,

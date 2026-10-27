@@ -27,6 +27,7 @@ fn note_in(phone: &Phone, book: &str, title: &str, text: &str) -> String {
             notebook_id: Some(book.to_owned()),
             title: title.into(),
             body: text.into(),
+            ..Default::default()
         })
         .unwrap()
         .id
@@ -468,7 +469,10 @@ fn a_stale_session_key_never_seals_when_every_lock_is_gone() {
     // The session still holds the first password's key, but no lock uses it.
     assert!(locks.is_unlocked().unwrap());
     assert!(!locks.lock_status().unwrap().has_lock_password);
-    assert_eq!(locks.lock_note_with_session(&second), Err(KansoError::Locked));
+    assert_eq!(
+        locks.lock_note_with_session(&second),
+        Err(KansoError::Locked)
+    );
     assert_eq!(locks.lock_notebook(&book, None), Err(KansoError::Locked));
 
     // A new lock password P2 seals the note, not the stale key.

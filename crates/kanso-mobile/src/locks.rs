@@ -17,6 +17,7 @@ use kanso_store::{Origin, Put};
 use kanso_sync::lock::{Envelope, LockError, LockKey, LockPassword};
 
 use crate::boundary::{guard, held};
+use crate::editing::Editors;
 use crate::errors::KansoError;
 use crate::library::{Inner, Library};
 use crate::model::{LockEvent, LockReason, LockStatus, Saved};
@@ -277,8 +278,8 @@ impl LockSession {
     }
 
     fn seal_book(&self, book_id: &str, key: &LockKey) -> Result<u32, KansoError> {
-        let sealed = lock::seal_notebook(&self.inner.store, book_id, key)
-            .map_err(KansoError::storage)?;
+        let sealed =
+            lock::seal_notebook(&self.inner.store, book_id, key).map_err(KansoError::storage)?;
         Ok(u32::try_from(sealed).unwrap_or(u32::MAX))
     }
 
@@ -505,8 +506,11 @@ impl LockSession {
         })
     }
 
-    /// Forgets the keys, and tells listeners if any were held.
+    /// Forgets the keys, and tells listeners if any were held. The notes
+    /// open for editing are saved, sealed, before the keys go, and their
+    /// text is wiped from memory after.
     fn close(&self, reason: LockReason) {
+        let editing = self.inner.editors.begin_lock();
         let was_open = {
             let mut keys = held(&self.inner.keys);
             // Under the mutex, so an unlock that began earlier and applies
@@ -516,6 +520,7 @@ impl LockSession {
             keys.replace(None, Instant::now());
             was_open
         };
+        Editors::finish_lock(editing);
         if was_open {
             self.inner.lock_events.send(LockEvent::Locked { reason });
         }
@@ -548,6 +553,7 @@ mod tests {
                 notebook_id: None,
                 title: "Plan".into(),
                 body: "the plan".into(),
+                ..Default::default()
             })
             .unwrap()
             .id;

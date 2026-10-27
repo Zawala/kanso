@@ -368,7 +368,11 @@ fn unlock(inner: &Arc<Inner>, b: &[u8; KEY_LEN], since: u64) -> Result<i32, Kans
     .add_keys(keys, false, since);
     // Locked again while the check ran: the keys are dropped, the notes
     // stay closed.
-    Ok(if added { answer::APPLIED } else { answer::FAULT })
+    Ok(if added {
+        answer::APPLIED
+    } else {
+        answer::FAULT
+    })
 }
 
 /// Seals the session's keys again to the kept public key, when biometrics
@@ -414,7 +418,12 @@ impl LockSession {
         let was_open = {
             let mut held_keys = held(&self.inner.keys);
             // Checked under the mutex `close` changes it under.
-            if self.inner.lock_gen.load(std::sync::atomic::Ordering::SeqCst) != since {
+            if self
+                .inner
+                .lock_gen
+                .load(std::sync::atomic::Ordering::SeqCst)
+                != since
+            {
                 return false;
             }
             let was_open = held_keys.is_unlocked();

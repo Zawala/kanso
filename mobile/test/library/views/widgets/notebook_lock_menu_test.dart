@@ -54,6 +54,7 @@ Future<BrowseBlocs> _pumpLibrary(
   final blocs = await BrowseBlocs.start(
     library,
     null,
+    null,
     session ?? FixtureSessionRepository(),
   );
   await pumpRouted(
@@ -204,6 +205,7 @@ void main() {
         ..notebookRows = _books(journalLocked: true);
       final blocs = await BrowseBlocs.start(
         library,
+        null,
         null,
         session ?? FixtureSessionRepository(),
       );
