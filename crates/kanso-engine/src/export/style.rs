@@ -120,7 +120,7 @@ impl kanso_render::html::Highlighter for PageStyle {
         use kanso_render::html::CodeSpan;
 
         let colors = self.code.as_ref()?;
-        let spans = crate::highlight::code_spans(lang, code)?;
+        let spans = crate::highlight::code_spans_direct(lang, code)?;
         Some(
             spans
                 .into_iter()

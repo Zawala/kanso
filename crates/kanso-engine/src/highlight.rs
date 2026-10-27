@@ -231,6 +231,18 @@ pub fn code_spans(lang: &str, code: &str) -> Option<Vec<Span>> {
     Some(PARSERS.with(|parsers| block::code_spans(&mut parsers.borrow_mut(), grammar, code)))
 }
 
+/// The spans of `code` as the desktop's preview and page draw a code block:
+/// the language's own highlighter, with its locals query. [`code_spans`] is
+/// the injected-layer form a fence takes in a note. Both return `None` when
+/// no grammar is Kanso's for `lang`.
+pub fn code_spans_direct(lang: &str, code: &str) -> Option<Vec<Span>> {
+    thread_local! {
+        static PARSERS: std::cell::RefCell<block::Parsers> = std::cell::RefCell::default();
+    }
+    let grammar = registry::get(grammar(lang)?)?;
+    Some(PARSERS.with(|parsers| block::code_spans_direct(&mut parsers.borrow_mut(), grammar, code)))
+}
+
 /// Where the blocks of a note get their spans from.
 trait Blocks {
     /// Whether the block parses without a syntax error.

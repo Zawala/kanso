@@ -166,7 +166,7 @@ pub mod markdown {
             "python" => &["def f(x):\n    return x + 1\n", "# comment\nx = 'a'\n"],
             "javascript" => &["const a = `b`;\nfunction f() { return 1; }\n"],
             "typescript" => &["let a: number = 1;\ninterface A { b: string }\n"],
-            "tsx" => &["const a = <div>{b}</div>;\n"],
+            "tsx" => &["const a: number = <div>{b}</div>;\n"],
             "json" => &["{\"a\": [1, true, null]}\n"],
             "bash" => &["echo \"$A\" | grep -v x\nif [ -f a ]; then ls; fi\n"],
             "html" => &["<div class=\"a\">b</div>\n", "<!-- c -->\n"],

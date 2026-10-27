@@ -214,6 +214,31 @@ fn injected_items(
     items
 }
 
+/// The captures of the language itself, as the component library matches
+/// them: its locals query and highlights query in one, in capture order. A
+/// capture over the same range as the one before it keeps the earlier
+/// capture's token, which is how the library lets a local declaration hide
+/// the variable capture over it.
+fn primary_items(grammar: &'static Grammar, tree: &Tree, text: &str) -> Vec<Item> {
+    let Some(highlights) = grammar.main_highlights() else {
+        return Vec::new();
+    };
+    let mut items: Vec<Item> = Vec::new();
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(&highlights.query, tree.root_node(), text.as_bytes());
+    while let Some(found) = matches.next() {
+        for capture in found.captures {
+            let range = capture.node.byte_range();
+            let token = match items.last() {
+                Some(last) if last.range == range => last.token,
+                _ => highlights.tokens[capture.index as usize],
+            };
+            items.push(Item { range, token });
+        }
+    }
+    items
+}
+
 /// The captures of one layer: `text` parsed as `tree` with `grammar`'s
 /// highlight query, at offset `start` of the block it sits in. Within a
 /// layer, a capture that starts inside the one before it is dropped, unless
@@ -249,6 +274,34 @@ fn layer_items(grammar: &'static Grammar, tree: &Tree, text: &str, start: usize)
     items
 }
 
+/// The spans of `text` as the desktop's code-block highlighter draws them:
+/// its main query with locals and same-range names, and Markdown's own
+/// inline injection. Offsets are `text`'s own.
+fn direct_spans(parsers: &mut Parsers, grammar: &'static Grammar, text: &str) -> Vec<Span> {
+    if grammar.name == "markdown" {
+        return block_spans(parsers, text, true);
+    }
+    let Some(tree) = parsers.parse(grammar, text) else {
+        return Vec::new();
+    };
+    let items: Vec<(Range<usize>, Token)> = primary_items(grammar, &tree, text)
+        .into_iter()
+        .filter_map(|item| {
+            let token = item.token?;
+            let mut start = item.range.start.min(text.len());
+            let mut end = item.range.end.min(text.len());
+            while !text.is_char_boundary(start) {
+                start -= 1;
+            }
+            while !text.is_char_boundary(end) {
+                end += 1;
+            }
+            (start < end).then_some((start..end, token))
+        })
+        .collect();
+    flatten(&items)
+}
+
 /// The spans of `code` as the content of a fenced block in `grammar`:
 /// parsed as a text of its own, with the grammar's highlight query alone,
 /// as an injected layer is. Offsets are `code`'s own.
@@ -281,6 +334,20 @@ pub(super) fn code_spans(
         })
         .collect();
     flatten(&items)
+}
+
+/// The spans of `code` as the desktop's preview and page draw a code block
+/// in `grammar`: the language's own highlighter, with its locals query,
+/// rather than the injected-layer rules above. Offsets are `code`'s own.
+pub(super) fn code_spans_direct(
+    parsers: &mut Parsers,
+    grammar: &'static Grammar,
+    code: &str,
+) -> Vec<Span> {
+    if code.is_empty() || code.len() > MAX_INJECTION_BYTES {
+        return Vec::new();
+    }
+    direct_spans(parsers, grammar, code)
 }
 
 /// The layers the host's injection query asks for: a language per fence, the
