@@ -13,6 +13,7 @@ import 'package:kanso/core/models/data/library_index_status.dart';
 import 'package:kanso/core/models/data/load_status.dart';
 import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/models/repos/abs/haptics_repository.dart';
+import 'package:kanso/core/state/capture_inbox/capture_inbox_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
@@ -36,11 +37,13 @@ import 'package:kanso/tasks/models/data/tasks_status.dart';
 import 'package:kanso/tasks/state/tasks/tasks_bloc.dart';
 
 import 'close_bloc_later.dart';
+import 'fake_media_picker_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_renderer_repository.dart';
 import 'fixture_shared_notes_repository.dart';
 import 'fixture_sync_repository.dart';
 import 'library_fixtures.dart';
+import 'mock_repositories.dart';
 import 'seeded_appearance_bloc.dart';
 import 'sync_settings_blocs.dart';
 
@@ -75,6 +78,7 @@ class BrowseBlocs {
     this.invitations,
     this.creation,
     this.defaultNotebook,
+    this.captureInbox,
   );
 
   /// The mock library (see [FixtureLibraryRepository]).
@@ -86,6 +90,9 @@ class BrowseBlocs {
   final LibraryPaneBloc libraryPane;
   final NoteCreationBloc creation;
   final DefaultNotebookBloc defaultNotebook;
+
+  /// Saves what other apps shared; the lists read its problems.
+  final CaptureInboxBloc captureInbox;
   final FixtureSyncRepository syncRepository;
 
   /// The shared notes (see [FixtureSharedNotesRepository]) and the app's
@@ -146,12 +153,16 @@ class BrowseBlocs {
       fixture,
       MemoryNotePlaceRepository(),
       ForgetfulPreferencesRepository(),
+      MockCaptureRepository(),
+      FakeMediaPickerRepository(),
     );
     closeBlocLater(creation);
     final defaultNotebook = DefaultNotebookBloc(
       ForgetfulPreferencesRepository(),
     );
     closeBlocLater(defaultNotebook);
+    final captureInbox = CaptureInboxBloc(MockCaptureRepository());
+    closeBlocLater(captureInbox);
     return BrowseBlocs._(
       fixture,
       index,
@@ -164,6 +175,7 @@ class BrowseBlocs {
       invitations,
       creation,
       defaultNotebook,
+      captureInbox,
     );
   }
 
@@ -267,6 +279,7 @@ class BrowseBlocs {
         BlocProvider<UndoNoticeBloc>.value(value: undoNotice),
         BlocProvider<NoteCreationBloc>.value(value: creation),
         BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
+        BlocProvider<CaptureInboxBloc>.value(value: captureInbox),
         if (list != null) BlocProvider<NoteListBloc>.value(value: list),
         if (note != null) BlocProvider<NoteBloc>.value(value: note),
         if (search != null) BlocProvider<SearchBloc>.value(value: search),

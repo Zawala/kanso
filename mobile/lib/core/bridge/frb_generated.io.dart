@@ -424,6 +424,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   Share dco_decode_box_autoadd_share(dynamic raw);
 
   @protected
+  ShareFile dco_decode_box_autoadd_share_file(dynamic raw);
+
+  @protected
   ShareInfo dco_decode_box_autoadd_share_info(dynamic raw);
 
   @protected
@@ -1376,6 +1379,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   Share sse_decode_box_autoadd_share(SseDeserializer deserializer);
+
+  @protected
+  ShareFile sse_decode_box_autoadd_share_file(SseDeserializer deserializer);
 
   @protected
   ShareInfo sse_decode_box_autoadd_share_info(SseDeserializer deserializer);
@@ -2509,6 +2515,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_box_autoadd_share(Share self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_share_file(
+    ShareFile self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_share_info(

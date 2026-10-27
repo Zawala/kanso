@@ -42,6 +42,13 @@ abstract final class KansoRoutes {
   /// opens the note in All Notes.
   static const String daily = '/daily';
 
+  /// A new note in Edit, as the + button makes: `kanso://open/new`. With
+  /// `?voice=1` it starts in its text, to dictate into.
+  static const String newNote = '/new';
+
+  /// The parameter of [newNote] that makes it a voice note.
+  static const String voiceParameter = 'voice';
+
   /// Settings, a sheet on a tablet and a page on a phone.
   static const String settings = '/settings';
   static const String settingsNotebook = '/settings/notebook';

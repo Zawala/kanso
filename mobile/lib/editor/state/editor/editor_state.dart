@@ -46,6 +46,14 @@ abstract class EditorState with _$EditorState {
     /// How many times the field must take the text of [snapshot] again.
     @Default(0) int reloadSeq,
 
+    /// The change the last attachment made, for the field to take; a new
+    /// one each time [attachSeq] goes up.
+    EditOutcome? attached,
+    @Default(0) int attachSeq,
+
+    /// Why things could not be attached, one each, until it is dismissed.
+    @Default(<ApplicationError>[]) List<ApplicationError> attachProblems,
+
     /// Why opening failed, while [status] is failed.
     ApplicationError? error,
   }) = _EditorState;

@@ -6,6 +6,7 @@ import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:dartz/dartz.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:injectable/injectable.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -134,4 +135,7 @@ abstract class CoreModule {
 
   @lazySingleton
   KansoGallery gallery(KansoLibrary library) => library.gallery();
+
+  @lazySingleton
+  ImagePicker imagePicker() => ImagePicker();
 }

@@ -13,6 +13,7 @@ import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/capture_inbox/capture_inbox_bloc.dart';
 import 'package:kanso/core/state/device_approval/device_approval_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
@@ -150,6 +151,7 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
           BlocProvider<NoteCreationBloc>.value(value: blocs.creation),
           BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
+          BlocProvider<CaptureInboxBloc>.value(value: blocs.captureInbox),
           BlocProvider<BackupNoticeBloc>.value(
             value: backupNotice ?? hiddenBackupNoticeBloc(),
           ),

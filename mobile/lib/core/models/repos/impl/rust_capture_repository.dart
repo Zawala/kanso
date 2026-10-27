@@ -32,6 +32,10 @@ class RustCaptureRepository implements CaptureRepository {
   });
 
   @override
+  Future<Either<ApplicationError, CaptureOutcome>> capture(Share share) =>
+      attempt(() => _library.capture(share: share));
+
+  @override
   Future<Either<ApplicationError, String>> todayNote(DateTime now) => attempt(
     () => _library.todayNote(
       now: LocalTime(

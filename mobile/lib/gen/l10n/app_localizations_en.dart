@@ -2246,4 +2246,19 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get dailyNoteFailedMessage =>
       'Something went wrong opening today’s note on this phone. Try again.';
+
+  @override
+  String get captureTakePhoto => 'Take photo';
+
+  @override
+  String get captureChoosePhotos => 'Choose photos';
+
+  @override
+  String get captureAttachPdf => 'Attach PDF';
+
+  @override
+  String get captureImageLink => 'Image link';
+
+  @override
+  String get captureAttachFailed => 'Couldn\'t attach that file.';
 }

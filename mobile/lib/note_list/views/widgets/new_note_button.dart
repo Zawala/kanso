@@ -16,11 +16,13 @@ import '../../../core/views/widgets/kanso_pressable.dart';
 
 /// The capsule that makes a new note, afloat at the foot of a phone's list:
 /// the plus and "New note" on the button colour, centred, with a soft
-/// shadow under it.
+/// shadow under it. Held, it offers the camera, photos and PDFs
+/// ([onLongPress]).
 class NewNoteButton extends StatelessWidget {
-  const NewNoteButton({required this.onPressed, super.key});
+  const NewNoteButton({required this.onPressed, this.onLongPress, super.key});
 
   final VoidCallback onPressed;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +30,7 @@ class NewNoteButton extends StatelessWidget {
     final label = context.l10n.noteListNewNote;
     return KansoPressable(
       onTap: onPressed,
+      onLongPress: onLongPress,
       semanticLabel: label,
       scale: KansoEffects.pressScale,
       child: Container(

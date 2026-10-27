@@ -16,5 +16,9 @@ abstract class NoteCreationState with _$NoteCreationState {
 
     /// Why the last note was not made, until it is dismissed.
     NoteCreationFailure? failure,
+
+    /// What was left out of the note just captured, a sentence each, until
+    /// it is dismissed.
+    @Default(<String>[]) List<String> problems,
   }) = _NoteCreationState;
 }

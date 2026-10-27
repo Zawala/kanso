@@ -11,6 +11,7 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 
 import 'package:get_it/get_it.dart' as _i174;
+import 'package:image_picker/image_picker.dart' as _i183;
 import 'package:injectable/injectable.dart' as _i526;
 
 import 'account/state/account_details/account_details_bloc.dart' as _i645;
@@ -18,6 +19,9 @@ import 'account/state/recover/recover_bloc.dart' as _i1059;
 import 'account/state/recovery_key/recovery_key_bloc.dart' as _i35;
 import 'account/state/sign_in/sign_in_bloc.dart' as _i552;
 import 'account/state/unlock/unlock_bloc.dart' as _i858;
+import 'capture/models/repos/abs/media_picker_repository.dart' as _i900;
+import 'capture/models/repos/impl/platform_media_picker_repository.dart'
+    as _i598;
 import 'capture/state/daily_note/daily_note_bloc.dart' as _i1060;
 import 'core/bridge/api/account.dart' as _i578;
 import 'core/bridge/api/account_settings.dart' as _i102;
@@ -134,11 +138,12 @@ extension GetItInjectableX on _i174.GetIt {
     _i526.EnvironmentFilter? environmentFilter,
   }) async {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
-    final crashModule = _$CrashModule();
     final coreModule = _$CoreModule();
+    final crashModule = _$CrashModule();
     final appModule = _$AppModule();
     gh.factory<_i612.LibraryPaneBloc>(() => _i612.LibraryPaneBloc());
     gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
+    gh.lazySingleton<_i183.ImagePicker>(() => coreModule.imagePicker());
     gh.lazySingleton<_i825.ExternalChanges>(() => _i825.ExternalChanges());
     gh.lazySingleton<_i846.LibraryFolderMigration>(
       () => _i846.LibraryFolderMigration(),
@@ -213,6 +218,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i223.WidgetColorsBloc>(
       () => _i223.WidgetColorsBloc(gh<_i978.WidgetColorsRepository>()),
+    );
+    gh.lazySingleton<_i900.MediaPickerRepository>(
+      () => _i598.PlatformMediaPickerRepository(gh<_i183.ImagePicker>()),
     );
     gh.lazySingleton<_i1070.CrashContextRepository>(
       () => _i756.PlatformCrashContextRepository(gh<_i909.PatchRepository>()),
@@ -327,6 +335,8 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i38.LibraryRepository>(),
         gh<_i930.NotePlaceRepository>(),
         gh<_i384.PreferencesRepository>(),
+        gh<_i23.CaptureRepository>(),
+        gh<_i900.MediaPickerRepository>(),
       ),
     );
     gh.factory<_i351.NoteListBloc>(
@@ -347,6 +357,7 @@ extension GetItInjectableX on _i174.GetIt {
       () => _i964.EditorBloc(
         gh<_i979.EditorRepository>(),
         gh<_i272.WebLinkRepository>(),
+        gh<_i900.MediaPickerRepository>(),
       ),
     );
     gh.lazySingleton<_i1035.AccountRepository>(
@@ -465,8 +476,8 @@ extension GetItInjectableX on _i174.GetIt {
   }
 }
 
-class _$CrashModule extends _i1016.CrashModule {}
-
 class _$CoreModule extends _i418.CoreModule {}
+
+class _$CrashModule extends _i1016.CrashModule {}
 
 class _$AppModule extends _i216.AppModule {}

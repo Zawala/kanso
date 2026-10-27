@@ -15,6 +15,7 @@ import '../../../core/models/repos/abs/library_repository.dart';
 import '../../../core/models/repos/abs/renderer_repository.dart';
 import '../../../core/utils/debounce.dart';
 import '../../../core/utils/source_lines.dart';
+import '../../models/data/new_note_start.dart';
 import '../../models/data/note_mode.dart';
 import '../../models/data/note_place.dart';
 import '../../models/data/note_screen_status.dart';
@@ -80,8 +81,9 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
       NoteState(
         noteId: event.id,
         themeId: event.themeId,
-        mode: fresh ? NoteMode.edit : NoteMode.preview,
-        openedNew: fresh,
+        mode: fresh != null ? NoteMode.edit : NoteMode.preview,
+        openedNew: fresh != null,
+        startInText: fresh == NewNoteStart.text,
       ),
     );
     _stale = false;

@@ -10,7 +10,8 @@ use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
     Completion, CursorMark, EditCommand, EditOutcome, EditorContext, EditorEvent, EditorSession,
-    EditorSnapshot, KansoError, LinkTarget, Property, Range16, RunBatch, SaveState, TextChange,
+    EditorSnapshot, KansoError, LinkTarget, Property, Range16, RunBatch, SaveState, ShareFile,
+    TextChange,
 };
 
 /// A note open for editing. Cheap to clone on the Rust side; Dart holds one.

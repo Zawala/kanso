@@ -7,10 +7,14 @@ import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../capture/models/data/media_source.dart';
+import '../../../capture/models/repos/abs/media_picker_repository.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/models/data/application_error.dart';
+import '../../../core/models/repos/abs/capture_repository.dart';
 import '../../../core/models/repos/abs/library_repository.dart';
 import '../../../core/models/repos/abs/preferences_repository.dart';
+import '../../../note/models/data/new_note_start.dart';
 import '../../../note/models/repos/abs/note_place_repository.dart';
 import '../../models/data/note_creation_failure.dart';
 import '../../models/data/note_opening.dart';
@@ -33,21 +37,30 @@ part 'note_creation_state.dart';
 /// to go to, and marked so that it opens ready to write in.
 @injectable
 class NoteCreationBloc extends Bloc<NoteCreationEvent, NoteCreationState> {
-  NoteCreationBloc(this._library, this._places, this._preferences)
-    : super(const NoteCreationState()) {
+  NoteCreationBloc(
+    this._library,
+    this._places,
+    this._preferences,
+    this._capture,
+    this._picker,
+  ) : super(const NoteCreationState()) {
     on<NoteCreationRequestedEvent>(_onRequested, transformer: droppable());
+    on<NoteCreationCapturedEvent>(_onCaptured, transformer: droppable());
     on<NoteCreationTitledEvent>(_onTitled, transformer: droppable());
     on<NoteCreationOpeningHandledEvent>(
       (event, emit) => emit(state.copyWith(opening: null)),
     );
     on<NoteCreationNoticeDismissedEvent>(
-      (event, emit) => emit(state.copyWith(failure: null)),
+      (event, emit) =>
+          emit(state.copyWith(failure: null, problems: const <String>[])),
     );
   }
 
   final LibraryRepository _library;
   final NotePlaceRepository _places;
   final PreferencesRepository _preferences;
+  final CaptureRepository _capture;
+  final MediaPickerRepository _picker;
 
   Future<void> _onRequested(
     NoteCreationRequestedEvent event,
@@ -63,6 +76,42 @@ class NoteCreationBloc extends Bloc<NoteCreationEvent, NoteCreationState> {
       ),
       event.place,
       emit,
+      start: event.start,
+    );
+  }
+
+  /// Picks from the source, then saves what was picked as one note in the
+  /// Inbox and opens it to look at; nothing picked, nothing made.
+  Future<void> _onCaptured(
+    NoteCreationCapturedEvent event,
+    Emitter<NoteCreationState> emit,
+  ) async {
+    final picked = await _picker.pick(event.source);
+    final files = picked.fold((_) => null, (files) => files);
+    if (files == null) {
+      emit(const NoteCreationState(failure: NoteCreationFailure.failed));
+      return;
+    }
+    if (files.isEmpty) {
+      return;
+    }
+    emit(state.copyWith(creating: true, failure: null));
+    final saved = await _capture.capture(Share(files: files));
+    emit(
+      saved.fold(
+        (error) => NoteCreationState(
+          failure: error is LockedError
+              ? NoteCreationFailure.locked
+              : NoteCreationFailure.failed,
+        ),
+        (outcome) => NoteCreationState(
+          opening: NoteOpening(
+            noteId: outcome.noteId,
+            place: const ListPlace.all(),
+          ),
+          problems: outcome.problems,
+        ),
+      ),
     );
   }
 
@@ -90,8 +139,9 @@ class NoteCreationBloc extends Bloc<NoteCreationEvent, NoteCreationState> {
   Future<void> _create(
     NewNote note,
     ListPlace from,
-    Emitter<NoteCreationState> emit,
-  ) async {
+    Emitter<NoteCreationState> emit, {
+    NewNoteStart start = NewNoteStart.title,
+  }) async {
     emit(state.copyWith(creating: true, failure: null));
     final made = await _library.create(note);
     await made.fold(
@@ -103,7 +153,7 @@ class NoteCreationBloc extends Bloc<NoteCreationEvent, NoteCreationState> {
         ),
       ),
       (saved) async {
-        _places.markOpenedNew(saved.id);
+        _places.markOpenedNew(saved.id, start: start);
         var place = from;
         if (from is ListPlace_Trash) {
           // The trash cannot hold a new note: it went into a notebook, and

@@ -3,11 +3,13 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:bloc_test/bloc_test.dart';
-import 'package:dartz/dartz.dart' show Left, Unit;
+import 'package:dartz/dartz.dart' show Left, Right, Unit;
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanso/capture/models/data/media_source.dart';
 import 'package:kanso/core/bridge/api/types.dart' as core;
 import 'package:kanso/core/bridge/api/types.dart' hide EditorEvent;
 import 'package:kanso/core/models/data/application_error.dart';
@@ -18,6 +20,7 @@ import 'package:kanso/editor/state/editor/editor_bloc.dart';
 
 import '../../../helpers/fake_editor_document.dart';
 import '../../../helpers/fake_editor_repository.dart';
+import '../../../helpers/fake_media_picker_repository.dart';
 import '../../../helpers/fake_web_link_repository.dart';
 
 const _noHistory = HistoryState(canUndo: false, canRedo: false);
@@ -49,6 +52,11 @@ const _property = Property(
   items: <String>[],
 );
 
+ShareFile _file(String name) => ShareFile(
+  name: name,
+  bytes: Uint8List.fromList(<int>[1]),
+);
+
 /// The revision a state says was saved, if it says so.
 String? _savedRev(EditorState state) {
   final save = state.save;
@@ -63,10 +71,12 @@ bool? _conflictDeleted(EditorState state) {
 
 void main() {
   late FakeEditorDocument document;
+  late FakeMediaPickerRepository picker;
   late FakeWebLinkRepository links;
 
   setUp(() {
     links = FakeWebLinkRepository();
+    picker = FakeMediaPickerRepository();
     document = FakeEditorDocument(text: 'the text', title: 'A title')
       ..properties = const <Property>[_property];
     addTearDown(document.events_.close);
@@ -76,6 +86,7 @@ void main() {
     final bloc = EditorBloc(
       FakeEditorRepository(document: document, error: error),
       links,
+      picker,
     );
     addTearDown(bloc.close);
     return bloc;
@@ -256,6 +267,167 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(bloc.state.save, isA<SaveState_Conflict>());
     });
+  });
+
+  group('EditorBloc attachRequested', () {
+    blocTest<EditorBloc, EditorState>(
+      'a picker failure is shown as an attachment problem',
+      setUp: () =>
+          picker.answer = const Left<ApplicationError, List<ShareFile>>(
+            ApplicationError.storage(message: 'No picker.'),
+          ),
+      build: build,
+      act: (bloc) async {
+        bloc.add(const EditorEvent.started('note:fake'));
+        await bloc.stream.firstWhere((s) => s.status == EditorStatus.ready);
+        bloc.add(const EditorEvent.attachRequested(MediaSource.photos));
+        await bloc.stream.firstWhere(
+          (state) => state.attachProblems.isNotEmpty,
+        );
+      },
+      skip: 2,
+      expect: () => <Matcher>[
+        isA<EditorState>().having(
+          (state) => state.attachProblems,
+          'attachProblems',
+          const <ApplicationError>[
+            ApplicationError.storage(message: 'No picker.'),
+          ],
+        ),
+      ],
+      verify: (_) {
+        expect(picker.sources, <MediaSource>[MediaSource.photos]);
+        expect(document.attachedFiles, isEmpty);
+      },
+    );
+
+    blocTest<EditorBloc, EditorState>(
+      'attaches each file in turn and counts each one',
+      setUp: () => picker.answer = Right<ApplicationError, List<ShareFile>>(
+        <ShareFile>[_file('one.png'), _file('two.pdf')],
+      ),
+      build: build,
+      act: (bloc) async {
+        bloc.add(const EditorEvent.started('note:fake'));
+        await bloc.stream.firstWhere((s) => s.status == EditorStatus.ready);
+        bloc.add(const EditorEvent.attachRequested(MediaSource.photos));
+        await bloc.stream.firstWhere((s) => s.attachSeq == 2);
+      },
+      wait: const Duration(milliseconds: 50),
+      skip: 2,
+      expect: () => <Matcher>[
+        isA<EditorState>()
+            .having((state) => state.attachSeq, 'attachSeq', 1)
+            .having((state) => state.attached, 'attached', isNotNull),
+        isA<EditorState>()
+            .having((state) => state.attachSeq, 'attachSeq', 2)
+            .having((state) => state.attached, 'attached', isNotNull),
+      ],
+      verify: (_) {
+        expect(document.attachedFiles, <String>['one.png', 'two.pdf']);
+        expect(document.text, contains('one.png'));
+        expect(document.text, contains('two.pdf'));
+      },
+    );
+
+    blocTest<EditorBloc, EditorState>(
+      'keeps the one that worked and says why the other did not',
+      setUp: () {
+        picker.answer = Right<ApplicationError, List<ShareFile>>(
+          <ShareFile>[_file('one.png'), _file('two.pdf')],
+        );
+        document.attachFailures['two.pdf'] = const ApplicationError.storage(
+          message: 'Not an image or a PDF.',
+        );
+      },
+      build: build,
+      act: (bloc) async {
+        bloc.add(const EditorEvent.started('note:fake'));
+        await bloc.stream.firstWhere((s) => s.status == EditorStatus.ready);
+        bloc.add(const EditorEvent.attachRequested(MediaSource.photos));
+        await bloc.stream.firstWhere((s) => s.attachProblems.isNotEmpty);
+      },
+      wait: const Duration(milliseconds: 50),
+      skip: 2,
+      expect: () => <Matcher>[
+        isA<EditorState>()
+            .having((state) => state.attachSeq, 'attachSeq', 1)
+            .having((state) => state.attachProblems, 'problems', isEmpty),
+        isA<EditorState>()
+            .having((state) => state.attachSeq, 'attachSeq', 1)
+            .having(
+              (state) => state.attachProblems,
+              'problems',
+              const <ApplicationError>[
+                ApplicationError.storage(
+                  message: 'Not an image or a PDF.',
+                ),
+              ],
+            ),
+      ],
+      verify: (_) {
+        expect(document.attachedFiles, <String>['one.png']);
+      },
+    );
+
+    blocTest<EditorBloc, EditorState>(
+      'a locked attachment is shown as a locked problem',
+      setUp: () {
+        picker.answer = Right<ApplicationError, List<ShareFile>>(
+          <ShareFile>[_file('locked.pdf')],
+        );
+        document.attachFailures['locked.pdf'] = const ApplicationError.locked(
+          message: 'Locked.',
+        );
+      },
+      build: build,
+      act: (bloc) async {
+        bloc.add(const EditorEvent.started('note:fake'));
+        await bloc.stream.firstWhere((s) => s.status == EditorStatus.ready);
+        bloc.add(const EditorEvent.attachRequested(MediaSource.pdf));
+        await bloc.stream.firstWhere(
+          (state) => state.attachProblems.isNotEmpty,
+        );
+      },
+      skip: 2,
+      expect: () => <Matcher>[
+        isA<EditorState>().having(
+          (state) => state.attachProblems,
+          'attachProblems',
+          const <ApplicationError>[ApplicationError.locked(message: 'Locked.')],
+        ),
+      ],
+      verify: (_) => expect(document.attachedFiles, isEmpty),
+    );
+
+    blocTest<EditorBloc, EditorState>(
+      'dismissing the notice clears the attachment problems',
+      setUp: () =>
+          picker.answer = const Left<ApplicationError, List<ShareFile>>(
+            ApplicationError.storage(message: 'No picker.'),
+          ),
+      build: build,
+      act: (bloc) async {
+        bloc.add(const EditorEvent.started('note:fake'));
+        await bloc.stream.firstWhere((s) => s.status == EditorStatus.ready);
+        bloc.add(const EditorEvent.attachRequested(MediaSource.photos));
+        await bloc.stream.firstWhere((s) => s.attachProblems.isNotEmpty);
+        bloc.add(const EditorEvent.attachNoticeDismissed());
+      },
+      skip: 2,
+      expect: () => <Matcher>[
+        isA<EditorState>().having(
+          (state) => state.attachProblems,
+          'problems',
+          hasLength(1),
+        ),
+        isA<EditorState>().having(
+          (state) => state.attachProblems,
+          'problems',
+          isEmpty,
+        ),
+      ],
+    );
   });
 
   group('EditorBloc caretMoved', () {
