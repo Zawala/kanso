@@ -556,6 +556,66 @@ abstract class AppLocalizations {
   /// **'Fonts'**
   String get settingsFonts;
 
+  /// The settings row that opens the icon themes.
+  ///
+  /// In en, this message translates to:
+  /// **'Icons'**
+  String get settingsIcons;
+
+  /// The title of the page where the icon theme is chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'Icons'**
+  String get iconsTitle;
+
+  /// Explains the icon themes, under the list.
+  ///
+  /// In en, this message translates to:
+  /// **'The icon themes of the desktop app. Choosing one changes every icon at once; an icon a theme doesn’t draw stays Kanso’s own.'**
+  String get iconsFooter;
+
+  /// Who made an icon theme and under which licence, when both are known.
+  ///
+  /// In en, this message translates to:
+  /// **'{author}, {license}'**
+  String iconsCredit(String author, String license);
+
+  /// Says to a screen reader what a row of sample icons shows.
+  ///
+  /// In en, this message translates to:
+  /// **'Icons in {name}'**
+  String iconsPreview(String name);
+
+  /// Says to a screen reader that the icon themes are being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading icon themes'**
+  String get iconsLoading;
+
+  /// The title of the card shown when the icon themes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The icon themes didn’t load'**
+  String get iconsFailedTitle;
+
+  /// The message of the card shown when the icon themes could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the icon themes. Try again.'**
+  String get iconsFailedMessage;
+
+  /// The title of the card shown when there are no icon themes to choose from.
+  ///
+  /// In en, this message translates to:
+  /// **'No icon themes'**
+  String get iconsEmptyTitle;
+
+  /// The message of the card shown when there are no icon themes to choose from.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso’s own icons are in use.'**
+  String get iconsEmptyMessage;
+
   /// Goes back to the page before.
   ///
   /// In en, this message translates to:

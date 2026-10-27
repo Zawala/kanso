@@ -260,6 +260,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsFonts => 'Fonts';
 
   @override
+  String get settingsIcons => 'Icons';
+
+  @override
+  String get iconsTitle => 'Icons';
+
+  @override
+  String get iconsFooter =>
+      'The icon themes of the desktop app. Choosing one changes every icon at once; an icon a theme doesn’t draw stays Kanso’s own.';
+
+  @override
+  String iconsCredit(String author, String license) {
+    return '$author, $license';
+  }
+
+  @override
+  String iconsPreview(String name) {
+    return 'Icons in $name';
+  }
+
+  @override
+  String get iconsLoading => 'Loading icon themes';
+
+  @override
+  String get iconsFailedTitle => 'The icon themes didn’t load';
+
+  @override
+  String get iconsFailedMessage =>
+      'Something went wrong reading the icon themes. Try again.';
+
+  @override
+  String get iconsEmptyTitle => 'No icon themes';
+
+  @override
+  String get iconsEmptyMessage => 'Kanso’s own icons are in use.';
+
+  @override
   String get settingsBack => 'Back';
 
   @override

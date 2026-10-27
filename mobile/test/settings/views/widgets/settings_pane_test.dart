@@ -12,6 +12,7 @@ import 'package:kanso/core/configs/kanso_palette.dart';
 import 'package:kanso/core/models/data/app_version.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
+import 'package:kanso/core/models/data/kanso_icon_set.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
@@ -82,6 +83,7 @@ void main() {
       for (final label in <String>[
         'Appearance',
         'Theme',
+        'Icons',
         'Fonts',
         'Text size',
         'Sync',
@@ -96,7 +98,6 @@ void main() {
       for (final label in <String>[
         'General',
         'Default notebook',
-        'Icons',
         'Account',
         'Sign out',
         'Locked notes',
@@ -126,6 +127,19 @@ void main() {
         find.text('System · Instrument Sans · IBM Plex Mono'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('the Icons row names the icon theme in use', (tester) async {
+      await _pump(tester);
+      expect(find.text('Lucide'), findsOneWidget);
+      await _pump(
+        tester,
+        appearance: const AppearanceState(
+          iconSet: KansoIconSet(id: 'phosphor', name: 'Phosphor'),
+        ),
+      );
+      expect(find.text('Phosphor'), findsOneWidget);
+      expect(find.text('Lucide'), findsNothing);
     });
 
     testWidgets('the Text size row shows the size chosen', (tester) async {
@@ -196,13 +210,18 @@ void main() {
       verify(screen.about.openWebsite).called(1);
     });
 
-    testWidgets('the rows go to Theme, Fonts, Text size and Licences', (
+    testWidgets('the rows go to Theme, Icons, Fonts, Text size and Licences', (
       tester,
     ) async {
       final screen = await _pump(tester);
       await tester.tap(find.text('Theme'));
       await tester.pumpAndSettle();
       expect(topOf(screen.router), '/settings/theme');
+      screen.router.pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Icons'));
+      await tester.pumpAndSettle();
+      expect(topOf(screen.router), '/settings/icons');
       screen.router.pop();
       await tester.pumpAndSettle();
       await tester.tap(find.text('Fonts'));

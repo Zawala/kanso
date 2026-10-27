@@ -6,6 +6,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 import '../../bridge/api/types.dart' show SortKey;
 import 'kanso_fonts.dart';
+import 'kanso_icon_set.dart';
 import 'kanso_text_size.dart';
 import 'theme_selection.dart';
 
@@ -31,6 +32,10 @@ abstract class Preferences with _$Preferences {
     @JsonKey(unknownEnumValue: KansoTextSize.standard)
     @Default(KansoTextSize.standard)
     KansoTextSize textSize,
+
+    /// The icon theme the app is drawn in, by its ID. A theme this version
+    /// does not know is Kanso's own icons.
+    @Default(KansoIconSet.lucideId) String iconTheme,
 
     /// What note lists are sorted by.
     @JsonKey(unknownEnumValue: SortKey.updated)

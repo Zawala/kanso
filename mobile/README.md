@@ -92,6 +92,7 @@ pinned note, a locked one):
 | `browse_flow_test.dart` | All Notes under Pinned and Today; the library and a notebook's notes; a note opened and closed; a swipe pins; two notes chosen and moved; a note trashed and the Trash count; the locked note shows its title and its lock, and its text is nowhere |
 | `search_flow_test.dart` | Type a word and see what matched highlighted; narrow to titles; open a hit |
 | `open_flow_test.dart` | `kanso://open/note/…`, `…/notebook/…` and `…/search?q=…` as the platform hands them over; a note that is not there; a locked note |
+| `icons_flow_test.dart` | Settings › Appearance › Icons lists the icon themes with Lucide in use; choosing Phosphor draws the app's icons from its SVGs at once and the Icons row names it; choosing Lucide again puts Kanso's own icons back |
 
 ```sh
 flutter test integration_test/browse_flow_test.dart -d <simulator or emulator>

@@ -299,6 +299,7 @@ jobs:
       - run: flutter test integration_test/browse_flow_test.dart -d "$KANSO_IOS_SIM_UDID" --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
       - run: flutter test integration_test/search_flow_test.dart -d "$KANSO_IOS_SIM_UDID" --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
       - run: flutter test integration_test/open_flow_test.dart -d "$KANSO_IOS_SIM_UDID" --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
+      - run: flutter test integration_test/icons_flow_test.dart -d "$KANSO_IOS_SIM_UDID" --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
       # Scrolling 2,000 notes. A simulator draws at 60 Hz in debug mode, so
       # this only proves the frame report is made; the limits apply in
       # profile mode, on a device (see mobile/README.md).
@@ -386,6 +387,7 @@ jobs:
             flutter test integration_test/browse_flow_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
             flutter test integration_test/search_flow_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
             flutter test integration_test/open_flow_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
+            flutter test integration_test/icons_flow_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
             flutter test integration_test/scroll_performance_test.dart -d emulator-5554 --dart-define=KANSO_ORIENTATION=${{ matrix.orientation }}
             adb -s emulator-5554 install -r build/app/outputs/flutter-apk/app-debug.apk
             ../scripts/mobile-backup-check.sh emulator-5554

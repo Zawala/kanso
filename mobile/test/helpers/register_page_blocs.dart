@@ -10,6 +10,7 @@ import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
+import 'package:kanso/settings/state/icon_themes/icon_themes_bloc.dart';
 import 'package:kanso/settings/state/licences/licences_bloc.dart';
 import 'package:kanso/themes/state/theme_picker/theme_picker_bloc.dart';
 
@@ -59,6 +60,12 @@ void registerPageBlocs(
   }
   getIt.registerFactory<ThemePickerBloc>(
     () => ThemePickerBloc(renderer ?? FixtureRendererRepository()),
+  );
+  if (getIt.isRegistered<IconThemesBloc>()) {
+    getIt.unregister<IconThemesBloc>();
+  }
+  getIt.registerFactory<IconThemesBloc>(
+    () => IconThemesBloc(renderer ?? FixtureRendererRepository()),
   );
   addTearDown(() => unawaited(getIt.reset()));
 }

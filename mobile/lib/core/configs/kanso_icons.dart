@@ -5,8 +5,10 @@
 /// The icons Kanso draws: Lucide, the same set the desktop app uses.
 ///
 /// Each value names an SVG under `assets/icons/lucide/`. Draw one with
-/// `KansoIcon`; a future icon theme can swap the source by changing
-/// [assetPath].
+/// `KansoIcon`, which draws the icon theme chosen in Settings and falls back
+/// to this SVG for an icon the theme leaves out. The names are also the list
+/// of icons the Rust core resolves a theme for
+/// (`crates/kanso-mobile/app-icons.txt`).
 enum KansoIcons {
   archive('archive'),
   arrowLeft('arrow-left'),
@@ -83,5 +85,8 @@ enum KansoIcons {
   final String lucideName;
 
   /// Where the SVG is bundled.
-  String get assetPath => 'assets/icons/lucide/$lucideName.svg';
+  String get assetPath => assetPathOf(lucideName);
+
+  /// Where the bundled SVG of the Lucide icon [name] is.
+  static String assetPathOf(String name) => 'assets/icons/lucide/$name.svg';
 }

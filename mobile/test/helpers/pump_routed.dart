@@ -52,6 +52,7 @@ Future<GoRouter> pumpRouted(
         builder: empty,
         routes: <RouteBase>[
           GoRoute(path: 'theme', builder: empty),
+          GoRoute(path: 'icons', builder: empty),
           GoRoute(path: 'fonts', builder: empty),
           GoRoute(path: 'licences', builder: empty),
         ],

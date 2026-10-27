@@ -12,6 +12,7 @@ import '../../note/views/widgets/no_note_selected_pane.dart';
 import '../../note_list/views/pages/note_list_page.dart';
 import '../../search/views/pages/search_page.dart';
 import '../../settings/views/pages/fonts_page.dart';
+import '../../settings/views/pages/icon_themes_page.dart';
 import '../../settings/views/pages/licences_page.dart';
 import '../../settings/views/pages/settings_page.dart';
 import '../../shell/views/widgets/browse_shell.dart';
@@ -32,8 +33,8 @@ import 'layout_class_notifier.dart';
 ///   opened from one is that address plus `/note/:noteId`.
 /// * Settings is a shell of its own on top of the root navigator, so it
 ///   opens over what the person was doing and closes back to it, with
-///   Theme, Fonts and Licences sliding inside it. It is a sheet on a tablet
-///   and a page on a phone.
+///   Theme, Icons, Fonts and Licences sliding inside it. It is a sheet on a
+///   tablet and a page on a phone.
 /// * `kanso://open/…` links and the short forms (`/note/:id`,
 ///   `/notebook/:id`) land on the addresses above; an address that is
 ///   nothing goes to All Notes.
@@ -142,6 +143,13 @@ class KansoRouter {
                   pageBuilder: (context, state) => CupertinoPage<void>(
                     key: state.pageKey,
                     child: const ThemePickerPage(),
+                  ),
+                ),
+                GoRoute(
+                  path: 'icons',
+                  pageBuilder: (context, state) => CupertinoPage<void>(
+                    key: state.pageKey,
+                    child: const IconThemesPage(),
                   ),
                 ),
                 GoRoute(
