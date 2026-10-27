@@ -121,8 +121,15 @@ pub fn tag(store: &Store, name: &str) -> String {
         .id
 }
 
-/// Writes a note straight into `store`.
+/// Writes a note straight into `store`, in a notebook that exists: the store
+/// turns away a note whose `bookId` no notebook has.
 pub fn raw_note(store: &Store, fields: serde_json::Value) -> String {
+    let mut fields = fields;
+    let object = fields.as_object_mut().expect("an object of note fields");
+    if !object.contains_key("bookId") {
+        let book = book(store, "B");
+        object.insert("bookId".to_owned(), json!(book));
+    }
     store
         .put(DocType::Note, fields, Put::Upsert, Origin::Ui)
         .unwrap()

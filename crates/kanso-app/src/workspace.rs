@@ -1674,7 +1674,7 @@ impl Workspace {
                 .background_executor()
                 .spawn({
                     let root = root.clone();
-                    async move { crate::export::export(&store, &root, only.as_deref()) }
+                    async move { kanso_engine::export::export(&store, &root, only.as_deref()) }
                 })
                 .await;
             cx.update(|window, cx| match result {

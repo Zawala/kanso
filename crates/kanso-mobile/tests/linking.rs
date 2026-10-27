@@ -120,9 +120,11 @@ fn backlinks_and_mentions_come_with_the_line_they_are_on() {
     let back = linking.backlinks(&target).unwrap();
     assert_eq!(ids(&back), sorted(vec![by_title.clone(), by_id.clone()]));
     let title_row = back.iter().find(|l| l.id == by_title).unwrap();
+    // The context is the line as words, so a wiki-link shows the text it
+    // links to and not its brackets: it is the store's own context line.
     assert_eq!(
         (title_row.line, title_row.context.as_str()),
-        (1, "see [[Hubword]] now")
+        (1, "see Hubword now")
     );
     let mentions = linking.unlinked_mentions(&target).unwrap();
     assert_eq!(ids(&mentions), vec![mention.clone()]);
@@ -412,7 +414,8 @@ proptest! {
         prop_assert_eq!(ids(&back), all_linkers.clone());
         for link in &back {
             prop_assert_eq!(link.line, 1);
-            prop_assert_eq!(link.context.as_str(), "see [[Hubword]] here");
+            // Plain words, as the store's own backlink context is.
+            prop_assert_eq!(link.context.as_str(), "see Hubword here");
         }
         let mentions = linking.unlinked_mentions(&target).unwrap();
         prop_assert_eq!(ids(&mentions), all_mentioners.clone());

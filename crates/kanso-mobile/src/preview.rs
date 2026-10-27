@@ -21,6 +21,7 @@ use kanso_core::links::{FILE_LINK_PREFIX, NOTE_LINK_PREFIX, normalize_title};
 use kanso_core::query_view::{ViewNote, cell_text};
 use kanso_core::tasks::{linked_file_ids, task_items};
 use kanso_core::{DocType, now_ms};
+use kanso_engine::export::PageStyle;
 use kanso_engine::highlight::{self, Token};
 use kanso_engine::links::{self, WikiIndex};
 use kanso_engine::tasks::{self as due_chips, Tone};
@@ -36,8 +37,8 @@ use crate::boundary::guard;
 use crate::errors::KansoError;
 use crate::library::Library;
 use crate::model::{
-    AttachmentFile, DiagramRenderer, NewNote, PaletteDto, PreviewLink, PreviewOptions, Saved,
-    SyntaxStyleRow, Ticked,
+    AttachmentFile, DiagramRenderer, ExportedPage, NewNote, PaletteDto, PreviewLink,
+    PreviewOptions, Saved, SyntaxStyleRow, Ticked,
 };
 use crate::renderer::{Renderer, palette_of};
 
@@ -115,6 +116,50 @@ impl Renderer {
                     app: Some(&mode),
                 },
             ))
+        })
+    }
+
+    /// A note as the page the desktop exports: one self-contained file, in
+    /// `palette`'s colors and `options`' faces and size, with its query
+    /// views drawn, its math, diagrams and drawings inline as SVG and its
+    /// images as data URIs.
+    ///
+    /// It is not the preview. The preview is the app's page, so its links
+    /// are addresses the app answers; this one is what anyone who opens the
+    /// file sees, so its links are the ones such a page can follow. Code
+    /// keeps the theme's colors, which are made for a page this dark.
+    ///
+    /// [`KansoError::Locked`] while the note is locked and closed.
+    pub fn page_html(
+        &self,
+        id: &str,
+        palette: PaletteDto,
+        options: PreviewOptions,
+    ) -> Result<ExportedPage, KansoError> {
+        guard(|| {
+            let library = self.library();
+            let (note, body) = library.readable_text(id)?.ok_or(KansoError::Locked)?;
+            let store = &self.inner.store;
+            let palette = palette_of(palette);
+            let style = PageStyle::for_palette(
+                options.font,
+                options.mono,
+                options.size,
+                page_code_colors(&options.code, palette.dark),
+                &palette,
+                || None,
+            );
+            Ok(ExportedPage {
+                html: kanso_engine::export::page(
+                    store,
+                    &note.title,
+                    &body,
+                    &palette,
+                    Some(id),
+                    &style,
+                ),
+                file_name: kanso_engine::export::file_name(&note.title, "pdf"),
+            })
         })
     }
 
@@ -486,23 +531,38 @@ struct CodeColors {
 impl CodeColors {
     /// The colors of `rows`, or `None` when there are none to color with.
     fn new(rows: &[SyntaxStyleRow]) -> Option<CodeColors> {
-        let styles: BTreeMap<&'static str, TokenStyle> = rows
-            .iter()
-            .filter_map(|row| {
-                let token = Token::from_key(&row.token)?;
-                Some((
-                    token.key(),
-                    TokenStyle {
-                        color: row.color.map(Rgb),
-                        italic: row.italic,
-                        weight: row.weight,
-                    },
-                ))
-            })
-            .filter(|(_, style)| !style.is_empty())
-            .collect();
+        let styles = syntax_styles(rows);
         (!styles.is_empty()).then_some(CodeColors { styles })
     }
+}
+
+/// The theme's token styles, by the key that names each token: only the ones
+/// that say something, so a token left plain isn't a style.
+fn syntax_styles(rows: &[SyntaxStyleRow]) -> BTreeMap<&'static str, TokenStyle> {
+    rows.iter()
+        .filter_map(|row| {
+            let token = Token::from_key(&row.token)?;
+            Some((
+                token.key(),
+                TokenStyle {
+                    color: row.color.map(Rgb),
+                    italic: row.italic,
+                    weight: row.weight,
+                },
+            ))
+        })
+        .filter(|(_, style)| !style.is_empty())
+        .collect()
+}
+
+/// The page's code colors: the theme's styles, marked with whether they are
+/// made for a dark page.
+fn page_code_colors(
+    rows: &[SyntaxStyleRow],
+    dark: bool,
+) -> Option<kanso_engine::export::CodeColors> {
+    let syntax = syntax_styles(rows);
+    (!syntax.is_empty()).then_some(kanso_engine::export::CodeColors { dark, syntax })
 }
 
 impl Highlighter for CodeColors {

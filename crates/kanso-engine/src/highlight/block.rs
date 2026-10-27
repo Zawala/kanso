@@ -204,41 +204,150 @@ fn injected_items(
 
     let mut items = Vec::new();
     for layer in &layers {
-        let Some(highlights) = layer.grammar.highlights() else {
-            continue;
-        };
-        let mut cursor = QueryCursor::new();
-        let mut matches = cursor.matches(
-            &highlights.query,
-            layer.tree.root_node(),
-            layer.text.as_bytes(),
-        );
-        // Within a layer, a capture that starts inside the one before it is
-        // dropped, unless its pattern allows overlap.
-        let mut last_end = 0usize;
-        while let Some(found) = matches.next() {
-            let overlap = highlights
-                .query
-                .property_settings(found.pattern_index)
-                .iter()
-                .any(|property| property.key.as_ref() == "highlight.allow-overlap");
-            for capture in found.captures {
-                let range =
-                    capture.node.start_byte() + layer.start..capture.node.end_byte() + layer.start;
-                if !overlap && range.start < last_end {
-                    continue;
-                }
-                if !overlap {
-                    last_end = range.end;
-                }
-                items.push(Item {
-                    token: highlights.tokens[capture.index as usize],
-                    range,
-                });
-            }
+        items.extend(layer_items(
+            layer.grammar,
+            &layer.tree,
+            layer.text,
+            layer.start,
+        ));
+    }
+    items
+}
+
+/// The captures of the language itself, as the component library matches
+/// them: its locals query and highlights query in one, in capture order. A
+/// capture over the same range as the one before it keeps the earlier
+/// capture's token, which is how the library lets a local declaration hide
+/// the variable capture over it.
+fn primary_items(grammar: &'static Grammar, tree: &Tree, text: &str) -> Vec<Item> {
+    let Some(highlights) = grammar.main_highlights() else {
+        return Vec::new();
+    };
+    let mut items: Vec<Item> = Vec::new();
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(&highlights.query, tree.root_node(), text.as_bytes());
+    while let Some(found) = matches.next() {
+        for capture in found.captures {
+            let range = capture.node.byte_range();
+            let token = match items.last() {
+                Some(last) if last.range == range => last.token,
+                _ => highlights.tokens[capture.index as usize],
+            };
+            items.push(Item { range, token });
         }
     }
     items
+}
+
+/// The captures of one layer: `text` parsed as `tree` with `grammar`'s
+/// highlight query, at offset `start` of the block it sits in. Within a
+/// layer, a capture that starts inside the one before it is dropped, unless
+/// its pattern allows overlap.
+fn layer_items(grammar: &'static Grammar, tree: &Tree, text: &str, start: usize) -> Vec<Item> {
+    let Some(highlights) = grammar.highlights() else {
+        return Vec::new();
+    };
+    let mut items = Vec::new();
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(&highlights.query, tree.root_node(), text.as_bytes());
+    let mut last_end = 0usize;
+    while let Some(found) = matches.next() {
+        let overlap = highlights
+            .query
+            .property_settings(found.pattern_index)
+            .iter()
+            .any(|property| property.key.as_ref() == "highlight.allow-overlap");
+        for capture in found.captures {
+            let range = capture.node.start_byte() + start..capture.node.end_byte() + start;
+            if !overlap && range.start < last_end + start {
+                continue;
+            }
+            if !overlap {
+                last_end = range.end - start;
+            }
+            items.push(Item {
+                token: highlights.tokens[capture.index as usize],
+                range,
+            });
+        }
+    }
+    items
+}
+
+/// The spans of `text` as the desktop's code-block highlighter draws them:
+/// its main query with locals and same-range names, and Markdown's own
+/// inline injection. Offsets are `text`'s own.
+fn direct_spans(parsers: &mut Parsers, grammar: &'static Grammar, text: &str) -> Vec<Span> {
+    if grammar.name == "markdown" {
+        return block_spans(parsers, text, true);
+    }
+    let Some(tree) = parsers.parse(grammar, text) else {
+        return Vec::new();
+    };
+    let items: Vec<(Range<usize>, Token)> = primary_items(grammar, &tree, text)
+        .into_iter()
+        .filter_map(|item| {
+            let token = item.token?;
+            let mut start = item.range.start.min(text.len());
+            let mut end = item.range.end.min(text.len());
+            while !text.is_char_boundary(start) {
+                start -= 1;
+            }
+            while !text.is_char_boundary(end) {
+                end += 1;
+            }
+            (start < end).then_some((start..end, token))
+        })
+        .collect();
+    flatten(&items)
+}
+
+/// The spans of `code` as the content of a fenced block in `grammar`:
+/// parsed as a text of its own, with the grammar's highlight query alone,
+/// as an injected layer is. Offsets are `code`'s own.
+pub(super) fn code_spans(
+    parsers: &mut Parsers,
+    grammar: &'static Grammar,
+    code: &str,
+) -> Vec<Span> {
+    // A fence's content is injected only when it is non-empty and within the
+    // limit.
+    if code.is_empty() || code.len() > MAX_INJECTION_BYTES {
+        return Vec::new();
+    }
+    let Some(tree) = parsers.parse(grammar, code) else {
+        return Vec::new();
+    };
+    let items: Vec<(Range<usize>, Token)> = layer_items(grammar, &tree, code, 0)
+        .into_iter()
+        .filter_map(|item| {
+            let token = item.token?;
+            let mut start = item.range.start.min(code.len());
+            let mut end = item.range.end.min(code.len());
+            while !code.is_char_boundary(start) {
+                start -= 1;
+            }
+            while !code.is_char_boundary(end) {
+                end += 1;
+            }
+            (start < end).then_some((start..end, token))
+        })
+        .collect();
+    flatten(&items)
+}
+
+/// The spans of `code` as the desktop's preview and page draw a code block
+/// in `grammar`: the language's own highlighter, with its locals query,
+/// rather than the injected-layer rules above. Offsets are `code`'s own.
+pub(super) fn code_spans_direct(
+    parsers: &mut Parsers,
+    grammar: &'static Grammar,
+    code: &str,
+) -> Vec<Span> {
+    if code.is_empty() || code.len() > MAX_INJECTION_BYTES {
+        return Vec::new();
+    }
+    direct_spans(parsers, grammar, code)
 }
 
 /// The layers the host's injection query asks for: a language per fence, the
