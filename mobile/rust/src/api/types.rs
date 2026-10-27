@@ -16,8 +16,8 @@ pub use kanso_mobile::{
     EditorContext, EditorEvent, EditorRun, EditorSnapshot, FormatKind, GalleryColors, GalleryItem,
     GalleryKind, HistoryState, Hit, IconThemeRow, InvitationRow, JoinRow, KansoError,
     LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveStatus,
-    LockEvent, LockReason, LockState, LockedInfo, MemberRow, MentionSpan, NewNote, NoteChange,
-    NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto, PasskeyFailure,
+    LockEvent, LockReason, LockState, LockStatus, LockedInfo, MemberRow, MentionSpan, NewNote,
+    NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto, PasskeyFailure,
     PasskeyRequest, PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow, PreviewLink,
     PreviewOptions, PromptState, Property, PropertyKind, ProviderEvent, ProviderKind, QuotaLimit,
     Range16, RecoveryKeyText, Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo,
@@ -313,6 +313,14 @@ pub struct _TableRow {
 pub enum _LockReason {
     Manual,
     Idle,
+    Background,
+}
+
+#[frb(mirror(LockStatus))]
+pub struct _LockStatus {
+    pub has_lock_password: bool,
+    pub unlocked: bool,
+    pub biometrics_on: bool,
 }
 
 #[frb(mirror(LockEvent))]

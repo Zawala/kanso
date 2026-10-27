@@ -89,6 +89,15 @@ import 'editor/models/repos/impl/url_launcher_web_link_repository.dart'
     as _i635;
 import 'editor/state/editor/editor_bloc.dart' as _i964;
 import 'library/state/new_notebook/new_notebook_bloc.dart' as _i991;
+import 'lock/models/repos/abs/device_lock_repository.dart' as _i279;
+import 'lock/models/repos/impl/plugin_device_lock_repository.dart' as _i64;
+import 'lock/state/biometrics/biometrics_bloc.dart' as _i477;
+import 'lock/state/change_password/change_password_bloc.dart' as _i39;
+import 'lock/state/lock_remove/lock_remove_bloc.dart' as _i215;
+import 'lock/state/lock_setup/lock_setup_bloc.dart' as _i249;
+import 'lock/state/lock_status/lock_status_bloc.dart' as _i57;
+import 'lock/state/privacy_cover/privacy_cover_bloc.dart' as _i330;
+import 'lock/state/unlock/unlock_bloc.dart' as _i797;
 import 'note/models/repos/abs/note_place_repository.dart' as _i930;
 import 'note/models/repos/impl/memory_note_place_repository.dart' as _i503;
 import 'note/state/note/note_bloc.dart' as _i618;
@@ -160,6 +169,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i80.AboutRepository>(
       () => _i489.PackageInfoAboutRepository(gh<_i909.PatchRepository>()),
     );
+    gh.lazySingleton<_i279.DeviceLockRepository>(
+      () => _i64.PluginDeviceLockRepository(),
+    );
     gh.lazySingleton<_i909.PatchRepository>(
       () => _i989.ShorebirdPatchRepository(),
     );
@@ -192,6 +204,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i1070.CrashContextRepository>(
       () => _i756.PlatformCrashContextRepository(gh<_i909.PatchRepository>()),
+    );
+    gh.factory<_i330.PrivacyCoverBloc>(
+      () => _i330.PrivacyCoverBloc(gh<_i279.DeviceLockRepository>()),
     );
     gh.factory<_i380.AboutBloc>(
       () => _i380.AboutBloc(gh<_i80.AboutRepository>()),
@@ -316,6 +331,13 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i333.SessionRepository>(
       () => _i899.RustSessionRepository(gh<_i983.KansoLocks>()),
     );
+    gh.factory<_i797.UnlockBloc>(
+      () => _i797.UnlockBloc(
+        gh<_i333.SessionRepository>(),
+        gh<_i279.DeviceLockRepository>(),
+        gh<_i384.PreferencesRepository>(),
+      ),
+    );
     gh.lazySingleton<_i550.GalleryRepository>(
       () => _i692.RustGalleryRepository(gh<_i783.KansoGallery>()),
     );
@@ -346,6 +368,15 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i794.SyncSettingsBloc>(
       () => _i794.SyncSettingsBloc(gh<_i601.SyncRepository>()),
+    );
+    gh.factory<_i39.ChangePasswordBloc>(
+      () => _i39.ChangePasswordBloc(gh<_i333.SessionRepository>()),
+    );
+    gh.factory<_i215.LockRemoveBloc>(
+      () => _i215.LockRemoveBloc(gh<_i333.SessionRepository>()),
+    );
+    gh.factory<_i249.LockSetupBloc>(
+      () => _i249.LockSetupBloc(gh<_i333.SessionRepository>()),
     );
     gh.factory<_i569.ThemeGalleryBloc>(
       () => _i569.ThemeGalleryBloc(gh<_i550.GalleryRepository>()),
@@ -419,6 +450,18 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i314.AccountSettingsRepository>(),
         gh<_i1035.AccountRepository>(),
         gh<_i227.AuthSessionRepository>(),
+      ),
+    );
+    gh.factory<_i477.BiometricsBloc>(
+      () => _i477.BiometricsBloc(
+        gh<_i333.SessionRepository>(),
+        gh<_i279.DeviceLockRepository>(),
+      ),
+    );
+    gh.factory<_i57.LockStatusBloc>(
+      () => _i57.LockStatusBloc(
+        gh<_i333.SessionRepository>(),
+        gh<_i279.DeviceLockRepository>(),
       ),
     );
     return this;

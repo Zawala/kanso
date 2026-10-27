@@ -28,6 +28,8 @@ import 'package:kanso/core/views/widgets/kanso_sheet.dart';
 import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
 import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/library/views/widgets/library_pane.dart';
+import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
+import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'package:kanso/note/views/pages/note_page.dart';
 import 'package:kanso/note/views/widgets/no_note_selected_pane.dart';
 import 'package:kanso/note_list/views/pages/note_list_page.dart';
@@ -89,6 +91,8 @@ Future<GoRouter> _pump(
         BlocProvider<SyncSettingsBloc>.value(value: startedSyncSettingsBloc()),
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
+        BlocProvider<LockStatusBloc>.value(value: blocs.lock),
+        BlocProvider<PrivacyCoverBloc>.value(value: blocs.cover),
         BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
         BlocProvider<NoteCreationBloc>.value(value: blocs.creation),
         BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),

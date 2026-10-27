@@ -187,6 +187,95 @@ void main() {
       );
     });
 
+    test(
+      'every lock call reaches the session with its own arguments',
+      () async {
+        final locks = _MockLocks();
+        const saved = Saved(id: 'n_1', rev: '2-b');
+        const status = LockStatus(
+          hasLockPassword: true,
+          unlocked: false,
+          biometricsOn: true,
+        );
+        when(locks.lockForBackground).thenAnswer((_) async {});
+        when(locks.lockStatus).thenAnswer((_) async => status);
+        when(
+          () => locks.unlockNote(id: 'n_1', password: 'pw'),
+        ).thenAnswer((_) async => true);
+        when(
+          () => locks.unlockNotebook(bookId: 'b_1', password: 'pw'),
+        ).thenAnswer((_) async => false);
+        when(
+          () => locks.lockNoteWithSession(id: 'n_1'),
+        ).thenAnswer((_) async => saved);
+        when(
+          () => locks.removeNoteLock(id: 'n_1'),
+        ).thenAnswer((_) async => saved);
+        when(
+          () => locks.lockNotebook(bookId: 'b_1', password: 'pw'),
+        ).thenAnswer((_) async => 3);
+        when(
+          () => locks.removeNotebookLock(bookId: 'b_1'),
+        ).thenAnswer((_) async {});
+        when(
+          () => locks.notebookIsOpen(bookId: 'b_1'),
+        ).thenAnswer((_) async => true);
+        when(
+          () => locks.changePassword(old: 'a', new_: 'b'),
+        ).thenAnswer((_) async => 2);
+        when(locks.libraryId).thenAnswer((_) async => 'l_abc');
+        when(locks.biometricsOn).thenAnswer((_) async => true);
+        when(locks.beginBiometricEnrollment).thenAnswer((_) async => 11);
+        when(locks.beginBiometricUnlock).thenAnswer((_) async => null);
+        when(locks.turnOffBiometrics).thenAnswer((_) async {});
+
+        final repository = RustSessionRepository(locks);
+        Right<ApplicationError, T> right<T>(T value) =>
+            Right<ApplicationError, T>(value);
+        expect(await repository.lockForBackground(), right(unit));
+        expect(await repository.lockStatus(), right(status));
+        expect(await repository.unlockNote('n_1', 'pw'), right(true));
+        expect(await repository.unlockNotebook('b_1', 'pw'), right(false));
+        expect(await repository.lockNoteWithSession('n_1'), right(saved));
+        expect(await repository.removeNoteLock('n_1'), right(saved));
+        expect(await repository.lockNotebook('b_1', password: 'pw'), right(3));
+        expect(await repository.removeNotebookLock('b_1'), right(unit));
+        expect(await repository.notebookIsOpen('b_1'), right(true));
+        expect(await repository.changePassword('a', 'b'), right(2));
+        expect(await repository.libraryId(), right('l_abc'));
+        expect(await repository.biometricsOn(), right(true));
+        expect(await repository.beginBiometricEnrollment(), right(11));
+        expect(await repository.beginBiometricUnlock(), right<int?>(null));
+        expect(await repository.turnOffBiometrics(), right(unit));
+      },
+    );
+
+    test("a locked notebook or a wrong password is the app's error", () async {
+      final locks = _MockLocks();
+      when(() => locks.removeNotebookLock(bookId: 'b_1')).thenAnswer(
+        (_) => Future<void>.error(const KansoError.locked()),
+      );
+      when(() => locks.changePassword(old: 'x', new_: 'y')).thenAnswer(
+        (_) => Future<int>.error(
+          const KansoError.auth(message: "That isn't the lock password."),
+        ),
+      );
+      final repository = RustSessionRepository(locks);
+      expect(
+        (await repository.removeNotebookLock(
+          'b_1',
+        )).swap().toOption().toNullable(),
+        isA<LockedError>(),
+      );
+      expect(
+        (await repository.changePassword(
+          'x',
+          'y',
+        )).swap().toOption().toNullable(),
+        isA<AuthError>(),
+      );
+    });
+
     test('a panic that got past the library is an internal error', () async {
       final locks = _MockLocks();
       when(locks.isUnlocked).thenAnswer(

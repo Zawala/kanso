@@ -30,13 +30,14 @@ NotebookRow notebookRow(
   int depth = 0,
   String? parentId,
   NotebookRole? role,
+  bool locked = false,
 }) {
   return NotebookRow(
     id: id,
     name: name ?? 'Notebook $id',
     parentId: parentId,
     count: count,
-    locked: false,
+    locked: locked,
     role: role,
     depth: depth,
   );
@@ -481,12 +482,13 @@ final List<Hit> mockHits = <Hit>[
 
 /// A note of the mock library with what a test changes: its [title] and
 /// [body], and whether it is [closed] (a locked note that has not been
-/// opened). [id] is the sync note's by default.
+/// opened) or [open] (one that has). [id] is the sync note's by default.
 NoteView mockNote({
   String id = MockIds.syncDesign,
   String title = 'Sync design notes',
   String? body,
   bool closed = false,
+  bool open = false,
   String notebookId = MockIds.kanso,
   List<String> tags = const <String>[],
   String status = 'none',
@@ -496,7 +498,9 @@ NoteView mockNote({
     rev: '1-$id',
     title: title,
     body: body,
-    lock: closed ? const LockState.closed() : const LockState.plain(),
+    lock: closed
+        ? const LockState.closed()
+        : (open ? const LockState.open() : const LockState.plain()),
     notebookId: notebookId,
     tags: tags,
     status: status,

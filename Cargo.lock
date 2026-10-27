@@ -4658,12 +4658,15 @@ version = "0.8.4"
 dependencies = [
  "async-channel",
  "base64 0.22.1",
+ "chacha20poly1305",
  "chrono",
  "core-foundation 0.10.1",
  "core-foundation-sys",
+ "curve25519-dalek",
  "ed25519-dalek",
  "flate2",
  "getrandom 0.4.3",
+ "hkdf 0.13.0",
  "jni",
  "kanso-collab",
  "kanso-core",
@@ -4680,6 +4683,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tar",
  "tempfile",
  "thiserror 2.0.21",
@@ -4699,6 +4703,7 @@ dependencies = [
  "kanso-tls",
  "proptest",
  "tempfile",
+ "zeroize",
 ]
 
 [[package]]

@@ -9,6 +9,7 @@ import '../../../core/state/navigation_history/navigation_history_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/syntax_theme_id.dart';
 import '../../../injection.dart';
+import '../../../lock/state/unlock/unlock_bloc.dart';
 import '../../../sharing/state/comments/comments_bloc.dart';
 import '../../../sharing/state/shared_note_status/shared_note_status_bloc.dart';
 import '../../../sharing/views/widgets/shared_note_live.dart';
@@ -59,6 +60,8 @@ class NotePage extends StatelessWidget {
                     getIt<SharedNoteStatusBloc>()
                       ..add(SharedNoteStatusEvent.started(noteId)),
               ),
+              // Unlocking this note, if it is locked.
+              BlocProvider<UnlockBloc>(create: (_) => getIt<UnlockBloc>()),
             ],
             child: Scaffold(
               resizeToAvoidBottomInset: false,
