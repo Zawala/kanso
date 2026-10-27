@@ -75,6 +75,7 @@ pub mod outline;
 pub mod palette;
 pub mod replace;
 pub mod saving;
+pub mod sidebar;
 #[cfg(any(test, feature = "test-support"))]
 pub mod strategies;
 pub mod sync;
