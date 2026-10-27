@@ -34,6 +34,7 @@ import 'fixture_renderer_repository.dart';
 import 'fixture_session_repository.dart';
 import 'fixture_sync_repository.dart';
 import 'library_fixtures.dart';
+import 'register_lock_blocs.dart';
 import 'seeded_appearance_bloc.dart';
 
 /// Runs [body] with the clock at [mockNow], the time of the mock content.
@@ -67,6 +68,7 @@ class BrowseBlocs {
     this.device,
     this.lock,
     this.cover,
+    this.lockPreferences,
   );
 
   /// The mock library (see [FixtureLibraryRepository]).
@@ -78,12 +80,13 @@ class BrowseBlocs {
   final LibraryPaneBloc libraryPane;
   final FixtureSyncRepository syncRepository;
 
-  /// The lock session, closed with a lock password by default, and the
+  /// The lock session, with nothing locked by default, and the
   /// phone's biometrics (Face ID): see [FixtureSessionRepository].
   final FixtureSessionRepository session;
   final FixtureDeviceLockRepository device;
   final LockStatusBloc lock;
   final PrivacyCoverBloc cover;
+  final ForgetfulPreferencesRepository lockPreferences;
   final FixtureRendererRepository renderer = FixtureRendererRepository();
   final RecordingHaptics haptics = RecordingHaptics();
 
@@ -117,13 +120,16 @@ class BrowseBlocs {
     final libraryPane = LibraryPaneBloc();
     closeBlocLater(listNavigation);
     closeBlocLater(libraryPane);
-    final lockSession = session ?? FixtureSessionRepository();
+    final lockSession =
+        session ?? FixtureSessionRepository(hasLockPassword: false);
     final lockDevice = device ?? FixtureDeviceLockRepository();
     addTearDown(() => unawaited(lockSession.close()));
     final lock = LockStatusBloc(lockSession, lockDevice)
       ..add(const LockStatusEvent.started());
     closeBlocLater(lock);
     await lock.stream.firstWhere((state) => state.loaded);
+    final lockPreferences = ForgetfulPreferencesRepository();
+    registerLockBlocs(lockSession, lockDevice, lockPreferences);
     final cover = PrivacyCoverBloc(lockDevice);
     closeBlocLater(cover);
     return BrowseBlocs._(
@@ -138,12 +144,13 @@ class BrowseBlocs {
       lockDevice,
       lock,
       cover,
+      lockPreferences,
     );
   }
 
   /// An unlock BLoC over the fixtures, for a locked note or notebook.
   UnlockBloc unlockOf() {
-    final bloc = UnlockBloc(session, device, ForgetfulPreferencesRepository());
+    final bloc = UnlockBloc(session, device, lockPreferences);
     closeBlocLater(bloc);
     return bloc;
   }

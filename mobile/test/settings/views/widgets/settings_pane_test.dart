@@ -16,11 +16,15 @@ import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/lock/state/biometrics/biometrics_bloc.dart';
+import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../../helpers/close_bloc_later.dart';
+import '../../../helpers/fixture_device_lock_repository.dart';
+import '../../../helpers/fixture_session_repository.dart';
 import '../../../helpers/fixture_sync_repository.dart';
 import '../../../helpers/mock_repositories.dart';
 import '../../../helpers/pump_routed.dart';
@@ -53,6 +57,16 @@ Future<_Settings> _pump(
   final syncBloc = SyncStatusBloc(FixtureSyncRepository(current: status))
     ..add(const SyncStatusEvent.started());
   final appearanceBloc = SeededAppearanceBloc(appearance);
+  final lockBloc = LockStatusBloc(
+    FixtureSessionRepository(hasLockPassword: false),
+    FixtureDeviceLockRepository(),
+  )..add(const LockStatusEvent.started());
+  final biometricsBloc = BiometricsBloc(
+    FixtureSessionRepository(hasLockPassword: false),
+    FixtureDeviceLockRepository(),
+  );
+  closeBlocLater(lockBloc);
+  closeBlocLater(biometricsBloc);
   closeBlocLater(aboutBloc);
   closeBlocLater(syncBloc);
   closeBlocLater(appearanceBloc);
@@ -63,6 +77,8 @@ Future<_Settings> _pump(
         BlocProvider<AppearanceBloc>.value(value: appearanceBloc),
         BlocProvider<SyncStatusBloc>.value(value: syncBloc),
         BlocProvider<AboutBloc>.value(value: aboutBloc),
+        BlocProvider<LockStatusBloc>.value(value: lockBloc),
+        BlocProvider<BiometricsBloc>.value(value: biometricsBloc),
       ],
       child: const SettingsPane(),
     ),

@@ -391,6 +391,105 @@ fn the_lock_password_is_changed_and_what_it_didnt_open_is_counted() {
     assert_eq!(body(&phone, &stray), None, "it keeps its own password");
 }
 
+/// Seals note `id` with a password of its own, as another device might.
+fn lock_with_foreign_password(phone: &Phone, id: &str, password: &str) {
+    let store = Store::open(phone.path()).unwrap();
+    let key = LockKey::create(&LockPassword::new(password).unwrap(), KdfParams::TEST).unwrap();
+    let mut stored = store.note(id).unwrap().unwrap();
+    let sealed = key.seal(&stored.id, &stored.body);
+    stored.body.clear();
+    Envelope::store(Some(&sealed), &mut stored.extra);
+    store
+        .lock_note(serde_json::to_value(&stored).unwrap())
+        .unwrap();
+}
+
+// no-prop-test: a fixed sequence; two keys in the session and which one seals.
+#[test]
+fn a_note_is_sealed_with_the_password_typed_not_the_sessions_first_key() {
+    const FOREIGN: &str = "unrelated words";
+    let phone = lone_phone();
+    let locks = phone.library.locks();
+    let (plan, stray) = (
+        note(&phone.library, "Plan", SECRET),
+        note(&phone.library, "Stray", "STRAY"),
+    );
+    locks.lock_note(&plan, LOCK_PASSWORD.into()).unwrap();
+    lock_with_foreign_password(&phone, &stray, FOREIGN);
+    locks.lock().unwrap();
+    // The change skips the stray note, which keeps its password.
+    assert_eq!(
+        locks.change_password(LOCK_PASSWORD.into(), OTHER_PASSWORD.into()),
+        Ok(1)
+    );
+    // The stray note is opened with its own password: the session now holds
+    // that key first, and the new one is added after it.
+    locks.lock().unwrap();
+    assert_eq!(locks.unlock_note(&stray, FOREIGN.into()), Ok(true));
+    let fresh = note(&phone.library, "Fresh", "FRESH");
+    locks.lock_note(&fresh, OTHER_PASSWORD.into()).unwrap();
+
+    // The fresh note opens with the new password only.
+    locks.lock().unwrap();
+    assert_eq!(locks.unlock_note(&fresh, FOREIGN.into()), Ok(false));
+    assert_eq!(locks.unlock_note(&fresh, OTHER_PASSWORD.into()), Ok(true));
+    assert_eq!(body(&phone, &fresh).as_deref(), Some("FRESH"));
+
+    // With both keys held, the session's own key for a note is the one most
+    // locks use (the new password's), not the stray's.
+    locks.lock().unwrap();
+    assert_eq!(locks.unlock_note(&stray, FOREIGN.into()), Ok(true));
+    assert_eq!(locks.unlock_note(&plan, OTHER_PASSWORD.into()), Ok(true));
+    let another = note(&phone.library, "Another", "ANOTHER");
+    locks.lock_note_with_session(&another).unwrap();
+    locks.lock().unwrap();
+    assert_eq!(locks.unlock_note(&another, FOREIGN.into()), Ok(false));
+    assert_eq!(locks.unlock_note(&another, OTHER_PASSWORD.into()), Ok(true));
+}
+
+// no-prop-test: a fixed sequence; a stale key in the session and a new lock
+// password.
+#[test]
+fn a_stale_session_key_never_seals_when_every_lock_is_gone() {
+    let phone = lone_phone();
+    let locks = phone.library.locks();
+    let book = phone
+        .library
+        .create_notebook("Shelf".into(), None)
+        .unwrap()
+        .id;
+    let (first, second, third) = (
+        note(&phone.library, "One", "ONE"),
+        note(&phone.library, "Two", "TWO"),
+        note_in(&phone, &book, "Three", "THREE"),
+    );
+    locks.lock_note(&first, LOCK_PASSWORD.into()).unwrap();
+    locks.remove_note_lock(&first).unwrap();
+    // The session still holds the first password's key, but no lock uses it.
+    assert!(locks.is_unlocked().unwrap());
+    assert!(!locks.lock_status().unwrap().has_lock_password);
+    assert_eq!(locks.lock_note_with_session(&second), Err(KansoError::Locked));
+    assert_eq!(locks.lock_notebook(&book, None), Err(KansoError::Locked));
+
+    // A new lock password P2 seals the note, not the stale key.
+    locks.lock_note(&second, OTHER_PASSWORD.into()).unwrap();
+    locks.lock().unwrap();
+    assert_eq!(locks.unlock_note(&second, LOCK_PASSWORD.into()), Ok(false));
+    assert_eq!(locks.unlock_note(&second, OTHER_PASSWORD.into()), Ok(true));
+
+    // Same for a notebook: its password, typed while a stale key is held. The
+    // first notebook is the default, so all three notes are in it.
+    locks.remove_note_lock(&second).unwrap();
+    assert!(!locks.lock_status().unwrap().has_lock_password);
+    assert_eq!(
+        locks.lock_notebook(&book, Some(LOCK_PASSWORD.into())),
+        Ok(3)
+    );
+    locks.lock().unwrap();
+    assert_eq!(locks.unlock_note(&third, OTHER_PASSWORD.into()), Ok(false));
+    assert_eq!(locks.unlock_note(&third, LOCK_PASSWORD.into()), Ok(true));
+}
+
 // no-prop-test: the status as the calls move it.
 #[test]
 fn the_status_follows_the_session() {

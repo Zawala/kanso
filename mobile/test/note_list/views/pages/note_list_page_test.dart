@@ -17,7 +17,7 @@ void main() {
   group('NoteListPage', () {
     testWidgets('reads the notes of its place and shows them', (tester) async {
       final blocs = await BrowseBlocs.start();
-      registerPageBlocs(blocs.library, null, blocs);
+      registerPageBlocs(blocs.library);
       await atMockNow(
         () => pumpRouted(
           tester,
@@ -33,7 +33,7 @@ void main() {
 
     testWidgets('is a new list for a new place', (tester) async {
       final blocs = await BrowseBlocs.start();
-      registerPageBlocs(blocs.library, null, blocs);
+      registerPageBlocs(blocs.library);
       final place = ValueNotifier<ListPlace>(const ListPlace.pinned());
       addTearDown(place.dispose);
       await atMockNow(

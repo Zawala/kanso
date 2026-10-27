@@ -69,7 +69,7 @@ Future<BrowseApp> pumpBrowseApp(
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start(library);
-  registerPageBlocs(blocs.library, null, blocs);
+  registerPageBlocs(blocs.library);
   final padding = FakeViewPadding(
     left: safeArea.left * devicePixelRatio,
     top: safeArea.top * devicePixelRatio,

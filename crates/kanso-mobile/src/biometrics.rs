@@ -63,7 +63,8 @@ pub mod answer {
     /// The secret didn't open the kept keys; they are forgotten.
     pub const WRONG_SECRET: i32 = -1;
     /// Something broke: the secret store refused, or the notes were locked
-    /// before the keys could be kept.
+    /// before the keys could be kept (enrolling), or again before the keys
+    /// could open them (unlocking: the notes stay closed).
     pub const FAULT: i32 = -5;
 }
 
@@ -90,6 +91,9 @@ struct Ticket {
     kind: Kind,
     session: Weak<Inner>,
     issued: Instant,
+    /// The session's lock generation when the ticket was given: an unlock
+    /// answered after the notes were locked again doesn't reopen them.
+    generation: u64,
 }
 
 /// The tickets given out and not answered, by number. One process holds many
@@ -119,6 +123,7 @@ fn issue(kind: Kind, inner: &Arc<Inner>, now: Instant) -> u64 {
                     kind,
                     session: Arc::downgrade(inner),
                     issued: now,
+                    generation: inner.lock_gen.load(std::sync::atomic::Ordering::SeqCst),
                 },
             );
             return number;
@@ -167,7 +172,7 @@ fn deliver_at(ticket: u64, status: i32, secret: Option<&[u8]>, now: Instant) -> 
     };
     let done = match taken.kind {
         Kind::Enroll => enroll(&inner, &b),
-        Kind::Unlock => unlock(&inner, &b),
+        Kind::Unlock => unlock(&inner, &b, taken.generation),
     };
     done.unwrap_or(answer::FAULT)
 }
@@ -281,12 +286,26 @@ fn forget(inner: &Inner) -> Result<(), KansoError> {
     Ok(())
 }
 
+/// Forgets the kept keys after something went wrong, so biometric unlock is
+/// off and the password is the way in (a kept item of old keys would open
+/// the wrong ones). A failure to forget is only logged.
+pub(crate) fn forget_quietly(inner: &Inner) {
+    if forget(inner).is_err() {
+        eprintln!("kanso: couldn't forget the lock keys kept for biometrics");
+    }
+}
+
 /// The payload: the keys as the desktop keeps them for Touch ID.
 fn payload(keys: &[Arc<LockKey>]) -> Zeroizing<String> {
-    let mut text = Zeroizing::new(String::from(LOCK_KEYS_V1));
-    for key in keys {
+    let secrets: Vec<Zeroizing<String>> = keys.iter().map(|key| key.to_secret()).collect();
+    // Sized up front: growing a `String` would leave the key text behind in
+    // the memory it moved from.
+    let size = LOCK_KEYS_V1.len() + secrets.iter().map(|secret| 1 + secret.len()).sum::<usize>();
+    let mut text = Zeroizing::new(String::with_capacity(size));
+    text.push_str(LOCK_KEYS_V1);
+    for secret in &secrets {
         text.push('\n');
-        text.push_str(&key.to_secret());
+        text.push_str(secret);
     }
     text
 }
@@ -330,7 +349,7 @@ fn enroll(inner: &Inner, b: &[u8; KEY_LEN]) -> Result<i32, KansoError> {
 }
 
 /// Opens the kept keys with `b` and adds them to the session.
-fn unlock(inner: &Arc<Inner>, b: &[u8; KEY_LEN]) -> Result<i32, KansoError> {
+fn unlock(inner: &Arc<Inner>, b: &[u8; KEY_LEN], since: u64) -> Result<i32, KansoError> {
     let Some((id, item)) = load(inner)? else {
         return Ok(answer::WRONG_SECRET);
     };
@@ -343,15 +362,18 @@ fn unlock(inner: &Arc<Inner>, b: &[u8; KEY_LEN]) -> Result<i32, KansoError> {
         inner.secrets.delete(&item_name(&id))?;
         return Ok(answer::WRONG_SECRET);
     };
-    LockSession {
+    let added = LockSession {
         inner: inner.clone(),
     }
-    .add_keys(keys, false);
-    Ok(answer::APPLIED)
+    .add_keys(keys, false, since);
+    // Locked again while the check ran: the keys are dropped, the notes
+    // stay closed.
+    Ok(if added { answer::APPLIED } else { answer::FAULT })
 }
 
 /// Seals the session's keys again to the kept public key, when biometrics
-/// are on, with no check. Failing leaves the earlier keys kept.
+/// are on, with no check. When that fails the kept keys are the old ones, so
+/// they are forgotten: biometric unlock falls back to the password.
 pub(crate) fn keep(inner: &Inner) {
     let result = (|| -> Result<(), KansoError> {
         let Some((id, mut item)) = load(inner)? else {
@@ -364,7 +386,7 @@ pub(crate) fn keep(inner: &Inner) {
         let Some((ephemeral, sealed_keys)) =
             crypto::seal_to(&item.public, &id, payload(&keys).as_bytes())
         else {
-            return Ok(());
+            return Err(KansoError::storage("sealing the lock keys failed"));
         };
         item.ephemeral = ephemeral;
         item.sealed_keys = sealed_keys;
@@ -374,15 +396,27 @@ pub(crate) fn keep(inner: &Inner) {
     })();
     if result.is_err() {
         eprintln!("kanso: couldn't keep the lock keys for biometrics");
+        forget_quietly(inner);
     }
 }
 
 impl LockSession {
-    /// Holds `keys`, and tells listeners if the notes weren't open before.
-    /// `keep_for_biometrics` seals the session's keys again for biometrics.
-    pub(crate) fn add_keys(&self, keys: Vec<LockKey>, keep_for_biometrics: bool) {
+    /// Holds `keys` unless the notes were locked since generation `since`
+    /// (then they are dropped, and this says `false`), and tells listeners
+    /// if the notes weren't open before. `keep_for_biometrics` seals the
+    /// session's keys again for biometrics.
+    pub(crate) fn add_keys(
+        &self,
+        keys: Vec<LockKey>,
+        keep_for_biometrics: bool,
+        since: u64,
+    ) -> bool {
         let was_open = {
             let mut held_keys = held(&self.inner.keys);
+            // Checked under the mutex `close` changes it under.
+            if self.inner.lock_gen.load(std::sync::atomic::Ordering::SeqCst) != since {
+                return false;
+            }
             let was_open = held_keys.is_unlocked();
             let now = Instant::now();
             for key in keys {
@@ -399,6 +433,7 @@ impl LockSession {
         if !was_open {
             self.inner.lock_events.send(LockEvent::Unlocked);
         }
+        true
     }
 }
 

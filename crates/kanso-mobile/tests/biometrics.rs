@@ -311,3 +311,29 @@ proptest! {
         prop_assert!(!text.contains(SECRET));
     }
 }
+
+// no-prop-test: a secret store that refuses once, and the state after it.
+#[test]
+fn keys_that_cant_be_kept_again_turn_biometrics_off() {
+    let phone = lone_phone();
+    let locks = phone.library.locks();
+    let id = note(&phone.library, "Plan", SECRET);
+    locks.lock_note(&id, LOCK_PASSWORD.into()).unwrap();
+    assert_eq!(enroll(&locks, &B), answer::APPLIED);
+    assert!(locks.biometrics_on().unwrap());
+
+    // The next write (keeping the new key for biometrics) is refused. The
+    // password still changes, and the old keys must not stay for biometrics.
+    phone.secrets.fail_write(0);
+    assert_eq!(
+        locks.change_password(LOCK_PASSWORD.into(), "another password".into()),
+        Ok(0)
+    );
+    assert!(!locks.biometrics_on().unwrap());
+    assert_eq!(item(&phone), None);
+    assert_eq!(locks.begin_biometric_unlock(), Ok(None));
+    // The new password opens the notes.
+    locks.lock().unwrap();
+    assert_eq!(locks.unlock("another password".into()), Ok(true));
+    assert_eq!(body(&phone, &id).as_deref(), Some(SECRET));
+}

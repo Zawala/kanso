@@ -23,6 +23,8 @@ import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_drawer_scope.dart';
 import 'package:kanso/core/views/widgets/kanso_sheet.dart';
 import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
+import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
+import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'package:kanso/note/views/pages/note_page.dart';
 import 'package:kanso/note/views/widgets/no_note_selected_pane.dart';
 import 'package:kanso/note_list/views/pages/note_list_page.dart';
@@ -50,7 +52,7 @@ Future<GoRouter> _pump(
   final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start();
-  registerPageBlocs(blocs.library, null, blocs);
+  registerPageBlocs(blocs.library);
   tester.view
     ..physicalSize = size
     ..devicePixelRatio = 1;
@@ -74,6 +76,8 @@ Future<GoRouter> _pump(
         BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
+        BlocProvider<LockStatusBloc>.value(value: blocs.lock),
+        BlocProvider<PrivacyCoverBloc>.value(value: blocs.cover),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
       ],
       child: App(router: kansoRouter),

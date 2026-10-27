@@ -7,6 +7,7 @@
 //! notes are open or closed ([`LockSession::lock_events`]).
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use kanso_core::{DocType, Note, now_ms};
@@ -19,6 +20,14 @@ use crate::boundary::{guard, held};
 use crate::errors::KansoError;
 use crate::library::{Inner, Library};
 use crate::model::{LockEvent, LockReason, LockStatus, Saved};
+
+/// One lock that exists: a note's or notebook's envelope, and how many
+/// notes and notebooks share its salt and parameters.
+struct LockGroup {
+    id: String,
+    envelope: Envelope,
+    count: usize,
+}
 
 /// The lock session of one library.
 #[derive(Clone)]
@@ -65,8 +74,21 @@ impl LockSession {
         })
     }
 
-    /// Tries `password` on `target`; the key it gives is kept when it opens.
+    /// Tries `password` on `target`; the key it gives is kept when it opens,
+    /// unless the notes were locked while it was being derived
+    /// ([`KansoError::Locked`]).
     fn try_password(&self, target: &Target, password: &LockPassword) -> Result<bool, KansoError> {
+        self.try_password_since(target, password, self.generation())
+    }
+
+    /// [`LockSession::try_password`] for an unlock that began at lock
+    /// generation `since`.
+    pub(crate) fn try_password_since(
+        &self,
+        target: &Target,
+        password: &LockPassword,
+        since: u64,
+    ) -> Result<bool, KansoError> {
         let envelope = target
             .envelope
             .as_ref()
@@ -78,8 +100,16 @@ impl LockSession {
             Err(LockError::WrongPassword) => return Ok(false),
             Err(err) => return Err(KansoError::invalid(lock::sentence(&err))),
         }
-        self.add_key(key);
-        Ok(true)
+        if self.add_key(key, since) {
+            Ok(true)
+        } else {
+            Err(KansoError::Locked)
+        }
+    }
+
+    /// The lock generation now: the number of times the notes were locked.
+    pub(crate) fn generation(&self) -> u64 {
+        self.inner.lock_gen.load(Ordering::SeqCst)
     }
 
     /// Where the lock stands: whether a lock password exists, whether the
@@ -137,22 +167,24 @@ impl LockSession {
         guard(|| {
             let password = lock::password(&password).map_err(KansoError::invalid)?;
             let note = self.lockable(id)?;
+            let since = self.generation();
             let key = self.key_from_password(&password)?;
-            self.add_key(key);
-            self.seal_note(note)
+            // Sealed with the key just typed, never one the session held.
+            let saved = self.seal_note(note, &key)?;
+            self.add_key(key, since);
+            Ok(saved)
         })
     }
 
-    /// Locks note `id` with the key this session holds, as the desktop does
-    /// when the notes are open: no password is typed.
-    /// [`KansoError::Locked`] when no key is held.
+    /// Locks note `id` with the key this session holds for the library's
+    /// lock, as the desktop does when the notes are open: no password is
+    /// typed. [`KansoError::Locked`] when no held key opens an existing
+    /// lock (none held, or only keys of locks that are gone).
     pub fn lock_note_with_session(&self, id: &str) -> Result<Saved, KansoError> {
         guard(|| {
             let note = self.lockable(id)?;
-            if held(&self.inner.keys).current().is_none() {
-                return Err(KansoError::Locked);
-            }
-            self.seal_note(note)
+            let key = self.session_lock_key().ok_or(KansoError::Locked)?;
+            self.seal_note(note, &key)
         })
     }
 
@@ -208,10 +240,11 @@ impl LockSession {
     /// it is sealed, as are those put there later. Returns how many notes
     /// were sealed.
     ///
-    /// With the notes open, the key held seals them and `password` is not
-    /// asked. Otherwise `password` is needed: the lock password when
-    /// something is locked already ([`KansoError::Auth`] when it isn't),
-    /// else the first one, which sets it.
+    /// With a `password`, its key seals them: the lock password when
+    /// something is locked already ([`KansoError::Auth`] when it isn't), else
+    /// the first one, which sets it. Without one, the notes must be open
+    /// with a key that opens an existing lock, which then seals them
+    /// ([`KansoError::Locked`] otherwise).
     pub fn lock_notebook(
         &self,
         book_id: &str,
@@ -222,19 +255,31 @@ impl LockSession {
             if Target::of_book(book_id, &self.inner.store).is_some() {
                 return Err(KansoError::invalid("That notebook is locked already."));
             }
-            if held(&self.inner.keys).current().is_none() {
-                let password = password
-                    .ok_or(KansoError::Locked)
-                    .and_then(|text| lock::password(&text).map_err(KansoError::invalid))?;
-                let key = self.key_from_password(&password)?;
-                self.add_key(key);
-            }
-            let key = held(&self.inner.keys).current().ok_or(KansoError::Locked)?;
-            let sealed = lock::seal_notebook(&self.inner.store, book_id, &key)
-                .map_err(KansoError::storage)?;
-            held(&self.inner.keys).touch(Instant::now());
-            Ok(u32::try_from(sealed).unwrap_or(u32::MAX))
+            let since = self.generation();
+            let sealed = match password {
+                // A typed password decides the key, open notes or not.
+                Some(text) => {
+                    let password = lock::password(&text).map_err(KansoError::invalid)?;
+                    let key = self.key_from_password(&password)?;
+                    let sealed = self.seal_book(book_id, &key)?;
+                    self.add_key(key, since);
+                    sealed
+                }
+                None => {
+                    let key = self.session_lock_key().ok_or(KansoError::Locked)?;
+                    let sealed = self.seal_book(book_id, &key)?;
+                    held(&self.inner.keys).touch(Instant::now());
+                    sealed
+                }
+            };
+            Ok(sealed)
         })
+    }
+
+    fn seal_book(&self, book_id: &str, key: &LockKey) -> Result<u32, KansoError> {
+        let sealed = lock::seal_notebook(&self.inner.store, book_id, key)
+            .map_err(KansoError::storage)?;
+        Ok(u32::try_from(sealed).unwrap_or(u32::MAX))
     }
 
     /// Takes notebook `book_id`'s lock off: notes put in it from now on
@@ -269,35 +314,55 @@ impl LockSession {
     /// `old` didn't open: they keep their own password. A wrong `old` is
     /// [`KansoError::Auth`]; biometrics, if on, keep the new key.
     pub fn change_password(&self, old: String, new: String) -> Result<u32, KansoError> {
-        guard(|| {
-            let wrong = || KansoError::auth(lock::sentence(&LockError::WrongPassword));
-            // A shorter text can't be the password.
-            let old = LockPassword::new(&old).map_err(|_| wrong())?;
-            let new = lock::password(&new).map_err(KansoError::invalid)?;
-            if lock::any_lock(&self.inner.store).is_none() {
-                return Err(KansoError::invalid("Nothing is locked yet."));
-            }
-            let params = held(&self.inner.keys).params();
-            let (key, skipped) =
-                lock::rekey(&self.inner.store, &old, &new, params).map_err(|words| {
-                    if words == lock::sentence(&LockError::WrongPassword) {
-                        wrong()
-                    } else {
-                        KansoError::invalid(words)
-                    }
-                })?;
-            let was_open = {
-                let mut keys = held(&self.inner.keys);
+        guard(|| self.change_password_since(old, new, self.generation()))
+    }
+
+    /// [`LockSession::change_password`] for a change that began at lock
+    /// generation `since`. When the notes were locked meanwhile the notes
+    /// are still re-sealed, but the new key isn't held (they stay closed)
+    /// and biometrics, whose kept keys are now the old ones, are turned off.
+    pub(crate) fn change_password_since(
+        &self,
+        old: String,
+        new: String,
+        since: u64,
+    ) -> Result<u32, KansoError> {
+        let wrong = || KansoError::auth(lock::sentence(&LockError::WrongPassword));
+        // A shorter text can't be the password.
+        let old = LockPassword::new(&old).map_err(|_| wrong())?;
+        let new = lock::password(&new).map_err(KansoError::invalid)?;
+        if lock::any_lock(&self.inner.store).is_none() {
+            return Err(KansoError::invalid("Nothing is locked yet."));
+        }
+        let params = held(&self.inner.keys).params();
+        let (key, skipped) =
+            lock::rekey(&self.inner.store, &old, &new, params).map_err(|words| {
+                if words == lock::sentence(&LockError::WrongPassword) {
+                    wrong()
+                } else {
+                    KansoError::invalid(words)
+                }
+            })?;
+        let applied = {
+            let mut keys = held(&self.inner.keys);
+            if self.inner.lock_gen.load(Ordering::SeqCst) == since {
                 let was_open = keys.is_unlocked();
                 keys.replace(Some(key), Instant::now());
-                was_open
-            };
-            crate::biometrics::keep(&self.inner);
-            if !was_open {
-                self.inner.lock_events.send(LockEvent::Unlocked);
+                Some(was_open)
+            } else {
+                None
             }
-            Ok(u32::try_from(skipped).unwrap_or(u32::MAX))
-        })
+        };
+        match applied {
+            Some(was_open) => {
+                crate::biometrics::keep(&self.inner);
+                if !was_open {
+                    self.inner.lock_events.send(LockEvent::Unlocked);
+                }
+            }
+            None => crate::biometrics::forget_quietly(&self.inner),
+        }
+        Ok(u32::try_from(skipped).unwrap_or(u32::MAX))
     }
 
     /// Calls `sink` each time the notes open or close, until it returns
@@ -317,10 +382,11 @@ impl LockSession {
         idle
     }
 
-    /// Holds `key`, and tells listeners if the notes weren't open before.
-    /// Biometrics, if on, keep the session's keys again.
-    fn add_key(&self, key: LockKey) {
-        self.add_keys(vec![key], true);
+    /// Holds `key` if the notes weren't locked since generation `since`,
+    /// and tells listeners if they weren't open before. Biometrics, if on,
+    /// keep the session's keys again. Whether the key was held.
+    fn add_key(&self, key: LockKey, since: u64) -> bool {
+        self.add_keys(vec![key], true, since)
     }
 
     fn library(&self) -> Library {
@@ -350,24 +416,83 @@ impl LockSession {
     }
 
     /// The key `password` gives: the one that opens what is locked already
-    /// ([`KansoError::Auth`] when it doesn't), or a new one when nothing is.
+    /// ([`KansoError::Auth`] when it opens none of it), or a new one when
+    /// nothing is. Locks made with different passwords (on another device)
+    /// each get a try, the most used lock first, one derivation per
+    /// distinct salt.
     fn key_from_password(&self, password: &LockPassword) -> Result<LockKey, KansoError> {
-        match lock::any_lock(&self.inner.store) {
-            Some(target) => lock::key_for(&target, password)
-                .map_err(|_| KansoError::auth("That isn't the lock password.")),
-            None => {
-                let params = held(&self.inner.keys).params();
-                LockKey::create(password, params)
-                    .map_err(|err| KansoError::invalid(lock::sentence(&err)))
+        let groups = self.lock_groups();
+        if groups.is_empty() {
+            let params = held(&self.inner.keys).params();
+            return LockKey::create(password, params)
+                .map_err(|err| KansoError::invalid(lock::sentence(&err)));
+        }
+        for group in &groups {
+            let Ok(key) = LockKey::for_envelope(password, &group.envelope) else {
+                continue;
+            };
+            if key.open(&group.id, &group.envelope).is_ok() {
+                return Ok(key);
             }
         }
+        Err(KansoError::auth("That isn't the lock password."))
     }
 
-    /// Seals `note` with the key this session holds and writes it.
-    fn seal_note(&self, mut note: Note) -> Result<Saved, KansoError> {
-        let key = held(&self.inner.keys)
-            .current()
-            .expect("a key was just held");
+    /// The locks that exist, one per distinct salt and parameters, the one
+    /// most notes and notebooks use first (then in ID order).
+    fn lock_groups(&self) -> Vec<LockGroup> {
+        let mut groups: Vec<LockGroup> = Vec::new();
+        let mut add = |id: String, envelope: Envelope| {
+            let same = |other: &Envelope| {
+                (&other.salt, other.m, other.t, other.p)
+                    == (&envelope.salt, envelope.m, envelope.t, envelope.p)
+            };
+            match groups.iter_mut().find(|group| same(&group.envelope)) {
+                Some(group) => group.count += 1,
+                None => groups.push(LockGroup {
+                    id,
+                    envelope,
+                    count: 1,
+                }),
+            }
+        };
+        for note in self.inner.store.locked_notes().unwrap_or_default() {
+            if let Some(Ok(envelope)) = Envelope::from_extra(&note.extra) {
+                add(note.id, envelope);
+            }
+        }
+        for book in self.inner.store.books().unwrap_or_default() {
+            if let Some(Ok(envelope)) = Envelope::from_extra(&book.extra) {
+                add(book.id, envelope);
+            }
+        }
+        groups.sort_by_key(|group| std::cmp::Reverse(group.count));
+        groups
+    }
+
+    /// The key this session holds for the library's lock: of the held keys
+    /// that open some lock that exists, the one that opens the most (the
+    /// first held wins a tie). A key of locks that are all gone is stale and
+    /// never chosen, nor is one of a stray lock another device made.
+    fn session_lock_key(&self) -> Option<Arc<LockKey>> {
+        let groups = self.lock_groups();
+        let keys = held(&self.inner.keys);
+        let mut best: Option<(usize, Arc<LockKey>)> = None;
+        for key in keys.keys() {
+            let opens: usize = groups
+                .iter()
+                .filter(|group| key.fits(&group.envelope))
+                .map(|group| group.count)
+                .sum();
+            if opens > best.as_ref().map_or(0, |(most, _)| *most) {
+                best = Some((opens, key.clone()));
+            }
+        }
+        best.map(|(_, key)| key)
+    }
+
+    /// Seals `note` with `key` and writes it.
+    fn seal_note(&self, mut note: Note, key: &LockKey) -> Result<Saved, KansoError> {
         let body = std::mem::take(&mut note.body);
         Envelope::store(Some(&key.seal(&note.id, &body)), &mut note.extra);
         let value =
@@ -384,6 +509,9 @@ impl LockSession {
     fn close(&self, reason: LockReason) {
         let was_open = {
             let mut keys = held(&self.inner.keys);
+            // Under the mutex, so an unlock that began earlier and applies
+            // later sees the change and doesn't reopen the notes.
+            self.inner.lock_gen.fetch_add(1, Ordering::SeqCst);
             let was_open = keys.is_unlocked();
             keys.replace(None, Instant::now());
             was_open
@@ -391,5 +519,133 @@ impl LockSession {
         if was_open {
             self.inner.lock_events.send(LockEvent::Locked { reason });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use kanso_sync::{MemorySecrets, MemoryServer};
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::biometrics::{self, answer, status};
+    use crate::{Library, NewNote};
+
+    const PASSWORD: &str = "open sesame";
+    const NEW_PASSWORD: &str = "another password";
+    const B: [u8; 32] = [9; 32];
+
+    /// A library with one note locked with `PASSWORD`, the notes now closed.
+    fn closed(dir: &std::path::Path) -> (Library, String) {
+        let library = Library::open_for_test(
+            &dir.join("library.db"),
+            Arc::new(MemorySecrets::new()),
+            Arc::new(MemoryServer::new()),
+        )
+        .unwrap();
+        let id = library
+            .create(NewNote {
+                notebook_id: None,
+                title: "Plan".into(),
+                body: "the plan".into(),
+            })
+            .unwrap()
+            .id;
+        let locks = library.locks();
+        locks.lock_note(&id, PASSWORD.into()).unwrap();
+        locks.lock().unwrap();
+        (library, id)
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(6))]
+
+        /// A password unlock, a password change and a biometric unlock that
+        /// begin, then have the notes locked any number of times before
+        /// they apply, leave the notes closed; with no lock between they
+        /// open them.
+        #[test]
+        fn prop_a_lock_between_begin_and_apply_keeps_the_notes_closed(
+            locks_between in 0usize..3,
+        ) {
+            let dir = tempfile::tempdir().unwrap();
+            let (library, _) = closed(dir.path());
+            let locks = library.locks();
+            let interleave = || {
+                for _ in 0..locks_between {
+                    locks.lock().unwrap();
+                }
+            };
+            let expect_open = locks_between == 0;
+
+            // Password unlock.
+            let target = lock::any_lock(&library.inner.store).unwrap();
+            let password = LockPassword::new(PASSWORD).unwrap();
+            let since = locks.generation();
+            interleave();
+            let result = locks.try_password_since(&target, &password, since);
+            if expect_open {
+                prop_assert_eq!(result, Ok(true));
+            } else {
+                prop_assert_eq!(result, Err(KansoError::Locked));
+            }
+            prop_assert_eq!(locks.is_unlocked().unwrap(), expect_open);
+            locks.lock().unwrap();
+
+            // Biometric unlock.
+            let ticket = {
+                locks.unlock(PASSWORD.into()).unwrap();
+                let enrolling = locks.begin_biometric_enrollment().unwrap();
+                prop_assert_eq!(
+                    biometrics::deliver(enrolling, status::OK, Some(&B)),
+                    answer::APPLIED
+                );
+                locks.lock().unwrap();
+                locks.begin_biometric_unlock().unwrap().unwrap()
+            };
+            interleave();
+            let reply = biometrics::deliver(ticket, status::OK, Some(&B));
+            prop_assert_eq!(
+                reply,
+                if expect_open { answer::APPLIED } else { answer::FAULT }
+            );
+            prop_assert_eq!(locks.is_unlocked().unwrap(), expect_open);
+            locks.lock().unwrap();
+
+            // Password change: the notes are re-sealed under the new
+            // password either way; the new key is held only if no lock
+            // came between.
+            let since = locks.generation();
+            interleave();
+            let skipped = locks.change_password_since(PASSWORD.into(), NEW_PASSWORD.into(), since);
+            prop_assert_eq!(skipped, Ok(0));
+            prop_assert_eq!(locks.is_unlocked().unwrap(), expect_open);
+            locks.lock().unwrap();
+            prop_assert_eq!(locks.unlock(PASSWORD.into()), Ok(false));
+            prop_assert_eq!(locks.unlock(NEW_PASSWORD.into()), Ok(true));
+        }
+    }
+
+    // no-prop-test: a lock after a change that began earlier leaves biometrics
+    // off, as their kept keys are the old ones.
+    #[test]
+    fn a_password_change_overtaken_by_a_lock_turns_biometrics_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let (library, _) = closed(dir.path());
+        let locks = library.locks();
+        locks.unlock(PASSWORD.into()).unwrap();
+        let ticket = locks.begin_biometric_enrollment().unwrap();
+        assert_eq!(
+            biometrics::deliver(ticket, status::OK, Some(&B)),
+            answer::APPLIED
+        );
+        assert!(locks.biometrics_on().unwrap());
+        let since = locks.generation();
+        locks.lock().unwrap();
+        locks
+            .change_password_since(PASSWORD.into(), NEW_PASSWORD.into(), since)
+            .unwrap();
+        assert!(!locks.is_unlocked().unwrap());
+        assert!(!locks.biometrics_on().unwrap());
     }
 }
