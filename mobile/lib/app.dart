@@ -5,29 +5,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'account/views/widgets/device_approval_host.dart';
 import 'core/configs/kanso_theme.dart';
 import 'core/router/kanso_router.dart';
 import 'core/state/appearance/appearance_bloc.dart';
 import 'core/utils/context_extensions.dart';
 import 'core/utils/kanso_scroll_behavior.dart';
+import 'core/views/widgets/foreground_reporter.dart';
+import 'core/views/widgets/kanso_icon_set_scope.dart';
 import 'core/views/widgets/layout_class_reporter.dart';
 import 'crash/views/widgets/crash_notice_host.dart';
 import 'gen/l10n/app_localizations.dart';
-import 'reminders/utils/reminders_coordinator.dart';
-import 'reminders/views/widgets/reminders_host.dart';
+import 'import/views/widgets/opened_documents_host.dart';
+import 'lock/views/widgets/lock_lifecycle_host.dart';
 import 'settings/views/widgets/backup_notice_host.dart';
 
 /// The Kanso app: the themes chosen (drawn from the theme files' tokens),
-/// the language and the routes.
+/// the icon theme, the language and the routes, with the sheet that asks to
+/// let another device in and the notices about crashes and device backups
+/// over them.
 class App extends StatelessWidget {
-  const App({required this.router, this.reminders, super.key});
+  const App({required this.router, super.key});
 
   /// The routes of the app, and how many panes there is room for.
   final KansoRouter router;
-
-  /// Keeps reminders planned and opens the tasks they are for; none in a
-  /// test that does not run it.
-  final RemindersCoordinator? reminders;
 
   @override
   Widget build(BuildContext context) {
@@ -51,22 +52,24 @@ class App extends StatelessWidget {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           routerConfig: router.config,
-          builder: (context, child) {
-            final coordinator = reminders;
-            final content = CrashNoticeHost(
-              child: BackupNoticeHost(child: child!),
-            );
-            return LayoutClassReporter(
+          builder: (context, child) => KansoIconSetScope(
+            iconSet: state.iconSet,
+            child: LayoutClassReporter(
               notifier: router.layoutClass,
-              child: coordinator == null
-                  ? content
-                  : RemindersHost(
-                      coordinator: coordinator,
-                      router: router.config,
-                      child: content,
+              child: ForegroundReporter(
+                child: CrashNoticeHost(
+                  child: LockLifecycleHost(
+                    child: BackupNoticeHost(
+                      child: OpenedDocumentsHost(
+                        router: router.config,
+                        child: DeviceApprovalHost(child: child!),
+                      ),
                     ),
-            );
-          },
+                  ),
+                ),
+              ),
+            ),
+          ),
         );
       },
     );

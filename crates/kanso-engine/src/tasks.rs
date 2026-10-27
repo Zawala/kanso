@@ -21,6 +21,8 @@ use kanso_core::links::{code_ranges, plain_line};
 use kanso_core::tasks::{Due, TaskGroup, due_label, due_spans, due_token, task_group, task_items};
 use kanso_store::TaskRow;
 
+pub mod board;
+mod board_model;
 pub mod reminders;
 
 /// A task as a list knows it: its note, its line and its words.

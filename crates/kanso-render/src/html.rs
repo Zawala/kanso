@@ -18,7 +18,13 @@ use std::hash::{Hash as _, Hasher as _};
 use base64::Engine as _;
 use markdown::mdast::Node;
 
-use crate::{Job, Kind, Palette, Rgb, Svg, escape, render_blocking};
+use crate::{Failure, Job, Kind, Outcome, Palette, Rgb, Svg, escape, render_blocking};
+
+pub mod app;
+pub use app::{
+    AppMode, DueChip, DueTone, HeadingId, QueryResult, QueryRow, QueryTable, QueryViews, TaskBox,
+    TaskSlot, heading_slug, headings, is_allowed_link, is_allowed_source, sanitize, task_boxes,
+};
 
 /// An attachment's content type and bytes, by ID (`file:…`).
 pub type Attachments<'a> = &'a dyn Fn(&str) -> Option<(String, Vec<u8>)>;
@@ -37,9 +43,10 @@ pub struct PageOptions<'a> {
     /// Colors a fenced code block by its language; `None` leaves code as
     /// plain text.
     pub highlight: Option<&'a dyn Highlighter>,
-    /// Draws a `kanso-due:` link as a due-date chip; `None` leaves such a
-    /// link as an ordinary link.
-    pub due: Option<&'a dyn DueChips>,
+    /// Makes the page one for the phone's app: its links keep the addresses
+    /// the app understands and nothing else a page could do (see [`app`]).
+    /// `None` is the page that is published and exported, unchanged.
+    pub app: Option<&'a AppMode<'a>>,
 }
 
 impl Default for PageOptions<'_> {
@@ -49,7 +56,7 @@ impl Default for PageOptions<'_> {
             mono: None,
             size: 16.,
             highlight: None,
-            due: None,
+            app: None,
         }
     }
 }
@@ -71,62 +78,6 @@ pub trait Highlighter: Send + Sync {
     /// The styles for `code` in `lang` (the fence's info string), or `None`
     /// when Kanso has no grammar for it.
     fn highlight(&self, lang: &str, code: &str) -> Option<Vec<CodeSpan>>;
-}
-
-/// The scheme of the links a task's due date is written as for the preview
-/// (`kanso_engine::tasks::DUE_SCHEME`, which this crate doesn't depend on).
-pub const DUE_LINK_PREFIX: &str = "kanso-due:";
-
-/// How near a due date feels, which sets the chip's colors.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DueTone {
-    /// Upcoming.
-    Plain,
-    /// Due today.
-    Today,
-    /// Past, and the task isn't done.
-    Overdue,
-    /// The task is done.
-    Done,
-}
-
-impl DueTone {
-    /// The chip's class: `kanso-due-plain`, `kanso-due-today`, and so on.
-    fn class(self) -> &'static str {
-        match self {
-            DueTone::Plain => "kanso-due-plain",
-            DueTone::Today => "kanso-due-today",
-            DueTone::Overdue => "kanso-due-overdue",
-            DueTone::Done => "kanso-due-done",
-        }
-    }
-}
-
-/// A due-date chip: what it says and how it looks.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DueChip {
-    pub label: String,
-    pub tone: DueTone,
-    /// The tooltip, "Due Sunday, 25 October 2026 at 09:00".
-    pub tooltip: String,
-}
-
-/// Works out due-date chips. Dates read relative to now ("Tomorrow"), so
-/// the caller, which knows the time, does it.
-pub trait DueChips: Send + Sync {
-    /// The chip for a `kanso-due:` link's address, or `None` when it isn't
-    /// a date.
-    fn chip(&self, url: &str) -> Option<DueChip>;
-}
-
-/// A chip as the span the page holds. Everything it says is escaped.
-fn due_chip_markup(chip: &DueChip) -> String {
-    format!(
-        r#"<span class="kanso-due {}" title="{}">{}</span>"#,
-        chip.tone.class(),
-        escape(&chip.tooltip),
-        escape(&chip.label)
-    )
 }
 
 /// The parse options the preview uses, with math.
@@ -459,6 +410,9 @@ fn attached_image(id: &str, alt: &str, width: Option<u32>, attachments: Attachme
 }
 
 /// Finds what the note's Markdown can't say in HTML itself, depth first.
+/// `codes` are the start offsets of the note's code blocks, in order; only
+/// the page in the app uses them, to number its copy links.
+#[allow(clippy::too_many_arguments)]
 fn collect(
     node: &Node,
     source: &str,
@@ -466,6 +420,7 @@ fn collect(
     attachments: Attachments<'_>,
     site: Option<&Site>,
     options: &PageOptions<'_>,
+    codes: &[usize],
     out: &mut Vec<(std::ops::Range<usize>, Piece)>,
 ) {
     let range = node.position().map(|p| p.start.offset..p.end.offset);
@@ -474,15 +429,31 @@ fn collect(
         .clone()
         .and_then(|r| source.get(r))
         .unwrap_or_default();
-    let drawn = |kind: Kind, code: &str| -> Option<Svg> {
-        match render_blocking(&Job::new(kind, code, *palette)).as_ref() {
-            Ok(svg) => Some(svg.clone()),
-            Err(_) => None,
-        }
+    let in_app = options.app.is_some();
+    let draw = |kind: Kind, code: &str| -> Outcome {
+        render_blocking(&Job::new(kind, code, *palette))
+            .as_ref()
+            .clone()
+    };
+    let drawn = |kind: Kind, code: &str| -> Option<Svg> { draw(kind, code).ok() };
+    // A drawing as a block; in the app, one that failed shows its code with
+    // a badge saying why, as the desktop's preview does.
+    let block = |outcome: Outcome, class: &str, fallback: &dyn Fn(&Failure) -> String| match outcome
+    {
+        Ok(svg) => Some(Piece::Block(svg_markup(&svg, class, 1.))),
+        Err(failure) if in_app => Some(Piece::Bare(fallback(&failure))),
+        Err(_) => None,
+    };
+    let copy_index = |node: &Node| {
+        let start = node.position()?.start.offset;
+        codes.iter().position(|&at| at == start)
     };
     let piece = match node {
-        Node::Math(math) => drawn(Kind::DisplayMath, &math.value)
-            .map(|svg| Piece::Block(svg_markup(&svg, "kanso-math-display", 1.))),
+        Node::Math(math) => block(
+            draw(Kind::DisplayMath, &math.value),
+            "kanso-math-display",
+            &|failure| app::failed_html(failure, None, written, None),
+        ),
         Node::InlineMath(math) => {
             let range = range.clone().unwrap_or_default();
             let span = source.get(range.clone()).unwrap_or_default();
@@ -495,37 +466,105 @@ fn collect(
                 Some(Piece::Inline(escape(span)))
             }
         }
-        Node::Code(code) if fence_is(&code.lang, "math") => drawn(Kind::DisplayMath, &code.value)
-            .map(|svg| Piece::Block(svg_markup(&svg, "kanso-math-display", 1.))),
-        Node::Code(code) if fence_is(&code.lang, "mermaid") => drawn(Kind::Mermaid, &code.value)
-            .map(|svg| Piece::Block(svg_markup(&svg, "kanso-diagram", 1.))),
-        Node::Code(code) if fence_is(&code.lang, "excalidraw") => {
-            drawn(Kind::Excalidraw, &code.value)
-                .map(|svg| Piece::Block(svg_markup(&svg, "kanso-drawing", 1.)))
+        Node::Code(code) if fence_is(&code.lang, "math") => block(
+            draw(Kind::DisplayMath, &code.value),
+            "kanso-math-display",
+            &|failure| {
+                app::failed_html(failure, code.lang.as_deref(), &code.value, copy_index(node))
+            },
+        ),
+        Node::Code(code) if fence_is(&code.lang, "mermaid") => block(
+            draw(Kind::Mermaid, &code.value),
+            "kanso-diagram",
+            &|failure| {
+                app::failed_html(failure, code.lang.as_deref(), &code.value, copy_index(node))
+            },
+        ),
+        Node::Code(code)
+            if in_app && fence_is(&code.lang, "excalidraw") && app::is_empty_scene(&code.value) =>
+        {
+            Some(Piece::Block(app::EMPTY_DRAWING.to_owned()))
         }
+        Node::Code(code) if fence_is(&code.lang, "excalidraw") => block(
+            draw(Kind::Excalidraw, &code.value),
+            "kanso-drawing",
+            &|failure| {
+                app::failed_html(failure, code.lang.as_deref(), &code.value, copy_index(node))
+            },
+        ),
         Node::Code(code) if code.lang.as_deref().is_some_and(crate::is_plugin_language) => {
             let language = code.lang.as_deref().unwrap_or_default().trim();
-            match render_blocking(&Job::plugin(language, code.value.as_str(), *palette)).as_ref() {
-                Ok(svg) => Some(Piece::Block(svg_markup(svg, "kanso-drawing", 1.))),
-                Err(_) => None,
-            }
+            block(
+                render_blocking(&Job::plugin(language, code.value.as_str(), *palette))
+                    .as_ref()
+                    .clone(),
+                "kanso-drawing",
+                &|failure| {
+                    app::failed_html(failure, code.lang.as_deref(), &code.value, copy_index(node))
+                },
+            )
+        }
+        Node::Code(code)
+            if options.app.is_some_and(|mode| mode.query.is_some())
+                && app::is_query_fence(code.lang.as_deref()) =>
+        {
+            options
+                .app
+                .and_then(|mode| mode.query)
+                .map(|query| Piece::Bare(app::query_html(&code.value, &query.run(&code.value))))
+        }
+        // In the app every code block is drawn here, with its copy link.
+        Node::Code(code) if in_app => {
+            let spans = options
+                .highlight
+                .and_then(|highlight| {
+                    highlight.highlight(code.lang.as_deref().unwrap_or_default(), &code.value)
+                })
+                .unwrap_or_default();
+            Some(Piece::Bare(code_html(
+                code.lang.as_deref(),
+                &code.value,
+                &spans,
+                copy_index(node),
+            )))
         }
         Node::Code(code) => options.highlight.and_then(|highlight| {
             let lang = code.lang.as_deref().unwrap_or_default();
-            highlight
-                .highlight(lang, &code.value)
-                .map(|spans| Piece::Bare(code_html(code.lang.as_deref(), &code.value, &spans)))
+            highlight.highlight(lang, &code.value).map(|spans| {
+                Piece::Bare(code_html(code.lang.as_deref(), &code.value, &spans, None))
+            })
         }),
         Node::Paragraph(_) if display_math_paragraph(node, written).is_some() => {
-            display_math_paragraph(node, written)
-                .and_then(|formula| drawn(Kind::DisplayMath, formula))
-                .map(|svg| Piece::Block(svg_markup(&svg, "kanso-math-display", 1.)))
+            display_math_paragraph(node, written).and_then(|formula| {
+                block(
+                    draw(Kind::DisplayMath, formula),
+                    "kanso-math-display",
+                    &|failure| app::failed_html(failure, None, written, None),
+                )
+            })
         }
-        Node::Paragraph(_) if attached_scene(node).is_some() => attached_scene(node)
-            .and_then(|id| attachments(&id))
-            .and_then(|(_, bytes)| String::from_utf8(bytes).ok())
-            .and_then(|scene| drawn(Kind::Excalidraw, &scene))
-            .map(|svg| Piece::Block(svg_markup(&svg, "kanso-drawing", 1.))),
+        Node::Paragraph(_) if attached_scene(node).is_some() => {
+            let scene = attached_scene(node)
+                .and_then(|id| attachments(&id))
+                .and_then(|(_, bytes)| String::from_utf8(bytes).ok());
+            match scene {
+                Some(scene) if in_app && app::is_empty_scene(&scene) => {
+                    Some(Piece::Block(app::EMPTY_DRAWING.to_owned()))
+                }
+                Some(scene) => block(
+                    draw(Kind::Excalidraw, &scene),
+                    "kanso-drawing",
+                    &|failure| app::failed_html(failure, None, written, None),
+                ),
+                None if in_app => Some(Piece::Bare(app::failed_html(
+                    &Failure::Invalid("The drawing's file is missing.".into()),
+                    None,
+                    written,
+                    None,
+                ))),
+                None => None,
+            }
+        }
         Node::Image(image) => {
             let (alt, width) = split_image_width(&image.alt);
             match attachment_id(&image.url) {
@@ -545,11 +584,6 @@ fn collect(
                     }),
             }
         }
-        // A due date written for the preview: the chip.
-        Node::Link(link) if link.url.starts_with(DUE_LINK_PREFIX) => options
-            .due
-            .and_then(|due| due.chip(&link.url))
-            .map(|chip| Piece::Inline(due_chip_markup(&chip))),
         // In a site, an ID link to a published note links to its page.
         Node::Link(link) if site.is_some() => linked_note_id(&link.url)
             .and_then(|id| site.and_then(|site| (site.resolve)(NoteRef::Id(&id))))
@@ -572,7 +606,16 @@ fn collect(
         }
         _ => {
             for child in node.children().into_iter().flatten() {
-                collect(child, source, palette, attachments, site, options, out);
+                collect(
+                    child,
+                    source,
+                    palette,
+                    attachments,
+                    site,
+                    options,
+                    codes,
+                    out,
+                );
             }
         }
     }
@@ -628,6 +671,11 @@ pub fn body_with(
     let Ok(root) = crate::markdown_safe::to_mdast(markdown, &parse) else {
         return plain_html(markdown);
     };
+    let facts = options.app.map(|_| app::facts(&root));
+    let codes: Vec<usize> = facts
+        .as_ref()
+        .map(|facts| facts.code_offsets())
+        .unwrap_or_default();
     let mut pieces = Vec::new();
     collect(
         &root,
@@ -636,6 +684,7 @@ pub fn body_with(
         attachments,
         site,
         options,
+        &codes,
         &mut pieces,
     );
     pieces.sort_by_key(|(range, _)| range.start);
@@ -659,6 +708,10 @@ pub fn body_with(
     text.push_str(&markdown[at..]);
     let compile = markdown::CompileOptions {
         gfm_tagfilter: true,
+        // In the app every address is let through to be checked once the page
+        // is whole (`app::sanitize`), not dropped here, so the app's own
+        // addresses survive.
+        allow_dangerous_protocol: options.app.is_some(),
         ..markdown::CompileOptions::default()
     };
     let Ok(mut html) =
@@ -692,15 +745,21 @@ pub fn body_with(
             Piece::Inline(markup) => html.replacen(&token, &markup, 1),
         };
     }
-    html
+    match options.app {
+        Some(mode) => app::finish(html, facts.as_ref(), mode, markdown),
+        None => html,
+    }
 }
 
 /// Escapes a code block as spans colored like the preview's highlighting.
-fn code_html(lang: Option<&str>, code: &str, spans: &[CodeSpan]) -> String {
+fn code_html(lang: Option<&str>, code: &str, spans: &[CodeSpan], copy: Option<usize>) -> String {
     let mut out = String::with_capacity(code.len() + 96);
     out.push_str("<pre class=\"kanso-code\">");
     if let Some(lang) = lang.map(str::trim).filter(|lang| !lang.is_empty()) {
         let _ = write!(out, "<span class=\"kanso-lang\">{}</span>", escape(lang));
+    }
+    if let Some(n) = copy {
+        out.push_str(&app::copy_link(n));
     }
     out.push_str("<code>");
     let mut at = 0;
@@ -792,9 +851,6 @@ pub fn stylesheet(p: &Palette, options: &PageOptions<'_>) -> String {
         .map(|color| format!("h1,h2,h3,h4,h5,h6{{color:{}}}", c(color)))
         .unwrap_or_default();
     let h6_color = c(p.task_done);
-    // The chip for a date gone by: Kanso's own red for the scheme, as the
-    // palette has no color for errors.
-    let danger = Rgb(if p.dark { 0xC96E63 } else { 0xA6493F });
     let check_stroke = if p.dark { "black" } else { "white" };
     let check = format!(
         "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.25 8.25 3 3 6.5-7' fill='none' stroke='{check_stroke}' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")"
@@ -851,10 +907,6 @@ figure svg{{max-width:100%;height:auto}}
 .kanso-math-display{{display:block;text-align:center;margin:.4em 0}}
 .kanso-diagram,.kanso-drawing{{display:block}}
 .kanso-missing{{color:{muted};font-style:italic}}
-.kanso-due{{display:inline-block;padding:0 .5em;border-radius:.7em;font-size:.85em;line-height:1.5;white-space:nowrap;color:{muted};background:{chipfill}}}
-.kanso-due-today{{color:{accent};background:{chiptoday}}}
-.kanso-due-overdue{{color:{danger};background:{chipoverdue}}}
-.kanso-due-done{{background:{chipdone}}}
 .kanso-wikilink{{border-bottom:1px dotted {muted}}}
 a.kanso-wikilink{{border-bottom:0}}
 .kanso-site-nav{{margin:0 0 1.2rem;font-size:.9rem}}
@@ -863,7 +915,7 @@ ul.kanso-site-index{{list-style:none;padding:0}}
 .kanso-site-index li{{margin:0 0 1.1em}}
 .kanso-site-index a{{font-weight:600;text-decoration:none}}
 .kanso-site-index p{{margin:.2em 0 0;color:{muted}}}
-@media print{{html,body{{background:none}}body{{max-width:none;padding:0}}pre,figure,table,img{{break-inside:avoid}}h1,h2,h3{{break-after:avoid}}}}
+{app_css}@media print{{html,body{{background:none}}body{{max-width:none;padding:0}}pre,figure,table,img{{break-inside:avoid}}h1,h2,h3{{break-after:avoid}}}}
 "#,
         scheme = if p.dark { "dark" } else { "light" },
         bg = c(p.background),
@@ -909,12 +961,12 @@ ul.kanso-site-index{{list-style:none;padding:0}}
         tablehead = table_head,
         codetext = code_text,
         link = c(p.accent),
+        app_css = if options.app.is_some() {
+            app::stylesheet(p, &check)
+        } else {
+            String::new()
+        },
         check = check,
-        chipfill = c(p.surface),
-        chiptoday = c(p.accent.over(p.background, 0.16)),
-        danger = c(danger),
-        chipoverdue = c(danger.over(p.background, 0.16)),
-        chipdone = c(p.surface.over(p.background, 0.6)),
     )
 }
 
@@ -1514,7 +1566,7 @@ mod tests {
             mono: Some("Iosevka"),
             size: 18.,
             highlight: None,
-            due: None,
+            app: None,
         };
         let css = stylesheet(&Palette::LIGHT, &options);
         let width = crate::typography::readable_width(18., false);
@@ -1546,93 +1598,6 @@ mod tests {
         assert!(!css.contains("46rem"), "{css}");
     }
 
-    /// Chips for any `kanso-due:` address, with the words it is given.
-    struct Chips(DueChip);
-
-    impl DueChips for Chips {
-        fn chip(&self, url: &str) -> Option<DueChip> {
-            url.starts_with(DUE_LINK_PREFIX).then(|| self.0.clone())
-        }
-    }
-
-    fn chip(label: &str, tooltip: &str, tone: DueTone) -> Chips {
-        Chips(DueChip {
-            label: label.into(),
-            tone,
-            tooltip: tooltip.into(),
-        })
-    }
-
-    #[test]
-    fn a_due_link_is_a_chip_when_chips_are_given() {
-        let note = "- [ ] Pay rent [@2026-10-25](kanso-due:2026-10-25)\n";
-        let chips = chip("Overdue · Today", "Due Sunday", DueTone::Overdue);
-        let options = PageOptions {
-            due: Some(&chips),
-            ..PageOptions::default()
-        };
-        let html = body_with(note, &Palette::LIGHT, &none, None, &options);
-        assert!(
-            html.contains(
-                r#"Pay rent <span class="kanso-due kanso-due-overdue" title="Due Sunday">Overdue · Today</span>"#
-            ),
-            "{html}"
-        );
-        assert!(!html.contains("kanso-due:"), "{html}");
-        assert!(!html.contains("kansopiece"), "{html}");
-        // Without chips, the link is an ordinary one that goes nowhere.
-        let plain = body(note, &Palette::LIGHT, &none);
-        assert!(plain.contains("<a>@2026-10-25</a>"), "{plain}");
-        assert!(!plain.contains("kanso-due\""), "{plain}");
-        // A chip works inside a site, whose links have their own arm.
-        let site = Site {
-            resolve: &|_| None,
-            home: "Work",
-        };
-        let in_site = body_with(note, &Palette::LIGHT, &none, Some(&site), &options);
-        assert!(in_site.contains("kanso-due-overdue"), "{in_site}");
-        // Every tone has its colors in the page.
-        let css = stylesheet(&Palette::DARK, &PageOptions::default());
-        for tone in ["", "-today", "-overdue", "-done"] {
-            assert!(css.contains(&format!(".kanso-due{tone}{{")), "{css}");
-        }
-    }
-
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(128))]
-
-        /// Invariants: whatever a chip says, it is text in a span: no tag
-        /// of its own, no way out of the title attribute. A note with no due
-        /// links reads the same with chips as without.
-        #[test]
-        fn prop_chips_never_inject_markup(
-            label in "[<>&\"'a-z0-9 ]{0,30}",
-            tooltip in "[<>&\"'a-z0-9 =]{0,30}",
-            note in "[a-z <>&\"\n#*-]{0,60}",
-        ) {
-            let chips = chip(&label, &tooltip, DueTone::Today);
-            let options = PageOptions { due: Some(&chips), ..PageOptions::default() };
-            let html = body_with(
-                &format!("[x](kanso-due:2026-10-25)"),
-                &Palette::LIGHT,
-                &none,
-                None,
-                &options,
-            );
-            let inner = html
-                .split_once("<span class=\"kanso-due kanso-due-today\" title=\"")
-                .and_then(|(_, rest)| rest.split_once("</span>"))
-                .map(|(inside, _)| inside.to_owned());
-            let inner = inner.expect("a chip");
-            let (title, text) = inner.split_once("\">").expect("a closed attribute");
-            prop_assert!(!title.contains(['"', '<', '>']), "{title}");
-            prop_assert!(!text.contains(['<', '>']), "{text}");
-            prop_assert_eq!(text, escape(&label));
-            let with = body_with(&note, &Palette::LIGHT, &none, None, &options);
-            prop_assert_eq!(with, body(&note, &Palette::LIGHT, &none));
-        }
-    }
-
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(128))]
 
@@ -1656,7 +1621,7 @@ mod tests {
                 mono: Some(&mono),
                 size,
                 highlight: None,
-                due: None,
+                app: None,
             };
             let css = stylesheet(&palette, &options);
             prop_assert_eq!(css.matches('{').count(), css.matches('}').count());

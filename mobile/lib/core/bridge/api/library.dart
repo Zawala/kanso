@@ -4,84 +4,96 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+import 'account.dart';
+import 'account_settings.dart';
+import 'approvals.dart';
+import 'editor.dart';
+import 'gallery.dart';
+import 'linking.dart';
 import 'locks.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'renderer.dart';
+import 'shared.dart';
 import 'sync.dart';
 import 'types.dart';
 
+/// What the Replace button says, or nothing when there is nothing to do.
+String? replaceApplyLabel({required int matches, required int notes}) =>
+    KansoCore.instance.api.crateApiLibraryReplaceApplyLabel(
+      matches: matches,
+      notes: notes,
+    );
+
+/// What the backups screen says of the daily backup and Back up now.
+String backupsSummary() =>
+    KansoCore.instance.api.crateApiLibraryBackupsSummary();
+
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
 abstract class KansoLibrary implements RustOpaqueInterface {
-  Future<BoardView> board({required BoardKind kind, required ListQuery query});
+  KansoAccount account();
 
-  Future<int> change({required List<String> ids, required NoteChange change});
+  KansoAccountSettings accountSettings();
+
+  KansoApprovals approvals();
+
+  Future<AttachmentFile> attachment({required String id});
+
+  Future<BackupFile> backUpNow();
+
+  /// Makes the daily backup if one is due.
+  Future<BackupFile?> backupIfDue();
+
+  /// The backups, newest first.
+  Future<List<BackupFile>> backups();
+
+  /// Saves something shared from inside the app as a note in the Inbox.
+  Future<CaptureOutcome> capture({required Share share});
+
+  Future<Changed> change({
+    required List<String> ids,
+    required NoteChange change,
+  });
 
   /// The IDs of what changed, in batches, until Dart stops listening.
   Stream<List<String>> changes();
 
   Future<Saved> create({required NewNote note});
 
+  Future<Saved> createLinkedNote({
+    required String title,
+    required String fromNote,
+  });
+
   Future<NotebookRow> createNotebook({required String name, String? parentId});
 
-  static DayDate? dailyDateOf({required String noteId}) => KansoCore
-      .instance
-      .api
-      .crateApiLibraryKansoLibraryDailyDateOf(noteId: noteId);
+  /// Deletes a backup made with `back_up_now`; refuses any other.
+  Future<void> deleteBackup({required String path});
 
-  Future<String?> dailyTemplate();
+  /// Opens note `id` for editing. Locked while it is locked and closed.
+  Future<KansoEditor> edit({required String id});
 
-  static DueChipRow? dueChip({
-    required String due,
-    required bool checked,
-    required LocalTime now,
-  }) => KansoCore.instance.api.crateApiLibraryKansoLibraryDueChip(
-    due: due,
-    checked: checked,
-    now: now,
-  );
+  KansoGallery gallery();
 
-  Future<MonthGrid> journalMonth({
-    required int year,
-    required int month,
-    required int weekStart,
-    required DayDate today,
-  });
+  /// The note's saved versions, newest first, beside the note now.
+  Future<NoteHistory> history({required String id});
 
-  Future<MadeNote> journalOpenDay({
-    required DayDate day,
-    required LocalTime now,
-  });
+  /// What changed from version `rev` to the note now, section by section.
+  Future<List<DiffHunk>> historyDiff({required String id, required String rev});
 
-  Future<MadeNote?> journalStep({
-    String? openNote,
-    required LocalTime now,
-    required bool forward,
-  });
+  /// Imports `path` as a `kind`: progress, then one summary or one
+  /// failure. Returns at once; the notes written reach `changes`.
+  Stream<ImportEvent> import_({required String kind, required String path});
 
-  Future<MadeNote> journalToday({required LocalTime now});
+  /// What importing `path` as a `kind` would do (one of `import_sources`):
+  /// progress, then one summary or one failure. Writes nothing. Returns at
+  /// once; the work runs on a thread of its own.
+  Stream<ImportEvent> importPlan({required String kind, required String path});
 
-  static int journalWeekStart({required int firstWeekday}) => KansoCore
-      .instance
-      .api
-      .crateApiLibraryKansoLibraryJournalWeekStart(firstWeekday: firstWeekday);
+  KansoLinking linking();
 
   Future<NoteList> list({required ListQuery query});
 
   KansoLocks locks();
-
-  Future<CardMoved> moveCard({
-    required CardKey card,
-    required BoardLane to,
-    required int nowMs,
-  });
-
-  Future<MadeNote> newFromTemplate({
-    required String templateId,
-    String? bookId,
-    required LocalTime now,
-  });
-
-  Future<MadeNote> newTemplate();
 
   Future<NoteView> note({required String id});
 
@@ -91,25 +103,43 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   static Future<KansoLibrary> open({required String path}) =>
       KansoCore.instance.api.crateApiLibraryKansoLibraryOpen(path: path);
 
+  /// Opens the Markdown or text files the system handed over, each into
+  /// the Inbox; the last note opened and what went wrong with the others.
+  /// Copies of a document the platform names (`identity`) are staged under
+  /// `staging` so opening it again updates the same note.
+  Future<OpenedDocuments> openDocuments({
+    required List<OpenedFile> files,
+    required String staging,
+  });
+
+  /// How many open tasks are overdue (the Tasks place's badge).
+  Future<int> overdueTasks();
+
   Future<LibraryOverview> overview();
 
   Future<List<Property>> properties({required String id});
 
   Future<Table> queryView({required String source, String? selfId});
 
-  Future<TaskPlace?> reminderAnswer({
-    required String key,
-    required ReminderAnswer answer,
-    required int nowUtcMs,
-  });
-
-  Future<ReminderPlan> remindersPlan({
-    required int nowUtcMs,
-    required int offsetMs,
-    required bool canNotify,
-  });
-
   KansoRenderer renderer();
+
+  Future<ReplaceOutcome> replaceApply({
+    required ReplaceOptions options,
+    required String replacement,
+    required List<PlannedNote> planned,
+  });
+
+  Future<ReplacePreview> replacePreview({required ReplaceOptions options});
+
+  /// Undoes a replace by its batch; says what was put back.
+  Future<ReplaceUndone> replaceUndo({required String batch});
+
+  /// Sets the note's title and text to those of version `rev`.
+  Future<Saved> restoreVersion({
+    required String id,
+    required String rev,
+    required String baseRev,
+  });
 
   Future<Saved> save({
     required String id,
@@ -117,19 +147,47 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required String body,
   });
 
+  /// Saves every finished shared item waiting in the `inbox` folder as a
+  /// note in the Inbox and removes the folders saved (see
+  /// `mobile/docs/capture.md`).
+  Future<DropsSaved> saveDrops({required String inbox});
+
   Future<List<Hit>> search({
     required String text,
     required SearchScope scope,
     required int limit,
   });
 
-  Future<void> setDailyTemplate({String? templateId});
+  Future<Ticked> setTask({
+    required String noteId,
+    required int line,
+    required String text,
+    required bool checked,
+  });
+
+  KansoShared shared();
 
   KansoSync syncing();
 
   Future<List<TagRow>> tags();
 
-  Future<List<TemplateRow>> templates();
+  /// The Tasks place: open tasks across the notes, in groups; locked
+  /// notes are left out.
+  Future<TaskBoard> tasks({required TaskListQuery query});
+
+  /// The ID of today's daily note at the phone's local time `now`, made
+  /// if it isn't there.
+  Future<String> todayNote({required LocalTime now});
+
+  /// Ticks (or clears) the `index`-th task box of a note drawn at
+  /// `base_rev`.
+  Future<Ticked> toggleTaskAt({
+    required String noteId,
+    required int index,
+    required String baseRev,
+  });
 
   Future<void> trash({required String id});
+
+  Future<int> undo({required int ticket});
 }
