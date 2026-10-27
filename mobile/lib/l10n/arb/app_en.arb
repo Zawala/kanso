@@ -752,6 +752,792 @@
   "@settingsSyncBackupFooter": {
     "description": "Says under Sync that device backups do not hold the notes."
   },
+  "settingsSyncSignIn": "Sign in",
+  "@settingsSyncSignIn": {
+    "description": "The Settings row that signs in to sync."
+  },
+  "settingsSyncOpenNotes": "Open your notes on this device",
+  "@settingsSyncOpenNotes": {
+    "description": "The Settings row for an account that is signed in but whose notes this device can't open yet."
+  },
+  "settingsSyncNow": "Sync now",
+  "@settingsSyncNow": {
+    "description": "The Settings row that syncs at once."
+  },
+  "settingsSyncAccount": "Account",
+  "@settingsSyncAccount": {
+    "description": "The label of the Settings row of the signed-in account, under its name."
+  },
+  "accountCancel": "Cancel",
+  "@accountCancel": {
+    "description": "Stops waiting or puts a form away."
+  },
+  "accountDone": "Done",
+  "@accountDone": {
+    "description": "Finishes a screen."
+  },
+  "accountRetry": "Try again",
+  "@accountRetry": {
+    "description": "Asks for the same thing again after a failure."
+  },
+  "accountCopy": "Copy",
+  "@accountCopy": {
+    "description": "Copies a code or a key."
+  },
+  "accountCopied": "Copied",
+  "@accountCopied": {
+    "description": "Says the code or key was copied."
+  },
+  "accountSomethingWrong": "Something went wrong. Try again in a moment.",
+  "@accountSomethingWrong": {
+    "description": "Said when an account task failed in a way the app has no words for."
+  },
+  "accountSignedOutError": "This device was signed out. Sign in again.",
+  "@accountSignedOutError": {
+    "description": "Said when the server ended this device's session."
+  },
+  "accountLoading": "Loading",
+  "@accountLoading": {
+    "description": "Says to a screen reader that something is being read."
+  },
+  "accountUsername": "Username",
+  "@accountUsername": {
+    "description": "The label of the username field."
+  },
+  "accountPassword": "Password",
+  "@accountPassword": {
+    "description": "The label of the password field."
+  },
+  "accountRepeatPassword": "Repeat password",
+  "@accountRepeatPassword": {
+    "description": "The label of the field that repeats a new password."
+  },
+  "accountNewPassword": "New password",
+  "@accountNewPassword": {
+    "description": "The label of the field for a new password."
+  },
+  "accountCurrentPassword": "Current password",
+  "@accountCurrentPassword": {
+    "description": "The label of the field for the password in use."
+  },
+  "formProblemUsernameInvalid": "Use 3–32 lowercase letters, digits, - or _, starting and ending with a letter or digit.",
+  "@formProblemUsernameInvalid": {
+    "description": "Said when a username breaks the rules."
+  },
+  "formProblemUsernameReserved": "That username is reserved. Try another.",
+  "@formProblemUsernameReserved": {
+    "description": "Said when a username is one nobody can sign up with."
+  },
+  "formProblemPasswordTooShort": "Use at least 12 characters. A few random words work well.",
+  "@formProblemPasswordTooShort": {
+    "description": "Said when a password is too short."
+  },
+  "formProblemPasswordTooLong": "Use at most 256 characters.",
+  "@formProblemPasswordTooLong": {
+    "description": "Said when a password is too long."
+  },
+  "formProblemPasswordSameAsUsername": "Choose a password that isn’t your username.",
+  "@formProblemPasswordSameAsUsername": {
+    "description": "Said when a password is the username."
+  },
+  "formProblemPasswordsDiffer": "The passwords don’t match.",
+  "@formProblemPasswordsDiffer": {
+    "description": "Said when a new password and its repeat differ."
+  },
+  "formProblemCredentialsDontMatch": "That username and password don’t match.",
+  "@formProblemCredentialsDontMatch": {
+    "description": "Said when a sign-in can't be right."
+  },
+  "formProblemRecoveryKeyMissing": "A recovery key has 28 letters and digits, in groups of four.",
+  "@formProblemRecoveryKeyMissing": {
+    "description": "Said when no recovery key was typed."
+  },
+  "accountServerLabel": "Server",
+  "@accountServerLabel": {
+    "description": "The label of the row that names the sync server."
+  },
+  "accountServerDefault": "Kanso sync",
+  "@accountServerDefault": {
+    "description": "The name of the default sync server."
+  },
+  "accountServerChange": "Use another server",
+  "@accountServerChange": {
+    "description": "Opens the field for the address of another sync server."
+  },
+  "accountServerAddress": "Server address",
+  "@accountServerAddress": {
+    "description": "The label of the field for the address of a sync server."
+  },
+  "accountServerAddressHint": "https://sync.example.com",
+  "@accountServerAddressHint": {
+    "description": "The hint in the field for the address of a sync server."
+  },
+  "accountServerUse": "Use this server",
+  "@accountServerUse": {
+    "description": "Takes the address typed as the sync server."
+  },
+  "accountServerUseDefault": "Use Kanso sync",
+  "@accountServerUseDefault": {
+    "description": "Goes back to the default sync server."
+  },
+  "accountServerChecking": "Checking the server…",
+  "@accountServerChecking": {
+    "description": "Says the server is being asked how it lets people in."
+  },
+  "accountServerNoSignups": "This server isn’t taking new accounts.",
+  "@accountServerNoSignups": {
+    "description": "Said under the create account form when the server is closed to new accounts."
+  },
+  "accountServerNoMethods": "This server offers no way to sign in that this app can use.",
+  "@accountServerNoMethods": {
+    "description": "Said when a server offers no sign-in method the app can use."
+  },
+  "accountSignInTitle": "Sign in",
+  "@accountSignInTitle": {
+    "description": "The title of the sign-in screen."
+  },
+  "accountSignInHeading": "Sign in to Kanso",
+  "@accountSignInHeading": {
+    "description": "The heading of the sign-in form."
+  },
+  "accountContinueWithApple": "Continue with Apple",
+  "@accountContinueWithApple": {
+    "description": "Signs in with Apple."
+  },
+  "accountContinueWithGoogle": "Continue with Google",
+  "@accountContinueWithGoogle": {
+    "description": "Signs in with Google."
+  },
+  "accountContinueWithGithub": "Continue with GitHub",
+  "@accountContinueWithGithub": {
+    "description": "Signs in with GitHub."
+  },
+  "accountSignInWithPasskey": "Sign in with a passkey",
+  "@accountSignInWithPasskey": {
+    "description": "Signs in with a passkey."
+  },
+  "accountOr": "or",
+  "@accountOr": {
+    "description": "Between the one-tap ways to sign in and the username form."
+  },
+  "accountSignInButton": "Sign in",
+  "@accountSignInButton": {
+    "description": "Signs in with the username and password typed."
+  },
+  "accountCreateAccountLink": "Create an account",
+  "@accountCreateAccountLink": {
+    "description": "Goes to the form that makes an account."
+  },
+  "accountForgotPassword": "Forgot your password? Use your recovery key",
+  "@accountForgotPassword": {
+    "description": "Goes to the form that signs in with the recovery key."
+  },
+  "accountSigningIn": "Signing in…",
+  "@accountSigningIn": {
+    "description": "Said on the button while signing in."
+  },
+  "accountCreateTitle": "Create your account",
+  "@accountCreateTitle": {
+    "description": "The title of the screen that makes an account."
+  },
+  "accountCreateButton": "Create account",
+  "@accountCreateButton": {
+    "description": "Makes the account."
+  },
+  "accountCreatingButton": "Creating…",
+  "@accountCreatingButton": {
+    "description": "Said on the button while the account is made."
+  },
+  "accountCreateWithPasskey": "Create with a passkey",
+  "@accountCreateWithPasskey": {
+    "description": "Makes an account with a passkey."
+  },
+  "accountCreateRecoveryNote": "Kanso can’t reset your password; you’ll get a recovery key instead.",
+  "@accountCreateRecoveryNote": {
+    "description": "Says under the create account form that a recovery key comes next."
+  },
+  "accountSignInInstead": "I already have an account",
+  "@accountSignInInstead": {
+    "description": "Goes back from creating an account to signing in."
+  },
+  "accountGithubTitle": "Continue with GitHub",
+  "@accountGithubTitle": {
+    "description": "The title of the screen that shows the code to type at GitHub."
+  },
+  "accountGithubExplain": "Type this code at GitHub to sign in.",
+  "@accountGithubExplain": {
+    "description": "Says what the code is for."
+  },
+  "accountGithubOpen": "Open GitHub",
+  "@accountGithubOpen": {
+    "description": "Opens GitHub's page for the code."
+  },
+  "accountGithubWaiting": "Waiting for you to finish at GitHub…",
+  "@accountGithubWaiting": {
+    "description": "Said while GitHub's page is waited on."
+  },
+  "accountProviderCancel": "Cancel",
+  "@accountProviderCancel": {
+    "description": "Stops signing in with a provider."
+  },
+  "accountProviderWaiting": "Finish signing in in the page that opened. Kanso opens again when you’re done.",
+  "@accountProviderWaiting": {
+    "description": "Said while a provider's page is open."
+  },
+  "accountUsernameTitle": "Choose a username",
+  "@accountUsernameTitle": {
+    "description": "The title of the screen that asks for a username for a new identity."
+  },
+  "accountUsernameExplain": "Your account is made with this name. You can change it before creating the account.",
+  "@accountUsernameExplain": {
+    "description": "Says what the username is for."
+  },
+  "accountRecoveryKeyTitle": "Your recovery key",
+  "@accountRecoveryKeyTitle": {
+    "description": "The title of the screen that shows the recovery key."
+  },
+  "accountRecoveryKeyText": "If you forget your password, this key and your username are the only way back into your account. Kanso and the server’s owner can’t reset it. Anyone with it can take over your account and read your notes, so keep it somewhere safe, like a password manager or on paper. Each time it’s used, Kanso gives you a new one.",
+  "@accountRecoveryKeyText": {
+    "description": "Explains the recovery key."
+  },
+  "accountRecoveryKeyCopy": "Copy recovery key",
+  "@accountRecoveryKeyCopy": {
+    "description": "Copies the recovery key."
+  },
+  "accountRecoveryKeyConfirm": "I’ve saved my recovery key somewhere safe",
+  "@accountRecoveryKeyConfirm": {
+    "description": "The box that says the recovery key was saved."
+  },
+  "accountRecoveryKeyNoneTitle": "Nothing to save",
+  "@accountRecoveryKeyNoneTitle": {
+    "description": "The title of the card shown when there is no recovery key waiting to be saved."
+  },
+  "accountRecoveryKeyNoneMessage": "There’s no recovery key waiting to be saved.",
+  "@accountRecoveryKeyNoneMessage": {
+    "description": "Says there is no recovery key waiting to be saved."
+  },
+  "accountRecoveryKeyFailedTitle": "The recovery key didn’t load",
+  "@accountRecoveryKeyFailedTitle": {
+    "description": "The title of the card shown when the recovery key could not be read."
+  },
+  "accountRecoveryKeyFailedMessage": "Something went wrong reading the recovery key. Try again.",
+  "@accountRecoveryKeyFailedMessage": {
+    "description": "The message of the card shown when the recovery key could not be read."
+  },
+  "bindingAdd": "Add them to the account",
+  "@bindingAdd": {
+    "description": "Uploads the notes on this phone to the account."
+  },
+  "bindingAddNote": "They’re encrypted and uploaded. A note deleted in the account but still on this device comes back, and a note changed on both sides keeps both versions.",
+  "@bindingAddNote": {
+    "description": "Says what adding the notes does."
+  },
+  "bindingReplace": "Replace them with the account’s notes",
+  "@bindingReplace": {
+    "description": "Replaces the notes on this phone with the account's."
+  },
+  "bindingReplaceNote": "Kanso saves a backup of this device’s library first, then downloads the account’s notes.",
+  "@bindingReplaceNote": {
+    "description": "Says what replacing the notes does."
+  },
+  "bindingCancel": "Cancel",
+  "@bindingCancel": {
+    "description": "Leaves the notes and the account as they were."
+  },
+  "accountUnlockTitle": "Open your notes on this device",
+  "@accountUnlockTitle": {
+    "description": "The title of the screen for a signed-in account whose notes this device can't open yet."
+  },
+  "accountUnlockExplain": "You’re signed in as {username}, but this device can’t read your notes yet.",
+  "@accountUnlockExplain": {
+    "description": "Explains why the notes are closed.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "accountUnlockButton": "Unlock",
+  "@accountUnlockButton": {
+    "description": "Opens the notes with the password typed."
+  },
+  "accountApproveFromDevice": "Approve from another device",
+  "@accountApproveFromDevice": {
+    "description": "Asks a device that is already signed in to let this one in."
+  },
+  "accountUseRecoveryKey": "Use your recovery key",
+  "@accountUseRecoveryKey": {
+    "description": "Goes to the form that opens the notes with the recovery key."
+  },
+  "accountSignOut": "Sign out",
+  "@accountSignOut": {
+    "description": "Signs this device out of the account."
+  },
+  "accountApprovalTitle": "Approve this device",
+  "@accountApprovalTitle": {
+    "description": "The title of the screen that waits for another device to approve this one."
+  },
+  "accountApprovalIntro": "Open Kanso on a device that’s already signed in and approve this one.",
+  "@accountApprovalIntro": {
+    "description": "Says what to do while waiting."
+  },
+  "accountApprovalRequesting": "Asking another device…",
+  "@accountApprovalRequesting": {
+    "description": "Said while the request is sent."
+  },
+  "accountApprovalWaiting": "Waiting for another device…",
+  "@accountApprovalWaiting": {
+    "description": "Said while no device has answered."
+  },
+  "accountApprovalUnlocking": "Approved. Unlocking this device…",
+  "@accountApprovalUnlocking": {
+    "description": "Said while the notes are being opened after an approval."
+  },
+  "accountApprovalApproved": "This device is unlocked.",
+  "@accountApprovalApproved": {
+    "description": "Said when the approval went through."
+  },
+  "accountApprovalNoDevices": "No other device answered. Use your recovery key to open this device.",
+  "@accountApprovalNoDevices": {
+    "description": "Said when no device answered."
+  },
+  "accountApprovalCancelled": "That request was cancelled.",
+  "@accountApprovalCancelled": {
+    "description": "Said when the request was cancelled."
+  },
+  "accountApprovalExpired": "That request expired.",
+  "@accountApprovalExpired": {
+    "description": "Said when the request ran out of time."
+  },
+  "accountApprovalFailed": "Can’t reach the server. Your notes are safe on this device.",
+  "@accountApprovalFailed": {
+    "description": "Said when the server could not be reached while waiting."
+  },
+  "accountApprovalCompare": "On your other device, approve the request only if it shows this code.",
+  "@accountApprovalCompare": {
+    "description": "Says to compare the code with the other device."
+  },
+  "accountApprovalRecoveryInstead": "Use your recovery key instead",
+  "@accountApprovalRecoveryInstead": {
+    "description": "Opens the notes with the recovery key instead of waiting."
+  },
+  "accountApprovalCode": "Code {code}",
+  "@accountApprovalCode": {
+    "description": "Reads out the approval code to a screen reader.",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "accountRecoverTitle": "Reset your password",
+  "@accountRecoverTitle": {
+    "description": "The title of the screen that signs in with the recovery key."
+  },
+  "accountRecoverExplain": "Enter your recovery key and choose a new password. Your other devices sign out and ask for it, and you get a new recovery key to save.",
+  "@accountRecoverExplain": {
+    "description": "Explains what recovering does."
+  },
+  "accountRecoveryKeyField": "Recovery key",
+  "@accountRecoveryKeyField": {
+    "description": "The label of the field for the recovery key."
+  },
+  "accountRecoveryKeyHint": "The key you saved, in groups of four.",
+  "@accountRecoveryKeyHint": {
+    "description": "The hint in the field for the recovery key."
+  },
+  "accountRecoverButton": "Reset password",
+  "@accountRecoverButton": {
+    "description": "Signs in with the recovery key and sets the new password."
+  },
+  "accountRecoveringButton": "Resetting…",
+  "@accountRecoveringButton": {
+    "description": "Said on the button while recovering."
+  },
+  "accountTitle": "Account",
+  "@accountTitle": {
+    "description": "The title of the Account screen."
+  },
+  "accountSignedInAs": "Signed in as {username}",
+  "@accountSignedInAs": {
+    "description": "Says who is signed in.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "accountLoadFailedTitle": "Your account didn’t load",
+  "@accountLoadFailedTitle": {
+    "description": "The title of the card shown when the account could not be read."
+  },
+  "accountLoadFailedMessage": "Something went wrong reading your account. Try again.",
+  "@accountLoadFailedMessage": {
+    "description": "The message of the card shown when the account could not be read."
+  },
+  "accountRecoveryKeyUnsavedTitle": "Your new recovery key isn’t saved yet",
+  "@accountRecoveryKeyUnsavedTitle": {
+    "description": "Says a recovery key is waiting to be saved."
+  },
+  "accountRecoveryKeyUnsavedMessage": "Save it now: the one you had before no longer works.",
+  "@accountRecoveryKeyUnsavedMessage": {
+    "description": "Says why the new recovery key matters."
+  },
+  "accountRecoveryKeyShow": "Show it",
+  "@accountRecoveryKeyShow": {
+    "description": "Shows the recovery key that is waiting to be saved."
+  },
+  "accountDevices": "Devices",
+  "@accountDevices": {
+    "description": "The label above the account's devices."
+  },
+  "accountThisDevice": "This device",
+  "@accountThisDevice": {
+    "description": "Marks the device in hand in the list of devices."
+  },
+  "accountLastSeen": "Last seen {date}",
+  "@accountLastSeen": {
+    "description": "When a device last synced.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "accountDeviceSignOut": "Sign out",
+  "@accountDeviceSignOut": {
+    "description": "Signs another device out."
+  },
+  "accountWaysToSignIn": "Ways to sign in",
+  "@accountWaysToSignIn": {
+    "description": "The label above the ways to sign in to the account."
+  },
+  "accountPasswordRow": "Password",
+  "@accountPasswordRow": {
+    "description": "The row for the account's password."
+  },
+  "accountPasswordChange": "Change",
+  "@accountPasswordChange": {
+    "description": "Changes the password."
+  },
+  "accountPasswordNotSet": "Not set",
+  "@accountPasswordNotSet": {
+    "description": "Says the account has no password."
+  },
+  "accountPasskeys": "Passkeys",
+  "@accountPasskeys": {
+    "description": "The label above the passkeys of the account."
+  },
+  "accountPasskeyAdd": "Add a passkey",
+  "@accountPasskeyAdd": {
+    "description": "Adds a passkey to the account."
+  },
+  "accountPasskeyRemove": "Remove",
+  "@accountPasskeyRemove": {
+    "description": "Removes a passkey."
+  },
+  "accountPasskeyAdded": "Added {date}",
+  "@accountPasskeyAdded": {
+    "description": "When a passkey was added.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "accountPasskeyUsed": "Added {added} · Last used {used}",
+  "@accountPasskeyUsed": {
+    "description": "When a passkey was added and last used.",
+    "placeholders": {
+      "added": {
+        "type": "String"
+      },
+      "used": {
+        "type": "String"
+      }
+    }
+  },
+  "accountPasskeyCanUnlock": "Can unlock a new device",
+  "@accountPasskeyCanUnlock": {
+    "description": "Says a passkey signs in and opens the notes."
+  },
+  "accountPasskeySignsInOnly": "Signs in only",
+  "@accountPasskeySignsInOnly": {
+    "description": "Says a passkey signs in but doesn't open the notes."
+  },
+  "accountProviderApple": "Apple",
+  "@accountProviderApple": {
+    "description": "The name of Apple as a way to sign in."
+  },
+  "accountProviderGoogle": "Google",
+  "@accountProviderGoogle": {
+    "description": "The name of Google as a way to sign in."
+  },
+  "accountProviderGithub": "GitHub",
+  "@accountProviderGithub": {
+    "description": "The name of GitHub as a way to sign in."
+  },
+  "accountProviderLinked": "Linked",
+  "@accountProviderLinked": {
+    "description": "Says the account can sign in with the provider."
+  },
+  "accountProviderNotLinked": "Not linked",
+  "@accountProviderNotLinked": {
+    "description": "Says the account can't sign in with the provider."
+  },
+  "accountProviderLink": "Link",
+  "@accountProviderLink": {
+    "description": "Links the provider."
+  },
+  "accountProviderUnlink": "Unlink",
+  "@accountProviderUnlink": {
+    "description": "Unlinks the provider."
+  },
+  "accountNoProofHere": "Confirm it’s you with your password. This device can’t use another way for this account yet.",
+  "@accountNoProofHere": {
+    "description": "Says changes need the password, which this account doesn't have."
+  },
+  "accountRecoveryKeySection": "Recovery key",
+  "@accountRecoveryKeySection": {
+    "description": "The label above the recovery key row."
+  },
+  "accountRecoveryKeyNew": "Make a new one",
+  "@accountRecoveryKeyNew": {
+    "description": "Makes a new recovery key."
+  },
+  "accountRecoveryKeyFooter": "Your recovery key still works if you lose your other ways in.",
+  "@accountRecoveryKeyFooter": {
+    "description": "Says what the recovery key is for."
+  },
+  "accountStorage": "Storage",
+  "@accountStorage": {
+    "description": "The row that says how much of the account's space is used."
+  },
+  "accountDeleteAccount": "Delete account",
+  "@accountDeleteAccount": {
+    "description": "Deletes the account."
+  },
+  "accountWorking": "Working…",
+  "@accountWorking": {
+    "description": "Said while a change is made."
+  },
+  "accountRevokeTitle": "Sign out {name}?",
+  "@accountRevokeTitle": {
+    "description": "The title of the question before signing another device out.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "accountRevokeMessage": "It stops syncing until someone signs in on it again. Its notes stay on it.",
+  "@accountRevokeMessage": {
+    "description": "Says what signing another device out does."
+  },
+  "accountSignOutTitle": "Sign out of {username}?",
+  "@accountSignOutTitle": {
+    "description": "The title of the question before signing out.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "accountSignOutMessage": "Notes stay on this device. Sync stops until you sign in again.",
+  "@accountSignOutMessage": {
+    "description": "Says what signing out does."
+  },
+  "accountSignOutUnsavedKey": "Your new recovery key hasn’t been saved yet; signing out deletes it.",
+  "@accountSignOutUnsavedKey": {
+    "description": "Warns that signing out loses a recovery key not yet saved."
+  },
+  "accountChangePasswordTitle": "Change password",
+  "@accountChangePasswordTitle": {
+    "description": "The title of the form that changes the password."
+  },
+  "accountChangePasswordMessage": "Your other devices sign out and ask for the new password. Your recovery key changes too: the one you saved stops working, and Kanso shows the new one to save.",
+  "@accountChangePasswordMessage": {
+    "description": "Says what changing the password does."
+  },
+  "accountNewRecoveryKeyTitle": "New recovery key",
+  "@accountNewRecoveryKeyTitle": {
+    "description": "The title of the form that makes a new recovery key."
+  },
+  "accountNewRecoveryKeyMessage": "The key you saved stops working, and Kanso shows the new one to save instead.",
+  "@accountNewRecoveryKeyMessage": {
+    "description": "Says what making a new recovery key does."
+  },
+  "accountNewRecoveryKeyButton": "Make a new key",
+  "@accountNewRecoveryKeyButton": {
+    "description": "Makes the new recovery key."
+  },
+  "accountDeleteTitle": "Delete account",
+  "@accountDeleteTitle": {
+    "description": "The title of the form that deletes the account."
+  },
+  "accountDeleteMessage": "This deletes {username}’s encrypted notes, attachments and devices from the server. Notes on this device stay here, and other devices keep their copies. The server’s backups keep a copy for up to 30 days. This can’t be undone.",
+  "@accountDeleteMessage": {
+    "description": "Says what deleting the account does.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "accountDeleteTypeUsername": "Type {username} to confirm",
+  "@accountDeleteTypeUsername": {
+    "description": "The label of the field that asks for the username before deleting.",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "accountAddPasskeyTitle": "Add a passkey",
+  "@accountAddPasskeyTitle": {
+    "description": "The title of the form that adds a passkey."
+  },
+  "accountAddPasskeyMessage": "Confirm it’s you with your password, then use your phone’s passkey sheet.",
+  "@accountAddPasskeyMessage": {
+    "description": "Says how to add a passkey."
+  },
+  "accountRemovePasskeyTitle": "Remove {label}?",
+  "@accountRemovePasskeyTitle": {
+    "description": "The title of the question before removing a passkey.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "accountRemovePasskeyMessage": "You won’t be able to sign in with it any more. Confirm it’s you with your password.",
+  "@accountRemovePasskeyMessage": {
+    "description": "Says what removing a passkey does."
+  },
+  "accountRemovePasskeyButton": "Remove passkey",
+  "@accountRemovePasskeyButton": {
+    "description": "Removes the passkey."
+  },
+  "accountLinkTitle": "Link {provider}",
+  "@accountLinkTitle": {
+    "description": "The title of the form that links a provider.",
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "accountLinkMessage": "Confirm it’s you with your password, then finish in the page that opens.",
+  "@accountLinkMessage": {
+    "description": "Says how to link a provider."
+  },
+  "accountUnlinkTitle": "Unlink {provider}?",
+  "@accountUnlinkTitle": {
+    "description": "The title of the question before unlinking a provider.",
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "accountUnlinkMessage": "It no longer signs in to this account. Confirm it’s you with your password.",
+  "@accountUnlinkMessage": {
+    "description": "Says what unlinking a provider does."
+  },
+  "accountConfirmSignOut": "Sign out",
+  "@accountConfirmSignOut": {
+    "description": "Confirms signing out."
+  },
+  "accountNoticeDeviceSignedOut": "Signed out {name}.",
+  "@accountNoticeDeviceSignedOut": {
+    "description": "Said after another device was signed out.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "accountNoticePasskeyAddedCanUnlock": "Added the passkey. It can unlock: on a new device it signs in and opens your notes.",
+  "@accountNoticePasskeyAddedCanUnlock": {
+    "description": "Said after a passkey that can unlock was added."
+  },
+  "accountNoticePasskeyAddedSignsIn": "Added the passkey. It signs in only: a new device will also need approval or your recovery key.",
+  "@accountNoticePasskeyAddedSignsIn": {
+    "description": "Said after a passkey that only signs in was added."
+  },
+  "accountNoticePasskeyRemoved": "Removed the passkey.",
+  "@accountNoticePasskeyRemoved": {
+    "description": "Said after a passkey was removed."
+  },
+  "accountNoticeProviderLinked": "Linked. You can sign in with it now.",
+  "@accountNoticeProviderLinked": {
+    "description": "Said after a provider was linked."
+  },
+  "accountNoticeProviderUnlinked": "Unlinked. It no longer signs in to this account.",
+  "@accountNoticeProviderUnlinked": {
+    "description": "Said after a provider was unlinked."
+  },
+  "approveDeviceTitle": "Approve a device",
+  "@approveDeviceTitle": {
+    "description": "The title of the sheet that asks to let another device in."
+  },
+  "approveDeviceMessage": "A device wants to join {account}: {device}, asked at {time}.",
+  "@approveDeviceMessage": {
+    "description": "Says who asks to join and when.",
+    "placeholders": {
+      "account": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "approveDeviceUnnamed": "A device",
+  "@approveDeviceUnnamed": {
+    "description": "What an unnamed device is called."
+  },
+  "approveDeviceCompare": "Does it show {code}? Only approve if it does.",
+  "@approveDeviceCompare": {
+    "description": "Asks to compare the code with the other device.",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "approveDeviceChanged": "This request changed after it was made. Don’t approve.",
+  "@approveDeviceChanged": {
+    "description": "Said when a request is not what it was."
+  },
+  "approveDeviceApprove": "Approve",
+  "@approveDeviceApprove": {
+    "description": "Lets the device in."
+  },
+  "approveDeviceDecline": "Don’t approve",
+  "@approveDeviceDecline": {
+    "description": "Turns the device away."
+  },
+  "approveDeviceMore": "{count, plural, =1{1 more request is waiting.} other{{count} more requests are waiting.}}",
+  "@approveDeviceMore": {
+    "description": "Says how many more devices ask to join.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "accountServerFailedTitle": "This server didn’t answer",
+  "@accountServerFailedTitle": {
+    "description": "The title of the card shown when the server could not be asked how it lets people in."
+  },
+  "accountDeleteMismatch": "That isn’t this account’s username.",
+  "@accountDeleteMismatch": {
+    "description": "Said when the name typed to confirm deleting the account is not the account's."
+  },
   "settingsVersionValue": "{version} ({build})",
   "@settingsVersionValue": {
     "description": "The app's version and the number of its build.",

@@ -19,6 +19,7 @@ import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 
+import 'account_blocs.dart';
 import 'browse_blocs.dart';
 import 'fixture_library_repository.dart';
 import 'register_page_blocs.dart';
@@ -29,10 +30,19 @@ const Key appBoundaryKey = ValueKey<String>('app-boundary');
 
 /// The app on the mock library, and what a test can look at of it.
 class BrowseApp {
-  BrowseApp(this.router, this.blocs, this.appearance, this.layoutClass);
+  BrowseApp(
+    this.router,
+    this.blocs,
+    this.appearance,
+    this.layoutClass,
+    this.accounts,
+  );
 
   final GoRouter router;
   final BrowseBlocs blocs;
+
+  /// The BLoCs of the account screens.
+  final AccountBlocs accounts;
   final AppearanceBloc appearance;
 
   /// The layout class the router lays its pages out for.
@@ -51,8 +61,9 @@ class BrowseApp {
 /// [tabletDevice] says whether the display is a tablet's, which a narrow
 /// window of one (a Split View half) is not enough to tell; it defaults to
 /// what the window's own size says. [backupNotice] is the notice's BLoC; it
-/// defaults to one that is not shown. The app is inside a repaint boundary,
-/// [appBoundaryKey], to take a picture of.
+/// defaults to one that is not shown. [accounts] has the account screens'
+/// BLoCs; by default the phone has no account. The app is inside a repaint
+/// boundary, [appBoundaryKey], to take a picture of.
 Future<BrowseApp> pumpBrowseApp(
   WidgetTester tester,
   Size size, {
@@ -63,11 +74,13 @@ Future<BrowseApp> pumpBrowseApp(
   EdgeInsets safeArea = EdgeInsets.zero,
   bool? tabletDevice,
   BackupNoticeBloc? backupNotice,
+  AccountBlocs? accounts,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start(library);
   registerPageBlocs(blocs.library);
+  final accountBlocs = (accounts ?? AccountBlocs())..register();
   final padding = FakeViewPadding(
     left: safeArea.left * devicePixelRatio,
     top: safeArea.top * devicePixelRatio,
@@ -105,11 +118,18 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<BackupNoticeBloc>.value(
             value: backupNotice ?? hiddenBackupNoticeBloc(),
           ),
+          ...accountBlocs.providers,
         ],
         child: App(router: kansoRouter),
       ),
     ),
   );
   await tester.pumpAndSettle();
-  return BrowseApp(router, blocs, bloc, kansoRouter.layoutClass);
+  return BrowseApp(
+    router,
+    blocs,
+    bloc,
+    kansoRouter.layoutClass,
+    accountBlocs,
+  );
 }

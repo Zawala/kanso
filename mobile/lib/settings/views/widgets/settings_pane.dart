@@ -11,24 +11,23 @@ import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/load_status.dart';
 import '../../../core/router/kanso_routes.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
-import '../../../core/state/sync_status/sync_status_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/font_labels.dart';
-import '../../../core/utils/sync_labels.dart';
 import '../../../core/views/widgets/kanso_grouped_section.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../state/about/about_bloc.dart';
+import 'settings_sync_section.dart';
 
 /// Settings: a close button, a centred title and rows grouped in rounded
 /// sections, each with an icon, a label and its current value.
 ///
 /// Only what works is here: how the app looks (themes, fonts, text size),
-/// the state of sync with the note that the notes are not in device backups,
-/// and what the app is (its version, its website, its licences). It needs
-/// the app's `AppearanceBloc` and `SyncStatusBloc` and an [AboutBloc] above
-/// it.
+/// the account and the state of sync with the note that the notes are not in
+/// device backups, and what the app is (its version, its website, its
+/// licences). It needs the app's `AppearanceBloc`, `AccountBloc` and
+/// `SyncStatusBloc` and an [AboutBloc] above it.
 class SettingsPane extends StatelessWidget {
   const SettingsPane({super.key});
 
@@ -104,22 +103,7 @@ class SettingsPane extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: KansoSpacing.lg),
-                BlocBuilder<SyncStatusBloc, SyncStatusState>(
-                  builder: (context, sync) {
-                    return KansoGroupedSection(
-                      title: l10n.settingsSync,
-                      footer: l10n.settingsSyncBackupFooter,
-                      dividerIndent: iconInset,
-                      children: <Widget>[
-                        KansoSettingsRow(
-                          icon: KansoIcons.cloud,
-                          label: l10n.settingsSyncStatus,
-                          value: l10n.syncStatusName(sync.status),
-                        ),
-                      ],
-                    );
-                  },
-                ),
+                const SettingsSyncSection(iconInset: iconInset),
                 const SizedBox(height: KansoSpacing.lg),
                 BlocBuilder<AboutBloc, AboutState>(
                   builder: (context, about) {

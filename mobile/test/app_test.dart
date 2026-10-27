@@ -15,9 +15,13 @@ import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 
+import 'helpers/account_blocs.dart';
+import 'helpers/close_bloc_later.dart';
+import 'helpers/fixture_sync_repository.dart';
 import 'helpers/seeded_appearance_bloc.dart';
 
 Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
@@ -27,6 +31,8 @@ Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
     ..physicalSize = const Size(393, 2400)
     ..devicePixelRatio = 1;
   addTearDown(tester.view.reset);
+  final sync = SyncStatusBloc(FixtureSyncRepository());
+  closeBlocLater(sync);
   final router = KansoRouter(
     const DesignGalleryAccess(available: true),
     LayoutClassNotifier.starting(LayoutClass.single),
@@ -36,6 +42,8 @@ Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
       providers: <BlocProvider<dynamic>>[
         BlocProvider<AppearanceBloc>.value(value: bloc),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
+        BlocProvider<SyncStatusBloc>.value(value: sync),
+        ...AccountBlocs().providers,
       ],
       child: App(router: router),
     ),

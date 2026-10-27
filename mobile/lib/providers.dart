@@ -5,7 +5,9 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'core/state/account/account_bloc.dart';
 import 'core/state/appearance/appearance_bloc.dart';
+import 'core/state/device_approval/device_approval_bloc.dart';
 import 'core/state/library_index/library_index_bloc.dart';
 import 'core/state/list_navigation/list_navigation_bloc.dart';
 import 'core/state/navigation_history/navigation_history_bloc.dart';
@@ -36,6 +38,13 @@ class AppProviders extends StatelessWidget {
         BlocProvider<LibraryIndexBloc>(
           create: (_) =>
               getIt<LibraryIndexBloc>()..add(const LibraryIndexEvent.started()),
+        ),
+        BlocProvider<AccountBloc>(
+          create: (_) =>
+              getIt<AccountBloc>()..add(const AccountEvent.started()),
+        ),
+        BlocProvider<DeviceApprovalBloc>(
+          create: (_) => getIt<DeviceApprovalBloc>(),
         ),
         BlocProvider<SyncStatusBloc>(
           create: (_) =>

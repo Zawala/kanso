@@ -31,4 +31,10 @@ abstract interface class SyncRepository {
 
   /// The status now and each time it changes.
   Stream<SyncStatus> statusStream();
+
+  /// The app is in front (true) or not. In front, sync runs after an edit and
+  /// every so often; behind, it stops.
+  Future<Either<ApplicationError, Unit>> setForeground({
+    required bool foreground,
+  });
 }

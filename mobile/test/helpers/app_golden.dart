@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 
+import 'account_blocs.dart';
 import 'browse_blocs.dart';
 import 'fixture_library_repository.dart';
 import 'golden.dart';
@@ -25,8 +26,9 @@ import 'pump_browse_app.dart';
 /// sheet or a note, or to start a selection.
 ///
 /// [library] makes the mock library for each platform, so a test can fail
-/// or hold back what it answers; [backupNotice] makes the backup notice's
-/// BLoC. The clock is the mock content's (see [atMockNow]).
+/// or hold back what it answers; [accounts] makes the account screens'
+/// BLoCs for each platform; [backupNotice] makes the backup notice's BLoC.
+/// The clock is the mock content's (see [atMockNow]).
 Future<void> expectAppGoldenOnBothPlatforms(
   WidgetTester tester, {
   required String name,
@@ -35,6 +37,7 @@ Future<void> expectAppGoldenOnBothPlatforms(
   String at = '/notes',
   FixtureLibraryRepository Function()? library,
   Future<BackupNoticeBloc> Function()? backupNotice,
+  AccountBlocs Function()? accounts,
   Future<void> Function(WidgetTester tester, BrowseApp app)? interact,
 }) async {
   tester.platformDispatcher
@@ -70,6 +73,7 @@ Future<void> expectAppGoldenOnBothPlatforms(
           safeArea: viewport.safeArea,
           tabletDevice: viewport.tablet,
           backupNotice: backupNotice == null ? null : await backupNotice(),
+          accounts: accounts?.call(),
         );
         if (interact != null) {
           await interact(tester, app);

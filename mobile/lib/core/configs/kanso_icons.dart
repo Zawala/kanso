@@ -28,6 +28,7 @@ enum KansoIcons {
   circleX('circle-x'),
   clock('clock'),
   cloud('cloud'),
+  copy('copy'),
   download('download'),
   ellipsis('ellipsis'),
   externalLink('external-link'),

@@ -56,13 +56,24 @@ class FixtureSyncRepository implements SyncRepository {
   @override
   Stream<SyncStatus> statusStream() => Stream<SyncStatus>.value(current);
 
+  /// Whether the app was last said to be in front.
+  bool? foreground;
+
+  @override
+  Future<Either<ApplicationError, Unit>> setForeground({
+    required bool foreground,
+  }) async {
+    this.foreground = foreground;
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
   @override
   Future<Either<ApplicationError, SyncStatus>> status() async =>
       Right<ApplicationError, SyncStatus>(current);
 
   @override
-  Future<Either<ApplicationError, String>> defaultServer() =>
-      throw UnimplementedError();
+  Future<Either<ApplicationError, String>> defaultServer() async =>
+      const Right<ApplicationError, String>('https://sync.kansoapp.app');
 
   @override
   Future<Either<ApplicationError, ServerInfo>> checkServer(String url) =>
