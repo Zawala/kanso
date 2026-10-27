@@ -28,10 +28,14 @@ class RustLibraryRepository implements LibraryRepository {
       attempt(_library.overview);
 
   @override
-  Future<Either<ApplicationError, int>> change(
+  Future<Either<ApplicationError, Changed>> change(
     List<String> ids,
     NoteChange change,
   ) => attempt(() => _library.change(ids: ids, change: change));
+
+  @override
+  Future<Either<ApplicationError, int>> undo(int ticket) =>
+      attempt(() => _library.undo(ticket: ticket));
 
   @override
   Future<Either<ApplicationError, NoteView>> note(String id) =>

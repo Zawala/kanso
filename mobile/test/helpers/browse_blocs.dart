@@ -16,6 +16,7 @@ import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/note/models/data/note_screen_status.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/models/data/note_list_status.dart';
@@ -71,6 +72,16 @@ class BrowseBlocs {
   final FixtureRendererRepository renderer = FixtureRendererRepository();
   final RecordingHaptics haptics = RecordingHaptics();
 
+  /// The notice that offers Undo, over the mock library.
+  late final UndoNoticeBloc undoNotice = makeUndoNotice();
+
+  /// Makes the notice, to be closed when the test ends.
+  UndoNoticeBloc makeUndoNotice() {
+    final bloc = UndoNoticeBloc(library, haptics);
+    closeBlocLater(bloc);
+    return bloc;
+  }
+
   /// Makes them, with the library read, and closes them when the test ends.
   static Future<BrowseBlocs> start([
     FixtureLibraryRepository? library,
@@ -120,6 +131,7 @@ class BrowseBlocs {
       library,
       ForgetfulPreferencesRepository(),
       haptics,
+      undoNotice,
     );
     closeBlocLater(bloc);
     if (read) {
@@ -185,6 +197,7 @@ class BrowseBlocs {
         BlocProvider<SyncStatusBloc>.value(value: sync),
         BlocProvider<ListNavigationBloc>.value(value: listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: libraryPane),
+        BlocProvider<UndoNoticeBloc>.value(value: undoNotice),
         if (list != null) BlocProvider<NoteListBloc>.value(value: list),
         if (note != null) BlocProvider<NoteBloc>.value(value: note),
         if (search != null) BlocProvider<SearchBloc>.value(value: search),

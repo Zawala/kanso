@@ -1000,6 +1000,12 @@ abstract class AppLocalizations {
   /// **'OK'**
   String get noteListDismiss;
 
+  /// The button on the notice that follows a change to notes and takes the change back.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get undoNoticeUndo;
+
   /// What a screen reader says while a note is read.
   ///
   /// In en, this message translates to:

@@ -22,12 +22,18 @@ abstract interface class LibraryRepository {
   Future<Either<ApplicationError, LibraryOverview>> overview();
 
   /// Makes [change] to every note in [ids] in one write; how many notes it
-  /// wrote. Unlocked notes into a locked notebook, and notes out of one, are
-  /// a [LockedError]: those go one at a time.
-  Future<Either<ApplicationError, int>> change(
+  /// wrote, what the notice says and the ticket for [undo]. Unlocked notes
+  /// into a locked notebook, and notes out of one, are a [LockedError]: those
+  /// go one at a time.
+  Future<Either<ApplicationError, Changed>> change(
     List<String> ids,
     NoteChange change,
   );
+
+  /// Takes back the change kept under [ticket], as far as it still holds (a
+  /// field changed again since keeps its newer value); how many notes it
+  /// wrote. A ticket is used once.
+  Future<Either<ApplicationError, int>> undo(int ticket);
 
   /// One note; its text is null while it is locked and closed.
   Future<Either<ApplicationError, NoteView>> note(String id);

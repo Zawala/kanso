@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart' show addTearDown;
+import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/injection.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
@@ -22,17 +23,27 @@ import 'seeded_appearance_bloc.dart';
 
 /// Registers, for a test that builds the app's pages, the BLoCs the pages
 /// make for themselves, over [library]; they are taken out again when the
-/// test ends.
+/// test ends. The lists share [undo], or a notice of their own.
 void registerPageBlocs(
   FixtureLibraryRepository library, [
   FixtureRendererRepository? renderer,
+  UndoNoticeBloc? undo,
 ]) {
   final haptics = RecordingHaptics();
+  final undoNotice = undo ?? UndoNoticeBloc(library, haptics);
+  if (undo == null) {
+    addTearDown(() => unawaited(undoNotice.close()));
+  }
   if (getIt.isRegistered<NoteListBloc>()) {
     getIt.unregister<NoteListBloc>();
   }
   getIt.registerFactory<NoteListBloc>(
-    () => NoteListBloc(library, ForgetfulPreferencesRepository(), haptics),
+    () => NoteListBloc(
+      library,
+      ForgetfulPreferencesRepository(),
+      haptics,
+      undoNotice,
+    ),
   );
   if (getIt.isRegistered<NoteBloc>()) {
     getIt.unregister<NoteBloc>();

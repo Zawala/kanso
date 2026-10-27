@@ -130,10 +130,10 @@ void librarySuite(OpenLibrary open) {
         final first = await makeNote(library, 'First', 'a');
         final second = await makeNote(library, 'Second', 'b');
         expect(
-          await library.change(
+          (await library.change(
             ids: <String>[first],
             change: const NoteChange.togglePin(),
-          ),
+          )).count,
           1,
         );
         final all = await library.list(query: everyNote);
@@ -190,10 +190,10 @@ void librarySuite(OpenLibrary open) {
       final b = await makeNote(library, 'B', 'b');
       final garden = await library.createNotebook(name: 'Garden');
       expect(
-        await library.change(
+        (await library.change(
           ids: <String>[a, b],
           change: NoteChange.move(notebookId: garden.id),
-        ),
+        )).count,
         2,
       );
       expect(
@@ -201,18 +201,18 @@ void librarySuite(OpenLibrary open) {
         garden.id,
       );
       expect(
-        await library.change(
+        (await library.change(
           ids: <String>[a, b],
           change: NoteChange.move(notebookId: garden.id),
-        ),
+        )).count,
         0,
         reason: 'already there',
       );
       expect(
-        await library.change(
+        (await library.change(
           ids: <String>[a],
           change: const NoteChange.trash(),
-        ),
+        )).count,
         1,
       );
       expect((await library.overview()).trash, 1);
@@ -222,6 +222,78 @@ void librarySuite(OpenLibrary open) {
           change: const NoteChange.togglePin(),
         ),
         throwsA(isA<KansoError_NotFound>()),
+      );
+    });
+
+    test('a change says what to tell, and Undo takes it back', () async {
+      final library = await open();
+      final a = await makeNote(library, 'A', 'a');
+      final b = await makeNote(library, 'B', 'b');
+      final garden = await library.createNotebook(name: 'Garden');
+      final before = (await library.note(id: a)).notebookId;
+
+      final moved = await library.change(
+        ids: <String>[a, b],
+        change: NoteChange.move(notebookId: garden.id),
+      );
+      expect(moved.count, 2);
+      expect(moved.message, 'Moved 2 notes to Garden.');
+      expect(moved.undo, isNotNull);
+      expect((await library.note(id: a)).notebookId, garden.id);
+
+      expect(await library.undo(ticket: moved.undo!), 2);
+      expect((await library.note(id: a)).notebookId, before);
+      expect((await library.note(id: b)).notebookId, before);
+      expect(
+        await library.undo(ticket: moved.undo!),
+        0,
+        reason: 'a ticket is used once',
+      );
+
+      final nothing = await library.change(
+        ids: <String>[a],
+        change: NoteChange.move(notebookId: before),
+      );
+      expect((nothing.count, nothing.undo, nothing.message), (0, null, ''));
+    });
+
+    test('Undo keeps a field that changed again since', () async {
+      final library = await open();
+      final a = await makeNote(library, 'A', 'a');
+      final garden = await library.createNotebook(name: 'Garden');
+      final shed = await library.createNotebook(name: 'Shed');
+      final moved = await library.change(
+        ids: <String>[a],
+        change: NoteChange.move(notebookId: garden.id),
+      );
+      await library.change(
+        ids: <String>[a],
+        change: NoteChange.move(notebookId: shed.id),
+      );
+      expect(await library.undo(ticket: moved.undo!), 0);
+      expect((await library.note(id: a)).notebookId, shed.id);
+    });
+
+    test('a ticked task is taken back with its ticket', () async {
+      final library = await open();
+      final saved = await library.create(
+        note: const NewNote(title: 'Todo', body: '- [ ] one\n- [ ] two'),
+      );
+      final ticked = await library.setTask(
+        noteId: saved.id,
+        line: 0,
+        text: 'one',
+        checked: true,
+      );
+      expect(ticked, isA<Ticked_Changed>());
+      expect(
+        (await library.note(id: saved.id)).body,
+        contains('- [x] one'),
+      );
+      expect(await library.undo(ticket: (ticked as Ticked_Changed).undo), 1);
+      expect(
+        (await library.note(id: saved.id)).body,
+        contains('- [ ] one'),
       );
     });
 
