@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../test/core/bridge/suites/diagnostics_suite.dart';
 import '../test/core/bridge/suites/library_suite.dart';
+import '../test/core/bridge/suites/linking_suite.dart';
 import '../test/core/bridge/suites/locks_suite.dart';
 import '../test/core/bridge/suites/renderer_suite.dart';
 import '../test/core/bridge/suites/sync_suite.dart';
@@ -39,6 +40,7 @@ void main() {
   }
 
   librarySuite(openDeviceLibrary);
+  linkingSuite(openDeviceLibrary);
   locksSuite(openDeviceLibrary);
   syncSuite(openDeviceLibrary);
   rendererSuite(openDeviceLibrary);
