@@ -71,6 +71,7 @@ fn copy_tree(from: &Path, to: &Path) {
             copy_tree(&entry.path(), &to.join(entry.file_name()));
         }
     } else {
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
         std::fs::copy(from, to).unwrap();
     }
 }
@@ -83,7 +84,7 @@ fn built(dir: &Path) -> Vec<(&'static str, PathBuf)> {
     );
     write(
         &dir.join("roam.json"),
-        r#"[{"title":"Roam page","create-time":1600000000000,"edit-time":1600000000000,"children":[{"string":"hello","uid":"abc"}]}]"#,
+        r#"[{"title":"Roam page","uid":"page-uid","create-time":1600000000000,"edit-time":1600000000000,"children":[{"string":"hello","uid":"abc"}]}]"#,
     );
     write(
         &dir.join("keep.json"),
