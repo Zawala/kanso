@@ -28,6 +28,9 @@ serde.workspace = true
 # (theme/file.rs), which a map keeps only with `preserve_order`.
 serde_json = { workspace = true, features = ["preserve_order"] }
 sha2.workspace = true
+# Vim keys step over a character as it is read, a grapheme cluster
+# (edit/vim/text.rs).
+unicode-segmentation = "1.13"
 # Column widths of table cells (edit/table.rs).
 unicode-width.workspace = true
 # HTML on the clipboard pasted as Markdown (Apache-2.0; edit/paste.rs).

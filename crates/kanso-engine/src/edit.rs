@@ -6,6 +6,9 @@
 //! note's text and the selection in, at most one [`Edit`] out, which the
 //! editor applies as one change, so one undo step reverts it.
 //!
+//! Vim keys ([`vim`]) are the same kind of thing, a key at a time: the
+//! state machine, and the [`vim::Session`] an editor holds it in.
+//!
 //! Offsets are UTF-8 byte offsets, as the desktop editor's selection is. An
 //! editor that counts in UTF-16 units converts with [`crate::text`].
 //!
@@ -22,6 +25,7 @@ pub mod markdown;
 pub mod pairing;
 pub mod paste;
 pub mod table;
+pub mod vim;
 
 /// The selected bytes of a text, `start..end` with an empty range for a
 /// caret.
