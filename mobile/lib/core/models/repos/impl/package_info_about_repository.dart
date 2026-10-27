@@ -11,17 +11,28 @@ import '../../../configs/kanso_links.dart';
 import '../../data/app_version.dart';
 import '../../data/application_error.dart';
 import '../abs/about_repository.dart';
+import '../abs/patch_repository.dart';
+import 'shorebird_patch_repository.dart';
 
 /// The app's version from the platform's package information, and the
-/// website opened in the browser.
+/// website's pages opened in the browser.
 @LazySingleton(as: AboutRepository)
 class PackageInfoAboutRepository implements AboutRepository {
+  PackageInfoAboutRepository([PatchRepository? patches])
+    : _patches = patches ?? ShorebirdPatchRepository();
+
+  final PatchRepository _patches;
+
   @override
   Future<Either<ApplicationError, AppVersion>> version() async {
     try {
       final info = await PackageInfo.fromPlatform();
       return Right<ApplicationError, AppVersion>(
-        AppVersion(version: info.version, build: info.buildNumber),
+        AppVersion(
+          version: info.version,
+          build: info.buildNumber,
+          patch: await _patches.currentPatch(),
+        ),
       );
     } on Object catch (error) {
       return Left<ApplicationError, AppVersion>(
@@ -31,10 +42,20 @@ class PackageInfoAboutRepository implements AboutRepository {
   }
 
   @override
-  Future<Either<ApplicationError, Unit>> openWebsite() async {
+  Future<Either<ApplicationError, Unit>> openWebsite() =>
+      _open(KansoLinks.website);
+
+  @override
+  Future<Either<ApplicationError, Unit>> openReleaseNotes() =>
+      _open(KansoLinks.releaseNotes);
+
+  @override
+  Future<Either<ApplicationError, Unit>> openHelp() => _open(KansoLinks.help);
+
+  Future<Either<ApplicationError, Unit>> _open(Uri address) async {
     try {
       final opened = await launchUrl(
-        KansoLinks.website,
+        address,
         mode: LaunchMode.externalApplication,
       );
       return opened

@@ -15,14 +15,22 @@ part 'about_bloc.freezed.dart';
 part 'about_event.dart';
 part 'about_state.dart';
 
-/// What the About section shows: the version of the app, and the way to
-/// Kanso's website.
+/// What the About section shows: the version of the app, and the ways to
+/// Kanso's website, release notes and help.
 @injectable
 class AboutBloc extends Bloc<AboutEvent, AboutState> {
   AboutBloc(this._about) : super(const AboutState()) {
     on<AboutStartedEvent>(_onStarted, transformer: restartable());
     on<AboutWebsiteOpenedEvent>(
       (event, emit) => _about.openWebsite(),
+      transformer: droppable(),
+    );
+    on<AboutReleaseNotesOpenedEvent>(
+      (event, emit) => _about.openReleaseNotes(),
+      transformer: droppable(),
+    );
+    on<AboutHelpOpenedEvent>(
+      (event, emit) => _about.openHelp(),
       transformer: droppable(),
     );
   }
