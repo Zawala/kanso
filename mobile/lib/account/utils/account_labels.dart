@@ -97,7 +97,7 @@ String hostOf(String server) {
 /// A day as the Account page writes it ("Oct 26, 2026"), in the local zone.
 String accountDate(BuildContext context, int millisecondsSinceEpoch) {
   final locale = Localizations.localeOf(context).toString();
-  return DateFormat.yMMMd(locale).format(
-    DateTime.fromMillisecondsSinceEpoch(millisecondsSinceEpoch),
-  );
+  return DateFormat.yMMMd(
+    locale,
+  ).format(DateTime.fromMillisecondsSinceEpoch(millisecondsSinceEpoch));
 }

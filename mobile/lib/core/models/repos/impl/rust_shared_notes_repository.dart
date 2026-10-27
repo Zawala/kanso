@@ -90,9 +90,8 @@ class RustSharedNotesRepository implements SharedNotesRepository {
     String noteId,
     ShareRole role,
     int days,
-  ) => attempt(
-    () => _shared.createLink(noteId: noteId, role: role, days: days),
-  );
+  ) =>
+      attempt(() => _shared.createLink(noteId: noteId, role: role, days: days));
 
   @override
   Future<Either<ApplicationError, ShareInfo>> cancelLink(

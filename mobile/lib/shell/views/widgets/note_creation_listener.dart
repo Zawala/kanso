@@ -34,10 +34,7 @@ class NoteCreationListener extends StatelessWidget {
           NavigationHistoryEvent.visited(opening.noteId),
         );
         context.go(
-          BrowseLocation.place(
-            opening.place,
-            noteId: opening.noteId,
-          ).location,
+          BrowseLocation.place(opening.place, noteId: opening.noteId).location,
         );
       },
       child: child,

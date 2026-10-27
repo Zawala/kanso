@@ -10,9 +10,8 @@ import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_check_row.dart';
-import '../../../core/views/widgets/kanso_divider.dart';
 import '../../../core/views/widgets/kanso_pressable.dart';
-import '../../../core/views/widgets/kanso_section_header.dart';
+import '../../../core/views/widgets/kanso_sheet_group.dart';
 import '../../state/tasks/tasks_bloc.dart';
 
 /// Which notebook's tasks to show (All notebooks, or one of the notebooks)
@@ -62,29 +61,37 @@ class TasksFilterSheet extends StatelessWidget {
                     ],
                   ),
                 ),
-                KansoSectionHeader(label: l10n.tasksNotebooksHeader),
-                KansoCheckRow(
-                  label: l10n.tasksAllNotebooks,
-                  checked: state.notebookId == null,
-                  onTap: () => bloc.add(const TasksEvent.notebookChosen(null)),
+                KansoSheetGroup(
+                  title: l10n.tasksNotebooksHeader,
+                  children: <Widget>[
+                    KansoCheckRow(
+                      label: l10n.tasksAllNotebooks,
+                      checked: state.notebookId == null,
+                      onTap: () =>
+                          bloc.add(const TasksEvent.notebookChosen(null)),
+                    ),
+                    for (final notebook in index.notebooks)
+                      KansoCheckRow(
+                        label: notebook.role == NotebookRole.templates
+                            ? l10n.libraryTemplates
+                            : notebook.name,
+                        checked: state.notebookId == notebook.id,
+                        indent: notebook.depth * KansoSpacing.md,
+                        onTap: () =>
+                            bloc.add(TasksEvent.notebookChosen(notebook.id)),
+                      ),
+                  ],
                 ),
-                for (final notebook in index.notebooks)
-                  KansoCheckRow(
-                    label: notebook.role == NotebookRole.templates
-                        ? l10n.libraryTemplates
-                        : notebook.name,
-                    checked: state.notebookId == notebook.id,
-                    indent: notebook.depth * KansoSpacing.md,
-                    onTap: () =>
-                        bloc.add(TasksEvent.notebookChosen(notebook.id)),
-                  ),
-                const KansoDivider(indent: KansoSpacing.md),
-                KansoCheckRow(
-                  label: l10n.tasksShowCompleted,
-                  checked: state.showDone,
-                  onTap: () => bloc.add(
-                    TasksEvent.showDoneChanged(showDone: !state.showDone),
-                  ),
+                KansoSheetGroup(
+                  children: <Widget>[
+                    KansoCheckRow(
+                      label: l10n.tasksShowCompleted,
+                      checked: state.showDone,
+                      onTap: () => bloc.add(
+                        TasksEvent.showDoneChanged(showDone: !state.showDone),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             );

@@ -94,10 +94,9 @@ class ThemeGallerySection extends StatelessWidget {
                           actions: <Widget>[
                             KansoButton(
                               label: l10n.retry,
-                              onPressed: () =>
-                                  context.read<ThemeGalleryBloc>().add(
-                                    const ThemeGalleryEvent.started(),
-                                  ),
+                              onPressed: () => context
+                                  .read<ThemeGalleryBloc>()
+                                  .add(const ThemeGalleryEvent.started()),
                             ),
                           ],
                         ),
@@ -129,10 +128,9 @@ class ThemeGallerySection extends StatelessWidget {
                                   variant: KansoButtonVariant.quiet,
                                   expanded: false,
                                   compact: true,
-                                  onPressed: () =>
-                                      context.read<ThemeGalleryBloc>().add(
-                                        const ThemeGalleryEvent.refreshed(),
-                                      ),
+                                  onPressed: () => context
+                                      .read<ThemeGalleryBloc>()
+                                      .add(const ThemeGalleryEvent.refreshed()),
                                 ),
                               ],
                             ),

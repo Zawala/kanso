@@ -124,10 +124,7 @@ class _CaretsPainter extends CustomPainter {
       );
       canvas.drawRRect(tag, Paint()..color = color);
       name
-        ..paint(
-          canvas,
-          Offset(rect.left + 3, top + (height - name.height) / 2),
-        )
+        ..paint(canvas, Offset(rect.left + 3, top + (height - name.height) / 2))
         ..dispose();
     }
     canvas.restore();

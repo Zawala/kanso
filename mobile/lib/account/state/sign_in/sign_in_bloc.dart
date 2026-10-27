@@ -131,18 +131,13 @@ class SignInBloc extends Bloc<SignInEvent, SignInState> {
           methods: null,
           error: error,
         ),
-        (methods) => state.copyWith(
-          methodsStatus: LoadStatus.ready,
-          methods: methods,
-        ),
+        (methods) =>
+            state.copyWith(methodsStatus: LoadStatus.ready, methods: methods),
       ),
     );
   }
 
-  void _onModeChanged(
-    SignInModeChangedEvent event,
-    Emitter<SignInState> emit,
-  ) {
+  void _onModeChanged(SignInModeChangedEvent event, Emitter<SignInState> emit) {
     emit(state.copyWith(mode: event.mode, problem: null, error: null));
   }
 
@@ -259,9 +254,7 @@ class SignInBloc extends Bloc<SignInEvent, SignInState> {
   ) async {
     await _account.cancelProvider();
     await _session.close();
-    emit(
-      state.copyWith(busy: null, code: null, suggestedUsername: null),
-    );
+    emit(state.copyWith(busy: null, code: null, suggestedUsername: null));
   }
 
   Future<void> _onUsernameChosen(
@@ -322,15 +315,14 @@ class SignInBloc extends Bloc<SignInEvent, SignInState> {
 
   /// The screen after a call that made an account.
   SignInState _afterSignUp(Either<ApplicationError, SignedUp> result) {
-    return result.fold(
-      (error) => state.copyWith(busy: null, error: error),
-      (made) {
-        final key = made.recoveryKey.key.isEmpty ? null : made.recoveryKey;
-        return _afterAccount(
-          made.state,
-        ).copyWith(creating: true, recoveryKey: key, suggestedUsername: null);
-      },
-    );
+    return result.fold((error) => state.copyWith(busy: null, error: error), (
+      made,
+    ) {
+      final key = made.recoveryKey.key.isEmpty ? null : made.recoveryKey;
+      return _afterAccount(
+        made.state,
+      ).copyWith(creating: true, recoveryKey: key, suggestedUsername: null);
+    });
   }
 
   SignInState _afterAccount(AccountState account) {

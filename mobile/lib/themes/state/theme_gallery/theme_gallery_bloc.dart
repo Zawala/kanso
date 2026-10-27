@@ -56,9 +56,7 @@ class ThemeGalleryBloc extends Bloc<ThemeGalleryEvent, ThemeGalleryState> {
     ThemeGalleryStartedEvent event,
     Emitter<ThemeGalleryState> emit,
   ) async {
-    emit(
-      ThemeGalleryState(query: state.query, filter: state.filter),
-    );
+    emit(ThemeGalleryState(query: state.query, filter: state.filter));
     final cached = await _gallery.index();
     final shown = cached.fold<List<GalleryItem>?>(
       (_) => null,
@@ -69,11 +67,7 @@ class ThemeGalleryBloc extends Bloc<ThemeGalleryEvent, ThemeGalleryState> {
       return;
     }
     emit(
-      state.copyWith(
-        status: LoadStatus.ready,
-        items: shown,
-        refreshing: true,
-      ),
+      state.copyWith(status: LoadStatus.ready, items: shown, refreshing: true),
     );
     await _refresh(emit);
   }

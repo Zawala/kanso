@@ -113,14 +113,14 @@ class _KansoTextInputState extends State<KansoTextInput>
           child: Opacity(
             opacity: widget.enabled ? 1 : 0.6,
             child: Container(
-              height: KansoSizes.searchField,
+              height: KansoSizes.field,
               padding: const EdgeInsets.symmetric(horizontal: KansoSpacing.sm),
               alignment: AlignmentDirectional.centerStart,
               decoration: BoxDecoration(
-                color: colors.fill,
+                color: colors.elevated,
                 borderRadius: KansoRadii.mediumBorder,
                 border: Border.all(
-                  color: focused ? colors.accent : colors.fill,
+                  color: focused ? colors.accent : colors.divider,
                   width: focused ? 1.5 : 1,
                 ),
               ),

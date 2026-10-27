@@ -139,10 +139,7 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
     await _select(selection, emit);
   }
 
-  Future<void> _onThemeChanged(
-    String id,
-    Emitter<AppearanceState> emit,
-  ) async {
+  Future<void> _onThemeChanged(String id, Emitter<AppearanceState> emit) async {
     _palettes.remove(id);
     final selection = state.selection;
     final without = selection.without(id);

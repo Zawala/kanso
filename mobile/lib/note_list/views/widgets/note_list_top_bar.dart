@@ -2,6 +2,7 @@
 // Created 2026-10-25.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/configs/kanso_icons.dart';
@@ -25,6 +26,7 @@ class NoteListTopBar extends StatelessWidget {
     this.onOptions,
     this.onNewNote,
     this.optionsLabel,
+    this.titleShown,
     super.key,
   });
 
@@ -33,6 +35,9 @@ class NoteListTopBar extends StatelessWidget {
   final VoidCallback? onSearch;
   final VoidCallback? onOptions;
   final VoidCallback? onNewNote;
+
+  /// When the title shows, for a list whose large title scrolls with it.
+  final ValueListenable<bool>? titleShown;
 
   /// What a screen reader calls the options button; "More" when null.
   final String? optionsLabel;
@@ -52,6 +57,7 @@ class NoteListTopBar extends StatelessWidget {
             ),
       title: title,
       subtitle: subtitle,
+      titleShown: titleShown,
       trailing: <Widget>[
         if (onNewNote != null)
           KansoIconButton(

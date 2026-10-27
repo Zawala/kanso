@@ -87,9 +87,8 @@ class RustEditorDocument implements EditorDocument {
     required String key,
     required String value,
     int? index,
-  }) => attempt(
-    () => _editor.setProperty(index: index, key: key, value: value),
-  );
+  }) =>
+      attempt(() => _editor.setProperty(index: index, key: key, value: value));
 
   @override
   Future<Either<ApplicationError, List<Property>>> removeProperty(int index) =>

@@ -69,10 +69,7 @@ class UnlockBloc extends Bloc<UnlockEvent, UnlockState> {
     emit(state.copyWith(busy: true, problem: null, error: null));
     final result = await _account.unlockWithPassword(event.password);
     emit(
-      result.fold(
-        (error) => state.copyWith(busy: false, error: error),
-        _after,
-      ),
+      result.fold((error) => state.copyWith(busy: false, error: error), _after),
     );
   }
 
@@ -144,10 +141,7 @@ class UnlockBloc extends Bloc<UnlockEvent, UnlockState> {
     emit(state.copyWith(question: null, busy: true));
     final result = await _account.answerBinding(event.answer);
     emit(
-      result.fold(
-        (error) => state.copyWith(busy: false, error: error),
-        _after,
-      ),
+      result.fold((error) => state.copyWith(busy: false, error: error), _after),
     );
   }
 

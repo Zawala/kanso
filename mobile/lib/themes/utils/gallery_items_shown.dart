@@ -33,23 +33,21 @@ List<GalleryItem> galleryItemsShown(
   }
 
   final shown = items.where(matches).toList()
-    ..sort(
-      switch (filter) {
-        GalleryFilter.popular => (a, b) {
-          final installs = b.installs.compareTo(a.installs);
-          if (installs != 0) {
-            return installs;
-          }
-          if (a.official != b.official) {
-            return a.official ? -1 : 1;
-          }
-          return byName(a, b);
-        },
-        GalleryFilter.recent => (a, b) {
-          final updated = b.updatedMs.compareTo(a.updatedMs);
-          return updated != 0 ? updated : byName(a, b);
-        },
+    ..sort(switch (filter) {
+      GalleryFilter.popular => (a, b) {
+        final installs = b.installs.compareTo(a.installs);
+        if (installs != 0) {
+          return installs;
+        }
+        if (a.official != b.official) {
+          return a.official ? -1 : 1;
+        }
+        return byName(a, b);
       },
-    );
+      GalleryFilter.recent => (a, b) {
+        final updated = b.updatedMs.compareTo(a.updatedMs);
+        return updated != 0 ? updated : byName(a, b);
+      },
+    });
   return shown;
 }

@@ -146,11 +146,7 @@ String _placePath(ListPlace place) => switch (place) {
   ListPlace_Tag(:final id) => '/tags/${Uri.encodeComponent(id)}',
 };
 
-String _searchQuery(
-  String query,
-  SearchScopeKind scope,
-  String? notebookId,
-) {
+String _searchQuery(String query, SearchScopeKind scope, String? notebookId) {
   final parameters = <String, String>{
     if (query.isNotEmpty) 'q': query,
     if (scope != SearchScopeKind.all) 'scope': scope.name,

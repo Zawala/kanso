@@ -41,9 +41,8 @@ sealed class SignInEvent with _$SignInEvent {
   }) = SignInSignUpSubmittedEvent;
 
   /// Sign in with a passkey was pressed.
-  const factory SignInEvent.passkeySignInPressed({
-    required String deviceName,
-  }) = SignInPasskeySignInPressedEvent;
+  const factory SignInEvent.passkeySignInPressed({required String deviceName}) =
+      SignInPasskeySignInPressedEvent;
 
   /// Create with a passkey was pressed.
   const factory SignInEvent.passkeySignUpPressed({

@@ -32,11 +32,8 @@ abstract class TasksState with _$TasksState {
   const TasksState._();
 
   /// The query that reads [board].
-  TaskListQuery get query => TaskListQuery(
-    notebookId: notebookId,
-    showDone: showDone,
-    kept: kept,
-  );
+  TaskListQuery get query =>
+      TaskListQuery(notebookId: notebookId, showDone: showDone, kept: kept);
 
   /// How many tasks are listed.
   int get count =>

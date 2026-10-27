@@ -60,13 +60,10 @@ class BindingQuestionSheet extends StatelessWidget {
               onPressed: () => Navigator.of(context).pop(answer),
             ),
             const SizedBox(height: KansoSpacing.xxs),
-            Text(
-              switch (answer) {
-                BindingAnswer.add => l10n.bindingAddNote,
-                BindingAnswer.replace => l10n.bindingReplaceNote,
-              },
-              style: typography.meta,
-            ),
+            Text(switch (answer) {
+              BindingAnswer.add => l10n.bindingAddNote,
+              BindingAnswer.replace => l10n.bindingReplaceNote,
+            }, style: typography.meta),
           ],
           const SizedBox(height: KansoSpacing.md),
           KansoButton(
