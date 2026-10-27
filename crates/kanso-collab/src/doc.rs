@@ -192,7 +192,9 @@ impl CollabDoc {
     pub fn sticky(&self, field: Field, offset: usize) -> String {
         let txn = self.doc.transact();
         let text = self.text_ref(field);
-        let len = text.len(&txn) as usize;
+        // Bytes, as the document counts (`Text::len` counts UTF-16 units,
+        // which cuts an offset short in a text with wide characters).
+        let len = text.get_string(&txn).len();
         let offset = offset.min(len) as u32;
         let index = text
             .sticky_index(&txn, offset, Assoc::After)

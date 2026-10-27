@@ -6,7 +6,7 @@
 //! and answers in the desktop's words. Offsets cross the edge in UTF-16 code
 //! units of the note's body, the unit Flutter counts in; the engine counts
 //! UTF-8 bytes of its copy of the body, which the library's body is once the
-//! room's pump (or [`Engine::sync_editor`] here) has handed it over.
+//! room's pump (or `sync_note` here) has handed it over.
 
 use std::ops::Range;
 
@@ -30,7 +30,7 @@ impl SharedNotes {
     pub fn comments(&self, note_id: String) -> Result<Vec<CommentRow>, KansoError> {
         guard(|| {
             let (engine, share_id) = self.shared(&note_id)?;
-            let body = self.body_for_offsets(&engine, &share_id, &note_id)?;
+            let body = self.body_for_offsets(&engine, &share_id, &note_id, false)?;
             let views = engine.comments(&share_id).map_err(|e| collab_error(&e))?;
             let role = engine.role(&share_id).unwrap_or(Role::View);
             let members = member_names(&engine, &share_id, &views);
@@ -89,7 +89,7 @@ impl SharedNotes {
                 return Err(KansoError::invalid("A comment needs some words."));
             }
             // The engine's text first, so the selection is in it.
-            let text = self.body_for_offsets(&engine, &share_id, &note_id)?;
+            let text = self.body_for_offsets(&engine, &share_id, &note_id, true)?;
             let range = bytes_of(&text, start, end)
                 .ok_or_else(|| KansoError::invalid("Select the words to comment on first."))?;
             engine
@@ -163,31 +163,27 @@ impl SharedNotes {
         }
     }
 
-    /// The text the offsets of this note count in: the engine's, after it
-    /// has taken in the library's. While an editor session merges for the
-    /// note, the room already holds the editor's text, and the library's
-    /// body is what is read.
+    /// The text the offsets of this note count in: the library's body. With
+    /// `catch_up`, the note's edits are first taken into the room and what
+    /// others wrote is merged in (best effort, offline it is skipped), so a
+    /// selection is in the engine's text. The editor-merge call is not used
+    /// here: it keeps a base of its own that only one caller may feed.
     fn body_for_offsets(
         &self,
         engine: &Engine,
         share_id: &str,
         note_id: &str,
+        catch_up: bool,
     ) -> Result<String, KansoError> {
+        if catch_up {
+            let _ = engine.sync_note(share_id);
+        }
         let note = self
             .inner
             .store
             .note(note_id)?
             .ok_or(KansoError::NotFound)?;
-        let editor_owns = super::held(&self.inner.shared.rooms)
-            .get(note_id)
-            .is_some_and(|room| room.editor.load(std::sync::atomic::Ordering::SeqCst));
-        if editor_owns {
-            return Ok(note.body);
-        }
-        match engine.sync_editor(share_id, &note.title, &note.body) {
-            Ok(merge) => Ok(merge.body_text),
-            Err(_) => Ok(note.body),
-        }
+        Ok(note.body)
     }
 }
 

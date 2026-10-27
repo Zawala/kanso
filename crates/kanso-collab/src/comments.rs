@@ -369,6 +369,32 @@ mod tests {
         assert_eq!(place(&doc, &comment), Placement::Anchored(13..18));
     }
 
+    // no-prop-test: the end of texts with wide characters, fixed cases; the
+    // mobile comments test holds the property over random texts.
+    #[test]
+    fn the_end_of_a_text_with_wide_characters_stays_the_end() {
+        for text in ["é end", "😀 end", "end é", "aé", "é"] {
+            let doc = CollabDoc::from_text("", text);
+            let end = doc.sticky(Field::Body, text.len());
+            assert_eq!(doc.resolve(&end), Some(text.len()), "{text:?}");
+            doc.set_text(Field::Body, &format!("xx{text}"));
+            assert_eq!(doc.resolve(&end), Some(text.len() + 2), "{text:?} after");
+        }
+    }
+
+    // no-prop-test: the last words after the document is saved and loaded.
+    #[test]
+    fn a_comment_on_the_last_words_survives_a_reload() {
+        let doc = CollabDoc::from_text("", "one two three");
+        let sticky_end = doc.sticky(Field::Body, 13);
+        let loaded = CollabDoc::load(&doc.encode_state()).unwrap();
+        assert_eq!(loaded.resolve(&sticky_end), Some(13), "end after reload");
+        doc.set_text(Field::Body, "zero one two three");
+        assert_eq!(doc.resolve(&sticky_end), Some(18), "end after an edit");
+        let loaded = CollabDoc::load(&doc.encode_state()).unwrap();
+        assert_eq!(loaded.resolve(&sticky_end), Some(18), "end after both");
+    }
+
     proptest! {
         #![proptest_config(crate::tests::config(128))]
 

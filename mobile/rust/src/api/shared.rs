@@ -4,7 +4,7 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    InvitationRow, JoinRow, KansoError, PersonLookup, PersonRow, ShareInfo, ShareRole, SharedEvent,
+    CommentRow, InvitationRow, JoinRow, KansoError, PersonLookup, PersonRow, ShareInfo, ShareRole, SharedEvent,
     SharedNotes,
 };
 
@@ -139,5 +139,51 @@ impl KansoShared {
 
     pub fn close_live(&self, note_id: String) {
         self.0.close_live(note_id);
+    }
+
+    /// The note's comments: those on words still in the text in order, then
+    /// the orphaned. Offsets are UTF-16 units of the note's body.
+    pub fn comments(&self, note_id: String) -> Result<Vec<CommentRow>, KansoError> {
+        self.0.comments(note_id)
+    }
+
+    pub fn open_comments(&self, note_id: String) -> Result<u32, KansoError> {
+        self.0.open_comments(note_id)
+    }
+
+    pub fn comments_band(&self, note_id: String) -> Result<String, KansoError> {
+        self.0.comments_band(note_id)
+    }
+
+    pub fn add_comment(
+        &self,
+        note_id: String,
+        start: u32,
+        end: u32,
+        body: String,
+    ) -> Result<String, KansoError> {
+        self.0.add_comment(note_id, start, end, body)
+    }
+
+    pub fn edit_comment(
+        &self,
+        note_id: String,
+        comment_id: String,
+        body: String,
+    ) -> Result<(), KansoError> {
+        self.0.edit_comment(note_id, comment_id, body)
+    }
+
+    pub fn delete_comment(&self, note_id: String, comment_id: String) -> Result<(), KansoError> {
+        self.0.delete_comment(note_id, comment_id)
+    }
+
+    pub fn resolve_comment(
+        &self,
+        note_id: String,
+        comment_id: String,
+        resolved: bool,
+    ) -> Result<(), KansoError> {
+        self.0.resolve_comment(note_id, comment_id, resolved)
     }
 }

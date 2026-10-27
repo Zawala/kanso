@@ -20,6 +20,8 @@ pub use kanso_mobile::{
     ShareLinkRow, ShareRole, SharedEvent, SignedUp, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase,
     SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow,
     ThemeTokens,
+    AccountStep, CommentPlacement, CommentRow, MentionSpan, QuotaLimit, SignOutReasonKind,
+    SyncAccount, SyncIntervalOption, SyncSettingsRow, SyncStatusLine, SyncTone,
 };
 
 #[frb(mirror(KansoError))]
@@ -274,6 +276,108 @@ pub struct _SyncStatus {
     pub last_synced_ms: Option<i64>,
     pub conflicts: u32,
     pub problem: Option<SyncProblemKind>,
+    pub conflicted_title: Option<String>,
+    pub resume_at_ms: Option<i64>,
+    pub skipped_count: u32,
+    pub quota: Option<QuotaLimit>,
+    pub signed_out_reason: Option<SignOutReasonKind>,
+    pub account: SyncAccount,
+}
+
+#[frb(mirror(SyncTone))]
+pub enum _SyncTone {
+    Good,
+    Busy,
+    Quiet,
+    Warning,
+}
+
+#[frb(mirror(SyncStatusLine))]
+pub struct _SyncStatusLine {
+    pub tone: SyncTone,
+    pub label: String,
+    pub detail: String,
+}
+
+#[frb(mirror(SignOutReasonKind))]
+pub enum _SignOutReasonKind {
+    SignedOut,
+    Revoked,
+    PasswordChanged,
+    Recovered,
+    Evicted,
+    Expired,
+    Rekeyed,
+    Unknown,
+}
+
+#[frb(mirror(QuotaLimit))]
+pub enum _QuotaLimit {
+    Docs,
+    DocBytes,
+    Files,
+    FileBytes,
+    Server,
+}
+
+#[frb(mirror(AccountStep))]
+pub enum _AccountStep {
+    StoppingSync,
+    DerivingKeys,
+    Contacting,
+    Saving,
+}
+
+#[frb(mirror(SyncAccount))]
+pub enum _SyncAccount {
+    SignedOut,
+    SignedIn,
+    Locked,
+    SessionEnded,
+    Busy(AccountStep),
+}
+
+#[frb(mirror(SyncSettingsRow))]
+pub struct _SyncSettingsRow {
+    pub enabled: bool,
+    pub interval_secs: u32,
+}
+
+#[frb(mirror(SyncIntervalOption))]
+pub struct _SyncIntervalOption {
+    pub minutes: u32,
+    pub label: String,
+}
+
+#[frb(mirror(CommentPlacement))]
+pub enum _CommentPlacement {
+    Anchored { start: u32, end: u32 },
+    Orphaned { at: u32 },
+}
+
+#[frb(mirror(MentionSpan))]
+pub struct _MentionSpan {
+    pub start: u32,
+    pub end: u32,
+}
+
+#[frb(mirror(CommentRow))]
+pub struct _CommentRow {
+    pub id: String,
+    pub author: String,
+    pub author_name: String,
+    pub body: String,
+    pub created_ms: i64,
+    pub edited_ms: Option<i64>,
+    pub resolved: bool,
+    pub mine: bool,
+    pub pending: bool,
+    pub can_edit: bool,
+    pub can_delete: bool,
+    pub can_resolve: bool,
+    pub quote: String,
+    pub placement: CommentPlacement,
+    pub mentions: Vec<MentionSpan>,
 }
 
 #[frb(mirror(SyncReportRow))]
@@ -595,6 +699,7 @@ pub struct _InvitationRow {
 pub struct _SharedEvent {
     pub note_ids: Vec<String>,
     pub invitations: u32,
+    pub comment_notes: Vec<String>,
 }
 
 #[frb(mirror(PersonRow))]

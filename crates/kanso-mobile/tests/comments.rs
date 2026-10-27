@@ -348,7 +348,6 @@ fn comments_follow_their_words_and_orphan_when_deleted() {
     let a = alice.shared();
     a.add_comment(alices.clone(), 6, 10, "On beta".into())
         .unwrap();
-    eprintln!("DBG first {:?}", a.comments(alices.clone()).unwrap());
     a.add_comment(alices.clone(), 20, 25, "On delta".into())
         .unwrap();
     alice.sync();
@@ -359,7 +358,6 @@ fn comments_follow_their_words_and_orphan_when_deleted() {
     alice.sync();
     bob.sync();
     let _ = &bobs;
-    eprintln!("DBG before {:?}", a.comments(alices.clone()).unwrap());
     let rows = a.comments(alices.clone()).unwrap();
     let body = alice.library.note(&alices).unwrap().body.unwrap();
     let units: Vec<u16> = body.encode_utf16().collect();
