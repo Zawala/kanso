@@ -86,10 +86,9 @@ fn assert_inert(html: &str) {
             assert!(!lower.starts_with(banned), "{tag}");
         }
         let (attrs, _) = attributes(
-            &lower[1..lower.len() - 1]
+            lower[1..lower.len() - 1]
                 .split_once(char::is_whitespace)
-                .map_or("", |(_, rest)| rest)
-                .to_owned(),
+                .map_or("", |(_, rest)| rest),
         );
         for attr in attrs {
             assert!(!attr.name.starts_with("on"), "{tag}");

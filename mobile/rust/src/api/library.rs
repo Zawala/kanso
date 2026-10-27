@@ -5,8 +5,8 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    Hit, KansoError, Library, LibraryOverview, ListQuery, NewNote, NoteChange, NoteList, NoteView,
-    NotebookRow, Property, Saved, SearchScope, Table, TagRow,
+    AttachmentFile, Hit, KansoError, Library, LibraryOverview, ListQuery, NewNote, NoteChange,
+    NoteList, NoteView, NotebookRow, Property, Saved, SearchScope, Table, TagRow, Ticked,
 };
 
 use super::locks::KansoLocks;
@@ -45,6 +45,34 @@ impl KansoLibrary {
 
     pub fn create(&self, note: NewNote) -> Result<Saved, KansoError> {
         self.0.create(note)
+    }
+
+    /// Ticks (or clears) the `index`-th task box of a note drawn at
+    /// `base_rev`.
+    pub fn toggle_task_at(
+        &self,
+        note_id: String,
+        index: u32,
+        base_rev: String,
+    ) -> Result<Ticked, KansoError> {
+        self.0.toggle_task_at(&note_id, index, &base_rev)
+    }
+
+    /// Takes back the change kept under `ticket`; how many notes it wrote.
+    pub fn undo(&self, ticket: u64) -> Result<u32, KansoError> {
+        self.0.undo(ticket)
+    }
+
+    pub fn create_linked_note(
+        &self,
+        title: String,
+        from_note: String,
+    ) -> Result<Saved, KansoError> {
+        self.0.create_linked_note(&title, &from_note)
+    }
+
+    pub fn attachment(&self, id: String) -> Result<AttachmentFile, KansoError> {
+        self.0.attachment(&id)
     }
 
     pub fn trash(&self, id: String) -> Result<(), KansoError> {

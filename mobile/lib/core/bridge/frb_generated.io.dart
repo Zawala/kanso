@@ -94,6 +94,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int dco_decode_CastedPrimitive_i_64(dynamic raw);
 
   @protected
+  int dco_decode_CastedPrimitive_u_64(dynamic raw);
+
+  @protected
   KansoLibrary
   dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
     dynamic raw,
@@ -132,6 +135,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
+  AttachmentFile dco_decode_attachment_file(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
@@ -154,6 +160,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PaletteDto dco_decode_box_autoadd_palette_dto(dynamic raw);
+
+  @protected
+  PreviewOptions dco_decode_box_autoadd_preview_options(dynamic raw);
 
   @protected
   SearchScope dco_decode_box_autoadd_search_scope(dynamic raw);
@@ -180,6 +189,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   DiagramKind dco_decode_diagram_kind(dynamic raw);
 
   @protected
+  DiagramRenderer dco_decode_diagram_renderer(dynamic raw);
+
+  @protected
   double dco_decode_f_32(dynamic raw);
 
   @protected
@@ -196,6 +208,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   LibraryOverview dco_decode_library_overview(dynamic raw);
+
+  @protected
+  LinkTarget dco_decode_link_target(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
@@ -312,6 +327,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PaletteDto dco_decode_palette_dto(dynamic raw);
 
   @protected
+  PreviewOptions dco_decode_preview_options(dynamic raw);
+
+  @protected
   Property dco_decode_property(dynamic raw);
 
   @protected
@@ -369,10 +387,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   ThemeTokens dco_decode_theme_tokens(dynamic raw);
 
   @protected
+  Ticked dco_decode_ticked(dynamic raw);
+
+  @protected
   int dco_decode_u_16(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw);
 
   @protected
   int dco_decode_u_8(dynamic raw);
@@ -438,6 +462,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int sse_decode_CastedPrimitive_i_64(SseDeserializer deserializer);
 
   @protected
+  int sse_decode_CastedPrimitive_u_64(SseDeserializer deserializer);
+
+  @protected
   KansoLibrary
   sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
     SseDeserializer deserializer,
@@ -480,6 +507,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  AttachmentFile sse_decode_attachment_file(SseDeserializer deserializer);
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
@@ -504,6 +534,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PaletteDto sse_decode_box_autoadd_palette_dto(SseDeserializer deserializer);
+
+  @protected
+  PreviewOptions sse_decode_box_autoadd_preview_options(
+    SseDeserializer deserializer,
+  );
 
   @protected
   SearchScope sse_decode_box_autoadd_search_scope(SseDeserializer deserializer);
@@ -532,6 +567,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   DiagramKind sse_decode_diagram_kind(SseDeserializer deserializer);
 
   @protected
+  DiagramRenderer sse_decode_diagram_renderer(SseDeserializer deserializer);
+
+  @protected
   double sse_decode_f_32(SseDeserializer deserializer);
 
   @protected
@@ -548,6 +586,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   LibraryOverview sse_decode_library_overview(SseDeserializer deserializer);
+
+  @protected
+  LinkTarget sse_decode_link_target(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
@@ -674,6 +715,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PaletteDto sse_decode_palette_dto(SseDeserializer deserializer);
 
   @protected
+  PreviewOptions sse_decode_preview_options(SseDeserializer deserializer);
+
+  @protected
   Property sse_decode_property(SseDeserializer deserializer);
 
   @protected
@@ -731,10 +775,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   ThemeTokens sse_decode_theme_tokens(SseDeserializer deserializer);
 
   @protected
+  Ticked sse_decode_ticked(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_u_16(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
@@ -811,6 +861,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_CastedPrimitive_i_64(int self, SseSerializer serializer);
 
   @protected
+  void sse_encode_CastedPrimitive_u_64(int self, SseSerializer serializer);
+
+  @protected
   void
   sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
     KansoLibrary self,
@@ -860,6 +913,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
+  void sse_encode_attachment_file(
+    AttachmentFile self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
@@ -896,6 +955,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_preview_options(
+    PreviewOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_search_scope(
     SearchScope self,
     SseSerializer serializer,
@@ -926,6 +991,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_diagram_kind(DiagramKind self, SseSerializer serializer);
 
   @protected
+  void sse_encode_diagram_renderer(
+    DiagramRenderer self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_f_32(double self, SseSerializer serializer);
 
   @protected
@@ -945,6 +1016,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
     LibraryOverview self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_link_target(LinkTarget self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
@@ -1085,6 +1159,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_palette_dto(PaletteDto self, SseSerializer serializer);
 
   @protected
+  void sse_encode_preview_options(
+    PreviewOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_property(Property self, SseSerializer serializer);
 
   @protected
@@ -1148,10 +1228,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_theme_tokens(ThemeTokens self, SseSerializer serializer);
 
   @protected
+  void sse_encode_ticked(Ticked self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_16(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);

@@ -12,12 +12,19 @@ import 'types.dart';
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
 abstract class KansoLibrary implements RustOpaqueInterface {
+  Future<AttachmentFile> attachment({required String id});
+
   Future<int> change({required List<String> ids, required NoteChange change});
 
   /// The IDs of what changed, in batches, until Dart stops listening.
   Stream<List<String>> changes();
 
   Future<Saved> create({required NewNote note});
+
+  Future<Saved> createLinkedNote({
+    required String title,
+    required String fromNote,
+  });
 
   Future<NotebookRow> createNotebook({required String name, String? parentId});
 
@@ -57,5 +64,16 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<List<TagRow>> tags();
 
+  /// Ticks (or clears) the `index`-th task box of a note drawn at
+  /// `base_rev`.
+  Future<Ticked> toggleTaskAt({
+    required String noteId,
+    required int index,
+    required String baseRev,
+  });
+
   Future<void> trash({required String id});
+
+  /// Takes back the change kept under `ticket`; how many notes it wrote.
+  Future<int> undo({required int ticket});
 }

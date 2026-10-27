@@ -174,9 +174,7 @@ impl Renderer {
     pub fn code_block(&self, note_id: &str, index: u32) -> Result<String, KansoError> {
         guard(|| {
             let library = self.library();
-            let (_, text) = library
-                .readable_text(note_id)?
-                .ok_or(KansoError::Locked)?;
+            let (_, text) = library.readable_text(note_id)?.ok_or(KansoError::Locked)?;
             let page_text = library.prepared(&text)?;
             html::app::code_blocks(&page_text)
                 .into_iter()

@@ -9,11 +9,12 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview, ListPlace,
-    ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow,
-    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved,
-    SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
+    AttachmentFile, BuiltinTheme, ColorRow, DateField, DiagramKind, DiagramRenderer, Hit,
+    KansoError, LibraryOverview, LinkTarget, ListPlace, ListQuery, ListShape, LockEvent,
+    LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole,
+    NotebookRow, PaletteDto, PreviewOptions, Property, PropertyKind, Range16, Saved, SearchScope,
+    ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind, SyncReportRow,
+    SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens, Ticked,
 };
 
 #[frb(mirror(KansoError))]
@@ -365,4 +366,69 @@ pub struct _SvgRow {
     pub width: f32,
     pub height: f32,
     pub baseline: Option<f32>,
+}
+
+#[frb(mirror(PreviewOptions))]
+pub struct _PreviewOptions {
+    pub font: Option<String>,
+    pub mono: Option<String>,
+    pub size: f32,
+    pub utc_offset_secs: i32,
+    pub code: Vec<SyntaxStyleRow>,
+}
+
+#[frb(mirror(LinkTarget))]
+pub enum _LinkTarget {
+    Note {
+        id: String,
+        heading: Option<String>,
+        anchor: Option<String>,
+    },
+    NewNote {
+        title: String,
+    },
+    Tag {
+        name: String,
+    },
+    Heading {
+        id: String,
+    },
+    Web {
+        url: String,
+    },
+    Attachment {
+        id: String,
+        name: String,
+        content_type: String,
+        size: u64,
+    },
+    Task {
+        index: u32,
+    },
+    CopyCode {
+        index: u32,
+    },
+    Due,
+    Nothing,
+}
+
+#[frb(mirror(AttachmentFile))]
+pub struct _AttachmentFile {
+    pub id: String,
+    pub name: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+}
+
+#[frb(mirror(Ticked))]
+pub enum _Ticked {
+    Changed { rev: String, undo: u64 },
+    Unchanged,
+    Missing,
+}
+
+#[frb(mirror(DiagramRenderer))]
+pub enum _DiagramRenderer {
+    Pele,
+    Kanso,
 }

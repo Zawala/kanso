@@ -83,6 +83,9 @@ pub struct DueChip {
     pub tone: DueTone,
 }
 
+/// Turns a `kanso-due:` address into a chip, if it is one.
+pub type DueChips<'a> = &'a dyn Fn(&str) -> Option<DueChip>;
+
 /// What the page in the app needs from its surroundings.
 #[derive(Clone, Copy, Default)]
 pub struct AppMode<'a> {
@@ -92,7 +95,7 @@ pub struct AppMode<'a> {
     /// Fills `query` fences; without it they stay code.
     pub query: Option<&'a dyn QueryViews>,
     /// Turns a `kanso-due:` address into a chip; without it the link stays.
-    pub due: Option<&'a dyn Fn(&str) -> Option<DueChip>>,
+    pub due: Option<DueChips<'a>>,
 }
 
 /// The address of a task box: this, then its place in the task list.
