@@ -18,7 +18,8 @@
 //! [`tasks`] reads due dates and decides reminders; [`edit`] turns the
 //! formatting toolbar, auto-pairing and Tab and Enter in lists and tables
 //! into one change to the text; [`text`] converts offsets between UTF-8 and
-//! UTF-16; [`theme`] has the palettes, the theme file format and how three
+//! UTF-16; [`icons`] has the icon theme file format and what a theme draws for an
+//! icon or a library slot; [`theme`] has the palettes, the theme file format and how three
 //! themes are fitted together for drawing; and `highlight` (the `highlight`
 //! feature, with the `code-grammars` feature for the code in fenced blocks)
 //! says which parts of a note are headings, markers, links, keywords and the
@@ -41,6 +42,7 @@ pub mod edit;
 pub mod fuzzy;
 #[cfg(feature = "highlight")]
 pub mod highlight;
+pub mod icons;
 pub mod links;
 pub mod list;
 pub mod lock;
