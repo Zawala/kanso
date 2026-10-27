@@ -18,6 +18,8 @@ pub enum Change {
     Move(String),
     /// Adds this tag to each note that hasn't it.
     AddTag(String),
+    /// Takes this tag off each note that has it.
+    RemoveTag(String),
     /// Adds this tag to every note, or takes it off every note when they
     /// all have it, as choosing a checked tag does for one note.
     ToggleTag(String),
@@ -44,9 +46,10 @@ pub fn plan(notes: &[NoteSummary], change: &Change) -> Vec<Edit> {
         .filter_map(|note| {
             let (field, before, after) = match change {
                 Change::Move(book) => ("bookId", json!(note.book_id), json!(book)),
-                Change::AddTag(tag) | Change::ToggleTag(tag) => {
+                Change::AddTag(tag) | Change::ToggleTag(tag) | Change::RemoveTag(tag) => {
                     let has = note.tags.iter().any(|t| t == tag);
-                    let off = matches!(change, Change::ToggleTag(_)) && all_have(tag);
+                    let off = matches!(change, Change::RemoveTag(_))
+                        || matches!(change, Change::ToggleTag(_)) && all_have(tag);
                     let tags: Vec<&String> = if off {
                         note.tags.iter().filter(|t| *t != tag).collect()
                     } else if has {
@@ -133,6 +136,29 @@ pub fn turned_on(change: &Change, edits: &[Edit]) -> bool {
 pub fn needs_one_by_one(notes: &[NoteSummary], change: &Change, locked: &HashSet<String>) -> bool {
     matches!(change, Change::Move(book) if locked.contains(book)) && notes.iter().any(|n| !n.locked)
 }
+
+/// What the notice says once `count` notes changed. `place` names the
+/// notebook, tag or status the change is about; `on` is whether a toggle
+/// turned the tag or pin on. Pure.
+pub fn summary(change: &Change, count: usize, place: &str, on: bool) -> String {
+    let notes = if count == 1 {
+        "1 note".to_owned()
+    } else {
+        format!("{count} notes")
+    };
+    match change {
+        Change::Move(book) if book == TRASH_BOOK_ID => format!("Moved {notes} to the trash."),
+        Change::Move(_) => format!("Moved {notes} to {place}."),
+        Change::AddTag(_) => format!("Added #{place} to {notes}."),
+        Change::RemoveTag(_) => format!("Took #{place} off {notes}."),
+        Change::ToggleTag(_) if on => format!("Added #{place} to {notes}."),
+        Change::ToggleTag(_) => format!("Took #{place} off {notes}."),
+        Change::TogglePin if on => format!("Pinned {notes}."),
+        Change::TogglePin => format!("Unpinned {notes}."),
+        Change::Status(_) => format!("Set {notes} to {place}."),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
@@ -162,6 +188,43 @@ mod tests {
             tasks_total: 0,
             locked: false,
         }
+    }
+
+    #[test]
+    fn notices() {
+        assert_eq!(
+            summary(&Change::Move(TRASH_BOOK_ID.into()), 3, "", true),
+            "Moved 3 notes to the trash."
+        );
+        assert_eq!(
+            summary(&Change::Move("book:a".into()), 1, "Work", true),
+            "Moved 1 note to Work."
+        );
+        assert_eq!(
+            summary(&Change::AddTag("t".into()), 2, "ideas", true),
+            "Added #ideas to 2 notes."
+        );
+        assert_eq!(
+            summary(&Change::RemoveTag("t".into()), 1, "ideas", false),
+            "Took #ideas off 1 note."
+        );
+        assert_eq!(
+            summary(&Change::ToggleTag("t".into()), 2, "ideas", false),
+            "Took #ideas off 2 notes."
+        );
+        assert_eq!(
+            summary(&Change::ToggleTag("t".into()), 2, "ideas", true),
+            "Added #ideas to 2 notes."
+        );
+        assert_eq!(summary(&Change::TogglePin, 1, "", true), "Pinned 1 note.");
+        assert_eq!(
+            summary(&Change::TogglePin, 2, "", false),
+            "Unpinned 2 notes."
+        );
+        assert_eq!(
+            summary(&Change::Status(NoteStatus::Completed), 2, "Completed", true),
+            "Set 2 notes to Completed."
+        );
     }
 
     /// Writes `edit`'s fields into the matching note, as a merge would.
@@ -206,6 +269,7 @@ mod tests {
             prop::sample::select(vec!["book:a", "book:b", TRASH_BOOK_ID])
                 .prop_map(|b| Change::Move(b.into())),
             prop::sample::select(vec!["t1", "t2"]).prop_map(|t| Change::AddTag(t.into())),
+            prop::sample::select(vec!["t1", "t2"]).prop_map(|t| Change::RemoveTag(t.into())),
             prop::sample::select(vec!["t1", "t2"]).prop_map(|t| Change::ToggleTag(t.into())),
             Just(Change::TogglePin),
             prop::sample::select(NoteStatus::ALL.to_vec()).prop_map(Change::Status),
@@ -217,6 +281,7 @@ mod tests {
         match change {
             Change::Move(book) => &note.book_id == book,
             Change::AddTag(tag) => note.tags.contains(tag),
+            Change::RemoveTag(tag) => !note.tags.contains(tag),
             Change::ToggleTag(tag) => note.tags.contains(tag) == on,
             Change::TogglePin => note.pinned == on,
             Change::Status(status) => note.status == *status,

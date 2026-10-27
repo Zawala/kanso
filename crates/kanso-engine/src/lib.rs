@@ -70,6 +70,7 @@ pub mod links;
 pub mod list;
 pub mod lock;
 pub mod navigate;
+pub mod notes;
 pub mod outline;
 pub mod palette;
 pub mod replace;

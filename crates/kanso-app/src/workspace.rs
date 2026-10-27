@@ -1222,7 +1222,7 @@ impl Workspace {
                     return;
                 }
                 let copy = json!({
-                    "title": format!("{} (copy)", note.title),
+                    "title": kanso_engine::notes::copy_title(&note.title),
                     "body": if note.is_locked() { "" } else { note.body.as_str() },
                     "bookId": note.book_id,
                     "tags": note.tags,
