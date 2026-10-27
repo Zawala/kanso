@@ -103,6 +103,12 @@ sealed class BrowseLocation with _$BrowseLocation {
       case 'tags' when rest.isNotEmpty:
         place = ListPlace.tag(id: rest.first);
         tail = rest.sublist(1);
+      case 'statuses' when rest.isNotEmpty:
+        place = ListPlace.status(status: rest.first);
+        tail = rest.sublist(1);
+      case 'tag-paths' when rest.isNotEmpty:
+        place = ListPlace.tagPath(path: rest.first);
+        tail = rest.sublist(1);
       case 'tasks':
         final noteId = _noteIdOf(rest);
         if (rest.isNotEmpty && noteId == null) {
@@ -165,6 +171,10 @@ String _placePath(ListPlace place) => switch (place) {
   ListPlace_Trash() => '/trash',
   ListPlace_Notebook(:final id) => '/notebooks/${Uri.encodeComponent(id)}',
   ListPlace_Tag(:final id) => '/tags/${Uri.encodeComponent(id)}',
+  ListPlace_Status(:final status) =>
+    '/statuses/${Uri.encodeComponent(status)}',
+  ListPlace_TagPath(:final path) =>
+    '/tag-paths/${Uri.encodeComponent(path)}',
 };
 
 String _searchQuery(String query, SearchScopeKind scope, String? notebookId) {

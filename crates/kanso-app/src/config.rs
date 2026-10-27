@@ -190,7 +190,9 @@ impl DiagramRenderer {
 
 /// The editor text size before version 1, kept by anyone who never changed it.
 const OLD_DEFAULT_FONT_SIZE: f32 = 14.0;
-pub const DEFAULT_FONT_SIZE: f32 = 16.0;
+/// The text size when settings don't say; a page's (`kanso_engine::export`)
+/// is the same.
+pub const DEFAULT_FONT_SIZE: f32 = kanso_engine::export::PageStyle::DEFAULT_SIZE;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]

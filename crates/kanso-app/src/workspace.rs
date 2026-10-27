@@ -1222,7 +1222,7 @@ impl Workspace {
                     return;
                 }
                 let copy = json!({
-                    "title": format!("{} (copy)", note.title),
+                    "title": kanso_engine::notes::copy_title(&note.title),
                     "body": if note.is_locked() { "" } else { note.body.as_str() },
                     "bookId": note.book_id,
                     "tags": note.tags,
@@ -1674,7 +1674,7 @@ impl Workspace {
                 .background_executor()
                 .spawn({
                     let root = root.clone();
-                    async move { crate::export::export(&store, &root, only.as_deref()) }
+                    async move { kanso_engine::export::export(&store, &root, only.as_deref()) }
                 })
                 .await;
             cx.update(|window, cx| match result {

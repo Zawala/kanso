@@ -38,6 +38,8 @@ dependencies:
     path: plugins/kanso_lock
   kanso_passkeys:
     path: plugins/kanso_passkeys
+  kanso_print:
+    path: plugins/kanso_print
   package_info_plus: ^10.2.2
   path: ^1.9.0
   path_provider: ^2.1.6

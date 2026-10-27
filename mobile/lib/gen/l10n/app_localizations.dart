@@ -142,6 +142,12 @@ abstract class AppLocalizations {
   /// **'Trash'**
   String get libraryTrash;
 
+  /// The label above the notes' statuses, and what a status is called when it has no notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get libraryStatuses;
+
   /// What the settings button does.
   ///
   /// In en, this message translates to:
@@ -1053,6 +1059,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Notes with this tag will appear in this list.'**
   String get emptyTagMessage;
+
+  /// The title shown when no note has the status.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes marked {status}'**
+  String emptyStatusTitle(String status);
+
+  /// What the empty list of a status's notes says.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes with this status will appear in this list.'**
+  String get emptyStatusMessage;
 
   /// The title shown when the list's narrowing hides every note.
   ///
@@ -4288,6 +4306,24 @@ abstract class AppLocalizations {
   /// **'Note actions'**
   String get lockMoreTitle;
 
+  /// The note's menu row that writes it as a PDF to share.
+  ///
+  /// In en, this message translates to:
+  /// **'Export as PDF'**
+  String get noteExportPdf;
+
+  /// What is shown while a note is being written as a PDF.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing the PDF'**
+  String get noteExportPreparing;
+
+  /// Said when a note could not be written as a PDF.
+  ///
+  /// In en, this message translates to:
+  /// **'The note could not be exported.'**
+  String get noteExportFailed;
+
   /// The title of the notebook's menu.
   ///
   /// In en, this message translates to:
@@ -5235,6 +5271,288 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The notes couldn’t be searched.'**
   String get replaceProblemSearch;
+
+  /// A notebook's menu item that makes a notebook inside it.
+  ///
+  /// In en, this message translates to:
+  /// **'New Sub-notebook'**
+  String get libraryNewSubNotebook;
+
+  /// A notebook's menu item that renames it.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename…'**
+  String get libraryRenameNotebook;
+
+  /// A notebook's menu item that chooses its icon.
+  ///
+  /// In en, this message translates to:
+  /// **'Change Icon…'**
+  String get libraryChangeNotebookIcon;
+
+  /// A notebook's menu item that chooses the color its row is washed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Change Color…'**
+  String get libraryChangeNotebookColor;
+
+  /// A notebook's menu item that deletes it.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Notebook…'**
+  String get libraryDeleteNotebook;
+
+  /// Asks whether to delete the notebook {name}.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete “{name}”?'**
+  String libraryDeleteNotebookTitle(Object name);
+
+  /// Says what deleting a notebook does to its notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Its notes and the notes in its sub-notebooks move to the trash.'**
+  String get libraryDeleteNotebookMessage;
+
+  /// The title of the sheet that renames a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename Notebook'**
+  String get libraryRenameNotebookTitle;
+
+  /// The hint of the field that names a notebook or a tag.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get libraryNotebookNameHint;
+
+  /// Confirms a rename.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get librarySaveAction;
+
+  /// Confirms deleting something.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get libraryDeleteAction;
+
+  /// The title of the sheet that chooses a notebook's icon.
+  ///
+  /// In en, this message translates to:
+  /// **'Change Icon'**
+  String get libraryChangeIconTitle;
+
+  /// The hint of the field that searches notebook icons.
+  ///
+  /// In en, this message translates to:
+  /// **'Search icons'**
+  String get libraryIconSearchHint;
+
+  /// The first icon choice, which keeps no icon of its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get libraryIconDefault;
+
+  /// The title of the sheet that chooses a notebook's color.
+  ///
+  /// In en, this message translates to:
+  /// **'Change Color'**
+  String get libraryChangeColorTitle;
+
+  /// The hint of the field that types a color as hex.
+  ///
+  /// In en, this message translates to:
+  /// **'Hex, such as #2185d0'**
+  String get libraryColorHexHint;
+
+  /// The swatch that keeps no color of its own.
+  ///
+  /// In en, this message translates to:
+  /// **'No color'**
+  String get libraryColorDefault;
+
+  /// Says typed text is not a color.
+  ///
+  /// In en, this message translates to:
+  /// **'That isn’t a color.'**
+  String get libraryColorInvalid;
+
+  /// The title of the sheet that makes a tag.
+  ///
+  /// In en, this message translates to:
+  /// **'New Tag'**
+  String get libraryNewTag;
+
+  /// Confirms making a tag.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get libraryCreateTag;
+
+  /// The hint of the field that names a tag.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get libraryTagNameHint;
+
+  /// The title of the sheet that renames a tag.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename Tag'**
+  String get libraryRenameTagTitle;
+
+  /// A tag's menu item that renames it.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename…'**
+  String get libraryRenameTag;
+
+  /// A tag's submenu of colors.
+  ///
+  /// In en, this message translates to:
+  /// **'Color'**
+  String get libraryTagColor;
+
+  /// A tag's menu item that deletes it.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Tag…'**
+  String get libraryDeleteTag;
+
+  /// Asks whether to delete the tag {name}.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete the tag “{name}”?'**
+  String libraryDeleteTagTitle(Object name);
+
+  /// Says what deleting a tag does to the notes that had it.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes keep their content; the tag is removed from them.'**
+  String get libraryDeleteTagMessage;
+
+  /// The Trash row's menu item that deletes everything in it.
+  ///
+  /// In en, this message translates to:
+  /// **'Empty Trash…'**
+  String get libraryEmptyTrash;
+
+  /// Asks whether to empty the trash, naming how many notes it holds.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {count, plural, =1{1 note} other{{count} notes}} in the trash permanently?'**
+  String libraryEmptyTrashTitle(num count);
+
+  /// Says emptying the trash cannot be undone.
+  ///
+  /// In en, this message translates to:
+  /// **'They can’t be restored afterwards.'**
+  String get libraryEmptyTrashMessage;
+
+  /// Confirms emptying the trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Empty Trash'**
+  String get libraryEmptyTrashConfirm;
+
+  /// Says changing the library did not work.
+  ///
+  /// In en, this message translates to:
+  /// **'That didn’t work. Try again.'**
+  String get libraryActionFailed;
+
+  /// A note's menu item that pins it.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin Note'**
+  String get noteActionPin;
+
+  /// A note's menu item that unpins it.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin Note'**
+  String get noteActionUnpin;
+
+  /// A note's menu item that copies it.
+  ///
+  /// In en, this message translates to:
+  /// **'Duplicate'**
+  String get noteActionDuplicate;
+
+  /// A note's menu item that copies its wikilink.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Note Link'**
+  String get noteActionCopyLink;
+
+  /// A note's menu item that copies Kanso's own link to it.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Kanso Link'**
+  String get noteActionCopyKansoLink;
+
+  /// A note's submenu of statuses.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get noteActionStatus;
+
+  /// A note's menu item that moves it to the trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to Trash'**
+  String get noteActionMoveToTrash;
+
+  /// A trashed note's menu item that moves it out of the trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get noteActionRestore;
+
+  /// A trashed note's menu item that deletes it for good.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Forever'**
+  String get noteActionDeleteForever;
+
+  /// Asks whether to delete a note for good.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this note forever?'**
+  String get noteActionDeleteForeverTitle;
+
+  /// Says a note deleted for good cannot be restored.
+  ///
+  /// In en, this message translates to:
+  /// **'It can’t be restored afterwards.'**
+  String get noteActionDeleteForeverMessage;
+
+  /// Shows what else can be done with the notes chosen.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get noteActionMore;
+
+  /// Says a note's link was copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied.'**
+  String get noteActionLinkCopied;
+
+  /// Shows every tag as a chip, not only the most used few.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get libraryTagsMore;
+
+  /// Shows only the most used tags as chips.
+  ///
+  /// In en, this message translates to:
+  /// **'Fewer'**
+  String get libraryTagsFewer;
 }
 
 class _AppLocalizationsDelegate

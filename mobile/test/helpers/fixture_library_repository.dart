@@ -288,11 +288,316 @@ class FixtureLibraryRepository implements LibraryRepository {
       parentId: parentId,
       count: 0,
       locked: false,
-      depth: 0,
+      depth: 0, hasChildren: false,
     );
     notebookRows = <NotebookRow>[...notebookRows, made];
     changeStream.add(<String>[made.id]);
     return Right<ApplicationError, NotebookRow>(made);
+  }
+
+  /// The statuses `statuses` answers.
+  List<StatusChoice> statusChoices = <StatusChoice>[
+    const StatusChoice(status: 'none', label: 'None'),
+    const StatusChoice(status: 'active', label: 'Active'),
+    const StatusChoice(status: 'onHold', label: 'On hold'),
+    const StatusChoice(status: 'completed', label: 'Completed'),
+    const StatusChoice(status: 'dropped', label: 'Dropped'),
+  ];
+
+  /// The notebook folds `visibleNotebooks` and `toggleFold` were asked for.
+  final List<FoldState> foldsAsked = <FoldState>[];
+
+  /// The notebook arrows tapped, with the notebook showing then.
+  final List<(String, String?)> foldedTaps = <(String, String?)>[];
+
+  /// The `tagPlaces` queries: all, selected, open levels, showing.
+  final List<(bool, String?, List<String>, String?)> tagQueries =
+      <(bool, String?, List<String>, String?)>[];
+
+  /// The actions asked for, by name and argument.
+  final List<(String, String?)> adminActions = <(String, String?)>[];
+
+  /// How many notes `emptyTrash` answers.
+  int emptyTrashCount = 0;
+
+  /// What `noteLink` answers.
+  CopiedLink link = const CopiedLink(
+    text: '[[Design sync]]',
+    message: 'Link copied.',
+  );
+
+  @override
+  Future<Either<ApplicationError, List<StatusChoice>>> statuses() async =>
+      Right<ApplicationError, List<StatusChoice>>(statusChoices);
+
+  @override
+  Future<Either<ApplicationError, int>> emptyTrash() async {
+    adminActions.add(('emptyTrash', null));
+    return Right<ApplicationError, int>(emptyTrashCount);
+  }
+
+  @override
+  Future<Either<ApplicationError, Saved>> duplicate(String id) async {
+    adminActions.add(('duplicate', id));
+    return const Right<ApplicationError, Saved>(
+      Saved(id: 'n:made', rev: 'r2'),
+    );
+  }
+
+  @override
+  Future<Either<ApplicationError, CopiedLink>> noteLink(
+    String id, {
+    required bool kanso,
+  }) async {
+    adminActions.add(('noteLink', id));
+    return Right<ApplicationError, CopiedLink>(link);
+  }
+
+  @override
+  Future<Either<ApplicationError, List<VisibleNotebook>>> visibleNotebooks(
+    FoldState folds, {
+    String? showing,
+  }) async {
+    foldsAsked.add(folds);
+    final rows = notebookRows
+        .where((row) => row.role != NotebookRole.templates)
+        .toList();
+    final showed = _visibleRows(rows, folds);
+    return Right<ApplicationError, List<VisibleNotebook>>(showed);
+  }
+
+  /// The rows the fixture shows with [folds], from the notebooks' depths; a
+  /// cut-down copy of the engine's rule, enough for widget tests.
+  List<VisibleNotebook> _visibleRows(List<NotebookRow> rows, FoldState folds) {
+    final open = folds.open.toSet();
+    final shown = <VisibleNotebook>[];
+    var inside = -1;
+    for (var at = 0; at < rows.length; at++) {
+      final row = rows[at];
+      if (inside >= 0 && row.depth > inside) {
+        continue;
+      }
+      inside = -1;
+      final isOpen = open.contains(row.id);
+      shown.add(
+        VisibleNotebook(row: row, open: isOpen, parent: row.hasChildren),
+      );
+      if (row.hasChildren && !isOpen) {
+        inside = row.depth;
+      }
+    }
+    return shown;
+  }
+
+  @override
+  Future<Either<ApplicationError, FoldState>> toggleFold(
+    FoldState folds,
+    String id, {
+    String? showing,
+  }) async {
+    foldedTaps.add((id, showing));
+    final open = <String>[...folds.open];
+    if (!open.remove(id)) {
+      open.add(id);
+    }
+    return Right<ApplicationError, FoldState>(
+      FoldState(
+        open: open,
+        foldedAt: folds.foldedAt,
+        folded: folds.folded,
+      ),
+    );
+  }
+
+  @override
+  Future<Either<ApplicationError, TagPlaces>> tagPlaces({
+    required bool all,
+    required List<String> openPaths,
+    String? selected,
+    String? showing,
+  }) async {
+    tagQueries.add((all, selected, openPaths, showing));
+    final chips = <TagRow>[
+      for (final tag in tagRows)
+        if (!tag.name.contains('/')) tag,
+    ];
+    final tree = <TagTreeRow>[];
+    for (final tag in tagRows) {
+      final parts = tag.name.split('/');
+      if (parts.length < 2) {
+        continue;
+      }
+      for (var level = 1; level < parts.length; level++) {
+        final path = parts.take(level).join('/');
+        if (tree.any((row) => row.path == path)) {
+          continue;
+        }
+        tree.add(
+          TagTreeRow(
+            path: path,
+            label: parts[level - 1],
+            count: tag.count,
+            depth: level - 1,
+            parent: true,
+            open: openPaths.contains(path.toLowerCase()),
+          ),
+        );
+      }
+      tree.add(
+        TagTreeRow(
+          path: tag.name,
+          label: parts.last,
+          tagId: tag.id,
+          count: tag.count,
+          depth: parts.length - 1,
+          parent: false,
+          open: false,
+        ),
+      );
+    }
+    return Right<ApplicationError, TagPlaces>(
+      TagPlaces(chips: chips, more: false, tree: tree),
+    );
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> renameNotebook(
+    String id,
+    String name,
+  ) async {
+    adminActions.add(('renameNotebook', '$id|$name'));
+    notebookRows = <NotebookRow>[
+      for (final row in notebookRows)
+        if (row.id == id)
+          NotebookRow(
+            id: row.id,
+            name: name,
+            parentId: row.parentId,
+            count: row.count,
+            locked: row.locked,
+            icon: row.icon,
+            color: row.color,
+            role: row.role,
+            depth: row.depth,
+            hasChildren: row.hasChildren,
+          )
+        else
+          row,
+    ];
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> deleteNotebook(String id) async {
+    adminActions.add(('deleteNotebook', id));
+    notebookRows = <NotebookRow>[
+      for (final row in notebookRows)
+        if (row.id != id) row,
+    ];
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> setNotebookIcon(
+    String id,
+    String? icon,
+  ) async {
+    adminActions.add(('setNotebookIcon', '$id|$icon'));
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> setNotebookColor(
+    String id,
+    String? color,
+  ) async {
+    adminActions.add(('setNotebookColor', '$id|$color'));
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
+  @override
+  Future<Either<ApplicationError, TagRow>> createTag(String name) async {
+    adminActions.add(('createTag', name));
+    final made = TagRow(
+      id: 'tag:made-${tagRows.length}',
+      name: name,
+      color: 0,
+      count: 0,
+    );
+    tagRows = <TagRow>[...tagRows, made];
+    return Right<ApplicationError, TagRow>(made);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> renameTag(
+    String id,
+    String name,
+  ) async {
+    adminActions.add(('renameTag', '$id|$name'));
+    tagRows = <TagRow>[
+      for (final tag in tagRows)
+        if (tag.id == id) TagRow(id: tag.id, name: name, color: tag.color,
+            count: tag.count) else tag,
+    ];
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> deleteTag(String id) async {
+    adminActions.add(('deleteTag', id));
+    tagRows = <TagRow>[
+      for (final tag in tagRows)
+        if (tag.id != id) tag,
+    ];
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
+  @override
+  Future<Either<ApplicationError, Unit>> setTagColor(
+    String id,
+    String color,
+  ) async {
+    adminActions.add(('setTagColor', '$id|$color'));
+    return const Right<ApplicationError, Unit>(unit);
+  }
+
+  @override
+  Future<Either<ApplicationError, List<IconChoice>>> notebookIcons(
+    String query,
+  ) async => const Right<ApplicationError, List<IconChoice>>(<IconChoice>[
+    IconChoice(name: 'notebook', label: 'Notebook'),
+    IconChoice(name: 'palette', label: 'Palette'),
+  ]);
+
+  @override
+  Future<Either<ApplicationError, List<ColorChoice>>> notebookColors() async =>
+      const Right<ApplicationError, List<ColorChoice>>(<ColorChoice>[
+        ColorChoice(name: 'Default', rgb: 0),
+        ColorChoice(name: 'Red', rgb: 0xEF4444),
+      ]);
+
+  @override
+  Future<Either<ApplicationError, List<ColorChoice>>> tagColors() async =>
+      const Right<ApplicationError, List<ColorChoice>>(<ColorChoice>[
+        ColorChoice(name: 'default', rgb: 0),
+        ColorChoice(name: 'red', rgb: 0xEF4444),
+      ]);
+
+  @override
+  String? parseColor(String text) {
+    final trimmed = text.trim();
+    final digits = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+    if (digits.isEmpty || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(digits)) {
+      return null;
+    }
+    if (digits.length == 6) {
+      return '#${digits.toLowerCase()}';
+    }
+    if (digits.length == 3) {
+      final doubled = digits.split('').map((c) => '$c$c').join();
+      return '#${doubled.toLowerCase()}';
+    }
+    return null;
   }
 
   @override

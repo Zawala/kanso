@@ -97,6 +97,130 @@ class RustLibraryRepository implements LibraryRepository {
   }) => attempt(() => _library.queryView(source: source, selfId: selfId));
 
   @override
+  Future<Either<ApplicationError, List<StatusChoice>>> statuses() async =>
+      right(KansoLibrary.statuses());
+
+  @override
+  Future<Either<ApplicationError, int>> emptyTrash() =>
+      attempt(_library.emptyTrash);
+
+  @override
+  Future<Either<ApplicationError, Saved>> duplicate(String id) =>
+      attempt(() => _library.duplicate(id: id));
+
+  @override
+  Future<Either<ApplicationError, CopiedLink>> noteLink(
+    String id, {
+    required bool kanso,
+  }) => attempt(() => _library.noteLink(id: id, kanso: kanso));
+
+  @override
+  Future<Either<ApplicationError, List<VisibleNotebook>>> visibleNotebooks(
+    FoldState folds, {
+    String? showing,
+  }) => attempt(
+    () => _library.visibleNotebooks(folds: folds, showing: showing),
+  );
+
+  @override
+  Future<Either<ApplicationError, FoldState>> toggleFold(
+    FoldState folds,
+    String id, {
+    String? showing,
+  }) => attempt(
+    () => _library.toggleFold(folds: folds, id: id, showing: showing),
+  );
+
+  @override
+  Future<Either<ApplicationError, TagPlaces>> tagPlaces({
+    required bool all,
+    required List<String> openPaths,
+    String? selected,
+    String? showing,
+  }) => attempt(
+    () => _library.tagPlaces(
+      all: all,
+      selected: selected,
+      openPaths: openPaths,
+      showing: showing,
+    ),
+  );
+
+  @override
+  Future<Either<ApplicationError, Unit>> renameNotebook(
+    String id,
+    String name,
+  ) => attempt(() async {
+    await _library.renameNotebook(id: id, name: name);
+    return unit;
+  });
+
+  @override
+  Future<Either<ApplicationError, Unit>> deleteNotebook(String id) =>
+      attempt(() async {
+        await _library.deleteNotebook(id: id);
+        return unit;
+      });
+
+  @override
+  Future<Either<ApplicationError, Unit>> setNotebookIcon(
+    String id,
+    String? icon,
+  ) => attempt(() async {
+    await _library.setNotebookIcon(id: id, icon: icon);
+    return unit;
+  });
+
+  @override
+  Future<Either<ApplicationError, Unit>> setNotebookColor(
+    String id,
+    String? color,
+  ) => attempt(() async {
+    await _library.setNotebookColor(id: id, color: color);
+    return unit;
+  });
+
+  @override
+  Future<Either<ApplicationError, TagRow>> createTag(String name) =>
+      attempt(() => _library.createTag(name: name));
+
+  @override
+  Future<Either<ApplicationError, Unit>> renameTag(String id, String name) =>
+      attempt(() async {
+        await _library.renameTag(id: id, name: name);
+        return unit;
+      });
+
+  @override
+  Future<Either<ApplicationError, Unit>> deleteTag(String id) =>
+      attempt(() async {
+        await _library.deleteTag(id: id);
+        return unit;
+      });
+
+  @override
+  Future<Either<ApplicationError, Unit>> setTagColor(
+    String id,
+    String color,
+  ) => attempt(() async {
+    await _library.setTagColor(id: id, color: color);
+    return unit;
+  });
+
+  @override
+  Future<Either<ApplicationError, List<IconChoice>>> notebookIcons(
+    String query,
+  ) async => right(KansoLibrary.notebookIcons(query: query));
+
+  @override
+  Future<Either<ApplicationError, List<ColorChoice>>> notebookColors() async =>
+      right(KansoLibrary.notebookColors());
+
+  @override
+  Future<Either<ApplicationError, List<ColorChoice>>> tagColors() async =>
+      right(KansoLibrary.tagColors());
+
+  @override
   Stream<List<String>> changes() {
     // What the library reports, and what another process may have written.
     final own = cancelableStream(_library.changes());
@@ -164,4 +288,7 @@ class RustLibraryRepository implements LibraryRepository {
   @override
   Future<Either<ApplicationError, AttachmentFile>> attachment(String id) =>
       attempt(() => _library.attachment(id: id));
+
+  @override
+  String? parseColor(String text) => KansoLibrary.parseColor(text: text);
 }

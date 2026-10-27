@@ -23,7 +23,7 @@ NotebookRow book(String id, {String? parent, bool locked = false}) =>
       parentId: parent,
       count: 0,
       locked: locked,
-      depth: 0,
+      depth: 0, hasChildren: false,
     );
 
 void main() {
@@ -129,6 +129,8 @@ void main() {
           actions.contains(NoteMenuAction.lockNow),
           open || lock is LockState_Open,
         );
+        // Any note that is read can be written as a PDF, and it comes first.
+        expect(actions.first, NoteMenuAction.exportPdf);
       }
       expect(actions.toSet().length, actions.length);
     });

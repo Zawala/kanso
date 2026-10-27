@@ -57,7 +57,7 @@ pub fn apply(
         let place = match &change {
             Change::Move(book) => library.book(book).map(|b| b.name.clone()),
             // A tag just made isn't in the library until it reloads.
-            Change::AddTag(tag) | Change::ToggleTag(tag) => {
+            Change::AddTag(tag) | Change::RemoveTag(tag) | Change::ToggleTag(tag) => {
                 library.tag(tag).map(|t| t.name.clone()).or_else(|| {
                     let tags = library.store.tags().ok()?;
                     tags.into_iter().find(|t| &t.id == tag).map(|t| t.name)

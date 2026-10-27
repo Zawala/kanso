@@ -20,6 +20,7 @@ import '../../models/data/note_list_status.dart';
 import '../../state/note_list/note_list_bloc.dart';
 import 'list_options_sheet.dart';
 import 'move_sheet.dart';
+import 'note_actions_sheet.dart';
 import 'note_list_top_bar.dart';
 
 /// The bar of a list: its title and what to do with the list, or, while
@@ -71,6 +72,8 @@ class NoteListBar extends StatelessWidget {
             : () => bloc.add(
                 NoteListEvent.changeRequested(const NoteChange.trash(), chosen),
               ),
+        onMore: () =>
+            NoteActionsSheet.show(context, bloc: bloc, ids: chosen),
       );
     }
     final place = state.place;

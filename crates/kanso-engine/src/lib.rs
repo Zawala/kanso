@@ -47,6 +47,12 @@
 //! reports say; [`backup`] decides where backups go, makes the daily one and
 //! the one made on request, lists them and deletes one made on request.
 //!
+//! Notes leave the app from here too. [`export`] writes a library as
+//! Markdown files and makes a note's web page, in the faces and code colors
+//! the preview is set in; [`publish`] decides what the Publish sheet shows,
+//! says what went wrong in plain words, and publishes a note or a notebook
+//! at a link. The desktop and the mobile app make the same page.
+//!
 //! Nothing here opens a window, reads a clock of its own or touches the
 //! system's secret store: the caller passes the time, and secrets go through
 //! [`Secrets`].
@@ -61,9 +67,11 @@ pub mod batch;
 pub mod board;
 pub mod calendar;
 pub mod capture;
+pub mod catalogue;
 pub mod daily;
 pub mod edit;
 pub mod editor_settings;
+pub mod export;
 pub mod fuzzy;
 #[cfg(feature = "highlight")]
 pub mod highlight;
@@ -73,10 +81,13 @@ pub mod links;
 pub mod list;
 pub mod lock;
 pub mod navigate;
+pub mod notes;
 pub mod outline;
 pub mod palette;
+pub mod publish;
 pub mod replace;
 pub mod saving;
+pub mod sidebar;
 #[cfg(any(test, feature = "test-support"))]
 pub mod strategies;
 pub mod sync;

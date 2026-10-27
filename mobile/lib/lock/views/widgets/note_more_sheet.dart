@@ -11,6 +11,7 @@ import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_sheet_group.dart';
+import '../../../note/views/widgets/note_pdf_export.dart';
 import '../../models/data/lock_target.dart';
 import '../../models/data/note_menu_action.dart';
 import '../../state/lock_status/lock_status_bloc.dart';
@@ -18,9 +19,9 @@ import '../../utils/note_menu_actions.dart';
 import 'lock_item_sheet.dart';
 import 'remove_lock_sheet.dart';
 
-/// A note's More menu, as far as locks go: Lock note…, Remove lock… (the
-/// note is locked and open) and Lock notes now (the notes are open). The
-/// choice closes the menu and then runs.
+/// A note's More menu: Export as PDF, and as far as locks go Lock note…,
+/// Remove lock… (the note is locked and open) and Lock notes now (the notes
+/// are open). The choice closes the menu and then runs.
 class NoteMoreSheet extends StatelessWidget {
   const NoteMoreSheet({required this.actions, super.key});
 
@@ -49,6 +50,8 @@ class NoteMoreSheet extends StatelessWidget {
       return;
     }
     switch (chosen) {
+      case NoteMenuAction.exportPdf:
+        await exportNotePdf(context, noteId: noteId);
       case NoteMenuAction.lockNote:
         await LockItemSheet.show(
           context,
@@ -88,11 +91,13 @@ class NoteMoreSheet extends StatelessWidget {
             for (final action in actions)
               KansoSettingsRow(
                 icon: switch (action) {
+                  NoteMenuAction.exportPdf => KansoIcons.download,
                   NoteMenuAction.lockNote => KansoIcons.lock,
                   NoteMenuAction.removeLock => KansoIcons.lockOpen,
                   NoteMenuAction.lockNow => KansoIcons.lock,
                 },
                 label: switch (action) {
+                  NoteMenuAction.exportPdf => l10n.noteExportPdf,
                   NoteMenuAction.lockNote => l10n.lockNoteMenu,
                   NoteMenuAction.removeLock => l10n.lockRemoveNoteMenu,
                   NoteMenuAction.lockNow => l10n.lockNowMenu,

@@ -1,7 +1,8 @@
-//! What publishing a notebook puts on the web, apart from the sheet
-//! (`publish_site.rs`): the notebook's notes and those of the notebooks
-//! inside it, locked notes left out, each a page of a small site whose
-//! links between published notes work (`kanso_sync::site`).
+//! What publishing a notebook puts on the web: the notebook's notes and
+//! those of the notebooks inside it, locked notes left out, each a page of a
+//! small site whose links between published notes work (`kanso_sync::site`).
+//! The sheet that shows it, on the desktop and on the phone, is the app's;
+//! what it says about the plan and about failures is here.
 
 use std::collections::{HashMap, HashSet};
 
@@ -12,74 +13,19 @@ use kanso_render::html::{IndexEntry, NoteRef, Site, attachment_id};
 use kanso_store::{SearchParams, Sort, Store, StoreError};
 use kanso_sync::Session;
 use kanso_sync::share::{self, KansoPublish, Page, ShareApi, ShareError};
-use kanso_sync::site::{SiteBundle, SiteError, SiteFile, fingerprint, slug_for};
+use kanso_sync::site::{SiteBundle, SiteError, SiteFile, slug_for};
 
-use crate::library::{book_path, book_tree};
+use crate::export::PageStyle;
+use crate::list::{book_path, notebook_tree};
 
-/// A note the site will show.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct PlannedNote {
-    pub id: String,
-    pub title: String,
-    pub body: String,
-    pub snippet: String,
-    pub slug: String,
-    /// The notebook inside the published one it is in, as "Plans › 2026";
-    /// `None` for the published notebook's own notes.
-    pub group: Option<String>,
-}
+mod model;
 
-/// An attachment a published note uses.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PlannedFile {
-    pub id: String,
-    pub name: String,
-    pub content_type: String,
-    pub size: u64,
-}
-
-impl PlannedFile {
-    pub fn is_image(&self) -> bool {
-        self.content_type.starts_with("image/")
-    }
-}
-
-/// What publishing a notebook would put on the web, before anything is
-/// rendered: for the sheet to show, and to build from.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct SitePlan {
-    pub book_id: String,
-    pub name: String,
-    pub notes: Vec<PlannedNote>,
-    /// The titles of the locked notes left out.
-    pub locked: Vec<String>,
-    pub files: Vec<PlannedFile>,
-    /// The notebook's link, when it is published.
-    pub publish: Option<KansoPublish>,
-}
-
-impl SitePlan {
-    /// What the site is made from, for telling whether it changed since it
-    /// was published (`KansoPublish::is_outdated`, with the name as title).
-    pub fn fingerprint(&self) -> String {
-        fingerprint(
-            self.notes
-                .iter()
-                .map(|n| (n.id.as_str(), n.title.as_str(), n.body.as_str())),
-        )
-    }
-
-    /// Whether `publish` shows something other than what the notebook
-    /// holds now.
-    pub fn is_outdated(&self, publish: &KansoPublish) -> bool {
-        publish.is_outdated(&self.name, &self.fingerprint())
-    }
-}
+pub use model::{PlannedFile, PlannedNote, PublishError, SitePlan};
 
 /// The notebooks at and under `book_id`, in the sidebar's order, each with
-/// its path below the published one ("" for itself). Pure.
+/// its path below the published one ("" for itself).
 pub fn notebooks_under(book_id: &str, books: &[Book]) -> Vec<(String, String)> {
-    book_tree(books)
+    notebook_tree(books)
         .into_iter()
         .filter_map(|(_, book)| {
             let path = book_path(&book.id, books);
@@ -90,7 +36,7 @@ pub fn notebooks_under(book_id: &str, books: &[Book]) -> Vec<(String, String)> {
         .collect()
 }
 
-/// The attachment IDs a body links to or shows, in order, once each. Pure.
+/// The attachment IDs a body links to or shows, in order, once each.
 pub fn attachments_in(body: &str) -> Vec<String> {
     let mut seen = HashSet::new();
     body.match_indices(kanso_render::html::FILE_LINK_PREFIX)
@@ -180,7 +126,7 @@ pub fn build(
     plan: &SitePlan,
     attachments: &Attachments,
     palette: &Palette,
-    style: &crate::export_style::PageStyle,
+    style: &PageStyle,
 ) -> Result<SiteBundle, SiteError> {
     let mut by_id: HashMap<&str, &str> = HashMap::new();
     let mut by_title: HashMap<String, &str> = HashMap::new();
@@ -281,26 +227,6 @@ pub fn build(
     Ok(bundle)
 }
 
-/// Why a notebook couldn't be published.
-#[derive(Debug)]
-pub enum PublishError {
-    /// The site came out inconsistent: a bug, never the notebook's fault.
-    Site(SiteError),
-    Share(ShareError),
-}
-
-impl From<SiteError> for PublishError {
-    fn from(err: SiteError) -> PublishError {
-        PublishError::Site(err)
-    }
-}
-
-impl From<ShareError> for PublishError {
-    fn from(err: ShareError) -> PublishError {
-        PublishError::Share(err)
-    }
-}
-
 /// Builds the site for `plan` and seals it at the notebook's link: the
 /// same ID and key with new ciphertext when it has one that still works,
 /// else a new link, as `share::publish` does for a note. The link's content
@@ -315,7 +241,7 @@ pub fn publish(
     plan: &SitePlan,
     store: &Store,
     palette: &Palette,
-    style: &crate::export_style::PageStyle,
+    style: &PageStyle,
     expiry: Option<i64>,
     now_ms: i64,
 ) -> Result<KansoPublish, PublishError> {
@@ -369,14 +295,77 @@ pub fn store_book_publish(
     Ok(())
 }
 
+/// "3 notes, 2 images and 1 file."
+pub fn contents_line(plan: &SitePlan) -> String {
+    let images = plan.files.iter().filter(|f| f.is_image()).count();
+    let others = plan.files.len() - images;
+    let mut parts = vec![count(plan.notes.len(), "note", "notes")];
+    if images > 0 {
+        parts.push(count(images, "image", "images"));
+    }
+    if others > 0 {
+        parts.push(count(others, "file", "files"));
+    }
+    let last = parts.pop().unwrap_or_default();
+    if parts.is_empty() {
+        format!("{last}.")
+    } else {
+        format!("{} and {last}.", parts.join(", "))
+    }
+}
+
+/// "Left out because it is locked: Diary." Empty with none.
+pub fn locked_line(plan: &SitePlan) -> String {
+    match plan.locked.len() {
+        0 => String::new(),
+        1 => format!("Left out because it is locked: {}.", plan.locked[0]),
+        _ => format!(
+            "Left out because they are locked: {}.",
+            plan.locked.join(", ")
+        ),
+    }
+}
+
+fn count(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// What an error means to the person publishing.
+pub fn error_text(err: &PublishError) -> String {
+    match err {
+        PublishError::Share(ShareError::TooLarge(_)) => {
+            "This notebook is too large to publish: with its images it is over 10 MB. Publish a smaller notebook, or remove some images.".into()
+        }
+        PublishError::Share(ShareError::Undecryptable) => {
+            "Kanso couldn't seal the notebook. Try again.".into()
+        }
+        PublishError::Share(other) => super::error_text(other),
+        PublishError::Site(err) => format!("Kanso couldn't make the site ({err})."),
+    }
+}
+
+/// `text` with its first letter in lower case.
+pub fn lowercase_first(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_lowercase().chain(chars).collect()
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{attachments_in, book_publish, build, notebooks_under, plan, store_book_publish};
+    use super::{
+        PageStyle, PlannedFile, PlannedNote, PublishError, SitePlan, attachments_in, book_publish,
+        build, contents_line, error_text, locked_line, lowercase_first, notebooks_under, plan,
+        store_book_publish,
+    };
     use kanso_core::DocType;
     use kanso_core::links::{FILE_LINK_PREFIX as FILE, NOTE_LINK_PREFIX as NOTE};
     use kanso_render::Palette;
     use kanso_store::{Origin, Put, Store};
+    use kanso_sync::share::ShareError;
     use kanso_sync::share::{KansoPublish, ShareKey, new_share_id, open_share, seal_share};
+    use kanso_sync::site::SiteError;
     use kanso_sync::site::{SiteBundle, file_sources, page_links};
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
@@ -490,7 +479,7 @@ mod tests {
             &plan,
             &attachments(&store),
             &Palette::LIGHT,
-            &crate::export_style::PageStyle::default(),
+            &PageStyle::default(),
         )
         .unwrap();
         assert_eq!(bundle.title, "Work");
@@ -532,7 +521,7 @@ mod tests {
     /// the pages that link to it, and is in the site once.
     #[test]
     fn other_attachments_are_offered_on_their_pages() {
-        let planned = |id: &str, title: &str, body: &str| super::PlannedNote {
+        let planned = |id: &str, title: &str, body: &str| PlannedNote {
             id: id.into(),
             title: title.into(),
             body: body.into(),
@@ -540,7 +529,7 @@ mod tests {
             slug: title.to_lowercase(),
             group: None,
         };
-        let plan = super::SitePlan {
+        let plan = SitePlan {
             book_id: "book:x".into(),
             name: "X".into(),
             notes: vec![
@@ -553,7 +542,7 @@ mod tests {
             ],
             locked: Vec::new(),
             publish: None,
-            files: vec![super::PlannedFile {
+            files: vec![PlannedFile {
                 id: "file:pdf".into(),
                 name: "plan.pdf".into(),
                 content_type: "application/pdf".into(),
@@ -564,13 +553,7 @@ mod tests {
             (id == "file:pdf" || id == "file:zip")
                 .then(|| ("application/pdf".to_owned(), b"pdf".to_vec()))
         };
-        let bundle = build(
-            &plan,
-            &read,
-            &Palette::LIGHT,
-            &crate::export_style::PageStyle::default(),
-        )
-        .unwrap();
+        let bundle = build(&plan, &read, &Palette::LIGHT, &PageStyle::default()).unwrap();
         assert_eq!(
             bundle.files.len(),
             1,
@@ -643,6 +626,97 @@ mod tests {
         );
     }
 
+    fn text_config() -> ProptestConfig {
+        ProptestConfig {
+            cases: 256,
+            failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+            ..ProptestConfig::default()
+        }
+    }
+
+    fn planned(notes: usize, images: usize, others: usize, locked: &[&str]) -> SitePlan {
+        let file = |ix: usize, content_type: &str| PlannedFile {
+            id: format!("file:{ix}"),
+            name: format!("f{ix}"),
+            content_type: content_type.into(),
+            size: 1,
+        };
+        SitePlan {
+            book_id: "book:b".into(),
+            name: "B".into(),
+            notes: (0..notes)
+                .map(|ix| PlannedNote {
+                    id: format!("note:{ix}"),
+                    title: format!("N{ix}"),
+                    slug: format!("n{ix}"),
+                    ..PlannedNote::default()
+                })
+                .collect(),
+            locked: locked.iter().map(|s| (*s).to_owned()).collect(),
+            files: (0..images)
+                .map(|ix| file(ix, "image/png"))
+                .chain((0..others).map(|ix| file(100 + ix, "application/pdf")))
+                .collect(),
+            publish: None,
+        }
+    }
+
+    #[test]
+    fn the_sheet_says_what_goes_and_what_stays() {
+        assert_eq!(contents_line(&planned(1, 0, 0, &[])), "1 note.");
+        assert_eq!(
+            contents_line(&planned(3, 1, 0, &[])),
+            "3 notes and 1 image."
+        );
+        assert_eq!(
+            contents_line(&planned(3, 2, 1, &[])),
+            "3 notes, 2 images and 1 file."
+        );
+        assert_eq!(locked_line(&planned(1, 0, 0, &[])), "");
+        assert_eq!(
+            locked_line(&planned(1, 0, 0, &["Diary"])),
+            "Left out because it is locked: Diary."
+        );
+        assert_eq!(
+            locked_line(&planned(1, 0, 0, &["Diary", "Keys"])),
+            "Left out because they are locked: Diary, Keys."
+        );
+        assert!(
+            error_text(&PublishError::Share(ShareError::TooLarge(1)))
+                .contains("notebook is too large")
+        );
+        assert!(
+            error_text(&PublishError::Site(SiteError::MissingFile(3)))
+                .contains("couldn't make the site")
+        );
+    }
+
+    proptest! {
+        #![proptest_config(text_config())]
+
+        /// The line counts what the plan holds: each number appears, with
+        /// the singular for one, and nothing is named that isn't there.
+        #[test]
+        fn prop_contents_line_counts_the_plan(notes in 0usize..30, images in 0usize..5, others in 0usize..5) {
+            let line = contents_line(&planned(notes, images, others, &[]));
+            let plural = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+            prop_assert!(line.starts_with(&plural(notes, "note", "notes")), "{}", line);
+            prop_assert_eq!(line.contains("image"), images > 0);
+            prop_assert_eq!(line.contains("file"), others > 0);
+            if images > 0 { prop_assert!(line.contains(&plural(images, "image", "images"))); }
+            if others > 0 { prop_assert!(line.contains(&plural(others, "file", "files"))); }
+            prop_assert!(line.ends_with('.'));
+        }
+    }
+
+    #[test]
+    fn the_first_letter_goes_lower_case() {
+        assert_eq!(lowercase_first("3 notes."), "3 notes.");
+        assert_eq!(lowercase_first("The site."), "the site.");
+        assert_eq!(lowercase_first("Édith"), "édith");
+        assert_eq!(lowercase_first(""), "");
+    }
+
     proptest! {
         #![proptest_config(config())]
 
@@ -673,7 +747,7 @@ mod tests {
             }
             let plan = plan(&store, "book:work").unwrap();
             prop_assert_eq!(plan.notes.len(), notes.iter().filter(|n| !n.1).count());
-            let bundle = build(&plan, &attachments(&store), &Palette::LIGHT, &crate::export_style::PageStyle::default()).unwrap();
+            let bundle = build(&plan, &attachments(&store), &Palette::LIGHT, &PageStyle::default()).unwrap();
             prop_assert!(bundle.check().is_ok());
             let key = ShareKey::generate();
             let id = new_share_id();

@@ -4201,5 +4201,222 @@
   "boardNoticeDismiss": "OK",
   "@boardNoticeDismiss": {
     "description": "Closes a notice on the board."
+  },
+  "libraryStatuses": "Status",
+  "@libraryStatuses": {
+    "description": "The label above the notes' statuses, and what a status is called when it has no notes."
+  },
+  "emptyStatusTitle": "No notes marked {status}",
+  "@emptyStatusTitle": {
+    "description": "The title shown when no note has the status.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "emptyStatusMessage": "Notes with this status will appear in this list.",
+  "@emptyStatusMessage": {
+    "description": "What the empty list of a status's notes says."
+  },
+  "noteExportPdf": "Export as PDF",
+  "@noteExportPdf": {
+    "description": "The note's menu row that writes it as a PDF to share."
+  },
+  "noteExportPreparing": "Preparing the PDF",
+  "@noteExportPreparing": {
+    "description": "What is shown while a note is being written as a PDF."
+  },
+  "noteExportFailed": "The note could not be exported.",
+  "@noteExportFailed": {
+    "description": "Said when a note could not be written as a PDF."
+  },
+  "libraryNewSubNotebook": "New Sub-notebook",
+  "@libraryNewSubNotebook": {
+    "description": "A notebook's menu item that makes a notebook inside it."
+  },
+  "libraryRenameNotebook": "Rename…",
+  "@libraryRenameNotebook": {
+    "description": "A notebook's menu item that renames it."
+  },
+  "libraryChangeNotebookIcon": "Change Icon…",
+  "@libraryChangeNotebookIcon": {
+    "description": "A notebook's menu item that chooses its icon."
+  },
+  "libraryChangeNotebookColor": "Change Color…",
+  "@libraryChangeNotebookColor": {
+    "description": "A notebook's menu item that chooses the color its row is washed in."
+  },
+  "libraryDeleteNotebook": "Delete Notebook…",
+  "@libraryDeleteNotebook": {
+    "description": "A notebook's menu item that deletes it."
+  },
+  "libraryDeleteNotebookTitle": "Delete “{name}”?",
+  "@libraryDeleteNotebookTitle": {
+    "description": "Asks whether to delete the notebook {name}."
+  },
+  "libraryDeleteNotebookMessage": "Its notes and the notes in its sub-notebooks move to the trash.",
+  "@libraryDeleteNotebookMessage": {
+    "description": "Says what deleting a notebook does to its notes."
+  },
+  "libraryRenameNotebookTitle": "Rename Notebook",
+  "@libraryRenameNotebookTitle": {
+    "description": "The title of the sheet that renames a notebook."
+  },
+  "libraryNotebookNameHint": "Name",
+  "@libraryNotebookNameHint": {
+    "description": "The hint of the field that names a notebook or a tag."
+  },
+  "librarySaveAction": "Save",
+  "@librarySaveAction": {
+    "description": "Confirms a rename."
+  },
+  "libraryDeleteAction": "Delete",
+  "@libraryDeleteAction": {
+    "description": "Confirms deleting something."
+  },
+  "libraryChangeIconTitle": "Change Icon",
+  "@libraryChangeIconTitle": {
+    "description": "The title of the sheet that chooses a notebook's icon."
+  },
+  "libraryIconSearchHint": "Search icons",
+  "@libraryIconSearchHint": {
+    "description": "The hint of the field that searches notebook icons."
+  },
+  "libraryIconDefault": "Default",
+  "@libraryIconDefault": {
+    "description": "The first icon choice, which keeps no icon of its own."
+  },
+  "libraryChangeColorTitle": "Change Color",
+  "@libraryChangeColorTitle": {
+    "description": "The title of the sheet that chooses a notebook's color."
+  },
+  "libraryColorHexHint": "Hex, such as #2185d0",
+  "@libraryColorHexHint": {
+    "description": "The hint of the field that types a color as hex."
+  },
+  "libraryColorDefault": "No color",
+  "@libraryColorDefault": {
+    "description": "The swatch that keeps no color of its own."
+  },
+  "libraryColorInvalid": "That isn’t a color.",
+  "@libraryColorInvalid": {
+    "description": "Says typed text is not a color."
+  },
+  "libraryNewTag": "New Tag",
+  "@libraryNewTag": {
+    "description": "The title of the sheet that makes a tag."
+  },
+  "libraryCreateTag": "Create",
+  "@libraryCreateTag": {
+    "description": "Confirms making a tag."
+  },
+  "libraryTagNameHint": "Name",
+  "@libraryTagNameHint": {
+    "description": "The hint of the field that names a tag."
+  },
+  "libraryRenameTagTitle": "Rename Tag",
+  "@libraryRenameTagTitle": {
+    "description": "The title of the sheet that renames a tag."
+  },
+  "libraryRenameTag": "Rename…",
+  "@libraryRenameTag": {
+    "description": "A tag's menu item that renames it."
+  },
+  "libraryTagColor": "Color",
+  "@libraryTagColor": {
+    "description": "A tag's submenu of colors."
+  },
+  "libraryDeleteTag": "Delete Tag…",
+  "@libraryDeleteTag": {
+    "description": "A tag's menu item that deletes it."
+  },
+  "libraryDeleteTagTitle": "Delete the tag “{name}”?",
+  "@libraryDeleteTagTitle": {
+    "description": "Asks whether to delete the tag {name}."
+  },
+  "libraryDeleteTagMessage": "Notes keep their content; the tag is removed from them.",
+  "@libraryDeleteTagMessage": {
+    "description": "Says what deleting a tag does to the notes that had it."
+  },
+  "libraryEmptyTrash": "Empty Trash…",
+  "@libraryEmptyTrash": {
+    "description": "The Trash row's menu item that deletes everything in it."
+  },
+  "libraryEmptyTrashTitle": "Delete {count, plural, =1{1 note} other{{count} notes}} in the trash permanently?",
+  "@libraryEmptyTrashTitle": {
+    "description": "Asks whether to empty the trash, naming how many notes it holds."
+  },
+  "libraryEmptyTrashMessage": "They can’t be restored afterwards.",
+  "@libraryEmptyTrashMessage": {
+    "description": "Says emptying the trash cannot be undone."
+  },
+  "libraryEmptyTrashConfirm": "Empty Trash",
+  "@libraryEmptyTrashConfirm": {
+    "description": "Confirms emptying the trash."
+  },
+  "libraryActionFailed": "That didn’t work. Try again.",
+  "@libraryActionFailed": {
+    "description": "Says changing the library did not work."
+  },
+  "noteActionPin": "Pin Note",
+  "@noteActionPin": {
+    "description": "A note's menu item that pins it."
+  },
+  "noteActionUnpin": "Unpin Note",
+  "@noteActionUnpin": {
+    "description": "A note's menu item that unpins it."
+  },
+  "noteActionDuplicate": "Duplicate",
+  "@noteActionDuplicate": {
+    "description": "A note's menu item that copies it."
+  },
+  "noteActionCopyLink": "Copy Note Link",
+  "@noteActionCopyLink": {
+    "description": "A note's menu item that copies its wikilink."
+  },
+  "noteActionCopyKansoLink": "Copy Kanso Link",
+  "@noteActionCopyKansoLink": {
+    "description": "A note's menu item that copies Kanso's own link to it."
+  },
+  "noteActionStatus": "Status",
+  "@noteActionStatus": {
+    "description": "A note's submenu of statuses."
+  },
+  "noteActionMoveToTrash": "Move to Trash",
+  "@noteActionMoveToTrash": {
+    "description": "A note's menu item that moves it to the trash."
+  },
+  "noteActionRestore": "Restore",
+  "@noteActionRestore": {
+    "description": "A trashed note's menu item that moves it out of the trash."
+  },
+  "noteActionDeleteForever": "Delete Forever",
+  "@noteActionDeleteForever": {
+    "description": "A trashed note's menu item that deletes it for good."
+  },
+  "noteActionDeleteForeverTitle": "Delete this note forever?",
+  "@noteActionDeleteForeverTitle": {
+    "description": "Asks whether to delete a note for good."
+  },
+  "noteActionDeleteForeverMessage": "It can’t be restored afterwards.",
+  "@noteActionDeleteForeverMessage": {
+    "description": "Says a note deleted for good cannot be restored."
+  },
+  "noteActionMore": "More",
+  "@noteActionMore": {
+    "description": "Shows what else can be done with the notes chosen."
+  },
+  "noteActionLinkCopied": "Link copied.",
+  "@noteActionLinkCopied": {
+    "description": "Says a note's link was copied."
+  },
+  "libraryTagsMore": "More",
+  "@libraryTagsMore": {
+    "description": "Shows every tag as a chip, not only the most used few."
+  },
+  "libraryTagsFewer": "Fewer",
+  "@libraryTagsFewer": {
+    "description": "Shows only the most used tags as chips."
   }
 }
