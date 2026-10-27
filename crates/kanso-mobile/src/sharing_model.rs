@@ -109,6 +109,9 @@ pub struct SharedEvent {
     pub note_ids: Vec<String>,
     /// Invitations waiting now.
     pub invitations: u32,
+    /// The notes whose comments changed: someone commented, edited,
+    /// resolved or deleted one.
+    pub comment_notes: Vec<String>,
 }
 
 /// Someone looked up by username, before sharing with them.

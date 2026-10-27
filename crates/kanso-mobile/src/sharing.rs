@@ -42,6 +42,8 @@ use crate::sharing_model::{
 use crate::stream::Listeners;
 use crate::syncing::SyncHandle;
 
+mod comments;
+
 /// How often a live note's text is handed to the engine.
 const PUMP_EVERY: Duration = Duration::from_millis(250);
 
@@ -406,6 +408,7 @@ impl SharedNotes {
                 .map(|note| note.note_id)
                 .collect();
             let changes = store.subscribe();
+            let comments_before = comment_counts(store);
             let result = engine.sync_all();
             notes.extend(store.shared_notes()?.into_iter().map(|note| note.note_id));
             let mut note_ids = Vec::new();
@@ -415,13 +418,17 @@ impl SharedNotes {
                 }
             }
             let invitations = u32::try_from(engine.invitations().len()).unwrap_or(u32::MAX);
+            let comment_notes = changed_comment_notes(&comments_before, &comment_counts(store));
             let event = SharedEvent {
                 note_ids,
                 invitations,
+                comment_notes,
             };
             let news = {
                 let mut told = held(&self.inner.shared.told_invitations);
-                let news = !event.note_ids.is_empty() || *told != invitations;
+                let news = !event.note_ids.is_empty()
+                    || !event.comment_notes.is_empty()
+                    || *told != invitations;
                 *told = invitations;
                 news
             };
@@ -474,6 +481,16 @@ impl SharedNotes {
                             inner.shared.listeners.send(SharedEvent {
                                 note_ids: vec![note_id.clone()],
                                 invitations: *held(&inner.shared.told_invitations),
+                                ..SharedEvent::default()
+                            });
+                        }
+                    }
+                    kanso_collab::LiveNotice::Comments { .. } => {
+                        if let Some(inner) = inner.upgrade() {
+                            inner.shared.listeners.send(SharedEvent {
+                                comment_notes: vec![note_id.clone()],
+                                invitations: *held(&inner.shared.told_invitations),
+                                ..SharedEvent::default()
                             });
                         }
                     }
@@ -770,6 +787,36 @@ impl Pump {
             _ => Ok(()),
         }
     }
+}
+
+/// How many comment events the library holds for each active shared note,
+/// by library note ID: a sync that brings more has news in comments.
+fn comment_counts(store: &kanso_store::Store) -> HashMap<String, usize> {
+    store
+        .shared_notes()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|note| note.status == SharedStatus::Active)
+        .map(|note| {
+            let count = store.comment_events(&note.share_id).map_or(0, |e| e.len());
+            (note.note_id, count)
+        })
+        .collect()
+}
+
+/// The notes whose comment events differ between two counts, in a fixed
+/// order.
+fn changed_comment_notes(
+    before: &HashMap<String, usize>,
+    after: &HashMap<String, usize>,
+) -> Vec<String> {
+    let mut changed: Vec<String> = after
+        .iter()
+        .filter(|(note, count)| before.get(*note) != Some(count))
+        .map(|(note, _)| note.clone())
+        .collect();
+    changed.sort();
+    changed
 }
 
 /// A byte offset or count as the shell's `u32`.

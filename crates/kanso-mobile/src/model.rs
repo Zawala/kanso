@@ -7,6 +7,8 @@
 //! milliseconds since the Unix epoch (`i64`), colors are `0xRRGGBB` (`u32`),
 //! and text offsets are UTF-16 code units, the unit Flutter counts in.
 
+use crate::sync_model::{QuotaLimit, SignOutReasonKind, SyncAccount};
+
 /// One note in a list.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NoteRow {
@@ -363,6 +365,21 @@ pub struct SyncStatus {
     /// Conflicts in the last sync; the losing versions are in history.
     pub conflicts: u32,
     pub problem: Option<SyncProblemKind>,
+    /// The title of the first note the last sync's conflicts were in, when
+    /// that note is still here.
+    pub conflicted_title: Option<String>,
+    /// When a pause ends (`Paused`, `ServerBusy`, `BackOff`).
+    pub resume_at_ms: Option<i64>,
+    /// How many items were skipped (`SomeItemsSkipped`).
+    pub skipped_count: u32,
+    /// What is full (`AccountFull`).
+    pub quota: Option<QuotaLimit>,
+    /// Why the device was signed out: the problem's, or the session's that
+    /// ended.
+    pub signed_out_reason: Option<SignOutReasonKind>,
+    /// Where the account stands: signed out, signed in, waiting to be
+    /// unlocked or signed out by the server.
+    pub account: SyncAccount,
 }
 
 /// What `sync_now` did.
