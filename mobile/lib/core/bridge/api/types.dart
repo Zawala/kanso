@@ -282,6 +282,24 @@ class BuiltinTheme {
           tokens == other.tokens;
 }
 
+class CaptureOutcome {
+  final String noteId;
+  final List<String> problems;
+
+  const CaptureOutcome({required this.noteId, required this.problems});
+
+  @override
+  int get hashCode => noteId.hashCode ^ problems.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CaptureOutcome &&
+          runtimeType == other.runtimeType &&
+          noteId == other.noteId &&
+          problems == other.problems;
+}
+
 class Changed {
   final int count;
   final int? undo;
@@ -615,6 +633,30 @@ class DiffLine {
           oldLine == other.oldLine &&
           newLine == other.newLine &&
           changed == other.changed;
+}
+
+class DropsSaved {
+  final List<String> notes;
+  final List<String> problems;
+  final int kept;
+
+  const DropsSaved({
+    required this.notes,
+    required this.problems,
+    required this.kept,
+  });
+
+  @override
+  int get hashCode => notes.hashCode ^ problems.hashCode ^ kept.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DropsSaved &&
+          runtimeType == other.runtimeType &&
+          notes == other.notes &&
+          problems == other.problems &&
+          kept == other.kept;
 }
 
 enum DueTone { plain, today, overdue, done }
@@ -1280,6 +1322,45 @@ class LiveStatus {
           problems == other.problems;
 }
 
+class LocalTime {
+  final int year;
+  final int month;
+  final int day;
+  final int hour;
+  final int minute;
+  final int second;
+
+  const LocalTime({
+    required this.year,
+    required this.month,
+    required this.day,
+    required this.hour,
+    required this.minute,
+    required this.second,
+  });
+
+  @override
+  int get hashCode =>
+      year.hashCode ^
+      month.hashCode ^
+      day.hashCode ^
+      hour.hashCode ^
+      minute.hashCode ^
+      second.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LocalTime &&
+          runtimeType == other.runtimeType &&
+          year == other.year &&
+          month == other.month &&
+          day == other.day &&
+          hour == other.hour &&
+          minute == other.minute &&
+          second == other.second;
+}
+
 @freezed
 sealed class LockEvent with _$LockEvent {
   const LockEvent._();
@@ -1289,7 +1370,7 @@ sealed class LockEvent with _$LockEvent {
       LockEvent_Locked;
 }
 
-enum LockReason { manual, idle }
+enum LockReason { manual, idle, background }
 
 @freezed
 sealed class LockState with _$LockState {
@@ -1298,6 +1379,31 @@ sealed class LockState with _$LockState {
   const factory LockState.plain() = LockState_Plain;
   const factory LockState.open() = LockState_Open;
   const factory LockState.closed({String? reason}) = LockState_Closed;
+}
+
+class LockStatus {
+  final bool hasLockPassword;
+  final bool unlocked;
+  final bool biometricsOn;
+
+  const LockStatus({
+    required this.hasLockPassword,
+    required this.unlocked,
+    required this.biometricsOn,
+  });
+
+  @override
+  int get hashCode =>
+      hasLockPassword.hashCode ^ unlocked.hashCode ^ biometricsOn.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LockStatus &&
+          runtimeType == other.runtimeType &&
+          hasLockPassword == other.hasLockPassword &&
+          unlocked == other.unlocked &&
+          biometricsOn == other.biometricsOn;
 }
 
 class LockedInfo {
@@ -2395,6 +2501,49 @@ class ServerMethods {
           password == other.password &&
           passkeys == other.passkeys &&
           providers == other.providers;
+}
+
+class Share {
+  final String? subject;
+  final String? text;
+  final String? url;
+  final List<ShareFile> files;
+
+  const Share({this.subject, this.text, this.url, required this.files});
+
+  @override
+  int get hashCode =>
+      subject.hashCode ^ text.hashCode ^ url.hashCode ^ files.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Share &&
+          runtimeType == other.runtimeType &&
+          subject == other.subject &&
+          text == other.text &&
+          url == other.url &&
+          files == other.files;
+}
+
+class ShareFile {
+  final String name;
+  final String? contentType;
+  final Uint8List bytes;
+
+  const ShareFile({required this.name, this.contentType, required this.bytes});
+
+  @override
+  int get hashCode => name.hashCode ^ contentType.hashCode ^ bytes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ShareFile &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          contentType == other.contentType &&
+          bytes == other.bytes;
 }
 
 class ShareInfo {

@@ -14,6 +14,7 @@ bold
 book
 book-open
 calendar
+camera
 case-sensitive
 check
 chevron-down

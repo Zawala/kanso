@@ -18,6 +18,7 @@ import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/capture_inbox/capture_inbox_bloc.dart';
 import 'package:kanso/core/state/device_approval/device_approval_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
@@ -26,6 +27,8 @@ import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
+import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
+import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'package:kanso/note/views/pages/note_page.dart';
 import 'package:kanso/note_list/views/pages/note_list_page.dart';
 import 'package:kanso/search/views/pages/search_page.dart';
@@ -83,9 +86,12 @@ Future<GoRouter> _pump(
         BlocProvider<SyncSettingsBloc>.value(value: startedSyncSettingsBloc()),
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
+        BlocProvider<LockStatusBloc>.value(value: blocs.lock),
+        BlocProvider<PrivacyCoverBloc>.value(value: blocs.cover),
         BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
         BlocProvider<NoteCreationBloc>.value(value: blocs.creation),
         BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
+        BlocProvider<CaptureInboxBloc>.value(value: blocs.captureInbox),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
         BlocProvider<AccountBloc>.value(value: accounts.account),
         BlocProvider<DeviceApprovalBloc>.value(value: accounts.approval),

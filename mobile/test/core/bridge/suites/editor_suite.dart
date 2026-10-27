@@ -3,6 +3,7 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
@@ -186,6 +187,39 @@ void editorSuite(OpenLibrary open) {
         LinkTarget.note(id: target),
       );
       expect(await editor.linkAt(offset: 0), isNull);
+    });
+
+    test('a photo is saved as an attachment and put in the text', () async {
+      final library = await open();
+      final id = await makeNote(library, 'Attach', 'hello');
+      final editor = await library.edit(id: id);
+      final snapshot = await editor.snapshot();
+      editor.select(selection: _caret(5), composing: false);
+
+      final attached = await editor.attach(
+        file: ShareFile(
+          name: 'photo.png',
+          contentType: 'image/png',
+          bytes: Uint8List.fromList(_pngSignature),
+        ),
+      );
+      expect(attached.replace, isNotNull);
+      expect(attached.version, greaterThan(snapshot.version));
+      final text = (await editor.snapshot()).text;
+      expect(text, contains('![](inkdrop://file:'));
+
+      // Only an image or a PDF can be attached: the rest is refused, and
+      // the text is as it was.
+      await expectLater(
+        editor.attach(
+          file: ShareFile(
+            name: 'notes.txt',
+            bytes: Uint8List.fromList(<int>[1, 2, 3]),
+          ),
+        ),
+        throwsA(isA<KansoError_Invalid>()),
+      );
+      expect((await editor.snapshot()).text, text);
     });
 
     test('properties are kept apart from the text', () async {
@@ -376,3 +410,16 @@ Future<void> _until(Future<bool> Function() ready) async {
     await Future<void>.delayed(const Duration(milliseconds: 25));
   }
 }
+
+/// The eight bytes every PNG starts with: enough for the core to know what
+/// the file is.
+const List<int> _pngSignature = <int>[
+  0x89,
+  0x50,
+  0x4E,
+  0x47,
+  0x0D,
+  0x0A,
+  0x1A,
+  0x0A,
+];

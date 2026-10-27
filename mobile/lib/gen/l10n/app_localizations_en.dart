@@ -2236,4 +2236,737 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sharedProblemsDismiss => 'Dismiss';
+
+  @override
+  String get dailyNoteLoading => 'Opening today’s note';
+
+  @override
+  String get dailyNoteFailedTitle => 'Today’s note didn’t open';
+
+  @override
+  String get dailyNoteFailedMessage =>
+      'Something went wrong opening today’s note on this phone. Try again.';
+
+  @override
+  String get captureTakePhoto => 'Take photo';
+
+  @override
+  String get captureChoosePhotos => 'Choose photos';
+
+  @override
+  String get captureAttachPdf => 'Attach PDF';
+
+  @override
+  String get captureImageLink => 'Image link';
+
+  @override
+  String get captureAttachFailed => 'Couldn\'t attach that file.';
+
+  @override
+  String lockedMessage(int minutes) {
+    return 'Unlock it to read and edit. It locks again after $minutes minutes or when you leave Kanso.';
+  }
+
+  @override
+  String lockedUnlockWith(String method) {
+    return 'Unlock with $method';
+  }
+
+  @override
+  String get lockedUsePassword => 'Use password';
+
+  @override
+  String lockedBiometricFailed(String method) {
+    return '$method didn\'t work. Use your lock password instead.';
+  }
+
+  @override
+  String lockedInvalidated(String method) {
+    return 'Your biometrics changed, so $method no longer opens locked notes. Use your lock password, then turn $method on again in Settings.';
+  }
+
+  @override
+  String get biometricFaceId => 'Face ID';
+
+  @override
+  String get biometricTouchId => 'Touch ID';
+
+  @override
+  String get biometricOpticId => 'Optic ID';
+
+  @override
+  String get biometricFingerprint => 'fingerprint';
+
+  @override
+  String get biometricFace => 'face unlock';
+
+  @override
+  String get biometricIris => 'iris unlock';
+
+  @override
+  String get biometricGeneric => 'biometrics';
+
+  @override
+  String get biometricReasonUnlock => 'Unlock your locked notes';
+
+  @override
+  String get biometricReasonEnroll =>
+      'Use it to unlock your locked notes on this device';
+
+  @override
+  String get lockFieldPassword => 'Lock password';
+
+  @override
+  String get lockFieldPasswordHint => 'At least 8 characters.';
+
+  @override
+  String get lockFieldAgain => 'Type it again';
+
+  @override
+  String get lockFieldCurrent => 'Current lock password';
+
+  @override
+  String get lockFieldNew => 'New lock password';
+
+  @override
+  String get lockCancel => 'Cancel';
+
+  @override
+  String get lockWrongPassword => 'That isn\'t the lock password.';
+
+  @override
+  String get lockMismatch => 'The passwords don\'t match.';
+
+  @override
+  String get lockNewMismatch => 'The new passwords don\'t match.';
+
+  @override
+  String get lockTooShort => 'The lock password needs at least 8 characters.';
+
+  @override
+  String get lockActionFailed => 'That didn\'t work. Try again.';
+
+  @override
+  String get lockUnlockNoteTitle => 'Unlock note';
+
+  @override
+  String get lockUnlockNotebookTitle => 'Unlock notebook';
+
+  @override
+  String lockUnlockNotebookMessage(String name) {
+    return '“$name” is locked. Its notes open with your lock password.';
+  }
+
+  @override
+  String get lockUnlockButton => 'Unlock';
+
+  @override
+  String get lockSetTitle => 'Set a lock password';
+
+  @override
+  String get lockSetMessage =>
+      'Locked notes open with this password, on this device and any other that syncs with it. Kanso can\'t recover it: forget it, and the notes locked with it can\'t be read.';
+
+  @override
+  String get lockSetButton => 'Lock';
+
+  @override
+  String get lockNoteMenu => 'Lock note…';
+
+  @override
+  String get lockNoteAskTitle => 'Lock note';
+
+  @override
+  String get lockNoteConfirmTitle => 'Lock this note?';
+
+  @override
+  String get lockNoteConfirmMessage =>
+      'Its text is sealed and its earlier versions are deleted. It stays open until the locked notes lock again.';
+
+  @override
+  String get lockNotebookAskTitle => 'Lock notebook';
+
+  @override
+  String get lockNotebookConfirmTitle => 'Lock this notebook?';
+
+  @override
+  String get lockNotebookConfirmMessage =>
+      'Every note in it is sealed, and new notes added to it are sealed too.';
+
+  @override
+  String get lockNotebookMenu => 'Lock Notebook…';
+
+  @override
+  String get lockRemoveNoteMenu => 'Remove lock…';
+
+  @override
+  String get lockRemoveNotebookMenu => 'Remove Notebook Lock…';
+
+  @override
+  String get lockUnlockNotebookMenu => 'Unlock notebook…';
+
+  @override
+  String get lockNowMenu => 'Lock notes now';
+
+  @override
+  String get lockRemoveNoteTitle => 'Remove the lock?';
+
+  @override
+  String get lockRemoveNoteMessage =>
+      'The note\'s text is kept as plain text again: search, backlinks, tasks and the local API can read it.';
+
+  @override
+  String get lockRemoveNotebookTitle => 'Remove the notebook\'s lock?';
+
+  @override
+  String get lockRemoveNotebookMessage =>
+      'The notes in it are kept as plain text again: search, backlinks, tasks and the local API can read them.';
+
+  @override
+  String get lockRemoveButton => 'Remove Lock';
+
+  @override
+  String get lockRemoveClosed => 'Unlock the notes first, then try again.';
+
+  @override
+  String get lockMoreMenu => 'More';
+
+  @override
+  String get lockMoreTitle => 'Note actions';
+
+  @override
+  String get lockNotebookMenuTitle => 'Notebook actions';
+
+  @override
+  String get noteRowLocked => 'Locked';
+
+  @override
+  String get noteRowUnlocked => 'Unlocked';
+
+  @override
+  String get noteListUnlocked => 'Unlocked';
+
+  @override
+  String get settingsLockedNotes => 'Locked notes';
+
+  @override
+  String settingsUnlockWith(String method) {
+    return 'Unlock with $method';
+  }
+
+  @override
+  String get settingsLockAfter => 'Lock after';
+
+  @override
+  String settingsTenMinutes(int minutes) {
+    return '$minutes minutes';
+  }
+
+  @override
+  String get settingsChangeLockPassword => 'Change lock password…';
+
+  @override
+  String get settingsLockNow => 'Lock notes now';
+
+  @override
+  String settingsBiometricsClosed(String method) {
+    return 'Unlock a locked note with your lock password first, then turn on $method.';
+  }
+
+  @override
+  String settingsBiometricsOn(String method) {
+    return '$method now unlocks your locked notes on this device.';
+  }
+
+  @override
+  String get settingsBiometricsOff =>
+      'Locked notes open with the lock password again on this device.';
+
+  @override
+  String settingsBiometricsFailed(String method) {
+    return '$method could not be turned on.';
+  }
+
+  @override
+  String get lockChangeTitle => 'Change lock password';
+
+  @override
+  String get lockChangeMessage =>
+      'Every locked note is sealed again with the new password. Kanso can\'t recover it.';
+
+  @override
+  String get lockChangeButton => 'Change';
+
+  @override
+  String lockChangeKept(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count locked notes or notebooks didn\'t open with the current password and kept it.',
+      one:
+          '1 locked note or notebook didn\'t open with the current password and kept it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String lockOfferTitle(String method) {
+    return 'Use $method?';
+  }
+
+  @override
+  String lockOfferMessage(String method) {
+    return 'Use $method to unlock your locked notes on this device? The password still works, and other devices need it.';
+  }
+
+  @override
+  String lockOfferAccept(String method) {
+    return 'Use $method';
+  }
+
+  @override
+  String get lockOfferDecline => 'Not now';
+
+  @override
+  String get lockDone => 'Done';
+
+  @override
+  String get backupsTitle => 'Backups';
+
+  @override
+  String backupsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count backups',
+      one: '1 backup',
+      zero: 'None yet',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get backupsSummary =>
+      'Kanso backs up its database on this device once a day and keeps the last 14. A backup made with Back up now is kept until you delete it here.';
+
+  @override
+  String get backupsBackUpNow => 'Back up now';
+
+  @override
+  String get backupsBackingUp => 'Backing up…';
+
+  @override
+  String get backupsListHeader => 'Backups';
+
+  @override
+  String get backupsKindDaily => 'Daily backup';
+
+  @override
+  String get backupsKindManual => 'Made with Back up now';
+
+  @override
+  String backupsKindManualKept(String kind, String size) {
+    return '$kind · $size';
+  }
+
+  @override
+  String get backupsDelete => 'Delete backup';
+
+  @override
+  String get backupsEmptyTitle => 'No backups yet';
+
+  @override
+  String get backupsEmptyMessage => 'Back up now makes one right away.';
+
+  @override
+  String get backupsLoading => 'Reading the backups';
+
+  @override
+  String get backupsFailedTitle => 'The backups couldn’t be read';
+
+  @override
+  String get backupsFailedMessage => 'Try again in a moment.';
+
+  @override
+  String get backupsNoticeMadeNow => 'The backup was made.';
+
+  @override
+  String get backupsNoticeDeleted => 'The backup was deleted.';
+
+  @override
+  String get backupsProblemDaily => 'Today’s backup couldn’t be made.';
+
+  @override
+  String get backupsProblemBackUp => 'The backup couldn’t be made.';
+
+  @override
+  String get backupsProblemDelete => 'The backup couldn’t be deleted.';
+
+  @override
+  String get backupsProblemList => 'The list of backups couldn’t be updated.';
+
+  @override
+  String get backupsDeleteTitle => 'Delete this backup?';
+
+  @override
+  String backupsDeleteMessage(String when) {
+    return 'The backup made $when is deleted from this device. This can’t be undone.';
+  }
+
+  @override
+  String get backupsDeleteConfirm => 'Delete';
+
+  @override
+  String get backupsDeleteCancel => 'Cancel';
+
+  @override
+  String fileSizeBytes(String size) {
+    return '$size B';
+  }
+
+  @override
+  String fileSizeKilobytes(String size) {
+    return '$size KB';
+  }
+
+  @override
+  String fileSizeMegabytes(String size) {
+    return '$size MB';
+  }
+
+  @override
+  String fileSizeGigabytes(String size) {
+    return '$size GB';
+  }
+
+  @override
+  String get noteInfoHistory => 'Show history';
+
+  @override
+  String get historyTitle => 'Note history';
+
+  @override
+  String get historyClose => 'Close';
+
+  @override
+  String get historyLoading => 'Reading the history';
+
+  @override
+  String get historyEmptyTitle => 'No earlier versions yet';
+
+  @override
+  String get historyEmptyMessage =>
+      'Kanso keeps one every few minutes while you edit, and one before every change made elsewhere.';
+
+  @override
+  String get historyFailedTitle => 'The history couldn’t be read';
+
+  @override
+  String get historyFailedMessage => 'Try again in a moment.';
+
+  @override
+  String get historyLockedTitle => 'This note is locked';
+
+  @override
+  String get historyLockedMessage =>
+      'Its earlier versions stay sealed until you unlock it.';
+
+  @override
+  String get historyNotFoundTitle => 'This note isn’t here any more';
+
+  @override
+  String get historyNotFoundMessage =>
+      'It may have been deleted on another device.';
+
+  @override
+  String get historyVersionLabel => 'Version';
+
+  @override
+  String get historyVersionsTitle => 'Versions';
+
+  @override
+  String get historyNow => 'Now';
+
+  @override
+  String historyOrigin(String origin) {
+    String _temp0 = intl.Intl.selectLogic(origin, {
+      'ui': 'Edited in Kanso',
+      'api': 'Replaced through the API',
+      'sync': 'Replaced by sync',
+      'import': 'Replaced by an import',
+      'collab': 'Edited in a shared note',
+      'agent': 'Suggested by an agent, applied by you',
+      'plugin': 'Changed by a plugin',
+      'other': 'Saved version',
+    });
+    return '$_temp0';
+  }
+
+  @override
+  String get historyPaneChanges => 'Changes';
+
+  @override
+  String get historyPaneVersion => 'This version';
+
+  @override
+  String get historyPaneLabel => 'What to show of the version';
+
+  @override
+  String get historyNoChanges =>
+      'This version’s text is the same as the note’s now.';
+
+  @override
+  String historyHunkLine(int line) {
+    return 'Line $line';
+  }
+
+  @override
+  String historyHunkLines(int first, int last) {
+    return 'Lines $first–$last';
+  }
+
+  @override
+  String get historyHunkNew => 'New lines';
+
+  @override
+  String historyAdded(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines added',
+      one: '1 line added',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String historyRemoved(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines removed',
+      one: '1 line removed',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get historyLineAdded => 'Added';
+
+  @override
+  String get historyLineRemoved => 'Removed';
+
+  @override
+  String get historyCopySection => 'Copy section';
+
+  @override
+  String get historyCopied => 'Copied';
+
+  @override
+  String get historyRestore => 'Restore this version';
+
+  @override
+  String get historyRestoring => 'Restoring…';
+
+  @override
+  String get historyDiffLoading => 'Working out what changed';
+
+  @override
+  String get historyProblemChanged =>
+      'The note changed while its history was open. The history is shown again; choose the version once more.';
+
+  @override
+  String get historyProblemGone => 'That version isn’t kept any more.';
+
+  @override
+  String get historyProblemRestore => 'The version couldn’t be restored.';
+
+  @override
+  String get historyProblemDiff => 'What changed couldn’t be worked out.';
+
+  @override
+  String historyAuthors(String authors) {
+    return '$authors';
+  }
+
+  @override
+  String get libraryReplace => 'Replace in all notes';
+
+  @override
+  String get replaceTitle => 'Replace in all notes';
+
+  @override
+  String get replaceClose => 'Close';
+
+  @override
+  String get replaceFind => 'Find';
+
+  @override
+  String get replaceWith => 'Replace with';
+
+  @override
+  String get replaceMatchCase => 'Match case';
+
+  @override
+  String get replaceWholeWord => 'Whole word';
+
+  @override
+  String get replaceRegex =>
+      'Regular expression (\$1 in the replacement for a group)';
+
+  @override
+  String get replaceSkipCode => 'Skip code blocks';
+
+  @override
+  String get replaceIncludeTrash => 'Include notes in the Trash';
+
+  @override
+  String get replaceOptionsLabel => 'Search options';
+
+  @override
+  String get replaceTypeToFind => 'Type what to find.';
+
+  @override
+  String get replaceNoMatches => 'No matches.';
+
+  @override
+  String get replaceSearching => 'Searching the notes';
+
+  @override
+  String replaceFound(int matches, int notes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      matches,
+      locale: localeName,
+      other: '$matches matches',
+      one: '1 match',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      notes,
+      locale: localeName,
+      other: '$notes notes',
+      one: '1 note',
+    );
+    return '$_temp0 in $_temp1';
+  }
+
+  @override
+  String get replacePreviewHeader => 'Preview';
+
+  @override
+  String get replaceInTrash => 'In Trash';
+
+  @override
+  String get replaceUntitled => 'Untitled';
+
+  @override
+  String replaceMore(int count) {
+    return 'and $count more';
+  }
+
+  @override
+  String replaceLine(int line) {
+    return 'Line $line';
+  }
+
+  @override
+  String replaceIncludeNote(String title) {
+    return 'Include $title in the replace';
+  }
+
+  @override
+  String replaceApply(int matches, int notes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      matches,
+      locale: localeName,
+      other: 'Replace $matches',
+      one: 'Replace 1',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      notes,
+      locale: localeName,
+      other: '$notes notes',
+      one: '1 note',
+    );
+    return '$_temp0 in $_temp1';
+  }
+
+  @override
+  String get replaceApplyIdle => 'Replace';
+
+  @override
+  String get replaceApplying => 'Replacing…';
+
+  @override
+  String replaceDone(int matches, int notes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      matches,
+      locale: localeName,
+      other: '$matches matches',
+      one: '1 match',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      notes,
+      locale: localeName,
+      other: '$notes notes',
+      one: '1 note',
+    );
+    return 'Replaced $_temp0 in $_temp1.';
+  }
+
+  @override
+  String replaceSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count notes changed elsewhere since the preview and were left alone.',
+      one: '1 note changed elsewhere since the preview and was left alone.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get replaceUndo => 'Undo replace';
+
+  @override
+  String get replaceUndoing => 'Putting back…';
+
+  @override
+  String replaceUndone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count notes',
+      one: '1 note',
+    );
+    return 'Put back $_temp0.';
+  }
+
+  @override
+  String replaceUndoSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count notes were edited since and kept their changes.',
+      one: '1 note was edited since and kept its changes.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get replaceDismiss => 'Dismiss';
+
+  @override
+  String get replaceProblemBadPattern =>
+      'The text to find can’t be used as a regular expression.';
+
+  @override
+  String get replaceProblemApply => 'The notes couldn’t be changed.';
+
+  @override
+  String get replaceProblemUndo => 'The notes couldn’t be put back.';
+
+  @override
+  String get replaceProblemSearch => 'The notes couldn’t be searched.';
 }

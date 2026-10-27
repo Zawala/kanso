@@ -26,6 +26,7 @@ class KeyboardAccessoryBar extends StatelessWidget {
     required this.onCommand,
     required this.onUndo,
     required this.onRedo,
+    this.onImage,
     this.editorContext,
     super.key,
   });
@@ -37,6 +38,9 @@ class KeyboardAccessoryBar extends StatelessWidget {
   final ValueChanged<EditCommand> onCommand;
   final VoidCallback onUndo;
   final VoidCallback onRedo;
+
+  /// What the image key does; without it, it writes an image's Markdown.
+  final VoidCallback? onImage;
 
   @override
   Widget build(BuildContext context) {
@@ -94,9 +98,11 @@ class KeyboardAccessoryBar extends StatelessWidget {
                     AccessoryKey(
                       icon: KansoIcons.image,
                       semanticLabel: l10n.accessoryImage,
-                      onTap: () => onCommand(
-                        const EditCommand.format(format: FormatKind.image),
-                      ),
+                      onTap:
+                          onImage ??
+                          () => onCommand(
+                            const EditCommand.format(format: FormatKind.image),
+                          ),
                     ),
                     AccessoryKey(
                       glyph: '[[',

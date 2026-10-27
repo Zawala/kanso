@@ -10,7 +10,8 @@ use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
     Completion, CursorMark, EditCommand, EditOutcome, EditorContext, EditorEvent, EditorSession,
-    EditorSnapshot, KansoError, LinkTarget, Property, Range16, RunBatch, SaveState, TextChange,
+    EditorSnapshot, KansoError, LinkTarget, Property, Range16, RunBatch, SaveState, ShareFile,
+    TextChange,
 };
 
 /// A note open for editing. Cheap to clone on the Rust side; Dart holds one.
@@ -100,6 +101,11 @@ impl KansoEditor {
 
     pub fn keep_mine(&self) -> Result<SaveState, KansoError> {
         self.0.keep_mine()
+    }
+
+    /// Stores an image or a PDF and puts it in the text over the selection.
+    pub fn attach(&self, file: ShareFile) -> Result<EditOutcome, KansoError> {
+        self.0.attach(file)
     }
 
     /// Comments on the selected words of a shared note; the new comment's ID.

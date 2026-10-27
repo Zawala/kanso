@@ -3,6 +3,7 @@ package app.kanso.kanso
 import android.app.Application
 import app.kanso.kanso_background.BackgroundSync
 import app.kanso.kanso_background.SyncWorker
+import app.kanso.kanso_lock.RustAnswer as LockAnswer
 import app.kanso.kanso_passkeys.RustAnswer
 
 /**
@@ -22,6 +23,7 @@ class KansoApplication : Application() {
         KansoNative.init(this)
         // The plugins are libraries and cannot see KansoNative: hand them the
         // calls.
+        LockAnswer.install { ticket, status, secret -> KansoNative.biometricAnswer(ticket, status, secret) }
         BackgroundSync.install { path, budgetMs -> KansoNative.backgroundSync(path, budgetMs) }
         RustAnswer.install { ticket, json -> KansoNative.passkeyAnswer(ticket, json) }
         SyncWorker.schedulePeriodic(this)

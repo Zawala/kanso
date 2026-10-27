@@ -8,6 +8,7 @@ import 'package:kanso/editor/state/editor/editor_bloc.dart';
 import 'package:kanso/injection.dart';
 
 import 'fake_editor_repository.dart';
+import 'fake_media_picker_repository.dart';
 import 'fake_web_link_repository.dart';
 
 /// Registers, for a test that builds the note page in edit mode, an
@@ -15,9 +16,10 @@ import 'fake_web_link_repository.dart';
 FakeEditorRepository registerEditorBloc(
   EditorDocument document, {
   FakeWebLinkRepository? links,
+  FakeMediaPickerRepository? picker,
 }) {
   final repository = FakeEditorRepository(document: document);
-  registerEditorBlocOn(repository, links: links);
+  registerEditorBlocOn(repository, links: links, picker: picker);
   return repository;
 }
 
@@ -26,12 +28,17 @@ FakeEditorRepository registerEditorBloc(
 void registerEditorBlocOn(
   EditorRepository repository, {
   FakeWebLinkRepository? links,
+  FakeMediaPickerRepository? picker,
 }) {
   if (getIt.isRegistered<EditorBloc>()) {
     getIt.unregister<EditorBloc>();
   }
   getIt.registerFactory<EditorBloc>(
-    () => EditorBloc(repository, links ?? FakeWebLinkRepository()),
+    () => EditorBloc(
+      repository,
+      links ?? FakeWebLinkRepository(),
+      picker ?? FakeMediaPickerRepository(),
+    ),
   );
   addTearDown(() {
     if (getIt.isRegistered<EditorBloc>()) {

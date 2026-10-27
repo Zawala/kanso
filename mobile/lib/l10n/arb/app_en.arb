@@ -2915,13 +2915,419 @@
   "@sharedProblemsMore": {
     "description": "The banner over a shared note: the newest thing that couldn't be done, and how many more there are.",
     "placeholders": {
-      "message": {"type": "String"},
-      "count": {"type": "int"}
+      "message": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
     }
   },
   "sharedProblemsDismiss": "Dismiss",
   "@sharedProblemsDismiss": {
     "description": "Clears the banner of a shared note's problems."
+  },
+  "dailyNoteLoading": "Opening today’s note",
+  "@dailyNoteLoading": {
+    "description": "Shown while today's daily note is found or made."
+  },
+  "dailyNoteFailedTitle": "Today’s note didn’t open",
+  "@dailyNoteFailedTitle": {
+    "description": "The title of the card shown when today's daily note could not be opened."
+  },
+  "dailyNoteFailedMessage": "Something went wrong opening today’s note on this phone. Try again.",
+  "@dailyNoteFailedMessage": {
+    "description": "The message of the card shown when today's daily note could not be opened."
+  },
+  "captureTakePhoto": "Take photo",
+  "@captureTakePhoto": {
+    "description": "The row of the capture sheet that takes a photo with the camera and saves or attaches it."
+  },
+  "captureChoosePhotos": "Choose photos",
+  "@captureChoosePhotos": {
+    "description": "The row of the capture sheet that picks photos from the phone's library."
+  },
+  "captureAttachPdf": "Attach PDF",
+  "@captureAttachPdf": {
+    "description": "The row of the capture sheet that picks PDFs from the phone's files."
+  },
+  "captureImageLink": "Image link",
+  "@captureImageLink": {
+    "description": "The editor's attach sheet: writes an image's Markdown to fill in by hand."
+  },
+  "captureAttachFailed": "Couldn't attach that file.",
+  "@captureAttachFailed": {
+    "description": "Said when a picked file couldn't be attached for a reason the library didn't put in words."
+  },
+  "lockedMessage": "Unlock it to read and edit. It locks again after {minutes} minutes or when you leave Kanso.",
+  "@lockedMessage": {
+    "description": "Says how a locked note is opened and when it locks.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "lockedUnlockWith": "Unlock with {method}",
+  "@lockedUnlockWith": {
+    "description": "Unlocks a locked note with a biometric; method is Face ID, Touch ID or fingerprint.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "lockedUsePassword": "Use password",
+  "@lockedUsePassword": {
+    "description": "Unlocks a note with the lock password instead."
+  },
+  "lockedBiometricFailed": "{method} didn't work. Use your lock password instead.",
+  "@lockedBiometricFailed": {
+    "description": "Said when a biometric check failed.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "lockedInvalidated": "Your biometrics changed, so {method} no longer opens locked notes. Use your lock password, then turn {method} on again in Settings.",
+  "@lockedInvalidated": {
+    "description": "Said when the enrolled biometrics changed.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "biometricFaceId": "Face ID",
+  "@biometricFaceId": {
+    "description": "The name of Face ID."
+  },
+  "biometricTouchId": "Touch ID",
+  "@biometricTouchId": {
+    "description": "The name of Touch ID."
+  },
+  "biometricOpticId": "Optic ID",
+  "@biometricOpticId": {
+    "description": "The name of Optic ID."
+  },
+  "biometricFingerprint": "fingerprint",
+  "@biometricFingerprint": {
+    "description": "The name of fingerprint unlock on Android."
+  },
+  "biometricFace": "face unlock",
+  "@biometricFace": {
+    "description": "The name of face unlock on Android."
+  },
+  "biometricIris": "iris unlock",
+  "@biometricIris": {
+    "description": "The name of iris unlock on Android."
+  },
+  "biometricGeneric": "biometrics",
+  "@biometricGeneric": {
+    "description": "The generic name of biometric unlock."
+  },
+  "biometricReasonUnlock": "Unlock your locked notes",
+  "@biometricReasonUnlock": {
+    "description": "The text of the biometric prompt that unlocks notes."
+  },
+  "biometricReasonEnroll": "Use it to unlock your locked notes on this device",
+  "@biometricReasonEnroll": {
+    "description": "The text of the biometric prompt that turns biometric unlock on."
+  },
+  "lockFieldPassword": "Lock password",
+  "@lockFieldPassword": {
+    "description": "The label of the lock password field."
+  },
+  "lockFieldPasswordHint": "At least 8 characters.",
+  "@lockFieldPasswordHint": {
+    "description": "The hint under a new lock password."
+  },
+  "lockFieldAgain": "Type it again",
+  "@lockFieldAgain": {
+    "description": "The label of the field that repeats a password."
+  },
+  "lockFieldCurrent": "Current lock password",
+  "@lockFieldCurrent": {
+    "description": "The label of the field for the current lock password."
+  },
+  "lockFieldNew": "New lock password",
+  "@lockFieldNew": {
+    "description": "The label of the field for the new lock password."
+  },
+  "lockCancel": "Cancel",
+  "@lockCancel": {
+    "description": "Closes a lock sheet without doing anything."
+  },
+  "lockWrongPassword": "That isn't the lock password.",
+  "@lockWrongPassword": {
+    "description": "Said when the lock password is wrong."
+  },
+  "lockMismatch": "The passwords don't match.",
+  "@lockMismatch": {
+    "description": "Said when the two typed passwords differ."
+  },
+  "lockNewMismatch": "The new passwords don't match.",
+  "@lockNewMismatch": {
+    "description": "Said when the two typed new passwords differ."
+  },
+  "lockTooShort": "The lock password needs at least 8 characters.",
+  "@lockTooShort": {
+    "description": "Said when a new lock password is too short."
+  },
+  "lockActionFailed": "That didn't work. Try again.",
+  "@lockActionFailed": {
+    "description": "Said when a lock action failed for a reason with no better words."
+  },
+  "lockUnlockNoteTitle": "Unlock note",
+  "@lockUnlockNoteTitle": {
+    "description": "The title of the sheet that asks for the lock password to open a note."
+  },
+  "lockUnlockNotebookTitle": "Unlock notebook",
+  "@lockUnlockNotebookTitle": {
+    "description": "The title of the sheet that asks for the lock password to open a notebook."
+  },
+  "lockUnlockNotebookMessage": "“{name}” is locked. Its notes open with your lock password.",
+  "@lockUnlockNotebookMessage": {
+    "description": "Says why a notebook asks for the lock password.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "lockUnlockButton": "Unlock",
+  "@lockUnlockButton": {
+    "description": "Opens the locked notes with the password typed."
+  },
+  "lockSetTitle": "Set a lock password",
+  "@lockSetTitle": {
+    "description": "The title of the sheet that makes the lock password."
+  },
+  "lockSetMessage": "Locked notes open with this password, on this device and any other that syncs with it. Kanso can't recover it: forget it, and the notes locked with it can't be read.",
+  "@lockSetMessage": {
+    "description": "Explains the lock password."
+  },
+  "lockSetButton": "Lock",
+  "@lockSetButton": {
+    "description": "Sets the lock password and locks."
+  },
+  "lockNoteMenu": "Lock note…",
+  "@lockNoteMenu": {
+    "description": "The note menu action that locks the note."
+  },
+  "lockNoteAskTitle": "Lock note",
+  "@lockNoteAskTitle": {
+    "description": "The title of the sheet that asks for the lock password to lock a note."
+  },
+  "lockNoteConfirmTitle": "Lock this note?",
+  "@lockNoteConfirmTitle": {
+    "description": "The title of the sheet that confirms locking a note."
+  },
+  "lockNoteConfirmMessage": "Its text is sealed and its earlier versions are deleted. It stays open until the locked notes lock again.",
+  "@lockNoteConfirmMessage": {
+    "description": "Explains what locking a note does."
+  },
+  "lockNotebookAskTitle": "Lock notebook",
+  "@lockNotebookAskTitle": {
+    "description": "The title of the sheet that asks for the lock password to lock a notebook."
+  },
+  "lockNotebookConfirmTitle": "Lock this notebook?",
+  "@lockNotebookConfirmTitle": {
+    "description": "The title of the sheet that confirms locking a notebook."
+  },
+  "lockNotebookConfirmMessage": "Every note in it is sealed, and new notes added to it are sealed too.",
+  "@lockNotebookConfirmMessage": {
+    "description": "Explains what locking a notebook does."
+  },
+  "lockNotebookMenu": "Lock Notebook…",
+  "@lockNotebookMenu": {
+    "description": "The notebook menu action that locks the notebook."
+  },
+  "lockRemoveNoteMenu": "Remove lock…",
+  "@lockRemoveNoteMenu": {
+    "description": "The note menu action that removes the lock."
+  },
+  "lockRemoveNotebookMenu": "Remove Notebook Lock…",
+  "@lockRemoveNotebookMenu": {
+    "description": "The notebook menu action that removes the lock."
+  },
+  "lockUnlockNotebookMenu": "Unlock notebook…",
+  "@lockUnlockNotebookMenu": {
+    "description": "The notebook menu action that opens a locked notebook."
+  },
+  "lockNowMenu": "Lock notes now",
+  "@lockNowMenu": {
+    "description": "Closes every locked note."
+  },
+  "lockRemoveNoteTitle": "Remove the lock?",
+  "@lockRemoveNoteTitle": {
+    "description": "The title of the sheet that confirms removing a note's lock."
+  },
+  "lockRemoveNoteMessage": "The note's text is kept as plain text again: search, backlinks, tasks and the local API can read it.",
+  "@lockRemoveNoteMessage": {
+    "description": "Explains what removing a note's lock does."
+  },
+  "lockRemoveNotebookTitle": "Remove the notebook's lock?",
+  "@lockRemoveNotebookTitle": {
+    "description": "The title of the sheet that confirms removing a notebook's lock."
+  },
+  "lockRemoveNotebookMessage": "The notes in it are kept as plain text again: search, backlinks, tasks and the local API can read them.",
+  "@lockRemoveNotebookMessage": {
+    "description": "Explains what removing a notebook's lock does."
+  },
+  "lockRemoveButton": "Remove Lock",
+  "@lockRemoveButton": {
+    "description": "Removes the lock."
+  },
+  "lockRemoveClosed": "Unlock the notes first, then try again.",
+  "@lockRemoveClosed": {
+    "description": "Said when a lock can't be removed because the notes are closed."
+  },
+  "lockMoreMenu": "More",
+  "@lockMoreMenu": {
+    "description": "What the note's menu button does."
+  },
+  "lockMoreTitle": "Note actions",
+  "@lockMoreTitle": {
+    "description": "The title of the note's menu."
+  },
+  "lockNotebookMenuTitle": "Notebook actions",
+  "@lockNotebookMenuTitle": {
+    "description": "The title of the notebook's menu."
+  },
+  "noteRowLocked": "Locked",
+  "@noteRowLocked": {
+    "description": "What a screen reader says of a locked note."
+  },
+  "noteRowUnlocked": "Unlocked",
+  "@noteRowUnlocked": {
+    "description": "What a screen reader says of a locked note that is open."
+  },
+  "noteListUnlocked": "Unlocked",
+  "@noteListUnlocked": {
+    "description": "The line a locked note's row shows while it is open."
+  },
+  "settingsLockedNotes": "Locked notes",
+  "@settingsLockedNotes": {
+    "description": "A section of settings."
+  },
+  "settingsUnlockWith": "Unlock with {method}",
+  "@settingsUnlockWith": {
+    "description": "The switch to unlock notes with a biometric.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsLockAfter": "Lock after",
+  "@settingsLockAfter": {
+    "description": "How long until the locked notes lock again."
+  },
+  "settingsTenMinutes": "{minutes} minutes",
+  "@settingsTenMinutes": {
+    "description": "A number of minutes.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsChangeLockPassword": "Change lock password…",
+  "@settingsChangeLockPassword": {
+    "description": "Opens the sheet that changes the lock password."
+  },
+  "settingsLockNow": "Lock notes now",
+  "@settingsLockNow": {
+    "description": "Closes every locked note."
+  },
+  "settingsBiometricsClosed": "Unlock a locked note with your lock password first, then turn on {method}.",
+  "@settingsBiometricsClosed": {
+    "description": "Said when biometrics are turned on while the notes are closed.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsBiometricsOn": "{method} now unlocks your locked notes on this device.",
+  "@settingsBiometricsOn": {
+    "description": "Said after biometric unlock was turned on.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsBiometricsOff": "Locked notes open with the lock password again on this device.",
+  "@settingsBiometricsOff": {
+    "description": "Said after biometric unlock was turned off."
+  },
+  "settingsBiometricsFailed": "{method} could not be turned on.",
+  "@settingsBiometricsFailed": {
+    "description": "Said when biometric unlock could not be turned on.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "lockChangeTitle": "Change lock password",
+  "@lockChangeTitle": {
+    "description": "The title of the sheet that changes the lock password."
+  },
+  "lockChangeMessage": "Every locked note is sealed again with the new password. Kanso can't recover it.",
+  "@lockChangeMessage": {
+    "description": "Explains changing the lock password."
+  },
+  "lockChangeButton": "Change",
+  "@lockChangeButton": {
+    "description": "Changes the lock password."
+  },
+  "lockChangeKept": "{count, plural, =1{1 locked note or notebook didn't open with the current password and kept it.} other{{count} locked notes or notebooks didn't open with the current password and kept it.}}",
+  "@lockChangeKept": {
+    "description": "Says how many locked items kept the old password.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lockOfferTitle": "Use {method}?",
+  "@lockOfferTitle": {
+    "description": "The title of the offer to turn on biometric unlock.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "lockOfferMessage": "Use {method} to unlock your locked notes on this device? The password still works, and other devices need it.",
+  "@lockOfferMessage": {
+    "description": "The offer to turn on biometric unlock.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "lockOfferAccept": "Use {method}",
+  "@lockOfferAccept": {
+    "description": "Accepts the offer of biometric unlock.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "lockOfferDecline": "Not now",
+  "@lockOfferDecline": {
+    "description": "Declines the offer of biometric unlock."
+  },
+  "lockDone": "Done",
+  "@lockDone": {
+    "description": "Closes a lock sheet that has told its result."
   },
   "backupsTitle": "Backups",
   "@backupsTitle": {

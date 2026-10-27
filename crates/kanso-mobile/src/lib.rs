@@ -44,6 +44,10 @@
 //!   each file's pinned hash.
 //! - [`background`] is the sync that runs with no app: the code behind the
 //!   C entry `kanso_background_sync` that `mobile/rust` exports.
+//! - [`capture`] saves what other apps shared into Kanso: the drops the
+//!   share extension, App Intents and the Android share activity leave in the
+//!   library's `inbox/` folder, each one note in the Inbox. The C entry
+//!   `kanso_capture_inbox` in `mobile/rust` calls it.
 //! - A note's past and the library's safety nets: [`Library::history`] lists
 //!   the saved versions, [`Library::history_diff`] says what changed since
 //!   one and [`Library::restore_version`] brings one back (a locked note's
@@ -78,6 +82,8 @@ mod approver_model;
 pub mod background;
 mod backup;
 mod backups;
+pub mod biometrics;
+pub mod capture;
 pub mod boundary;
 mod builtin_themes;
 mod comments_model;

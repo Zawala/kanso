@@ -10,6 +10,7 @@
 /// of icons the Rust core resolves a theme for
 /// (`crates/kanso-mobile/app-icons.txt`).
 enum KansoIcons {
+  textSize('a-large-small'),
   archive('archive'),
   arrowLeft('arrow-left'),
   arrowRight('arrow-right'),
@@ -19,6 +20,7 @@ enum KansoIcons {
   book('book'),
   bookOpen('book-open'),
   calendar('calendar'),
+  camera('camera'),
   caseSensitive('case-sensitive'),
   check('check'),
   chevronDown('chevron-down'),
@@ -47,18 +49,18 @@ enum KansoIcons {
   hash('hash'),
   image('image'),
   inbox('inbox'),
-  indentDecrease('list-indent-decrease'),
-  indentIncrease('list-indent-increase'),
   info('info'),
   layoutTemplate('layout-template'),
   link('link'),
   list('list'),
   listChecks('list-checks'),
+  indentDecrease('list-indent-decrease'),
+  indentIncrease('list-indent-increase'),
   lock('lock'),
   lockOpen('lock-open'),
-  messageSquare('message-square'),
   logOut('log-out'),
   menu('menu'),
+  messageSquare('message-square'),
   monitor('monitor'),
   moon('moon'),
   notebook('notebook'),
@@ -70,8 +72,8 @@ enum KansoIcons {
   refreshCw('refresh-cw'),
   regex('regex'),
   replaceAll('replace-all'),
-  scanFace('scan-face'),
   scale('scale'),
+  scanFace('scan-face'),
   search('search'),
   settings('settings'),
   shapes('shapes'),
@@ -83,23 +85,21 @@ enum KansoIcons {
   star('star'),
   sun('sun'),
   tag('tag'),
-  textSize('a-large-small'),
   trash('trash'),
   typeface('type'),
   undo('undo-2'),
   user('user'),
   users('users'),
-  wholeWord('whole-word'),
-  close('x');
+  wholeWord('whole-word');
 
   const KansoIcons(this.lucideName);
 
-  /// The icon's name in the Lucide set.
   final String lucideName;
 
-  /// Where the SVG is bundled.
-  String get assetPath => assetPathOf(lucideName);
-
-  /// Where the bundled SVG of the Lucide icon [name] is.
-  static String assetPathOf(String name) => 'assets/icons/lucide/$name.svg';
+  static KansoIcons? fromLucideName(String name) {
+    for (final icon in KansoIcons.values) {
+      if (icon.lucideName == name) return icon;
+    }
+    return null;
+  }
 }

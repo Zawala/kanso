@@ -21,6 +21,10 @@ abstract class NoteState with _$NoteState {
     /// with the title to type in when it has none.
     @Default(false) bool openedNew,
 
+    /// Whether a note [openedNew] starts in its text rather than its title:
+    /// a voice note, dictated straight into the body.
+    @Default(false) bool startInText,
+
     /// Where the caret starts when the editor opens: the offset asked for,
     /// or where it was left; null for the start of the text. In units of the
     /// text the editor shows, which has no front matter, unless

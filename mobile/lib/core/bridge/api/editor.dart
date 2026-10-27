@@ -14,6 +14,9 @@ abstract class KansoEditor implements RustOpaqueInterface {
   /// The field's text changed.
   EditOutcome apply({required TextChange change});
 
+  /// Stores an image or a PDF and puts it in the text over the selection.
+  Future<EditOutcome> attach({required ShareFile file});
+
   /// Saves and ends the session.
   Future<SaveState> close();
 

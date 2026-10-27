@@ -577,7 +577,9 @@ mixin _$NoteState {
  String get themeId; NoteScreenStatus get status;/// Whether the note is read or edited.
  NoteMode get mode;/// Whether the note was just made, so that it opened ready to write in:
 /// with the title to type in when it has none.
- bool get openedNew;/// Where the caret starts when the editor opens: the offset asked for,
+ bool get openedNew;/// Whether a note [openedNew] starts in its text rather than its title:
+/// a voice note, dictated straight into the body.
+ bool get startInText;/// Where the caret starts when the editor opens: the offset asked for,
 /// or where it was left; null for the start of the text. In units of the
 /// text the editor shows, which has no front matter, unless
 /// [caretInBody].
@@ -601,16 +603,16 @@ $NoteStateCopyWith<NoteState> get copyWith => _$NoteStateCopyWithImpl<NoteState>
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.themeId, themeId) || other.themeId == themeId)&&(identical(other.status, status) || other.status == status)&&(identical(other.mode, mode) || other.mode == mode)&&(identical(other.openedNew, openedNew) || other.openedNew == openedNew)&&(identical(other.caret, caret) || other.caret == caret)&&(identical(other.caretInBody, caretInBody) || other.caretInBody == caretInBody)&&(identical(other.scroll, scroll) || other.scroll == scroll)&&(identical(other.note, note) || other.note == note)&&const DeepCollectionEquality().equals(other.lines, lines)&&(identical(other.error, error) || other.error == error));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.themeId, themeId) || other.themeId == themeId)&&(identical(other.status, status) || other.status == status)&&(identical(other.mode, mode) || other.mode == mode)&&(identical(other.openedNew, openedNew) || other.openedNew == openedNew)&&(identical(other.startInText, startInText) || other.startInText == startInText)&&(identical(other.caret, caret) || other.caret == caret)&&(identical(other.caretInBody, caretInBody) || other.caretInBody == caretInBody)&&(identical(other.scroll, scroll) || other.scroll == scroll)&&(identical(other.note, note) || other.note == note)&&const DeepCollectionEquality().equals(other.lines, lines)&&(identical(other.error, error) || other.error == error));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,noteId,themeId,status,mode,openedNew,caret,caretInBody,scroll,note,const DeepCollectionEquality().hash(lines),error);
+int get hashCode => Object.hash(runtimeType,noteId,themeId,status,mode,openedNew,startInText,caret,caretInBody,scroll,note,const DeepCollectionEquality().hash(lines),error);
 
 @override
 String toString() {
-  return 'NoteState(noteId: $noteId, themeId: $themeId, status: $status, mode: $mode, openedNew: $openedNew, caret: $caret, caretInBody: $caretInBody, scroll: $scroll, note: $note, lines: $lines, error: $error)';
+  return 'NoteState(noteId: $noteId, themeId: $themeId, status: $status, mode: $mode, openedNew: $openedNew, startInText: $startInText, caret: $caret, caretInBody: $caretInBody, scroll: $scroll, note: $note, lines: $lines, error: $error)';
 }
 
 
@@ -621,7 +623,7 @@ abstract mixin class $NoteStateCopyWith<$Res>  {
   factory $NoteStateCopyWith(NoteState value, $Res Function(NoteState) _then) = _$NoteStateCopyWithImpl;
 @useResult
 $Res call({
- String noteId, String themeId, NoteScreenStatus status, NoteMode mode, bool openedNew, int? caret, bool caretInBody, double scroll, NoteView? note, List<SourceLine> lines, ApplicationError? error
+ String noteId, String themeId, NoteScreenStatus status, NoteMode mode, bool openedNew, bool startInText, int? caret, bool caretInBody, double scroll, NoteView? note, List<SourceLine> lines, ApplicationError? error
 });
 
 
@@ -638,13 +640,14 @@ class _$NoteStateCopyWithImpl<$Res>
 
 /// Create a copy of NoteState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? noteId = null,Object? themeId = null,Object? status = null,Object? mode = null,Object? openedNew = null,Object? caret = freezed,Object? caretInBody = null,Object? scroll = null,Object? note = freezed,Object? lines = null,Object? error = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? noteId = null,Object? themeId = null,Object? status = null,Object? mode = null,Object? openedNew = null,Object? startInText = null,Object? caret = freezed,Object? caretInBody = null,Object? scroll = null,Object? note = freezed,Object? lines = null,Object? error = freezed,}) {
   return _then(_self.copyWith(
 noteId: null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
 as String,themeId: null == themeId ? _self.themeId : themeId // ignore: cast_nullable_to_non_nullable
 as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as NoteScreenStatus,mode: null == mode ? _self.mode : mode // ignore: cast_nullable_to_non_nullable
 as NoteMode,openedNew: null == openedNew ? _self.openedNew : openedNew // ignore: cast_nullable_to_non_nullable
+as bool,startInText: null == startInText ? _self.startInText : startInText // ignore: cast_nullable_to_non_nullable
 as bool,caret: freezed == caret ? _self.caret : caret // ignore: cast_nullable_to_non_nullable
 as int?,caretInBody: null == caretInBody ? _self.caretInBody : caretInBody // ignore: cast_nullable_to_non_nullable
 as bool,scroll: null == scroll ? _self.scroll : scroll // ignore: cast_nullable_to_non_nullable
@@ -748,10 +751,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String noteId,  String themeId,  NoteScreenStatus status,  NoteMode mode,  bool openedNew,  int? caret,  bool caretInBody,  double scroll,  NoteView? note,  List<SourceLine> lines,  ApplicationError? error)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String noteId,  String themeId,  NoteScreenStatus status,  NoteMode mode,  bool openedNew,  bool startInText,  int? caret,  bool caretInBody,  double scroll,  NoteView? note,  List<SourceLine> lines,  ApplicationError? error)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _NoteState() when $default != null:
-return $default(_that.noteId,_that.themeId,_that.status,_that.mode,_that.openedNew,_that.caret,_that.caretInBody,_that.scroll,_that.note,_that.lines,_that.error);case _:
+return $default(_that.noteId,_that.themeId,_that.status,_that.mode,_that.openedNew,_that.startInText,_that.caret,_that.caretInBody,_that.scroll,_that.note,_that.lines,_that.error);case _:
   return orElse();
 
 }
@@ -769,10 +772,10 @@ return $default(_that.noteId,_that.themeId,_that.status,_that.mode,_that.openedN
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String noteId,  String themeId,  NoteScreenStatus status,  NoteMode mode,  bool openedNew,  int? caret,  bool caretInBody,  double scroll,  NoteView? note,  List<SourceLine> lines,  ApplicationError? error)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String noteId,  String themeId,  NoteScreenStatus status,  NoteMode mode,  bool openedNew,  bool startInText,  int? caret,  bool caretInBody,  double scroll,  NoteView? note,  List<SourceLine> lines,  ApplicationError? error)  $default,) {final _that = this;
 switch (_that) {
 case _NoteState():
-return $default(_that.noteId,_that.themeId,_that.status,_that.mode,_that.openedNew,_that.caret,_that.caretInBody,_that.scroll,_that.note,_that.lines,_that.error);case _:
+return $default(_that.noteId,_that.themeId,_that.status,_that.mode,_that.openedNew,_that.startInText,_that.caret,_that.caretInBody,_that.scroll,_that.note,_that.lines,_that.error);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -789,10 +792,10 @@ return $default(_that.noteId,_that.themeId,_that.status,_that.mode,_that.openedN
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String noteId,  String themeId,  NoteScreenStatus status,  NoteMode mode,  bool openedNew,  int? caret,  bool caretInBody,  double scroll,  NoteView? note,  List<SourceLine> lines,  ApplicationError? error)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String noteId,  String themeId,  NoteScreenStatus status,  NoteMode mode,  bool openedNew,  bool startInText,  int? caret,  bool caretInBody,  double scroll,  NoteView? note,  List<SourceLine> lines,  ApplicationError? error)?  $default,) {final _that = this;
 switch (_that) {
 case _NoteState() when $default != null:
-return $default(_that.noteId,_that.themeId,_that.status,_that.mode,_that.openedNew,_that.caret,_that.caretInBody,_that.scroll,_that.note,_that.lines,_that.error);case _:
+return $default(_that.noteId,_that.themeId,_that.status,_that.mode,_that.openedNew,_that.startInText,_that.caret,_that.caretInBody,_that.scroll,_that.note,_that.lines,_that.error);case _:
   return null;
 
 }
@@ -804,7 +807,7 @@ return $default(_that.noteId,_that.themeId,_that.status,_that.mode,_that.openedN
 
 
 class _NoteState implements NoteState {
-  const _NoteState({this.noteId = '', this.themeId = '', this.status = NoteScreenStatus.loading, this.mode = NoteMode.preview, this.openedNew = false, this.caret, this.caretInBody = false, this.scroll = 0, this.note, final  List<SourceLine> lines = const <SourceLine>[], this.error}): _lines = lines;
+  const _NoteState({this.noteId = '', this.themeId = '', this.status = NoteScreenStatus.loading, this.mode = NoteMode.preview, this.openedNew = false, this.startInText = false, this.caret, this.caretInBody = false, this.scroll = 0, this.note, final  List<SourceLine> lines = const <SourceLine>[], this.error}): _lines = lines;
   
 
 /// The note being shown.
@@ -817,6 +820,9 @@ class _NoteState implements NoteState {
 /// Whether the note was just made, so that it opened ready to write in:
 /// with the title to type in when it has none.
 @override@JsonKey() final  bool openedNew;
+/// Whether a note [openedNew] starts in its text rather than its title:
+/// a voice note, dictated straight into the body.
+@override@JsonKey() final  bool startInText;
 /// Where the caret starts when the editor opens: the offset asked for,
 /// or where it was left; null for the start of the text. In units of the
 /// text the editor shows, which has no front matter, unless
@@ -855,16 +861,16 @@ _$NoteStateCopyWith<_NoteState> get copyWith => __$NoteStateCopyWithImpl<_NoteSt
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _NoteState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.themeId, themeId) || other.themeId == themeId)&&(identical(other.status, status) || other.status == status)&&(identical(other.mode, mode) || other.mode == mode)&&(identical(other.openedNew, openedNew) || other.openedNew == openedNew)&&(identical(other.caret, caret) || other.caret == caret)&&(identical(other.caretInBody, caretInBody) || other.caretInBody == caretInBody)&&(identical(other.scroll, scroll) || other.scroll == scroll)&&(identical(other.note, note) || other.note == note)&&const DeepCollectionEquality().equals(other._lines, _lines)&&(identical(other.error, error) || other.error == error));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _NoteState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.themeId, themeId) || other.themeId == themeId)&&(identical(other.status, status) || other.status == status)&&(identical(other.mode, mode) || other.mode == mode)&&(identical(other.openedNew, openedNew) || other.openedNew == openedNew)&&(identical(other.startInText, startInText) || other.startInText == startInText)&&(identical(other.caret, caret) || other.caret == caret)&&(identical(other.caretInBody, caretInBody) || other.caretInBody == caretInBody)&&(identical(other.scroll, scroll) || other.scroll == scroll)&&(identical(other.note, note) || other.note == note)&&const DeepCollectionEquality().equals(other._lines, _lines)&&(identical(other.error, error) || other.error == error));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,noteId,themeId,status,mode,openedNew,caret,caretInBody,scroll,note,const DeepCollectionEquality().hash(_lines),error);
+int get hashCode => Object.hash(runtimeType,noteId,themeId,status,mode,openedNew,startInText,caret,caretInBody,scroll,note,const DeepCollectionEquality().hash(_lines),error);
 
 @override
 String toString() {
-  return 'NoteState(noteId: $noteId, themeId: $themeId, status: $status, mode: $mode, openedNew: $openedNew, caret: $caret, caretInBody: $caretInBody, scroll: $scroll, note: $note, lines: $lines, error: $error)';
+  return 'NoteState(noteId: $noteId, themeId: $themeId, status: $status, mode: $mode, openedNew: $openedNew, startInText: $startInText, caret: $caret, caretInBody: $caretInBody, scroll: $scroll, note: $note, lines: $lines, error: $error)';
 }
 
 
@@ -875,7 +881,7 @@ abstract mixin class _$NoteStateCopyWith<$Res> implements $NoteStateCopyWith<$Re
   factory _$NoteStateCopyWith(_NoteState value, $Res Function(_NoteState) _then) = __$NoteStateCopyWithImpl;
 @override @useResult
 $Res call({
- String noteId, String themeId, NoteScreenStatus status, NoteMode mode, bool openedNew, int? caret, bool caretInBody, double scroll, NoteView? note, List<SourceLine> lines, ApplicationError? error
+ String noteId, String themeId, NoteScreenStatus status, NoteMode mode, bool openedNew, bool startInText, int? caret, bool caretInBody, double scroll, NoteView? note, List<SourceLine> lines, ApplicationError? error
 });
 
 
@@ -892,13 +898,14 @@ class __$NoteStateCopyWithImpl<$Res>
 
 /// Create a copy of NoteState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? noteId = null,Object? themeId = null,Object? status = null,Object? mode = null,Object? openedNew = null,Object? caret = freezed,Object? caretInBody = null,Object? scroll = null,Object? note = freezed,Object? lines = null,Object? error = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? noteId = null,Object? themeId = null,Object? status = null,Object? mode = null,Object? openedNew = null,Object? startInText = null,Object? caret = freezed,Object? caretInBody = null,Object? scroll = null,Object? note = freezed,Object? lines = null,Object? error = freezed,}) {
   return _then(_NoteState(
 noteId: null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
 as String,themeId: null == themeId ? _self.themeId : themeId // ignore: cast_nullable_to_non_nullable
 as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as NoteScreenStatus,mode: null == mode ? _self.mode : mode // ignore: cast_nullable_to_non_nullable
 as NoteMode,openedNew: null == openedNew ? _self.openedNew : openedNew // ignore: cast_nullable_to_non_nullable
+as bool,startInText: null == startInText ? _self.startInText : startInText // ignore: cast_nullable_to_non_nullable
 as bool,caret: freezed == caret ? _self.caret : caret // ignore: cast_nullable_to_non_nullable
 as int?,caretInBody: null == caretInBody ? _self.caretInBody : caretInBody // ignore: cast_nullable_to_non_nullable
 as bool,scroll: null == scroll ? _self.scroll : scroll // ignore: cast_nullable_to_non_nullable

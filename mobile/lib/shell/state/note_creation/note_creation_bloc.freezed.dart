@@ -55,11 +55,12 @@ extension NoteCreationEventPatterns on NoteCreationEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( NoteCreationRequestedEvent value)?  requested,TResult Function( NoteCreationTitledEvent value)?  titled,TResult Function( NoteCreationOpeningHandledEvent value)?  openingHandled,TResult Function( NoteCreationNoticeDismissedEvent value)?  noticeDismissed,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( NoteCreationRequestedEvent value)?  requested,TResult Function( NoteCreationCapturedEvent value)?  captured,TResult Function( NoteCreationTitledEvent value)?  titled,TResult Function( NoteCreationOpeningHandledEvent value)?  openingHandled,TResult Function( NoteCreationNoticeDismissedEvent value)?  noticeDismissed,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case NoteCreationRequestedEvent() when requested != null:
-return requested(_that);case NoteCreationTitledEvent() when titled != null:
+return requested(_that);case NoteCreationCapturedEvent() when captured != null:
+return captured(_that);case NoteCreationTitledEvent() when titled != null:
 return titled(_that);case NoteCreationOpeningHandledEvent() when openingHandled != null:
 return openingHandled(_that);case NoteCreationNoticeDismissedEvent() when noticeDismissed != null:
 return noticeDismissed(_that);case _:
@@ -80,11 +81,12 @@ return noticeDismissed(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( NoteCreationRequestedEvent value)  requested,required TResult Function( NoteCreationTitledEvent value)  titled,required TResult Function( NoteCreationOpeningHandledEvent value)  openingHandled,required TResult Function( NoteCreationNoticeDismissedEvent value)  noticeDismissed,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( NoteCreationRequestedEvent value)  requested,required TResult Function( NoteCreationCapturedEvent value)  captured,required TResult Function( NoteCreationTitledEvent value)  titled,required TResult Function( NoteCreationOpeningHandledEvent value)  openingHandled,required TResult Function( NoteCreationNoticeDismissedEvent value)  noticeDismissed,}){
 final _that = this;
 switch (_that) {
 case NoteCreationRequestedEvent():
-return requested(_that);case NoteCreationTitledEvent():
+return requested(_that);case NoteCreationCapturedEvent():
+return captured(_that);case NoteCreationTitledEvent():
 return titled(_that);case NoteCreationOpeningHandledEvent():
 return openingHandled(_that);case NoteCreationNoticeDismissedEvent():
 return noticeDismissed(_that);}
@@ -101,11 +103,12 @@ return noticeDismissed(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( NoteCreationRequestedEvent value)?  requested,TResult? Function( NoteCreationTitledEvent value)?  titled,TResult? Function( NoteCreationOpeningHandledEvent value)?  openingHandled,TResult? Function( NoteCreationNoticeDismissedEvent value)?  noticeDismissed,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( NoteCreationRequestedEvent value)?  requested,TResult? Function( NoteCreationCapturedEvent value)?  captured,TResult? Function( NoteCreationTitledEvent value)?  titled,TResult? Function( NoteCreationOpeningHandledEvent value)?  openingHandled,TResult? Function( NoteCreationNoticeDismissedEvent value)?  noticeDismissed,}){
 final _that = this;
 switch (_that) {
 case NoteCreationRequestedEvent() when requested != null:
-return requested(_that);case NoteCreationTitledEvent() when titled != null:
+return requested(_that);case NoteCreationCapturedEvent() when captured != null:
+return captured(_that);case NoteCreationTitledEvent() when titled != null:
 return titled(_that);case NoteCreationOpeningHandledEvent() when openingHandled != null:
 return openingHandled(_that);case NoteCreationNoticeDismissedEvent() when noticeDismissed != null:
 return noticeDismissed(_that);case _:
@@ -125,10 +128,11 @@ return noticeDismissed(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( ListPlace place,  bool pinned)?  requested,TResult Function( String title)?  titled,TResult Function()?  openingHandled,TResult Function()?  noticeDismissed,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( ListPlace place,  bool pinned,  NewNoteStart start)?  requested,TResult Function( MediaSource source)?  captured,TResult Function( String title)?  titled,TResult Function()?  openingHandled,TResult Function()?  noticeDismissed,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case NoteCreationRequestedEvent() when requested != null:
-return requested(_that.place,_that.pinned);case NoteCreationTitledEvent() when titled != null:
+return requested(_that.place,_that.pinned,_that.start);case NoteCreationCapturedEvent() when captured != null:
+return captured(_that.source);case NoteCreationTitledEvent() when titled != null:
 return titled(_that.title);case NoteCreationOpeningHandledEvent() when openingHandled != null:
 return openingHandled();case NoteCreationNoticeDismissedEvent() when noticeDismissed != null:
 return noticeDismissed();case _:
@@ -149,10 +153,11 @@ return noticeDismissed();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( ListPlace place,  bool pinned)  requested,required TResult Function( String title)  titled,required TResult Function()  openingHandled,required TResult Function()  noticeDismissed,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( ListPlace place,  bool pinned,  NewNoteStart start)  requested,required TResult Function( MediaSource source)  captured,required TResult Function( String title)  titled,required TResult Function()  openingHandled,required TResult Function()  noticeDismissed,}) {final _that = this;
 switch (_that) {
 case NoteCreationRequestedEvent():
-return requested(_that.place,_that.pinned);case NoteCreationTitledEvent():
+return requested(_that.place,_that.pinned,_that.start);case NoteCreationCapturedEvent():
+return captured(_that.source);case NoteCreationTitledEvent():
 return titled(_that.title);case NoteCreationOpeningHandledEvent():
 return openingHandled();case NoteCreationNoticeDismissedEvent():
 return noticeDismissed();}
@@ -169,10 +174,11 @@ return noticeDismissed();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( ListPlace place,  bool pinned)?  requested,TResult? Function( String title)?  titled,TResult? Function()?  openingHandled,TResult? Function()?  noticeDismissed,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( ListPlace place,  bool pinned,  NewNoteStart start)?  requested,TResult? Function( MediaSource source)?  captured,TResult? Function( String title)?  titled,TResult? Function()?  openingHandled,TResult? Function()?  noticeDismissed,}) {final _that = this;
 switch (_that) {
 case NoteCreationRequestedEvent() when requested != null:
-return requested(_that.place,_that.pinned);case NoteCreationTitledEvent() when titled != null:
+return requested(_that.place,_that.pinned,_that.start);case NoteCreationCapturedEvent() when captured != null:
+return captured(_that.source);case NoteCreationTitledEvent() when titled != null:
 return titled(_that.title);case NoteCreationOpeningHandledEvent() when openingHandled != null:
 return openingHandled();case NoteCreationNoticeDismissedEvent() when noticeDismissed != null:
 return noticeDismissed();case _:
@@ -187,11 +193,12 @@ return noticeDismissed();case _:
 
 
 class NoteCreationRequestedEvent implements NoteCreationEvent {
-  const NoteCreationRequestedEvent(this.place, {this.pinned = false});
+  const NoteCreationRequestedEvent(this.place, {this.pinned = false, this.start = NewNoteStart.title});
   
 
  final  ListPlace place;
 @JsonKey() final  bool pinned;
+@JsonKey() final  NewNoteStart start;
 
 /// Create a copy of NoteCreationEvent
 /// with the given fields replaced by the non-null parameter values.
@@ -203,16 +210,16 @@ $NoteCreationRequestedEventCopyWith<NoteCreationRequestedEvent> get copyWith => 
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteCreationRequestedEvent&&(identical(other.place, place) || other.place == place)&&(identical(other.pinned, pinned) || other.pinned == pinned));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteCreationRequestedEvent&&(identical(other.place, place) || other.place == place)&&(identical(other.pinned, pinned) || other.pinned == pinned)&&(identical(other.start, start) || other.start == start));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,place,pinned);
+int get hashCode => Object.hash(runtimeType,place,pinned,start);
 
 @override
 String toString() {
-  return 'NoteCreationEvent.requested(place: $place, pinned: $pinned)';
+  return 'NoteCreationEvent.requested(place: $place, pinned: $pinned, start: $start)';
 }
 
 
@@ -223,7 +230,7 @@ abstract mixin class $NoteCreationRequestedEventCopyWith<$Res> implements $NoteC
   factory $NoteCreationRequestedEventCopyWith(NoteCreationRequestedEvent value, $Res Function(NoteCreationRequestedEvent) _then) = _$NoteCreationRequestedEventCopyWithImpl;
 @useResult
 $Res call({
- ListPlace place, bool pinned
+ ListPlace place, bool pinned, NewNoteStart start
 });
 
 
@@ -240,11 +247,12 @@ class _$NoteCreationRequestedEventCopyWithImpl<$Res>
 
 /// Create a copy of NoteCreationEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? place = null,Object? pinned = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? place = null,Object? pinned = null,Object? start = null,}) {
   return _then(NoteCreationRequestedEvent(
 null == place ? _self.place : place // ignore: cast_nullable_to_non_nullable
 as ListPlace,pinned: null == pinned ? _self.pinned : pinned // ignore: cast_nullable_to_non_nullable
-as bool,
+as bool,start: null == start ? _self.start : start // ignore: cast_nullable_to_non_nullable
+as NewNoteStart,
   ));
 }
 
@@ -258,6 +266,72 @@ $ListPlaceCopyWith<$Res> get place {
     return _then(_self.copyWith(place: value));
   });
 }
+}
+
+/// @nodoc
+
+
+class NoteCreationCapturedEvent implements NoteCreationEvent {
+  const NoteCreationCapturedEvent(this.source);
+  
+
+ final  MediaSource source;
+
+/// Create a copy of NoteCreationEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$NoteCreationCapturedEventCopyWith<NoteCreationCapturedEvent> get copyWith => _$NoteCreationCapturedEventCopyWithImpl<NoteCreationCapturedEvent>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteCreationCapturedEvent&&(identical(other.source, source) || other.source == source));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,source);
+
+@override
+String toString() {
+  return 'NoteCreationEvent.captured(source: $source)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $NoteCreationCapturedEventCopyWith<$Res> implements $NoteCreationEventCopyWith<$Res> {
+  factory $NoteCreationCapturedEventCopyWith(NoteCreationCapturedEvent value, $Res Function(NoteCreationCapturedEvent) _then) = _$NoteCreationCapturedEventCopyWithImpl;
+@useResult
+$Res call({
+ MediaSource source
+});
+
+
+
+
+}
+/// @nodoc
+class _$NoteCreationCapturedEventCopyWithImpl<$Res>
+    implements $NoteCreationCapturedEventCopyWith<$Res> {
+  _$NoteCreationCapturedEventCopyWithImpl(this._self, this._then);
+
+  final NoteCreationCapturedEvent _self;
+  final $Res Function(NoteCreationCapturedEvent) _then;
+
+/// Create a copy of NoteCreationEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? source = null,}) {
+  return _then(NoteCreationCapturedEvent(
+null == source ? _self.source : source // ignore: cast_nullable_to_non_nullable
+as MediaSource,
+  ));
+}
+
+
 }
 
 /// @nodoc
@@ -397,7 +471,9 @@ mixin _$NoteCreationState {
  bool get creating;/// The note just made, for the screen to go to; it says so with
 /// `openingHandled` when it has.
  NoteOpening? get opening;/// Why the last note was not made, until it is dismissed.
- NoteCreationFailure? get failure;
+ NoteCreationFailure? get failure;/// What was left out of the note just captured, a sentence each, until
+/// it is dismissed.
+ List<String> get problems;
 /// Create a copy of NoteCreationState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -408,16 +484,16 @@ $NoteCreationStateCopyWith<NoteCreationState> get copyWith => _$NoteCreationStat
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteCreationState&&(identical(other.creating, creating) || other.creating == creating)&&(identical(other.opening, opening) || other.opening == opening)&&(identical(other.failure, failure) || other.failure == failure));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is NoteCreationState&&(identical(other.creating, creating) || other.creating == creating)&&(identical(other.opening, opening) || other.opening == opening)&&(identical(other.failure, failure) || other.failure == failure)&&const DeepCollectionEquality().equals(other.problems, problems));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,creating,opening,failure);
+int get hashCode => Object.hash(runtimeType,creating,opening,failure,const DeepCollectionEquality().hash(problems));
 
 @override
 String toString() {
-  return 'NoteCreationState(creating: $creating, opening: $opening, failure: $failure)';
+  return 'NoteCreationState(creating: $creating, opening: $opening, failure: $failure, problems: $problems)';
 }
 
 
@@ -428,7 +504,7 @@ abstract mixin class $NoteCreationStateCopyWith<$Res>  {
   factory $NoteCreationStateCopyWith(NoteCreationState value, $Res Function(NoteCreationState) _then) = _$NoteCreationStateCopyWithImpl;
 @useResult
 $Res call({
- bool creating, NoteOpening? opening, NoteCreationFailure? failure
+ bool creating, NoteOpening? opening, NoteCreationFailure? failure, List<String> problems
 });
 
 
@@ -445,12 +521,13 @@ class _$NoteCreationStateCopyWithImpl<$Res>
 
 /// Create a copy of NoteCreationState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? creating = null,Object? opening = freezed,Object? failure = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? creating = null,Object? opening = freezed,Object? failure = freezed,Object? problems = null,}) {
   return _then(_self.copyWith(
 creating: null == creating ? _self.creating : creating // ignore: cast_nullable_to_non_nullable
 as bool,opening: freezed == opening ? _self.opening : opening // ignore: cast_nullable_to_non_nullable
 as NoteOpening?,failure: freezed == failure ? _self.failure : failure // ignore: cast_nullable_to_non_nullable
-as NoteCreationFailure?,
+as NoteCreationFailure?,problems: null == problems ? _self.problems : problems // ignore: cast_nullable_to_non_nullable
+as List<String>,
   ));
 }
 /// Create a copy of NoteCreationState
@@ -547,10 +624,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool creating,  NoteOpening? opening,  NoteCreationFailure? failure)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool creating,  NoteOpening? opening,  NoteCreationFailure? failure,  List<String> problems)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _NoteCreationState() when $default != null:
-return $default(_that.creating,_that.opening,_that.failure);case _:
+return $default(_that.creating,_that.opening,_that.failure,_that.problems);case _:
   return orElse();
 
 }
@@ -568,10 +645,10 @@ return $default(_that.creating,_that.opening,_that.failure);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool creating,  NoteOpening? opening,  NoteCreationFailure? failure)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool creating,  NoteOpening? opening,  NoteCreationFailure? failure,  List<String> problems)  $default,) {final _that = this;
 switch (_that) {
 case _NoteCreationState():
-return $default(_that.creating,_that.opening,_that.failure);case _:
+return $default(_that.creating,_that.opening,_that.failure,_that.problems);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -588,10 +665,10 @@ return $default(_that.creating,_that.opening,_that.failure);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool creating,  NoteOpening? opening,  NoteCreationFailure? failure)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool creating,  NoteOpening? opening,  NoteCreationFailure? failure,  List<String> problems)?  $default,) {final _that = this;
 switch (_that) {
 case _NoteCreationState() when $default != null:
-return $default(_that.creating,_that.opening,_that.failure);case _:
+return $default(_that.creating,_that.opening,_that.failure,_that.problems);case _:
   return null;
 
 }
@@ -603,7 +680,7 @@ return $default(_that.creating,_that.opening,_that.failure);case _:
 
 
 class _NoteCreationState implements NoteCreationState {
-  const _NoteCreationState({this.creating = false, this.opening, this.failure});
+  const _NoteCreationState({this.creating = false, this.opening, this.failure, final  List<String> problems = const <String>[]}): _problems = problems;
   
 
 /// Whether a note is being made.
@@ -613,6 +690,17 @@ class _NoteCreationState implements NoteCreationState {
 @override final  NoteOpening? opening;
 /// Why the last note was not made, until it is dismissed.
 @override final  NoteCreationFailure? failure;
+/// What was left out of the note just captured, a sentence each, until
+/// it is dismissed.
+ final  List<String> _problems;
+/// What was left out of the note just captured, a sentence each, until
+/// it is dismissed.
+@override@JsonKey() List<String> get problems {
+  if (_problems is EqualUnmodifiableListView) return _problems;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_problems);
+}
+
 
 /// Create a copy of NoteCreationState
 /// with the given fields replaced by the non-null parameter values.
@@ -624,16 +712,16 @@ _$NoteCreationStateCopyWith<_NoteCreationState> get copyWith => __$NoteCreationS
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _NoteCreationState&&(identical(other.creating, creating) || other.creating == creating)&&(identical(other.opening, opening) || other.opening == opening)&&(identical(other.failure, failure) || other.failure == failure));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _NoteCreationState&&(identical(other.creating, creating) || other.creating == creating)&&(identical(other.opening, opening) || other.opening == opening)&&(identical(other.failure, failure) || other.failure == failure)&&const DeepCollectionEquality().equals(other._problems, _problems));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,creating,opening,failure);
+int get hashCode => Object.hash(runtimeType,creating,opening,failure,const DeepCollectionEquality().hash(_problems));
 
 @override
 String toString() {
-  return 'NoteCreationState(creating: $creating, opening: $opening, failure: $failure)';
+  return 'NoteCreationState(creating: $creating, opening: $opening, failure: $failure, problems: $problems)';
 }
 
 
@@ -644,7 +732,7 @@ abstract mixin class _$NoteCreationStateCopyWith<$Res> implements $NoteCreationS
   factory _$NoteCreationStateCopyWith(_NoteCreationState value, $Res Function(_NoteCreationState) _then) = __$NoteCreationStateCopyWithImpl;
 @override @useResult
 $Res call({
- bool creating, NoteOpening? opening, NoteCreationFailure? failure
+ bool creating, NoteOpening? opening, NoteCreationFailure? failure, List<String> problems
 });
 
 
@@ -661,12 +749,13 @@ class __$NoteCreationStateCopyWithImpl<$Res>
 
 /// Create a copy of NoteCreationState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? creating = null,Object? opening = freezed,Object? failure = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? creating = null,Object? opening = freezed,Object? failure = freezed,Object? problems = null,}) {
   return _then(_NoteCreationState(
 creating: null == creating ? _self.creating : creating // ignore: cast_nullable_to_non_nullable
 as bool,opening: freezed == opening ? _self.opening : opening // ignore: cast_nullable_to_non_nullable
 as NoteOpening?,failure: freezed == failure ? _self.failure : failure // ignore: cast_nullable_to_non_nullable
-as NoteCreationFailure?,
+as NoteCreationFailure?,problems: null == problems ? _self._problems : problems // ignore: cast_nullable_to_non_nullable
+as List<String>,
   ));
 }
 

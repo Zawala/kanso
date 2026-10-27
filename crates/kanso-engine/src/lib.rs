@@ -46,6 +46,8 @@
 
 pub mod account;
 pub mod backup;
+pub mod attach;
+pub mod capture;
 pub mod batch;
 pub mod daily;
 pub mod edit;

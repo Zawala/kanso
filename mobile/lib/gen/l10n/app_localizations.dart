@@ -3927,6 +3927,1110 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Dismiss'**
   String get sharedProblemsDismiss;
+
+  /// Shown while today's daily note is found or made.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening today’s note'**
+  String get dailyNoteLoading;
+
+  /// The title of the card shown when today's daily note could not be opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Today’s note didn’t open'**
+  String get dailyNoteFailedTitle;
+
+  /// The message of the card shown when today's daily note could not be opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong opening today’s note on this phone. Try again.'**
+  String get dailyNoteFailedMessage;
+
+  /// The row of the capture sheet that takes a photo with the camera and saves or attaches it.
+  ///
+  /// In en, this message translates to:
+  /// **'Take photo'**
+  String get captureTakePhoto;
+
+  /// The row of the capture sheet that picks photos from the phone's library.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose photos'**
+  String get captureChoosePhotos;
+
+  /// The row of the capture sheet that picks PDFs from the phone's files.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach PDF'**
+  String get captureAttachPdf;
+
+  /// The editor's attach sheet: writes an image's Markdown to fill in by hand.
+  ///
+  /// In en, this message translates to:
+  /// **'Image link'**
+  String get captureImageLink;
+
+  /// Said when a picked file couldn't be attached for a reason the library didn't put in words.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t attach that file.'**
+  String get captureAttachFailed;
+
+  /// Says how a locked note is opened and when it locks.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock it to read and edit. It locks again after {minutes} minutes or when you leave Kanso.'**
+  String lockedMessage(int minutes);
+
+  /// Unlocks a locked note with a biometric; method is Face ID, Touch ID or fingerprint.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock with {method}'**
+  String lockedUnlockWith(String method);
+
+  /// Unlocks a note with the lock password instead.
+  ///
+  /// In en, this message translates to:
+  /// **'Use password'**
+  String get lockedUsePassword;
+
+  /// Said when a biometric check failed.
+  ///
+  /// In en, this message translates to:
+  /// **'{method} didn\'t work. Use your lock password instead.'**
+  String lockedBiometricFailed(String method);
+
+  /// Said when the enrolled biometrics changed.
+  ///
+  /// In en, this message translates to:
+  /// **'Your biometrics changed, so {method} no longer opens locked notes. Use your lock password, then turn {method} on again in Settings.'**
+  String lockedInvalidated(String method);
+
+  /// The name of Face ID.
+  ///
+  /// In en, this message translates to:
+  /// **'Face ID'**
+  String get biometricFaceId;
+
+  /// The name of Touch ID.
+  ///
+  /// In en, this message translates to:
+  /// **'Touch ID'**
+  String get biometricTouchId;
+
+  /// The name of Optic ID.
+  ///
+  /// In en, this message translates to:
+  /// **'Optic ID'**
+  String get biometricOpticId;
+
+  /// The name of fingerprint unlock on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'fingerprint'**
+  String get biometricFingerprint;
+
+  /// The name of face unlock on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'face unlock'**
+  String get biometricFace;
+
+  /// The name of iris unlock on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'iris unlock'**
+  String get biometricIris;
+
+  /// The generic name of biometric unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'biometrics'**
+  String get biometricGeneric;
+
+  /// The text of the biometric prompt that unlocks notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock your locked notes'**
+  String get biometricReasonUnlock;
+
+  /// The text of the biometric prompt that turns biometric unlock on.
+  ///
+  /// In en, this message translates to:
+  /// **'Use it to unlock your locked notes on this device'**
+  String get biometricReasonEnroll;
+
+  /// The label of the lock password field.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock password'**
+  String get lockFieldPassword;
+
+  /// The hint under a new lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'At least 8 characters.'**
+  String get lockFieldPasswordHint;
+
+  /// The label of the field that repeats a password.
+  ///
+  /// In en, this message translates to:
+  /// **'Type it again'**
+  String get lockFieldAgain;
+
+  /// The label of the field for the current lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Current lock password'**
+  String get lockFieldCurrent;
+
+  /// The label of the field for the new lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'New lock password'**
+  String get lockFieldNew;
+
+  /// Closes a lock sheet without doing anything.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get lockCancel;
+
+  /// Said when the lock password is wrong.
+  ///
+  /// In en, this message translates to:
+  /// **'That isn\'t the lock password.'**
+  String get lockWrongPassword;
+
+  /// Said when the two typed passwords differ.
+  ///
+  /// In en, this message translates to:
+  /// **'The passwords don\'t match.'**
+  String get lockMismatch;
+
+  /// Said when the two typed new passwords differ.
+  ///
+  /// In en, this message translates to:
+  /// **'The new passwords don\'t match.'**
+  String get lockNewMismatch;
+
+  /// Said when a new lock password is too short.
+  ///
+  /// In en, this message translates to:
+  /// **'The lock password needs at least 8 characters.'**
+  String get lockTooShort;
+
+  /// Said when a lock action failed for a reason with no better words.
+  ///
+  /// In en, this message translates to:
+  /// **'That didn\'t work. Try again.'**
+  String get lockActionFailed;
+
+  /// The title of the sheet that asks for the lock password to open a note.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock note'**
+  String get lockUnlockNoteTitle;
+
+  /// The title of the sheet that asks for the lock password to open a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock notebook'**
+  String get lockUnlockNotebookTitle;
+
+  /// Says why a notebook asks for the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'“{name}” is locked. Its notes open with your lock password.'**
+  String lockUnlockNotebookMessage(String name);
+
+  /// Opens the locked notes with the password typed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get lockUnlockButton;
+
+  /// The title of the sheet that makes the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a lock password'**
+  String get lockSetTitle;
+
+  /// Explains the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked notes open with this password, on this device and any other that syncs with it. Kanso can\'t recover it: forget it, and the notes locked with it can\'t be read.'**
+  String get lockSetMessage;
+
+  /// Sets the lock password and locks.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock'**
+  String get lockSetButton;
+
+  /// The note menu action that locks the note.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock note…'**
+  String get lockNoteMenu;
+
+  /// The title of the sheet that asks for the lock password to lock a note.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock note'**
+  String get lockNoteAskTitle;
+
+  /// The title of the sheet that confirms locking a note.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock this note?'**
+  String get lockNoteConfirmTitle;
+
+  /// Explains what locking a note does.
+  ///
+  /// In en, this message translates to:
+  /// **'Its text is sealed and its earlier versions are deleted. It stays open until the locked notes lock again.'**
+  String get lockNoteConfirmMessage;
+
+  /// The title of the sheet that asks for the lock password to lock a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock notebook'**
+  String get lockNotebookAskTitle;
+
+  /// The title of the sheet that confirms locking a notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock this notebook?'**
+  String get lockNotebookConfirmTitle;
+
+  /// Explains what locking a notebook does.
+  ///
+  /// In en, this message translates to:
+  /// **'Every note in it is sealed, and new notes added to it are sealed too.'**
+  String get lockNotebookConfirmMessage;
+
+  /// The notebook menu action that locks the notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock Notebook…'**
+  String get lockNotebookMenu;
+
+  /// The note menu action that removes the lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove lock…'**
+  String get lockRemoveNoteMenu;
+
+  /// The notebook menu action that removes the lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove Notebook Lock…'**
+  String get lockRemoveNotebookMenu;
+
+  /// The notebook menu action that opens a locked notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock notebook…'**
+  String get lockUnlockNotebookMenu;
+
+  /// Closes every locked note.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock notes now'**
+  String get lockNowMenu;
+
+  /// The title of the sheet that confirms removing a note's lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the lock?'**
+  String get lockRemoveNoteTitle;
+
+  /// Explains what removing a note's lock does.
+  ///
+  /// In en, this message translates to:
+  /// **'The note\'s text is kept as plain text again: search, backlinks, tasks and the local API can read it.'**
+  String get lockRemoveNoteMessage;
+
+  /// The title of the sheet that confirms removing a notebook's lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the notebook\'s lock?'**
+  String get lockRemoveNotebookTitle;
+
+  /// Explains what removing a notebook's lock does.
+  ///
+  /// In en, this message translates to:
+  /// **'The notes in it are kept as plain text again: search, backlinks, tasks and the local API can read them.'**
+  String get lockRemoveNotebookMessage;
+
+  /// Removes the lock.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove Lock'**
+  String get lockRemoveButton;
+
+  /// Said when a lock can't be removed because the notes are closed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock the notes first, then try again.'**
+  String get lockRemoveClosed;
+
+  /// What the note's menu button does.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get lockMoreMenu;
+
+  /// The title of the note's menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Note actions'**
+  String get lockMoreTitle;
+
+  /// The title of the notebook's menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Notebook actions'**
+  String get lockNotebookMenuTitle;
+
+  /// What a screen reader says of a locked note.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked'**
+  String get noteRowLocked;
+
+  /// What a screen reader says of a locked note that is open.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlocked'**
+  String get noteRowUnlocked;
+
+  /// The line a locked note's row shows while it is open.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlocked'**
+  String get noteListUnlocked;
+
+  /// A section of settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked notes'**
+  String get settingsLockedNotes;
+
+  /// The switch to unlock notes with a biometric.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock with {method}'**
+  String settingsUnlockWith(String method);
+
+  /// How long until the locked notes lock again.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock after'**
+  String get settingsLockAfter;
+
+  /// A number of minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} minutes'**
+  String settingsTenMinutes(int minutes);
+
+  /// Opens the sheet that changes the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Change lock password…'**
+  String get settingsChangeLockPassword;
+
+  /// Closes every locked note.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock notes now'**
+  String get settingsLockNow;
+
+  /// Said when biometrics are turned on while the notes are closed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock a locked note with your lock password first, then turn on {method}.'**
+  String settingsBiometricsClosed(String method);
+
+  /// Said after biometric unlock was turned on.
+  ///
+  /// In en, this message translates to:
+  /// **'{method} now unlocks your locked notes on this device.'**
+  String settingsBiometricsOn(String method);
+
+  /// Said after biometric unlock was turned off.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked notes open with the lock password again on this device.'**
+  String get settingsBiometricsOff;
+
+  /// Said when biometric unlock could not be turned on.
+  ///
+  /// In en, this message translates to:
+  /// **'{method} could not be turned on.'**
+  String settingsBiometricsFailed(String method);
+
+  /// The title of the sheet that changes the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Change lock password'**
+  String get lockChangeTitle;
+
+  /// Explains changing the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Every locked note is sealed again with the new password. Kanso can\'t recover it.'**
+  String get lockChangeMessage;
+
+  /// Changes the lock password.
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get lockChangeButton;
+
+  /// Says how many locked items kept the old password.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 locked note or notebook didn\'t open with the current password and kept it.} other{{count} locked notes or notebooks didn\'t open with the current password and kept it.}}'**
+  String lockChangeKept(int count);
+
+  /// The title of the offer to turn on biometric unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Use {method}?'**
+  String lockOfferTitle(String method);
+
+  /// The offer to turn on biometric unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Use {method} to unlock your locked notes on this device? The password still works, and other devices need it.'**
+  String lockOfferMessage(String method);
+
+  /// Accepts the offer of biometric unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Use {method}'**
+  String lockOfferAccept(String method);
+
+  /// Declines the offer of biometric unlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get lockOfferDecline;
+
+  /// Closes a lock sheet that has told its result.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get lockDone;
+
+  /// The title of the screen that lists the library's backups, and its row in Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Backups'**
+  String get backupsTitle;
+
+  /// How many backups there are, as the value of the Backups row in Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{None yet} =1{1 backup} other{{count} backups}}'**
+  String backupsCount(int count);
+
+  /// Says how the backups work, at the top of the Backups screen. The same words as the engine's phone summary.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso backs up its database on this device once a day and keeps the last 14. A backup made with Back up now is kept until you delete it here.'**
+  String get backupsSummary;
+
+  /// The button that makes a backup right away.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up now'**
+  String get backupsBackUpNow;
+
+  /// What the Back up now button says while it works.
+  ///
+  /// In en, this message translates to:
+  /// **'Backing up…'**
+  String get backupsBackingUp;
+
+  /// The header over the list of backups.
+  ///
+  /// In en, this message translates to:
+  /// **'Backups'**
+  String get backupsListHeader;
+
+  /// Says a backup was made by the daily schedule, which keeps the last 14.
+  ///
+  /// In en, this message translates to:
+  /// **'Daily backup'**
+  String get backupsKindDaily;
+
+  /// Says a backup was made on request and is kept until it is deleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Made with Back up now'**
+  String get backupsKindManual;
+
+  /// A backup's second line: how it was made and how big it is.
+  ///
+  /// In en, this message translates to:
+  /// **'{kind} · {size}'**
+  String backupsKindManualKept(String kind, String size);
+
+  /// The label of the button that deletes a backup made on request.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete backup'**
+  String get backupsDelete;
+
+  /// The title of the empty list of backups.
+  ///
+  /// In en, this message translates to:
+  /// **'No backups yet'**
+  String get backupsEmptyTitle;
+
+  /// What the empty list of backups says to do.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up now makes one right away.'**
+  String get backupsEmptyMessage;
+
+  /// What a screen reader says while the backups are read.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the backups'**
+  String get backupsLoading;
+
+  /// The title of the card shown when the backups could not be listed.
+  ///
+  /// In en, this message translates to:
+  /// **'The backups couldn’t be read'**
+  String get backupsFailedTitle;
+
+  /// The message of the card shown when the backups could not be listed.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again in a moment.'**
+  String get backupsFailedMessage;
+
+  /// Says a backup was made on request.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup was made.'**
+  String get backupsNoticeMadeNow;
+
+  /// Says a backup made on request was deleted.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup was deleted.'**
+  String get backupsNoticeDeleted;
+
+  /// Says the daily backup, made when the app opened, failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Today’s backup couldn’t be made.'**
+  String get backupsProblemDaily;
+
+  /// Says Back up now failed.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup couldn’t be made.'**
+  String get backupsProblemBackUp;
+
+  /// Says deleting a backup failed.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup couldn’t be deleted.'**
+  String get backupsProblemDelete;
+
+  /// Says the list could not be read again; the one shown is the last that was read.
+  ///
+  /// In en, this message translates to:
+  /// **'The list of backups couldn’t be updated.'**
+  String get backupsProblemList;
+
+  /// The title of the sheet that asks to confirm deleting a backup.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this backup?'**
+  String get backupsDeleteTitle;
+
+  /// What the sheet that confirms deleting a backup says; {when} is the day and time it was made.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup made {when} is deleted from this device. This can’t be undone.'**
+  String backupsDeleteMessage(String when);
+
+  /// The button that deletes the backup.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get backupsDeleteConfirm;
+
+  /// The button that keeps the backup.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get backupsDeleteCancel;
+
+  /// A size in bytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{size} B'**
+  String fileSizeBytes(String size);
+
+  /// A size in kilobytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{size} KB'**
+  String fileSizeKilobytes(String size);
+
+  /// A size in megabytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{size} MB'**
+  String fileSizeMegabytes(String size);
+
+  /// A size in gigabytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{size} GB'**
+  String fileSizeGigabytes(String size);
+
+  /// The row of a note's info sheet that opens the note's earlier versions.
+  ///
+  /// In en, this message translates to:
+  /// **'Show history'**
+  String get noteInfoHistory;
+
+  /// The title of the screen that lists a note's earlier versions.
+  ///
+  /// In en, this message translates to:
+  /// **'Note history'**
+  String get historyTitle;
+
+  /// Closes the history.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get historyClose;
+
+  /// What a screen reader says while a note's history is read.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the history'**
+  String get historyLoading;
+
+  /// The title shown when a note has no saved versions.
+  ///
+  /// In en, this message translates to:
+  /// **'No earlier versions yet'**
+  String get historyEmptyTitle;
+
+  /// What the empty history says about when versions are kept.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso keeps one every few minutes while you edit, and one before every change made elsewhere.'**
+  String get historyEmptyMessage;
+
+  /// The title of the card shown when a note's history could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The history couldn’t be read'**
+  String get historyFailedTitle;
+
+  /// The message of the card shown when a note's history could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again in a moment.'**
+  String get historyFailedMessage;
+
+  /// The title shown for the history of a locked note that is closed.
+  ///
+  /// In en, this message translates to:
+  /// **'This note is locked'**
+  String get historyLockedTitle;
+
+  /// What the history of a closed locked note says.
+  ///
+  /// In en, this message translates to:
+  /// **'Its earlier versions stay sealed until you unlock it.'**
+  String get historyLockedMessage;
+
+  /// The title shown when the note whose history was asked for is gone.
+  ///
+  /// In en, this message translates to:
+  /// **'This note isn’t here any more'**
+  String get historyNotFoundTitle;
+
+  /// What the history of a note that is gone says.
+  ///
+  /// In en, this message translates to:
+  /// **'It may have been deleted on another device.'**
+  String get historyNotFoundMessage;
+
+  /// The label of the control that chooses which earlier version to look at.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get historyVersionLabel;
+
+  /// The title of the sheet that lists the earlier versions.
+  ///
+  /// In en, this message translates to:
+  /// **'Versions'**
+  String get historyVersionsTitle;
+
+  /// The note as it is now, beside its versions.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get historyNow;
+
+  /// Why a version was kept, from what replaced it.
+  ///
+  /// In en, this message translates to:
+  /// **'{origin, select, ui{Edited in Kanso} api{Replaced through the API} sync{Replaced by sync} import{Replaced by an import} collab{Edited in a shared note} agent{Suggested by an agent, applied by you} plugin{Changed by a plugin} other{Saved version}}'**
+  String historyOrigin(String origin);
+
+  /// The tab that shows what changed from a version to the note now.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes'**
+  String get historyPaneChanges;
+
+  /// The tab that shows a version's own text.
+  ///
+  /// In en, this message translates to:
+  /// **'This version'**
+  String get historyPaneVersion;
+
+  /// The label of the control that switches between the changes and the version.
+  ///
+  /// In en, this message translates to:
+  /// **'What to show of the version'**
+  String get historyPaneLabel;
+
+  /// Says a version has the same text as the note.
+  ///
+  /// In en, this message translates to:
+  /// **'This version’s text is the same as the note’s now.'**
+  String get historyNoChanges;
+
+  /// The heading of a changed section that is one line of the version.
+  ///
+  /// In en, this message translates to:
+  /// **'Line {line}'**
+  String historyHunkLine(int line);
+
+  /// The heading of a changed section of several lines of the version.
+  ///
+  /// In en, this message translates to:
+  /// **'Lines {first}–{last}'**
+  String historyHunkLines(int first, int last);
+
+  /// The heading of a changed section that the version has no lines for.
+  ///
+  /// In en, this message translates to:
+  /// **'New lines'**
+  String get historyHunkNew;
+
+  /// Says how many lines the note has now that the version did not (read by a screen reader).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 line added} other{{count} lines added}}'**
+  String historyAdded(int count);
+
+  /// Says how many lines the version had that the note has not now (read by a screen reader).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 line removed} other{{count} lines removed}}'**
+  String historyRemoved(int count);
+
+  /// A screen reader's word for a line the note has now and the version did not.
+  ///
+  /// In en, this message translates to:
+  /// **'Added'**
+  String get historyLineAdded;
+
+  /// A screen reader's word for a line the version had and the note has not now.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed'**
+  String get historyLineRemoved;
+
+  /// The button that copies a changed section as the version has it.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy section'**
+  String get historyCopySection;
+
+  /// What the copy button says once the section is copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get historyCopied;
+
+  /// The button that sets the note's text to the version's.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore this version'**
+  String get historyRestore;
+
+  /// What the restore button says while it works.
+  ///
+  /// In en, this message translates to:
+  /// **'Restoring…'**
+  String get historyRestoring;
+
+  /// What a screen reader says while the changes since a version are worked out.
+  ///
+  /// In en, this message translates to:
+  /// **'Working out what changed'**
+  String get historyDiffLoading;
+
+  /// Says a restore was refused because the note changed meanwhile.
+  ///
+  /// In en, this message translates to:
+  /// **'The note changed while its history was open. The history is shown again; choose the version once more.'**
+  String get historyProblemChanged;
+
+  /// Says the version chosen is gone.
+  ///
+  /// In en, this message translates to:
+  /// **'That version isn’t kept any more.'**
+  String get historyProblemGone;
+
+  /// Says a restore failed.
+  ///
+  /// In en, this message translates to:
+  /// **'The version couldn’t be restored.'**
+  String get historyProblemRestore;
+
+  /// Says the changes since a version could not be worked out.
+  ///
+  /// In en, this message translates to:
+  /// **'What changed couldn’t be worked out.'**
+  String get historyProblemDiff;
+
+  /// Who changed a shared note, as the library words it ("by Ada, Sam").
+  ///
+  /// In en, this message translates to:
+  /// **'{authors}'**
+  String historyAuthors(String authors);
+
+  /// The library row that opens Replace in all notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace in all notes'**
+  String get libraryReplace;
+
+  /// The title of the screen that finds text in every note and replaces it.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace in all notes'**
+  String get replaceTitle;
+
+  /// Closes Replace in all notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get replaceClose;
+
+  /// The label of the field for the text to find.
+  ///
+  /// In en, this message translates to:
+  /// **'Find'**
+  String get replaceFind;
+
+  /// The label of the field for the text to put instead.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace with'**
+  String get replaceWith;
+
+  /// The toggle that makes the search case sensitive.
+  ///
+  /// In en, this message translates to:
+  /// **'Match case'**
+  String get replaceMatchCase;
+
+  /// The toggle that matches whole words only.
+  ///
+  /// In en, this message translates to:
+  /// **'Whole word'**
+  String get replaceWholeWord;
+
+  /// The toggle that makes the text to find a regular expression.
+  ///
+  /// In en, this message translates to:
+  /// **'Regular expression (\$1 in the replacement for a group)'**
+  String get replaceRegex;
+
+  /// The toggle that leaves matches in code blocks alone.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip code blocks'**
+  String get replaceSkipCode;
+
+  /// The toggle that also searches the notes in the Trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Include notes in the Trash'**
+  String get replaceIncludeTrash;
+
+  /// The label of the row of toggles.
+  ///
+  /// In en, this message translates to:
+  /// **'Search options'**
+  String get replaceOptionsLabel;
+
+  /// Says what to do before there is anything to preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Type what to find.'**
+  String get replaceTypeToFind;
+
+  /// Says nothing matched.
+  ///
+  /// In en, this message translates to:
+  /// **'No matches.'**
+  String get replaceNoMatches;
+
+  /// What a screen reader says while the notes are searched.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching the notes'**
+  String get replaceSearching;
+
+  /// How many matches the preview found and in how many notes.
+  ///
+  /// In en, this message translates to:
+  /// **'{matches, plural, =1{1 match} other{{matches} matches}} in {notes, plural, =1{1 note} other{{notes} notes}}'**
+  String replaceFound(int matches, int notes);
+
+  /// The header over the matches.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview'**
+  String get replacePreviewHeader;
+
+  /// Says a note in the preview is in the Trash.
+  ///
+  /// In en, this message translates to:
+  /// **'In Trash'**
+  String get replaceInTrash;
+
+  /// What a note with no title is called in the preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Untitled'**
+  String get replaceUntitled;
+
+  /// Says how many more matches a note has than the preview lists.
+  ///
+  /// In en, this message translates to:
+  /// **'and {count} more'**
+  String replaceMore(int count);
+
+  /// A screen reader's words for the line number of a match.
+  ///
+  /// In en, this message translates to:
+  /// **'Line {line}'**
+  String replaceLine(int line);
+
+  /// The label of a note's checkbox in the preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Include {title} in the replace'**
+  String replaceIncludeNote(String title);
+
+  /// The Replace button: how many matches in how many notes.
+  ///
+  /// In en, this message translates to:
+  /// **'{matches, plural, =1{Replace 1} other{Replace {matches}}} in {notes, plural, =1{1 note} other{{notes} notes}}'**
+  String replaceApply(int matches, int notes);
+
+  /// The Replace button when there is nothing to replace yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace'**
+  String get replaceApplyIdle;
+
+  /// What the Replace button says while it works.
+  ///
+  /// In en, this message translates to:
+  /// **'Replacing…'**
+  String get replaceApplying;
+
+  /// What the screen says after replacing.
+  ///
+  /// In en, this message translates to:
+  /// **'Replaced {matches, plural, =1{1 match} other{{matches} matches}} in {notes, plural, =1{1 note} other{{notes} notes}}.'**
+  String replaceDone(int matches, int notes);
+
+  /// What the screen adds when notes were left alone because they changed since the preview.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 note changed elsewhere since the preview and was left alone.} other{{count} notes changed elsewhere since the preview and were left alone.}}'**
+  String replaceSkipped(int count);
+
+  /// The button that puts the replaced notes back.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo replace'**
+  String get replaceUndo;
+
+  /// What the undo button says while it works.
+  ///
+  /// In en, this message translates to:
+  /// **'Putting back…'**
+  String get replaceUndoing;
+
+  /// What the screen says after undoing a replace.
+  ///
+  /// In en, this message translates to:
+  /// **'Put back {count, plural, =1{1 note} other{{count} notes}}.'**
+  String replaceUndone(int count);
+
+  /// What the screen adds when undoing left notes that were edited since.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 note was edited since and kept its changes.} other{{count} notes were edited since and kept their changes.}}'**
+  String replaceUndoSkipped(int count);
+
+  /// Hides what the last replace did.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get replaceDismiss;
+
+  /// Says a replace was refused because the pattern does not parse.
+  ///
+  /// In en, this message translates to:
+  /// **'The text to find can’t be used as a regular expression.'**
+  String get replaceProblemBadPattern;
+
+  /// Says a replace failed.
+  ///
+  /// In en, this message translates to:
+  /// **'The notes couldn’t be changed.'**
+  String get replaceProblemApply;
+
+  /// Says undoing a replace failed.
+  ///
+  /// In en, this message translates to:
+  /// **'The notes couldn’t be put back.'**
+  String get replaceProblemUndo;
+
+  /// Says the preview could not be made.
+  ///
+  /// In en, this message translates to:
+  /// **'The notes couldn’t be searched.'**
+  String get replaceProblemSearch;
 }
 
 class _AppLocalizationsDelegate

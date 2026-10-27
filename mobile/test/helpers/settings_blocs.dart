@@ -14,13 +14,17 @@ import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/lock/state/biometrics/biometrics_bloc.dart';
+import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
 import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 
 import 'close_bloc_later.dart';
 import 'fixture_about_repository.dart';
+import 'fixture_device_lock_repository.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_session_repository.dart';
 import 'fixture_sync_repository.dart';
 import 'seeded_account_blocs.dart';
 import 'seeded_appearance_bloc.dart';
@@ -36,6 +40,10 @@ class SettingsBlocs {
     this.account,
     this.index,
     this.defaultNotebook,
+    this.session,
+    this.device,
+    this.lock,
+    this.biometrics,
   );
 
   final AboutBloc about;
@@ -46,13 +54,25 @@ class SettingsBlocs {
   final LibraryIndexBloc index;
   final DefaultNotebookBloc defaultNotebook;
 
+  /// The lock session and the phone's biometrics (see
+  /// [FixtureSessionRepository]), and the BLoCs over them.
+  final FixtureSessionRepository session;
+  final FixtureDeviceLockRepository device;
+  final LockStatusBloc lock;
+  final BiometricsBloc biometrics;
+
   /// Makes them and waits until they have read. The account is [account],
   /// by default none.
+  ///
+  /// By default nothing is locked, so there is no Locked notes section; pass
+  /// a [session] to have one.
   static Future<SettingsBlocs> start({
     SyncStatus status = signedOutStatus,
     AccountState account = const AccountState.signedOut(),
     FixtureLibraryRepository? library,
     Preferences preferences = const Preferences(),
+    FixtureSessionRepository? session,
+    FixtureDeviceLockRepository? device,
   }) async {
     final about = AboutBloc(FixtureAboutRepository())
       ..add(const AboutEvent.started());
@@ -89,7 +109,26 @@ class SettingsBlocs {
     }
     final seeded = SeededAccountBloc(AccountBlocState(account: account));
     closeBlocLater(seeded);
-    return SettingsBlocs._(about, sync, seeded, index, defaultNotebook);
+    final lockSession =
+        session ?? FixtureSessionRepository(hasLockPassword: false);
+    final lockDevice = device ?? FixtureDeviceLockRepository();
+    final lock = LockStatusBloc(lockSession, lockDevice)
+      ..add(const LockStatusEvent.started());
+    closeBlocLater(lock);
+    await lock.stream.firstWhere((state) => state.loaded);
+    final biometrics = BiometricsBloc(lockSession, lockDevice);
+    closeBlocLater(biometrics);
+    return SettingsBlocs._(
+      about,
+      sync,
+      seeded,
+      index,
+      defaultNotebook,
+      lockSession,
+      lockDevice,
+      lock,
+      biometrics,
+    );
   }
 
   /// Providers of them, to put above a screen, including one that is a
@@ -101,6 +140,8 @@ class SettingsBlocs {
     BlocProvider<AccountBloc>.value(value: account),
     BlocProvider<LibraryIndexBloc>.value(value: index),
     BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
+    BlocProvider<LockStatusBloc>.value(value: lock),
+    BlocProvider<BiometricsBloc>.value(value: biometrics),
   ];
 
   /// [child] with them above it.
