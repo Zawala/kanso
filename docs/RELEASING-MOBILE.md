@@ -20,6 +20,7 @@ is left to do by hand.
 - [Shorebird (over-the-air patches)](#shorebird-over-the-air-patches)
 - [Export compliance](#export-compliance)
 - [Privacy](#privacy)
+- [Crash reports](#crash-reports)
 - [Store listings](#store-listings)
 - [What the owner does](#what-the-owner-does)
 - [Cutting a mobile release](#cutting-a-mobile-release)
@@ -76,6 +77,7 @@ version and number, checks the tag, decides whether this run may upload (tag or 
 | Archive: `flutter build ipa --release --no-codesign` (or `shorebird release ios --no-codesign`) | Runs; the library in the archive and the version are checked | Same |
 | Export compliance code into Info.plist | Notice | `IOS_EXPORT_COMPLIANCE_CODE` variable added |
 | Export the IPA: `xcodebuild -exportArchive` with `ios/ExportOptions.plist` and the App Store Connect API key | Skipped, with a notice | Xcode signs for the App Store, and the IPA is checked (bundle id, version, number, iOS 17, team 4973Y692JU, Apple Distribution, no `get-task-allow`, the library) |
+| Keep the debug symbols (`kanso-ios-dsyms-…`, 90 days), to read crash reports | Kept on tags and `master` | Same |
 | Upload to TestFlight: `xcrun altool --upload-app` with the API key | Skipped | Uploaded; the IPA is also kept as an artifact |
 
 **`android`** (Ubuntu, environment `mobile-release` on tags and `master`).
@@ -84,6 +86,7 @@ version and number, checks the tag, decides whether this run may upload (tag or 
 |---|---|---|
 | `flutter build appbundle --release` (or `shorebird release android --artifact aab`) | Signed with a **throwaway key made in the run** (never kept or uploaded) so the build and the Gradle signing config are exercised | Signed with the upload key from `android/key.properties`, written from the secrets and deleted at the end |
 | Check the bundle (`scripts/mobile-release/aab-check.sh`) | Runs: the library for `arm64-v8a`, `armeabi-v7a` and `x86_64`, R8's mapping file, not signed with the debug key | Same, and the bundle and `mapping.txt` are kept as an artifact |
+| Render the store pictures (`scripts/mobile-store-render.sh`) | Runs, and the pictures are kept as `kanso-store-pictures-…` | Same |
 | Upload to Play internal testing (`r0adkll/upload-google-play`) with the mapping file and the release notes from `mobile/store/play/whatsnew/` | Skipped | Uploaded to the `internal` track |
 
 Play serves each phone the library of its own ABI from the bundle (that is what "per-ABI
@@ -185,8 +188,8 @@ a second way to deliver code to everyone's notes, so:
 - Patches go to the **staging track** by default (`stage`); promote one yourself after
   trying it: `shorebird patches promote --release-version 0.9.0+57 --patch-number 1`. Native
   and asset differences are refused (the workflow never passes `--allow-native-diffs`).
-- The patch number appears in Settings › About and in crash reports (#48); that needs the
-  app to read it from Shorebird's updater, which is app work for a later step, not CI.
+- The patch number appears in Settings › About and in crash reports: the app reads it from
+  Shorebird's updater (`shorebird_code_push`), and shows none in a build made without Shorebird.
 
 **Why `mobile/shorebird.yaml` isn't committed.** It holds the `app_id` that `shorebird init`
 makes on Shorebird's server for the owner's account. It is not secret, but it is an account
@@ -264,25 +267,15 @@ app is available in France, so `mobile/ios/Runner/Info.plist` says
 an exemption that isn't clear. It has a cost: until the owner answers, App Store Connect shows
 the build as "Missing Compliance" and holds it back from testers.
 
-**This is an owner decision, and it is not settled by the code.** To finish it:
-
-1. Answer the questions in App Store Connect once (the app's page › App Information › App
-   Encryption Documentation, or on the first build marked "Missing Compliance").
-2. Decide how to handle France: either file the French encryption declaration
-   (ANSSI), upload it, and use the code Apple returns, or take France off the app's
-   availability.
-3. Decide whether the US regulations need anything of Kanso beyond that. I could not
-   confirm this from primary sources, and it isn't Apple's to say: whether Kanso, a notes app
-   whose cryptography protects the notes it stores and syncs, falls under Note 4 / 5A002.a
-   of the EAR or can use the mass-market self-classification (License Exception ENC,
-   15 CFR 740.17(b)(1), with its annual report) or is "publicly available" open-source
-   encryption (15 CFR 742.15(b), a notification) is for the owner, or a lawyer, to decide
-   (see [BIS: Encryption](https://www.bis.gov/encryption)). BIS says information storage or
-   processing as a *primary function* keeps an item in scope even when encryption supports
-   it; a notes app is plausibly such an item, so don't assume the "not subject" answer.
-4. Put the code in the repository variable `IOS_EXPORT_COMPLIANCE_CODE`. The workflow
-   adds it to Info.plist as `ITSEncryptionExportComplianceCode` before the build. If the owner
-   ends up with `NO`, change the value in `Info.plist` and say why in the commit.
+**The answers are drafted** in [`mobile/store/app-store/export-compliance.md`](../mobile/store/app-store/export-compliance.md)
+(provisional decision 2 of #48 step 13): standard algorithms not provided by the OS; the
+mass-market exemption and publicly available source code for the US, which since BIS's 2021
+rule needs nothing filed; and **France left off the app's availability** until the owner has
+filed the ANSSI declaration. The owner submits the answers in App Store Connect and answers
+for them. When Apple returns a code, put it in the `mobile-release` variable
+`IOS_EXPORT_COMPLIANCE_CODE`; the workflow adds it to Info.plist as
+`ITSEncryptionExportComplianceCode` before the build. If the owner ends up with `NO`, change
+the value in `Info.plist` and say why in the commit.
 
 Play has no export questionnaire; Google's Play Console declares US export laws in the
 developer agreement.
@@ -291,18 +284,35 @@ developer agreement.
 
 `mobile/ios/Runner/PrivacyInfo.xcprivacy` (the app's privacy manifest) and the draft answers
 in `mobile/store/app-store/privacy.md` and `mobile/store/play/data-safety.md` say the same
-thing: no tracking, no analytics or crash SDK, and, **only when the person signs in to sync**,
-the account's username (a User ID) held by the sync server. Notes leave the phone only as
-ciphertext, which Apple's definition of "collect" doesn't count. Open points are marked
-**Check** in those files. The most important: crash reporting (open question 1 of #48) is
-undecided and, if it adds an SDK, changes both answers.
+thing: no tracking and no analytics or crash SDK. **Only when the person signs in to sync**,
+the sync server holds the account's username (a User ID). **Only when the person taps Send**
+on a crash report, the server keeps that report (Crash Data, not linked to the person) for
+90 days. Notes leave the phone only as ciphertext, which Apple's definition of "collect"
+doesn't count. Open points are marked **Check** in those files.
+
+## Crash reports
+
+Provisional decision 1 of #48 step 13: no crash SDK and no crash-reporting account. The app
+keeps a report on the device when it crashes, from iOS's MetricKit, Android's
+`ApplicationExitInfo` (native crashes and ANRs), an uncaught JVM exception, or a Dart error.
+It builds the report from a whitelist of fields: stack frames that match a strict grammar,
+versions, the kind of device and the day, so note text can't reach it.
+The person sees the exact text and sends it with **Send**; it goes to
+`POST https://sync.kansoapp.app/v1/crash-reports`, which stores it in D1 for 90 days with no
+IP address or account. [`docs/CRASH-REPORTS.md`](CRASH-REPORTS.md) defines every field.
+
+The release keeps what reading a report needs: the iOS debug symbols (`kanso-ios-dsyms-…`,
+90 days) and R8's mapping (in `kanso-android-…`). Before the first build that sends reports,
+the Worker needs migration `0012_crash_reports.sql` (`cloud/README.md`).
 
 ## Store listings
 
 Plain text for both stores is in `mobile/store/` (`mobile/store/README.md` explains each
 file, the limits and the screenshot plan). The sizes are checked on every run of this
-workflow (`scripts/mobile-store-check.sh`). Pictures are made with
-`scripts/mobile-store-screenshots.sh`. The text describes the app as designed in #48; trim
+workflow (`scripts/mobile-store-check.sh`). The pictures for every required size, the Play
+feature graphic and the 512 × 512 icon are rendered from the golden-test harness by
+`scripts/mobile-store-render.sh`, on every Android build; they are the
+`kanso-store-pictures-…` artifact. The text describes the app as designed in #48; trim
 it to what has shipped before submitting (the table in `mobile/store/README.md` ties each claim
 to its build step).
 
@@ -336,7 +346,8 @@ order; the workflow works at every point in between.
    Keep the `.p8` in the password manager and delete the download.
 6. Export compliance: the four steps above. Then `gh variable set IOS_EXPORT_COMPLIANCE_CODE --repo iamngoni/kanso --env mobile-release --body <code>`.
 7. Fill the App Store page from `mobile/store/app-store/` (text, URLs, categories, privacy
-   answers from `privacy.md`, App Review notes). Add the screenshots. Set up TestFlight
+   answers from `privacy.md`, App Review notes). Add the screenshots from the
+   `kanso-store-pictures-…` artifact. Leave France off the availability until step 16 is done. Set up TestFlight
    internal testers (Users and Access, then TestFlight › Internal Testing).
 
 **C. Google (Play Console, a developer account: a one-time registration fee)**
@@ -364,8 +375,8 @@ order; the workflow works at every point in between.
     gh secret set PLAY_SERVICE_ACCOUNT_JSON --repo iamngoni/kanso --env mobile-release < play-service-account.json
     ```
 13. Fill the Play listing from `mobile/store/play/` (text, URLs, category, the Data safety form
-    from `data-safety.md`, content rating, the screenshots, a 512 × 512 icon and a 1024 × 500
-    feature graphic, which this change doesn't make). Create the internal testers list.
+    from `data-safety.md`, content rating, and the screenshots, 512 × 512 icon and 1024 × 500
+    feature graphic from the `kanso-store-pictures-…` artifact). Create the internal testers list.
 
 **D. Shorebird (optional; releases work without it, but can't be patched later)**
 
@@ -378,12 +389,12 @@ order; the workflow works at every point in between.
 
 **E. Decisions and pages**
 
-16. Decide the export compliance questions above (France, US regulations).
-17. Decide crash reporting (open question 1 of #48); it is not implemented. Update the privacy
-    answers with the outcome.
-18. Add the pages the stores need on kansoapp.app: a support page (the draft uses the GitHub
-    issues page), and account deletion (the mobile app shows the link, and Play wants a web
-    page for it). The privacy page exists.
+16. Confirm or overrule the export compliance answers (`export-compliance.md`); file the
+    ANSSI declaration if Kanso should be on sale in France, then add France back.
+17. Crash reporting needs no account. Deploy the Worker with migration `0012` before the
+    first build that sends reports, if it isn't deployed yet (`cloud/DEPLOYED.md`).
+18. Add the account-deletion web page Play asks for (the mobile app shows the link). The
+    privacy, help and release-notes pages exist on kansoapp.app.
 19. Register the secrets' owners and rotation dates in your password manager.
 
 All secrets, in one table (names are exact):
@@ -426,9 +437,10 @@ All secrets, in one table (names are exact):
 
 ## Known gaps
 
-- **Crash reporting** is not implemented: undecided (open question 1 of #48).
 - **The app's own screens are still being built** (steps 6-12). The store text describes the
-  design; screenshots can only show what exists.
+  design; the screenshots show what exists (the note picture shows Markdown as plain text).
+- **The app icon is still Flutter's placeholder** on both platforms. The Play icon and
+  feature graphic use the website's icon; the app needs its own before App Store submission.
 - **iOS cloud signing and the Shorebird steps are untested** until the accounts exist (see
   above).
 - **Mac Catalyst / "iPhone apps on Apple silicon Macs":** App Store Connect makes the iPhone

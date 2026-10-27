@@ -437,6 +437,18 @@ jobs:
 
       - name: Check the bundle
         run: ../scripts/mobile-release/aab-check.sh build/app/outputs/bundle/release/app-release.aab build/app/outputs/mapping/release/mapping.txt
+      # The store listings' pictures, from the golden harness
+      # (mobile/store/README.md › Screenshots). Kept with every build so the
+      # listing can be refreshed from the release it describes.
+      - name: Render the store pictures
+        run: ../scripts/mobile-store-render.sh build/store
+      - name: Keep the store pictures
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: kanso-store-pictures-${{ needs.version.outputs.name }}-${{ needs.version.outputs.number }}
+          path: mobile/build/store
+          if-no-files-found: error
+          retention-days: 30
       - name: Keep the bundle and R8's mapping
         if: steps.have.outputs.key == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
