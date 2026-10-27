@@ -29,6 +29,7 @@ _Preferences _$PreferencesFromJson(Map<String, dynamic> json) => _Preferences(
       SortKey.updated,
   descending: json['descending'] as bool? ?? true,
   backupNoticeSeen: json['backupNoticeSeen'] as bool? ?? false,
+  biometricOfferSeen: json['biometricOfferSeen'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$PreferencesToJson(_Preferences instance) =>
@@ -39,6 +40,7 @@ Map<String, dynamic> _$PreferencesToJson(_Preferences instance) =>
       'sort': _$SortKeyEnumMap[instance.sort]!,
       'descending': instance.descending,
       'backupNoticeSeen': instance.backupNoticeSeen,
+      'biometricOfferSeen': instance.biometricOfferSeen,
     };
 
 const _$KansoTextSizeEnumMap = {

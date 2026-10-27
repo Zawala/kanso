@@ -46,6 +46,15 @@ import 'core/state/library_index/library_index_bloc.dart' as _i861;
 import 'core/state/list_navigation/list_navigation_bloc.dart' as _i907;
 import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
+import 'lock/models/repos/abs/device_lock_repository.dart' as _i279;
+import 'lock/models/repos/impl/plugin_device_lock_repository.dart' as _i64;
+import 'lock/state/biometrics/biometrics_bloc.dart' as _i477;
+import 'lock/state/change_password/change_password_bloc.dart' as _i39;
+import 'lock/state/lock_remove/lock_remove_bloc.dart' as _i215;
+import 'lock/state/lock_setup/lock_setup_bloc.dart' as _i249;
+import 'lock/state/lock_status/lock_status_bloc.dart' as _i57;
+import 'lock/state/privacy_cover/privacy_cover_bloc.dart' as _i330;
+import 'lock/state/unlock/unlock_bloc.dart' as _i797;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 import 'search/state/search/search_bloc.dart' as _i696;
@@ -87,6 +96,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.factory<_i380.AboutBloc>(
       () => _i380.AboutBloc(gh<_i80.AboutRepository>()),
     );
+    gh.lazySingleton<_i279.DeviceLockRepository>(
+      () => _i64.PluginDeviceLockRepository(),
+    );
     gh.lazySingleton<_i951.LicencesRepository>(
       () => _i1025.FlutterLicencesRepository(),
     );
@@ -108,6 +120,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i384.PreferencesRepository>(
       () => _i207.FilePreferencesRepository(gh<_i72.LibraryFolder>()),
+    );
+    gh.factory<_i330.PrivacyCoverBloc>(
+      () => _i330.PrivacyCoverBloc(gh<_i279.DeviceLockRepository>()),
     );
     gh.factory<_i897.BackupNoticeBloc>(
       () => _i897.BackupNoticeBloc(gh<_i384.PreferencesRepository>()),
@@ -177,8 +192,36 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i333.SessionRepository>(
       () => _i899.RustSessionRepository(gh<_i983.KansoLocks>()),
     );
+    gh.factory<_i797.UnlockBloc>(
+      () => _i797.UnlockBloc(
+        gh<_i333.SessionRepository>(),
+        gh<_i279.DeviceLockRepository>(),
+        gh<_i384.PreferencesRepository>(),
+      ),
+    );
     gh.factory<_i185.SyncStatusBloc>(
       () => _i185.SyncStatusBloc(gh<_i601.SyncRepository>()),
+    );
+    gh.factory<_i39.ChangePasswordBloc>(
+      () => _i39.ChangePasswordBloc(gh<_i333.SessionRepository>()),
+    );
+    gh.factory<_i215.LockRemoveBloc>(
+      () => _i215.LockRemoveBloc(gh<_i333.SessionRepository>()),
+    );
+    gh.factory<_i249.LockSetupBloc>(
+      () => _i249.LockSetupBloc(gh<_i333.SessionRepository>()),
+    );
+    gh.factory<_i477.BiometricsBloc>(
+      () => _i477.BiometricsBloc(
+        gh<_i333.SessionRepository>(),
+        gh<_i279.DeviceLockRepository>(),
+      ),
+    );
+    gh.factory<_i57.LockStatusBloc>(
+      () => _i57.LockStatusBloc(
+        gh<_i333.SessionRepository>(),
+        gh<_i279.DeviceLockRepository>(),
+      ),
     );
     return this;
   }

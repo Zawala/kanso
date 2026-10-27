@@ -44,6 +44,10 @@ abstract class Preferences with _$Preferences {
     /// Whether the notice that this phone's notes are not in device backups
     /// has been shown.
     @Default(false) bool backupNoticeSeen,
+
+    /// Whether the offer to unlock locked notes with a biometric, made once
+    /// after the first password unlock, has been shown.
+    @Default(false) bool biometricOfferSeen,
   }) = _Preferences;
 
   factory Preferences.fromJson(Map<String, dynamic> json) =>

@@ -23,7 +23,9 @@ mixin _$Preferences {
 /// newest first, Z to A).
  bool get descending;/// Whether the notice that this phone's notes are not in device backups
 /// has been shown.
- bool get backupNoticeSeen;
+ bool get backupNoticeSeen;/// Whether the offer to unlock locked notes with a biometric, made once
+/// after the first password unlock, has been shown.
+ bool get biometricOfferSeen;
 /// Create a copy of Preferences
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -36,16 +38,16 @@ $PreferencesCopyWith<Preferences> get copyWith => _$PreferencesCopyWithImpl<Pref
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Preferences&&(identical(other.themeSelection, themeSelection) || other.themeSelection == themeSelection)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.textSize, textSize) || other.textSize == textSize)&&(identical(other.sort, sort) || other.sort == sort)&&(identical(other.descending, descending) || other.descending == descending)&&(identical(other.backupNoticeSeen, backupNoticeSeen) || other.backupNoticeSeen == backupNoticeSeen));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Preferences&&(identical(other.themeSelection, themeSelection) || other.themeSelection == themeSelection)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.textSize, textSize) || other.textSize == textSize)&&(identical(other.sort, sort) || other.sort == sort)&&(identical(other.descending, descending) || other.descending == descending)&&(identical(other.backupNoticeSeen, backupNoticeSeen) || other.backupNoticeSeen == backupNoticeSeen)&&(identical(other.biometricOfferSeen, biometricOfferSeen) || other.biometricOfferSeen == biometricOfferSeen));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,themeSelection,fonts,textSize,sort,descending,backupNoticeSeen);
+int get hashCode => Object.hash(runtimeType,themeSelection,fonts,textSize,sort,descending,backupNoticeSeen,biometricOfferSeen);
 
 @override
 String toString() {
-  return 'Preferences(themeSelection: $themeSelection, fonts: $fonts, textSize: $textSize, sort: $sort, descending: $descending, backupNoticeSeen: $backupNoticeSeen)';
+  return 'Preferences(themeSelection: $themeSelection, fonts: $fonts, textSize: $textSize, sort: $sort, descending: $descending, backupNoticeSeen: $backupNoticeSeen, biometricOfferSeen: $biometricOfferSeen)';
 }
 
 
@@ -56,7 +58,7 @@ abstract mixin class $PreferencesCopyWith<$Res>  {
   factory $PreferencesCopyWith(Preferences value, $Res Function(Preferences) _then) = _$PreferencesCopyWithImpl;
 @useResult
 $Res call({
- ThemeSelection themeSelection, KansoFonts fonts,@JsonKey(unknownEnumValue: KansoTextSize.standard) KansoTextSize textSize,@JsonKey(unknownEnumValue: SortKey.updated) SortKey sort, bool descending, bool backupNoticeSeen
+ ThemeSelection themeSelection, KansoFonts fonts,@JsonKey(unknownEnumValue: KansoTextSize.standard) KansoTextSize textSize,@JsonKey(unknownEnumValue: SortKey.updated) SortKey sort, bool descending, bool backupNoticeSeen, bool biometricOfferSeen
 });
 
 
@@ -73,7 +75,7 @@ class _$PreferencesCopyWithImpl<$Res>
 
 /// Create a copy of Preferences
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? themeSelection = null,Object? fonts = null,Object? textSize = null,Object? sort = null,Object? descending = null,Object? backupNoticeSeen = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? themeSelection = null,Object? fonts = null,Object? textSize = null,Object? sort = null,Object? descending = null,Object? backupNoticeSeen = null,Object? biometricOfferSeen = null,}) {
   return _then(_self.copyWith(
 themeSelection: null == themeSelection ? _self.themeSelection : themeSelection // ignore: cast_nullable_to_non_nullable
 as ThemeSelection,fonts: null == fonts ? _self.fonts : fonts // ignore: cast_nullable_to_non_nullable
@@ -81,6 +83,7 @@ as KansoFonts,textSize: null == textSize ? _self.textSize : textSize // ignore: 
 as KansoTextSize,sort: null == sort ? _self.sort : sort // ignore: cast_nullable_to_non_nullable
 as SortKey,descending: null == descending ? _self.descending : descending // ignore: cast_nullable_to_non_nullable
 as bool,backupNoticeSeen: null == backupNoticeSeen ? _self.backupNoticeSeen : backupNoticeSeen // ignore: cast_nullable_to_non_nullable
+as bool,biometricOfferSeen: null == biometricOfferSeen ? _self.biometricOfferSeen : biometricOfferSeen // ignore: cast_nullable_to_non_nullable
 as bool,
   ));
 }
@@ -184,10 +187,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( ThemeSelection themeSelection,  KansoFonts fonts, @JsonKey(unknownEnumValue: KansoTextSize.standard)  KansoTextSize textSize, @JsonKey(unknownEnumValue: SortKey.updated)  SortKey sort,  bool descending,  bool backupNoticeSeen)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( ThemeSelection themeSelection,  KansoFonts fonts, @JsonKey(unknownEnumValue: KansoTextSize.standard)  KansoTextSize textSize, @JsonKey(unknownEnumValue: SortKey.updated)  SortKey sort,  bool descending,  bool backupNoticeSeen,  bool biometricOfferSeen)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _Preferences() when $default != null:
-return $default(_that.themeSelection,_that.fonts,_that.textSize,_that.sort,_that.descending,_that.backupNoticeSeen);case _:
+return $default(_that.themeSelection,_that.fonts,_that.textSize,_that.sort,_that.descending,_that.backupNoticeSeen,_that.biometricOfferSeen);case _:
   return orElse();
 
 }
@@ -205,10 +208,10 @@ return $default(_that.themeSelection,_that.fonts,_that.textSize,_that.sort,_that
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( ThemeSelection themeSelection,  KansoFonts fonts, @JsonKey(unknownEnumValue: KansoTextSize.standard)  KansoTextSize textSize, @JsonKey(unknownEnumValue: SortKey.updated)  SortKey sort,  bool descending,  bool backupNoticeSeen)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( ThemeSelection themeSelection,  KansoFonts fonts, @JsonKey(unknownEnumValue: KansoTextSize.standard)  KansoTextSize textSize, @JsonKey(unknownEnumValue: SortKey.updated)  SortKey sort,  bool descending,  bool backupNoticeSeen,  bool biometricOfferSeen)  $default,) {final _that = this;
 switch (_that) {
 case _Preferences():
-return $default(_that.themeSelection,_that.fonts,_that.textSize,_that.sort,_that.descending,_that.backupNoticeSeen);case _:
+return $default(_that.themeSelection,_that.fonts,_that.textSize,_that.sort,_that.descending,_that.backupNoticeSeen,_that.biometricOfferSeen);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -225,10 +228,10 @@ return $default(_that.themeSelection,_that.fonts,_that.textSize,_that.sort,_that
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( ThemeSelection themeSelection,  KansoFonts fonts, @JsonKey(unknownEnumValue: KansoTextSize.standard)  KansoTextSize textSize, @JsonKey(unknownEnumValue: SortKey.updated)  SortKey sort,  bool descending,  bool backupNoticeSeen)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( ThemeSelection themeSelection,  KansoFonts fonts, @JsonKey(unknownEnumValue: KansoTextSize.standard)  KansoTextSize textSize, @JsonKey(unknownEnumValue: SortKey.updated)  SortKey sort,  bool descending,  bool backupNoticeSeen,  bool biometricOfferSeen)?  $default,) {final _that = this;
 switch (_that) {
 case _Preferences() when $default != null:
-return $default(_that.themeSelection,_that.fonts,_that.textSize,_that.sort,_that.descending,_that.backupNoticeSeen);case _:
+return $default(_that.themeSelection,_that.fonts,_that.textSize,_that.sort,_that.descending,_that.backupNoticeSeen,_that.biometricOfferSeen);case _:
   return null;
 
 }
@@ -240,7 +243,7 @@ return $default(_that.themeSelection,_that.fonts,_that.textSize,_that.sort,_that
 @JsonSerializable()
 
 class _Preferences implements Preferences {
-  const _Preferences({this.themeSelection = const ThemeSelection(), this.fonts = const KansoFonts(), @JsonKey(unknownEnumValue: KansoTextSize.standard) this.textSize = KansoTextSize.standard, @JsonKey(unknownEnumValue: SortKey.updated) this.sort = SortKey.updated, this.descending = true, this.backupNoticeSeen = false});
+  const _Preferences({this.themeSelection = const ThemeSelection(), this.fonts = const KansoFonts(), @JsonKey(unknownEnumValue: KansoTextSize.standard) this.textSize = KansoTextSize.standard, @JsonKey(unknownEnumValue: SortKey.updated) this.sort = SortKey.updated, this.descending = true, this.backupNoticeSeen = false, this.biometricOfferSeen = false});
   factory _Preferences.fromJson(Map<String, dynamic> json) => _$PreferencesFromJson(json);
 
 /// The themes the interface is drawn in.
@@ -257,6 +260,9 @@ class _Preferences implements Preferences {
 /// Whether the notice that this phone's notes are not in device backups
 /// has been shown.
 @override@JsonKey() final  bool backupNoticeSeen;
+/// Whether the offer to unlock locked notes with a biometric, made once
+/// after the first password unlock, has been shown.
+@override@JsonKey() final  bool biometricOfferSeen;
 
 /// Create a copy of Preferences
 /// with the given fields replaced by the non-null parameter values.
@@ -271,16 +277,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Preferences&&(identical(other.themeSelection, themeSelection) || other.themeSelection == themeSelection)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.textSize, textSize) || other.textSize == textSize)&&(identical(other.sort, sort) || other.sort == sort)&&(identical(other.descending, descending) || other.descending == descending)&&(identical(other.backupNoticeSeen, backupNoticeSeen) || other.backupNoticeSeen == backupNoticeSeen));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Preferences&&(identical(other.themeSelection, themeSelection) || other.themeSelection == themeSelection)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.textSize, textSize) || other.textSize == textSize)&&(identical(other.sort, sort) || other.sort == sort)&&(identical(other.descending, descending) || other.descending == descending)&&(identical(other.backupNoticeSeen, backupNoticeSeen) || other.backupNoticeSeen == backupNoticeSeen)&&(identical(other.biometricOfferSeen, biometricOfferSeen) || other.biometricOfferSeen == biometricOfferSeen));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,themeSelection,fonts,textSize,sort,descending,backupNoticeSeen);
+int get hashCode => Object.hash(runtimeType,themeSelection,fonts,textSize,sort,descending,backupNoticeSeen,biometricOfferSeen);
 
 @override
 String toString() {
-  return 'Preferences(themeSelection: $themeSelection, fonts: $fonts, textSize: $textSize, sort: $sort, descending: $descending, backupNoticeSeen: $backupNoticeSeen)';
+  return 'Preferences(themeSelection: $themeSelection, fonts: $fonts, textSize: $textSize, sort: $sort, descending: $descending, backupNoticeSeen: $backupNoticeSeen, biometricOfferSeen: $biometricOfferSeen)';
 }
 
 
@@ -291,7 +297,7 @@ abstract mixin class _$PreferencesCopyWith<$Res> implements $PreferencesCopyWith
   factory _$PreferencesCopyWith(_Preferences value, $Res Function(_Preferences) _then) = __$PreferencesCopyWithImpl;
 @override @useResult
 $Res call({
- ThemeSelection themeSelection, KansoFonts fonts,@JsonKey(unknownEnumValue: KansoTextSize.standard) KansoTextSize textSize,@JsonKey(unknownEnumValue: SortKey.updated) SortKey sort, bool descending, bool backupNoticeSeen
+ ThemeSelection themeSelection, KansoFonts fonts,@JsonKey(unknownEnumValue: KansoTextSize.standard) KansoTextSize textSize,@JsonKey(unknownEnumValue: SortKey.updated) SortKey sort, bool descending, bool backupNoticeSeen, bool biometricOfferSeen
 });
 
 
@@ -308,7 +314,7 @@ class __$PreferencesCopyWithImpl<$Res>
 
 /// Create a copy of Preferences
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? themeSelection = null,Object? fonts = null,Object? textSize = null,Object? sort = null,Object? descending = null,Object? backupNoticeSeen = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? themeSelection = null,Object? fonts = null,Object? textSize = null,Object? sort = null,Object? descending = null,Object? backupNoticeSeen = null,Object? biometricOfferSeen = null,}) {
   return _then(_Preferences(
 themeSelection: null == themeSelection ? _self.themeSelection : themeSelection // ignore: cast_nullable_to_non_nullable
 as ThemeSelection,fonts: null == fonts ? _self.fonts : fonts // ignore: cast_nullable_to_non_nullable
@@ -316,6 +322,7 @@ as KansoFonts,textSize: null == textSize ? _self.textSize : textSize // ignore: 
 as KansoTextSize,sort: null == sort ? _self.sort : sort // ignore: cast_nullable_to_non_nullable
 as SortKey,descending: null == descending ? _self.descending : descending // ignore: cast_nullable_to_non_nullable
 as bool,backupNoticeSeen: null == backupNoticeSeen ? _self.backupNoticeSeen : backupNoticeSeen // ignore: cast_nullable_to_non_nullable
+as bool,biometricOfferSeen: null == biometricOfferSeen ? _self.biometricOfferSeen : biometricOfferSeen // ignore: cast_nullable_to_non_nullable
 as bool,
   ));
 }
