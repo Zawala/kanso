@@ -2238,6 +2238,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharedProblemsDismiss => 'Dismiss';
 
   @override
+  String get dailyNoteLoading => 'Opening today’s note';
+
+  @override
+  String get dailyNoteFailedTitle => 'Today’s note didn’t open';
+
+  @override
+  String get dailyNoteFailedMessage =>
+      'Something went wrong opening today’s note on this phone. Try again.';
+
+  @override
+  String get captureTakePhoto => 'Take photo';
+
+  @override
+  String get captureChoosePhotos => 'Choose photos';
+
+  @override
+  String get captureAttachPdf => 'Attach PDF';
+
+  @override
+  String get captureImageLink => 'Image link';
+
+  @override
+  String get captureAttachFailed => 'Couldn\'t attach that file.';
+
+  @override
   String lockedMessage(int minutes) {
     return 'Unlock it to read and edit. It locks again after $minutes minutes or when you leave Kanso.';
   }

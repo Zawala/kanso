@@ -7,11 +7,15 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-# Google's PKCE challenge (account/provider.rs).
+# Google's PKCE challenge (account/provider.rs) and attachments' bytes
+# (attach.rs).
 base64.workspace = true
 # The recovery-key file's date and the resume time (account/words.rs).
 chrono.workspace = true
 fastrand.workspace = true
+# Images the API doesn't take (TIFF, WebP, BMP) are attached as PNG
+# (attach.rs). GPUI already builds these decoders for the desktop app.
+image = { version = "0.25", default-features = false, features = ["png", "tiff", "webp", "bmp", "ico"] }
 kanso-core.workspace = true
 kanso-store.workspace = true
 # Without the desktop Keychain: secrets go through the `Secrets` trait.

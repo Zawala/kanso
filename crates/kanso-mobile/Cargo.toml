@@ -9,6 +9,8 @@ publish = false
 
 [dependencies]
 async-channel.workspace = true
+# The ID of a share made in the app.
+fastrand.workspace = true
 kanso-collab.workspace = true
 # Unpadded base64url for a passkey's credential ID and the native plugin's
 # answers (MIT or Apache-2.0; already in the tree through kanso-sync).

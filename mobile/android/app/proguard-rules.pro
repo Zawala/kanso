@@ -8,3 +8,5 @@
 -keep class app.kanso.kanso_auth_session.AuthCallbackActivity { *; }
 # The certificate verifier's Kotlin component, called from Rust.
 -keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }
+# The share activity and the widget are started by the system by name; the
+# manifest keeps them, and captureInbox is covered by KansoNative's rule above.

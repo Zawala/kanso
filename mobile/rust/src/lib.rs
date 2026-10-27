@@ -13,6 +13,9 @@
 //!   `#[no_mangle]` function in a dependency is not reliably exported from a
 //!   cdylib or staticlib (rust-lang/rust#47384), so it is defined in the
 //!   crate that is built into the library.
+//! - [`capture`] defines `kanso_capture_inbox` and `kanso_string_free`, the C
+//!   functions the share extension, the App Intents and the app call to save
+//!   what other apps shared, for the same reason.
 //! - [`biometric`] defines `kanso_biometric_answer`, the C function the
 //!   native lock plugin hands a biometric check's answer to.
 //! - [`passkey`] defines `kanso_passkey_answer`, the C function the passkey
@@ -29,6 +32,7 @@
 
 pub mod api;
 pub mod background;
+pub mod capture;
 pub mod biometric;
 pub mod passkey;
 

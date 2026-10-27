@@ -160,8 +160,12 @@ class NotePane extends StatelessWidget {
                               caret: shown.caret,
                               caretInBody: shown.caretInBody,
                               scroll: shown.scroll,
-                              // A note made with no title is titled first.
-                              focusTitle: shown.openedNew && note.title.isEmpty,
+                              // A note made with no title is titled first,
+                              // unless it is to be dictated into.
+                              focusTitle:
+                                  shown.openedNew &&
+                                  !shown.startInText &&
+                                  note.title.isEmpty,
                             )
                           : BlocBuilder<LibraryIndexBloc, LibraryIndexState>(
                               builder: (context, index) {

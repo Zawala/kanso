@@ -6,5 +6,9 @@
 	<array>
 		<string>webcredentials:sync.kansoapp.app</string>
 	</array>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.app.kanso.Kanso</string>
+	</array>
 </dict>
 </plist>

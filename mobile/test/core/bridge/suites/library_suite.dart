@@ -3,9 +3,13 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
+import 'package:path/path.dart' as p;
 
 import 'open_library.dart';
 
@@ -514,6 +518,103 @@ void librarySuite(OpenLibrary open) {
       expect(heard.any(written.contains), isTrue);
     });
 
+    test('saves the shared items waiting in a folder', () async {
+      final library = await open();
+      final folder = await Directory.systemTemp.createTemp('kanso_inbox_');
+      addTearDown(() => folder.delete(recursive: true));
+      final inbox = p.join(folder.path, 'inbox');
+
+      // No folder yet: nothing to save.
+      final none = await library.saveDrops(inbox: inbox);
+      expect(none.notes, isEmpty);
+      expect(none.problems, isEmpty);
+      expect(none.kept, 0);
+
+      const id = 'ab12ab12ab12ab12ab12ab12ab12ab12';
+      final drop = Directory(p.join(inbox, id))..createSync(recursive: true);
+      File(p.join(drop.path, 'drop.json')).writeAsStringSync(
+        jsonEncode(<String, Object?>{
+          'version': 1,
+          'createdAt': 1,
+          'subject': 'From the sheet',
+          'text': 'Shared words',
+        }),
+      );
+      final saved = await library.saveDrops(inbox: inbox);
+      expect(saved.notes, <String>['note:cap-$id']);
+      expect(saved.problems, isEmpty);
+      expect(drop.existsSync(), isFalse);
+      final note = await library.note(id: 'note:cap-$id');
+      expect(note.title, 'From the sheet');
+      expect(note.body, contains('Shared words'));
+    });
+
+    test('captures a share made in the app', () async {
+      final library = await open();
+      final outcome = await library.capture(
+        share: Share(
+          subject: 'Receipt',
+          text: 'Lunch',
+          files: <ShareFile>[
+            ShareFile(
+              name: 'Receipt.pdf',
+              bytes: Uint8List.fromList(utf8.encode('%PDF-1.7\n%%EOF\n')),
+            ),
+            ShareFile(
+              name: 'notes.zip',
+              bytes: Uint8List.fromList(<int>[0x50, 0x4b]),
+            ),
+          ],
+        ),
+      );
+      expect(outcome.noteId, startsWith('note:cap-'));
+      expect(outcome.problems, hasLength(1));
+      final note = await library.note(id: outcome.noteId);
+      expect(note.title, 'Receipt');
+      expect(note.body, contains('Receipt.pdf'));
+      await expectLater(
+        library.capture(share: const Share(files: <ShareFile>[])),
+        throwsA(isA<KansoError_Invalid>()),
+      );
+    });
+
+    test("opens today's note once, from the phone's date", () async {
+      final library = await open();
+      const morning = LocalTime(
+        year: 2026,
+        month: 10,
+        day: 26,
+        hour: 8,
+        minute: 5,
+        second: 0,
+      );
+      final id = await library.todayNote(now: morning);
+      expect(id, 'note:daily-2026-10-26');
+      const night = LocalTime(
+        year: 2026,
+        month: 10,
+        day: 26,
+        hour: 23,
+        minute: 59,
+        second: 59,
+      );
+      expect(await library.todayNote(now: night), id);
+      expect((await library.note(id: id)).title, '2026-10-26');
+      await expectLater(
+        library.todayNote(
+          now: const LocalTime(
+            year: 2026,
+            month: 2,
+            day: 30,
+            hour: 1,
+            minute: 0,
+            second: 0,
+          ),
+        ),
+        throwsA(isA<KansoError_Invalid>()),
+      );
+    });
+
     test('lists open tasks in groups, ticks one and takes it back', () async {
       final library = await open();
       final id = await makeNote(
@@ -598,6 +699,7 @@ void librarySuite(OpenLibrary open) {
       expect(library.syncing(), isA<Object>());
       expect(library.renderer(), isA<Object>());
     });
+
     test('a task box in the page is ticked against the text drawn', () async {
       final library = await open();
       final id = await makeNote(library, 'Chores', '- [ ] Sweep\n');

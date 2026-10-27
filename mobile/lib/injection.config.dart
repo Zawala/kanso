@@ -11,6 +11,7 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 
 import 'package:get_it/get_it.dart' as _i174;
+import 'package:image_picker/image_picker.dart' as _i183;
 import 'package:injectable/injectable.dart' as _i526;
 
 import 'account/state/account_details/account_details_bloc.dart' as _i645;
@@ -18,6 +19,10 @@ import 'account/state/recover/recover_bloc.dart' as _i1059;
 import 'account/state/recovery_key/recovery_key_bloc.dart' as _i35;
 import 'account/state/sign_in/sign_in_bloc.dart' as _i552;
 import 'account/state/unlock/unlock_bloc.dart' as _i858;
+import 'capture/models/repos/abs/media_picker_repository.dart' as _i900;
+import 'capture/models/repos/impl/platform_media_picker_repository.dart'
+    as _i598;
+import 'capture/state/daily_note/daily_note_bloc.dart' as _i1060;
 import 'core/bridge/api/account.dart' as _i578;
 import 'core/bridge/api/account_settings.dart' as _i102;
 import 'core/bridge/api/approvals.dart' as _i283;
@@ -36,6 +41,7 @@ import 'core/models/repos/abs/account_repository.dart' as _i1035;
 import 'core/models/repos/abs/account_settings_repository.dart' as _i314;
 import 'core/models/repos/abs/approvals_repository.dart' as _i465;
 import 'core/models/repos/abs/auth_session_repository.dart' as _i227;
+import 'core/models/repos/abs/capture_repository.dart' as _i23;
 import 'core/models/repos/abs/diagnostics_repository.dart' as _i984;
 import 'core/models/repos/abs/gallery_repository.dart' as _i550;
 import 'core/models/repos/abs/haptics_repository.dart' as _i1056;
@@ -48,7 +54,9 @@ import 'core/models/repos/abs/session_repository.dart' as _i333;
 import 'core/models/repos/abs/shared_notes_repository.dart' as _i374;
 import 'core/models/repos/abs/sync_repository.dart' as _i601;
 import 'core/models/repos/abs/system_share_repository.dart' as _i202;
+import 'core/models/repos/abs/widget_colors_repository.dart' as _i978;
 import 'core/models/repos/impl/file_preferences_repository.dart' as _i207;
+import 'core/models/repos/impl/file_widget_colors_repository.dart' as _i2;
 import 'core/models/repos/impl/flutter_haptics_repository.dart' as _i438;
 import 'core/models/repos/impl/flutter_licences_repository.dart' as _i1025;
 import 'core/models/repos/impl/flutter_system_share_repository.dart' as _i254;
@@ -57,6 +65,7 @@ import 'core/models/repos/impl/plugin_auth_session_repository.dart' as _i680;
 import 'core/models/repos/impl/rust_account_repository.dart' as _i450;
 import 'core/models/repos/impl/rust_account_settings_repository.dart' as _i350;
 import 'core/models/repos/impl/rust_approvals_repository.dart' as _i99;
+import 'core/models/repos/impl/rust_capture_repository.dart' as _i824;
 import 'core/models/repos/impl/rust_diagnostics_repository.dart' as _i1062;
 import 'core/models/repos/impl/rust_gallery_repository.dart' as _i692;
 import 'core/models/repos/impl/rust_library_repository.dart' as _i152;
@@ -67,14 +76,19 @@ import 'core/models/repos/impl/rust_sync_repository.dart' as _i564;
 import 'core/models/repos/impl/shorebird_patch_repository.dart' as _i989;
 import 'core/router/kanso_router.dart' as _i388;
 import 'core/router/layout_class_notifier.dart' as _i609;
+import 'core/services/external_changes.dart' as _i825;
+import 'core/services/library_folder_migration.dart' as _i846;
+import 'core/services/widget_reloader.dart' as _i608;
 import 'core/state/account/account_bloc.dart' as _i168;
 import 'core/state/appearance/appearance_bloc.dart' as _i551;
+import 'core/state/capture_inbox/capture_inbox_bloc.dart' as _i551;
 import 'core/state/device_approval/device_approval_bloc.dart' as _i274;
 import 'core/state/library_index/library_index_bloc.dart' as _i861;
 import 'core/state/list_navigation/list_navigation_bloc.dart' as _i907;
 import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
 import 'core/state/undo_notice/undo_notice_bloc.dart' as _i985;
+import 'core/state/widget_colors/widget_colors_bloc.dart' as _i223;
 import 'crash/configs/crash_module.dart' as _i1016;
 import 'crash/models/data/crash_folder.dart' as _i392;
 import 'crash/models/repos/abs/crash_context_repository.dart' as _i1070;
@@ -138,6 +152,12 @@ extension GetItInjectableX on _i174.GetIt {
     final appModule = _$AppModule();
     gh.factory<_i612.LibraryPaneBloc>(() => _i612.LibraryPaneBloc());
     gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
+    gh.lazySingleton<_i183.ImagePicker>(() => coreModule.imagePicker());
+    gh.lazySingleton<_i825.ExternalChanges>(() => _i825.ExternalChanges());
+    gh.lazySingleton<_i846.LibraryFolderMigration>(
+      () => _i846.LibraryFolderMigration(),
+    );
+    gh.lazySingleton<_i608.WidgetReloader>(() => _i608.WidgetReloader());
     gh.lazySingleton<_i984.DiagnosticsRepository>(
       () => _i1062.RustDiagnosticsRepository(),
     );
@@ -149,11 +169,6 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i272.WebLinkRepository>(
       () => _i635.UrlLauncherWebLinkRepository(),
-    );
-    await gh.singletonAsync<_i72.LibraryFolder>(
-      () => coreModule.libraryFolder(),
-      registerFor: {_development, _production},
-      preResolve: true,
     );
     await gh.singletonAsync<_i392.CrashFolder>(
       () => crashModule.crashFolder(),
@@ -171,6 +186,11 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i279.DeviceLockRepository>(
       () => _i64.PluginDeviceLockRepository(),
+    );
+    await gh.singletonAsync<_i72.LibraryFolder>(
+      () => coreModule.libraryFolder(gh<_i846.LibraryFolderMigration>()),
+      registerFor: {_development, _production},
+      preResolve: true,
     );
     gh.lazySingleton<_i909.PatchRepository>(
       () => _i989.ShorebirdPatchRepository(),
@@ -199,8 +219,20 @@ extension GetItInjectableX on _i174.GetIt {
       registerFor: {_integration},
       preResolve: true,
     );
+    gh.lazySingleton<_i978.WidgetColorsRepository>(
+      () => _i2.FileWidgetColorsRepository(
+        gh<_i72.LibraryFolder>(),
+        gh<_i608.WidgetReloader>(),
+      ),
+    );
     gh.lazySingleton<_i384.PreferencesRepository>(
       () => _i207.FilePreferencesRepository(gh<_i72.LibraryFolder>()),
+    );
+    gh.factory<_i223.WidgetColorsBloc>(
+      () => _i223.WidgetColorsBloc(gh<_i978.WidgetColorsRepository>()),
+    );
+    gh.lazySingleton<_i900.MediaPickerRepository>(
+      () => _i598.PlatformMediaPickerRepository(gh<_i183.ImagePicker>()),
     );
     gh.lazySingleton<_i1070.CrashContextRepository>(
       () => _i756.PlatformCrashContextRepository(gh<_i909.PatchRepository>()),
@@ -232,6 +264,18 @@ extension GetItInjectableX on _i174.GetIt {
     await gh.singletonAsync<_i455.KansoLibrary>(
       () => coreModule.library(gh<_i72.LibraryFolder>()),
       preResolve: true,
+    );
+    gh.lazySingleton<_i38.LibraryRepository>(
+      () => _i152.RustLibraryRepository(
+        gh<_i455.KansoLibrary>(),
+        gh<_i825.ExternalChanges>(),
+      ),
+    );
+    gh.lazySingleton<_i985.UndoNoticeBloc>(
+      () => _i985.UndoNoticeBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i1056.HapticsRepository>(),
+      ),
     );
     gh.factory<_i815.CrashReportsBloc>(
       () => _i815.CrashReportsBloc(gh<_i288.CrashReportRepository>()),
@@ -269,8 +313,12 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i465.ApprovalsRepository>(
       () => _i99.RustApprovalsRepository(gh<_i283.KansoApprovals>()),
     );
-    gh.lazySingleton<_i38.LibraryRepository>(
-      () => _i152.RustLibraryRepository(gh<_i455.KansoLibrary>()),
+    gh.lazySingleton<_i23.CaptureRepository>(
+      () => _i824.RustCaptureRepository(
+        gh<_i455.KansoLibrary>(),
+        gh<_i72.LibraryFolder>(),
+        gh<_i825.ExternalChanges>(),
+      ),
     );
     gh.factory<_i618.NoteBloc>(
       () => _i618.NoteBloc(
@@ -302,12 +350,29 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i38.LibraryRepository>(),
         gh<_i930.NotePlaceRepository>(),
         gh<_i384.PreferencesRepository>(),
+        gh<_i23.CaptureRepository>(),
+        gh<_i900.MediaPickerRepository>(),
       ),
+    );
+    gh.factory<_i351.NoteListBloc>(
+      () => _i351.NoteListBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i384.PreferencesRepository>(),
+        gh<_i1056.HapticsRepository>(),
+        gh<_i985.UndoNoticeBloc>(),
+      ),
+    );
+    gh.factory<_i1060.DailyNoteBloc>(
+      () => _i1060.DailyNoteBloc(gh<_i23.CaptureRepository>()),
+    );
+    gh.factory<_i551.CaptureInboxBloc>(
+      () => _i551.CaptureInboxBloc(gh<_i23.CaptureRepository>()),
     );
     gh.factory<_i964.EditorBloc>(
       () => _i964.EditorBloc(
         gh<_i979.EditorRepository>(),
         gh<_i272.WebLinkRepository>(),
+        gh<_i900.MediaPickerRepository>(),
       ),
     );
     gh.lazySingleton<_i1035.AccountRepository>(
@@ -315,15 +380,16 @@ extension GetItInjectableX on _i174.GetIt {
           _i450.RustAccountRepository(gh<_i578.KansoAccount>())
             ..startRelayingPasskeys(),
     );
+    gh.factory<_i470.TasksBloc>(
+      () => _i470.TasksBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i1056.HapticsRepository>(),
+        gh<_i985.UndoNoticeBloc>(),
+      ),
+    );
     gh.lazySingleton<_i314.AccountSettingsRepository>(
       () =>
           _i350.RustAccountSettingsRepository(gh<_i102.KansoAccountSettings>()),
-    );
-    gh.lazySingleton<_i985.UndoNoticeBloc>(
-      () => _i985.UndoNoticeBloc(
-        gh<_i38.LibraryRepository>(),
-        gh<_i1056.HapticsRepository>(),
-      ),
     );
     gh.lazySingleton<_i601.SyncRepository>(
       () => _i564.RustSyncRepository(gh<_i591.KansoSync>()),
@@ -402,14 +468,6 @@ extension GetItInjectableX on _i174.GetIt {
     gh.factory<_i168.AccountBloc>(
       () => _i168.AccountBloc(gh<_i1035.AccountRepository>()),
     );
-    gh.factory<_i351.NoteListBloc>(
-      () => _i351.NoteListBloc(
-        gh<_i38.LibraryRepository>(),
-        gh<_i384.PreferencesRepository>(),
-        gh<_i1056.HapticsRepository>(),
-        gh<_i985.UndoNoticeBloc>(),
-      ),
-    );
     gh.factory<_i252.ShareNoteBloc>(
       () => _i252.ShareNoteBloc(
         gh<_i374.SharedNotesRepository>(),
@@ -436,13 +494,6 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i384.PreferencesRepository>(),
         gh<_i732.RendererRepository>(),
         gh<_i550.GalleryRepository>(),
-      ),
-    );
-    gh.factory<_i470.TasksBloc>(
-      () => _i470.TasksBloc(
-        gh<_i38.LibraryRepository>(),
-        gh<_i1056.HapticsRepository>(),
-        gh<_i985.UndoNoticeBloc>(),
       ),
     );
     gh.factory<_i645.AccountDetailsBloc>(

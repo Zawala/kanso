@@ -3928,6 +3928,54 @@ abstract class AppLocalizations {
   /// **'Dismiss'**
   String get sharedProblemsDismiss;
 
+  /// Shown while today's daily note is found or made.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening today’s note'**
+  String get dailyNoteLoading;
+
+  /// The title of the card shown when today's daily note could not be opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Today’s note didn’t open'**
+  String get dailyNoteFailedTitle;
+
+  /// The message of the card shown when today's daily note could not be opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong opening today’s note on this phone. Try again.'**
+  String get dailyNoteFailedMessage;
+
+  /// The row of the capture sheet that takes a photo with the camera and saves or attaches it.
+  ///
+  /// In en, this message translates to:
+  /// **'Take photo'**
+  String get captureTakePhoto;
+
+  /// The row of the capture sheet that picks photos from the phone's library.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose photos'**
+  String get captureChoosePhotos;
+
+  /// The row of the capture sheet that picks PDFs from the phone's files.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach PDF'**
+  String get captureAttachPdf;
+
+  /// The editor's attach sheet: writes an image's Markdown to fill in by hand.
+  ///
+  /// In en, this message translates to:
+  /// **'Image link'**
+  String get captureImageLink;
+
+  /// Said when a picked file couldn't be attached for a reason the library didn't put in words.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t attach that file.'**
+  String get captureAttachFailed;
+
   /// Says how a locked note is opened and when it locks.
   ///
   /// In en, this message translates to:

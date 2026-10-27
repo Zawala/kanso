@@ -11,6 +11,11 @@
 //! one is, the sort and narrowing, the order of the notebook tree and the
 //! date headers a list sits under.
 //!
+//! What a note takes from outside is here as well: [`attach`] stores images
+//! and PDFs as attachments and gives the Markdown that shows them, and
+//! [`capture`] turns typed text, and what other apps share, into notes in
+//! the Inbox.
+//!
 //! What happens in a note is here too. [`links`] decides how wiki-links
 //! resolve, what `[[` and `#` autocomplete offer, which link a note copies
 //! and when a rename offers to update links; [`fuzzy`] ranks what was typed
@@ -37,7 +42,9 @@
 //! alone; tests use [`MemorySecrets`].
 
 pub mod account;
+pub mod attach;
 pub mod batch;
+pub mod capture;
 pub mod daily;
 pub mod edit;
 pub mod fuzzy;
