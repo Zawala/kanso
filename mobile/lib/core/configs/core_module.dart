@@ -11,9 +11,14 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:path_provider_foundation/path_provider_foundation.dart';
 
+import '../bridge/api/account.dart';
+import '../bridge/api/account_settings.dart';
+import '../bridge/api/approvals.dart';
+import '../bridge/api/gallery.dart';
 import '../bridge/api/library.dart';
 import '../bridge/api/locks.dart';
 import '../bridge/api/renderer.dart';
+import '../bridge/api/shared.dart';
 import '../bridge/api/sync.dart';
 import '../models/data/application_error.dart';
 import '../models/data/folder_move.dart';
@@ -112,5 +117,21 @@ abstract class CoreModule {
   KansoSync sync(KansoLibrary library) => library.syncing();
 
   @lazySingleton
+  KansoAccount account(KansoLibrary library) => library.account();
+
+  @lazySingleton
+  KansoAccountSettings accountSettings(KansoLibrary library) =>
+      library.accountSettings();
+
+  @lazySingleton
+  KansoApprovals approvals(KansoLibrary library) => library.approvals();
+
+  @lazySingleton
   KansoRenderer renderer(KansoLibrary library) => library.renderer();
+
+  @lazySingleton
+  KansoShared shared(KansoLibrary library) => library.shared();
+
+  @lazySingleton
+  KansoGallery gallery(KansoLibrary library) => library.gallery();
 }

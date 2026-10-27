@@ -13,6 +13,7 @@
 
 import { signOutSockets } from "./account_room";
 import { runCollabPurges } from "./collab";
+import { purgeCrashReports } from "./crash_reports";
 import type { Env } from "./env";
 import { refusal } from "./http";
 import { expiredLimitsSql } from "./limits";
@@ -327,6 +328,7 @@ export async function runCron(env: Env, now: number): Promise<CronReport> {
 	const shortLinksPurged = await runShortLinkPurges(env);
 	const collabPurged = await runCollabPurges(env, now);
 	await env.DB.prepare(expiredLimitsSql()).bind(now).run();
+	await purgeCrashReports(env, now);
 	const reconciled = await reconcile(env, now);
 	const housekeeping = await env.DB.batch([
 		// Sign-in ceremonies and approvals are dead a day after they expire; the

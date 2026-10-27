@@ -35,10 +35,14 @@ class RustLibraryRepository implements LibraryRepository {
       attempt(_library.overview);
 
   @override
-  Future<Either<ApplicationError, int>> change(
+  Future<Either<ApplicationError, Changed>> change(
     List<String> ids,
     NoteChange change,
   ) => attempt(() => _library.change(ids: ids, change: change));
+
+  @override
+  Future<Either<ApplicationError, int>> undo(int ticket) =>
+      attempt(() => _library.undo(ticket: ticket));
 
   @override
   Future<Either<ApplicationError, NoteView>> note(String id) =>
@@ -120,4 +124,48 @@ class RustLibraryRepository implements LibraryRepository {
     );
     return merged.stream;
   }
+
+  @override
+  Future<Either<ApplicationError, TaskBoard>> tasks(TaskListQuery query) =>
+      attempt(() => _library.tasks(query: query));
+
+  @override
+  Future<Either<ApplicationError, int>> overdueTasks() =>
+      attempt(_library.overdueTasks);
+
+  @override
+  Future<Either<ApplicationError, Ticked>> setTask({
+    required String noteId,
+    required int line,
+    required String text,
+    required bool checked,
+  }) => attempt(
+    () => _library.setTask(
+      noteId: noteId,
+      line: line,
+      text: text,
+      checked: checked,
+    ),
+  );
+
+  @override
+  Future<Either<ApplicationError, Ticked>> toggleTaskAt({
+    required String noteId,
+    required int index,
+    required String baseRev,
+  }) => attempt(
+    () => _library.toggleTaskAt(noteId: noteId, index: index, baseRev: baseRev),
+  );
+
+  @override
+  Future<Either<ApplicationError, Saved>> createLinkedNote({
+    required String title,
+    required String fromNote,
+  }) => attempt(
+    () => _library.createLinkedNote(title: title, fromNote: fromNote),
+  );
+
+  @override
+  Future<Either<ApplicationError, AttachmentFile>> attachment(String id) =>
+      attempt(() => _library.attachment(id: id));
 }

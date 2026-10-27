@@ -35,4 +35,19 @@ object KansoNative {
      */
     @JvmStatic
     external fun captureInbox(libraryPath: String, inboxPath: String): String?
+     * The sync that runs with no app, for the WorkManager job: syncs the
+     * library file at [path] within [budgetMs] and returns the code of
+     * `mobile/rust/src/background.rs` (0 or 1 done, negative a reason).
+     * Never throws.
+     */
+    @JvmStatic
+    external fun backgroundSync(path: String, budgetMs: Int): Int
+
+    /**
+     * A passkey sheet's answer for the ceremony waiting on [ticket]
+     * (`mobile/rust/src/passkey.rs`): 1 taken, 0 nobody waits, -5 a fault.
+     * Never throws; the answer is never logged.
+     */
+    @JvmStatic
+    external fun passkeyAnswer(ticket: Long, json: String): Int
 }

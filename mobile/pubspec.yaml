@@ -28,13 +28,22 @@ dependencies:
   injectable: ^2.5.0
   intl: ^0.20.2
   json_annotation: ^4.9.0
+  kanso_auth_session:
+    path: plugins/kanso_auth_session
+  kanso_background:
+    path: plugins/kanso_background
+  kanso_passkeys:
+    path: plugins/kanso_passkeys
   package_info_plus: ^10.2.2
   path: ^1.9.0
   path_provider: ^2.1.6
   # The App Group container's path on iOS, where the share extension and the
   # App Intents can reach the library.
   path_provider_foundation: ^2.6.0
+  share_plus: ^13.3.1
+  shorebird_code_push: ^2.0.7
   url_launcher: ^6.3.3
+  webview_flutter: ^4.14.1
 
 dev_dependencies:
   bloc_test: ^10.0.0

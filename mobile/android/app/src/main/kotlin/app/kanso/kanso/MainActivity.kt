@@ -14,6 +14,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        KansoCrashes.register(flutterEngine)
         // `app.kanso.kanso/widgets`: the app asks for the home-screen widget
         // to be drawn again once it has written its colors (`widget.json`).
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.kanso.kanso/widgets")

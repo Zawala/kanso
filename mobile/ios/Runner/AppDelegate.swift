@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import WidgetKit
+import kanso_background
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -8,11 +9,17 @@ import WidgetKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // The background sync's handler must be registered before launch finishes.
+    KansoBackground.register()
+    CrashDiagnostics.shared.start()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "KansoCrashDiagnostics") {
+      CrashDiagnostics.shared.register(with: registrar.messenger())
+    }
     registerWidgetChannel(engineBridge.pluginRegistry)
   }
 
