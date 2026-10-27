@@ -9,11 +9,12 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    BuiltinTheme, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview, ListPlace,
-    ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange, NoteList, NoteRow,
-    NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind, Range16, Saved,
-    SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow, ThemeTokens,
+    BuiltinTheme, Changed, ColorRow, DateField, DiagramKind, Hit, KansoError, LibraryOverview,
+    ListPlace, ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote, NoteChange,
+    NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto, Property, PropertyKind,
+    Range16, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow, SyncPhase,
+    SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow,
+    ThemeTokens, Ticked,
 };
 
 #[frb(mirror(KansoError))]
@@ -120,6 +121,20 @@ pub enum _NoteChange {
     TogglePin,
     Move { notebook_id: String },
     Trash,
+}
+
+#[frb(mirror(Changed))]
+pub struct _Changed {
+    pub count: u32,
+    pub undo: Option<u64>,
+    pub message: String,
+}
+
+#[frb(mirror(Ticked))]
+pub enum _Ticked {
+    Changed { rev: String, undo: u64 },
+    Unchanged,
+    Missing,
 }
 
 #[frb(mirror(SearchScope))]

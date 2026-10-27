@@ -12,7 +12,10 @@ import 'types.dart';
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
 abstract class KansoLibrary implements RustOpaqueInterface {
-  Future<int> change({required List<String> ids, required NoteChange change});
+  Future<Changed> change({
+    required List<String> ids,
+    required NoteChange change,
+  });
 
   /// The IDs of what changed, in batches, until Dart stops listening.
   Stream<List<String>> changes();
@@ -53,9 +56,18 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required int limit,
   });
 
+  Future<Ticked> setTask({
+    required String noteId,
+    required int line,
+    required String text,
+    required bool checked,
+  });
+
   KansoSync syncing();
 
   Future<List<TagRow>> tags();
 
   Future<void> trash({required String id});
+
+  Future<int> undo({required int ticket});
 }

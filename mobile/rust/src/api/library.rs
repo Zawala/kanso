@@ -5,8 +5,8 @@
 use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    Hit, KansoError, Library, LibraryOverview, ListQuery, NewNote, NoteChange, NoteList, NoteView,
-    NotebookRow, Property, Saved, SearchScope, Table, TagRow,
+    Changed, Hit, KansoError, Library, LibraryOverview, ListQuery, NewNote, NoteChange, NoteList,
+    NoteView, NotebookRow, Property, Saved, SearchScope, Table, TagRow, Ticked,
 };
 
 use super::locks::KansoLocks;
@@ -31,8 +31,22 @@ impl KansoLibrary {
         self.0.overview()
     }
 
-    pub fn change(&self, ids: Vec<String>, change: NoteChange) -> Result<u32, KansoError> {
+    pub fn change(&self, ids: Vec<String>, change: NoteChange) -> Result<Changed, KansoError> {
         self.0.change(ids, change)
+    }
+
+    pub fn undo(&self, ticket: u64) -> Result<u32, KansoError> {
+        self.0.undo(ticket)
+    }
+
+    pub fn set_task(
+        &self,
+        note_id: String,
+        line: u32,
+        text: String,
+        checked: bool,
+    ) -> Result<Ticked, KansoError> {
+        self.0.set_task(&note_id, line, &text, checked)
     }
 
     pub fn note(&self, id: String) -> Result<NoteView, KansoError> {

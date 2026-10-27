@@ -2333,4 +2333,302 @@ as String,
 
 }
 
+/// @nodoc
+mixin _$Ticked {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Ticked);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'Ticked()';
+}
+
+
+}
+
+/// @nodoc
+class $TickedCopyWith<$Res>  {
+$TickedCopyWith(Ticked _, $Res Function(Ticked) __);
+}
+
+
+/// Adds pattern-matching-related methods to [Ticked].
+extension TickedPatterns on Ticked {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( Ticked_Changed value)?  changed,TResult Function( Ticked_Unchanged value)?  unchanged,TResult Function( Ticked_Missing value)?  missing,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case Ticked_Changed() when changed != null:
+return changed(_that);case Ticked_Unchanged() when unchanged != null:
+return unchanged(_that);case Ticked_Missing() when missing != null:
+return missing(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( Ticked_Changed value)  changed,required TResult Function( Ticked_Unchanged value)  unchanged,required TResult Function( Ticked_Missing value)  missing,}){
+final _that = this;
+switch (_that) {
+case Ticked_Changed():
+return changed(_that);case Ticked_Unchanged():
+return unchanged(_that);case Ticked_Missing():
+return missing(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( Ticked_Changed value)?  changed,TResult? Function( Ticked_Unchanged value)?  unchanged,TResult? Function( Ticked_Missing value)?  missing,}){
+final _that = this;
+switch (_that) {
+case Ticked_Changed() when changed != null:
+return changed(_that);case Ticked_Unchanged() when unchanged != null:
+return unchanged(_that);case Ticked_Missing() when missing != null:
+return missing(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String rev,  int undo)?  changed,TResult Function()?  unchanged,TResult Function()?  missing,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case Ticked_Changed() when changed != null:
+return changed(_that.rev,_that.undo);case Ticked_Unchanged() when unchanged != null:
+return unchanged();case Ticked_Missing() when missing != null:
+return missing();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String rev,  int undo)  changed,required TResult Function()  unchanged,required TResult Function()  missing,}) {final _that = this;
+switch (_that) {
+case Ticked_Changed():
+return changed(_that.rev,_that.undo);case Ticked_Unchanged():
+return unchanged();case Ticked_Missing():
+return missing();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String rev,  int undo)?  changed,TResult? Function()?  unchanged,TResult? Function()?  missing,}) {final _that = this;
+switch (_that) {
+case Ticked_Changed() when changed != null:
+return changed(_that.rev,_that.undo);case Ticked_Unchanged() when unchanged != null:
+return unchanged();case Ticked_Missing() when missing != null:
+return missing();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class Ticked_Changed extends Ticked {
+  const Ticked_Changed({required this.rev, required this.undo}): super._();
+  
+
+ final  String rev;
+ final  int undo;
+
+/// Create a copy of Ticked
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$Ticked_ChangedCopyWith<Ticked_Changed> get copyWith => _$Ticked_ChangedCopyWithImpl<Ticked_Changed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Ticked_Changed&&(identical(other.rev, rev) || other.rev == rev)&&(identical(other.undo, undo) || other.undo == undo));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,rev,undo);
+
+@override
+String toString() {
+  return 'Ticked.changed(rev: $rev, undo: $undo)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $Ticked_ChangedCopyWith<$Res> implements $TickedCopyWith<$Res> {
+  factory $Ticked_ChangedCopyWith(Ticked_Changed value, $Res Function(Ticked_Changed) _then) = _$Ticked_ChangedCopyWithImpl;
+@useResult
+$Res call({
+ String rev, int undo
+});
+
+
+
+
+}
+/// @nodoc
+class _$Ticked_ChangedCopyWithImpl<$Res>
+    implements $Ticked_ChangedCopyWith<$Res> {
+  _$Ticked_ChangedCopyWithImpl(this._self, this._then);
+
+  final Ticked_Changed _self;
+  final $Res Function(Ticked_Changed) _then;
+
+/// Create a copy of Ticked
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? rev = null,Object? undo = null,}) {
+  return _then(Ticked_Changed(
+rev: null == rev ? _self.rev : rev // ignore: cast_nullable_to_non_nullable
+as String,undo: null == undo ? _self.undo : undo // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class Ticked_Unchanged extends Ticked {
+  const Ticked_Unchanged(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Ticked_Unchanged);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'Ticked.unchanged()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class Ticked_Missing extends Ticked {
+  const Ticked_Missing(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Ticked_Missing);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'Ticked.missing()';
+}
+
+
+}
+
+
+
+
 // dart format on
