@@ -48,10 +48,10 @@
 //! alone; tests use [`MemorySecrets`].
 
 pub mod account;
-pub mod backup;
 pub mod attach;
-pub mod capture;
+pub mod backup;
 pub mod batch;
+pub mod capture;
 pub mod daily;
 pub mod edit;
 pub mod editor_settings;
