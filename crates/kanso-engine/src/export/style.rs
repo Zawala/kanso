@@ -40,6 +40,9 @@ impl PageStyle {
             mono: self.mono.as_deref(),
             size: self.size,
             highlight: self.highlighter(),
+            // A published or exported page is the one anybody can open:
+            // the app's addresses and restrictions are for the phone only.
+            app: None,
         }
     }
 
