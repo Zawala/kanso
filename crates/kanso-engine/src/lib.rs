@@ -32,6 +32,11 @@
 //! component library compiles in, with the same queries, and a test in
 //! `kanso-app` holds the two to the same colors on a corpus of notes.
 //!
+//! Getting around is here as well: [`navigate`] has a note's backlinks and
+//! unlinked mentions and Open Note, [`palette`] the command palette's
+//! catalog and ranking, and [`outline`] the heading the caret is under; all
+//! of them keep a locked note out until the lock session is open.
+//!
 //! A note's past and the library's safety nets are here as well.
 //! [`history`] says why each saved version was kept and who made it, and
 //! works out the changed sections (hunks) between a version and the note
@@ -63,6 +68,9 @@ pub mod icons;
 pub mod links;
 pub mod list;
 pub mod lock;
+pub mod navigate;
+pub mod outline;
+pub mod palette;
 pub mod replace;
 pub mod saving;
 #[cfg(any(test, feature = "test-support"))]

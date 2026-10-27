@@ -24,6 +24,7 @@ use kanso_core::links::{
 };
 use kanso_store::Store;
 
+pub mod mention;
 pub mod tags;
 
 pub use kanso_core::links::retitle_wiki_links;

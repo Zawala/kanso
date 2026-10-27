@@ -9,6 +9,7 @@ import 'account_settings.dart';
 import 'approvals.dart';
 import 'editor.dart';
 import 'gallery.dart';
+import 'linking.dart';
 import 'locks.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'renderer.dart';
@@ -87,6 +88,8 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// progress, then one summary or one failure. Writes nothing. Returns at
   /// once; the work runs on a thread of its own.
   Stream<ImportEvent> importPlan({required String kind, required String path});
+
+  KansoLinking linking();
 
   Future<NoteList> list({required ListQuery query});
 

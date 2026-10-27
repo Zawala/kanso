@@ -19,6 +19,9 @@
 //!   locked note's text, snippet, properties, tasks and preview never come
 //!   back while it is closed; only its title and its lock show in a list.
 //!   Keys never cross this edge.
+//! - [`Linking`] (`library.linking()`) has a note's outline, backlinks and
+//!   unlinked mentions, Link on a mention, Open Note and the command palette,
+//!   with a locked note kept out until the lock session is open.
 //! - [`EditorSession`] (`library.edit(id)`) is a note open for editing: the
 //!   text the shell's field shows, with the undo history, the editor's
 //!   commands, the colors of the text, completion, autosave and the
@@ -105,6 +108,8 @@ mod history;
 mod icons;
 pub mod import;
 mod library;
+mod linking;
+mod linking_model;
 mod locks;
 mod matching;
 mod model;
@@ -139,6 +144,8 @@ pub use errors::KansoError;
 pub use gallery::Gallery;
 pub use gallery_model::*;
 pub use library::Library;
+pub use linking::Linking;
+pub use linking_model::*;
 pub use locks::LockSession;
 pub use model::*;
 pub use model_history::*;

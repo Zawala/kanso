@@ -21,6 +21,7 @@ use super::account_settings::KansoAccountSettings;
 use super::approvals::KansoApprovals;
 use super::editor::KansoEditor;
 use super::gallery::KansoGallery;
+use super::linking::KansoLinking;
 use super::locks::KansoLocks;
 use super::renderer::KansoRenderer;
 use super::shared::KansoShared;
@@ -259,6 +260,11 @@ impl KansoLibrary {
     #[frb(sync)]
     pub fn locks(&self) -> KansoLocks {
         KansoLocks::new(self.0.locks())
+    }
+
+    #[frb(sync)]
+    pub fn linking(&self) -> KansoLinking {
+        KansoLinking::new(self.0.linking())
     }
 
     #[frb(sync)]

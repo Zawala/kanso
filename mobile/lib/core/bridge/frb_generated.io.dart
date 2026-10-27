@@ -11,6 +11,8 @@ import 'api/editor.dart';
 import 'api/gallery.dart';
 import 'api/import.dart';
 import 'api/library.dart';
+import 'api/linking.dart';
+import 'api/linking_types.dart';
 import 'api/locks.dart';
 import 'api/renderer.dart';
 import 'api/shared.dart';
@@ -53,6 +55,10 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   CrossPlatformFinalizerArg
   get rust_arc_decrement_strong_count_KansoLibraryPtr => wire
       ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibraryPtr;
+
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_KansoLinkingPtr => wire
+      ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinkingPtr;
 
   CrossPlatformFinalizerArg
   get rust_arc_decrement_strong_count_KansoLocksPtr => wire
@@ -106,6 +112,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   KansoLibrary
   dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+    dynamic raw,
+  );
+
+  @protected
+  KansoLinking
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
     dynamic raw,
   );
 
@@ -166,6 +178,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   KansoLibrary
   dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+    dynamic raw,
+  );
+
+  @protected
+  KansoLinking
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
     dynamic raw,
   );
 
@@ -232,6 +250,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   KansoLibrary
   dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+    dynamic raw,
+  );
+
+  @protected
+  KansoLinking
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
     dynamic raw,
   );
 
@@ -418,7 +442,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   NotebookRole dco_decode_box_autoadd_notebook_role(dynamic raw);
 
   @protected
+  PaletteContext dco_decode_box_autoadd_palette_context(dynamic raw);
+
+  @protected
   PaletteDto dco_decode_box_autoadd_palette_dto(dynamic raw);
+
+  @protected
+  PalettePicker dco_decode_box_autoadd_palette_picker(dynamic raw);
+
+  @protected
+  PalettePlace dco_decode_box_autoadd_palette_place(dynamic raw);
 
   @protected
   PersonRow dco_decode_box_autoadd_person_row(dynamic raw);
@@ -440,6 +473,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   Replacement dco_decode_box_autoadd_replacement(dynamic raw);
+
+  @protected
+  Saved dco_decode_box_autoadd_saved(dynamic raw);
 
   @protected
   SearchScope dco_decode_box_autoadd_search_scope(dynamic raw);
@@ -616,6 +652,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   LibraryOverview dco_decode_library_overview(dynamic raw);
 
   @protected
+  LinkRef dco_decode_link_ref(dynamic raw);
+
+  @protected
   LinkTarget dco_decode_link_target(dynamic raw);
 
   @protected
@@ -676,6 +715,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<InvitationRow> dco_decode_list_invitation_row(dynamic raw);
 
   @protected
+  List<LinkRef> dco_decode_list_link_ref(dynamic raw);
+
+  @protected
   List<LinkedProviderRow> dco_decode_list_linked_provider_row(dynamic raw);
 
   @protected
@@ -701,6 +743,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<String?> dco_decode_list_opt_String(dynamic raw);
+
+  @protected
+  List<OutlineHeading> dco_decode_list_outline_heading(dynamic raw);
+
+  @protected
+  List<PaletteEntry> dco_decode_list_palette_entry(dynamic raw);
+
+  @protected
+  List<PaletteSection> dco_decode_list_palette_section(dynamic raw);
 
   @protected
   List<PasskeyRow> dco_decode_list_passkey_row(dynamic raw);
@@ -882,6 +933,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   NotebookRole? dco_decode_opt_box_autoadd_notebook_role(dynamic raw);
 
   @protected
+  PalettePicker? dco_decode_opt_box_autoadd_palette_picker(dynamic raw);
+
+  @protected
+  PalettePlace? dco_decode_opt_box_autoadd_palette_place(dynamic raw);
+
+  @protected
   PersonRow? dco_decode_opt_box_autoadd_person_row(dynamic raw);
 
   @protected
@@ -895,6 +952,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   Replacement? dco_decode_opt_box_autoadd_replacement(dynamic raw);
+
+  @protected
+  Saved? dco_decode_opt_box_autoadd_saved(dynamic raw);
 
   @protected
   ShareInfo? dco_decode_opt_box_autoadd_share_info(dynamic raw);
@@ -914,7 +974,28 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
+  OutlineHeading dco_decode_outline_heading(dynamic raw);
+
+  @protected
+  PaletteContext dco_decode_palette_context(dynamic raw);
+
+  @protected
   PaletteDto dco_decode_palette_dto(dynamic raw);
+
+  @protected
+  PaletteEntry dco_decode_palette_entry(dynamic raw);
+
+  @protected
+  PalettePicker dco_decode_palette_picker(dynamic raw);
+
+  @protected
+  PalettePlace dco_decode_palette_place(dynamic raw);
+
+  @protected
+  PaletteSection dco_decode_palette_section(dynamic raw);
+
+  @protected
+  PaletteTarget dco_decode_palette_target(dynamic raw);
 
   @protected
   PasskeyFailure dco_decode_passkey_failure(dynamic raw);
@@ -1169,6 +1250,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  KansoLinking
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   KansoLocks
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
     SseDeserializer deserializer,
@@ -1225,6 +1312,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   KansoLibrary
   sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  KansoLinking
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
     SseDeserializer deserializer,
   );
 
@@ -1291,6 +1384,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   KansoLibrary
   sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  KansoLinking
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
     SseDeserializer deserializer,
   );
 
@@ -1497,7 +1596,22 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  PaletteContext sse_decode_box_autoadd_palette_context(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   PaletteDto sse_decode_box_autoadd_palette_dto(SseDeserializer deserializer);
+
+  @protected
+  PalettePicker sse_decode_box_autoadd_palette_picker(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PalettePlace sse_decode_box_autoadd_palette_place(
+    SseDeserializer deserializer,
+  );
 
   @protected
   PersonRow sse_decode_box_autoadd_person_row(SseDeserializer deserializer);
@@ -1525,6 +1639,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   Replacement sse_decode_box_autoadd_replacement(SseDeserializer deserializer);
+
+  @protected
+  Saved sse_decode_box_autoadd_saved(SseDeserializer deserializer);
 
   @protected
   SearchScope sse_decode_box_autoadd_search_scope(SseDeserializer deserializer);
@@ -1709,6 +1826,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   LibraryOverview sse_decode_library_overview(SseDeserializer deserializer);
 
   @protected
+  LinkRef sse_decode_link_ref(SseDeserializer deserializer);
+
+  @protected
   LinkTarget sse_decode_link_target(SseDeserializer deserializer);
 
   @protected
@@ -1785,6 +1905,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  List<LinkRef> sse_decode_list_link_ref(SseDeserializer deserializer);
+
+  @protected
   List<LinkedProviderRow> sse_decode_list_linked_provider_row(
     SseDeserializer deserializer,
   );
@@ -1814,6 +1937,21 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<String?> sse_decode_list_opt_String(SseDeserializer deserializer);
+
+  @protected
+  List<OutlineHeading> sse_decode_list_outline_heading(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<PaletteEntry> sse_decode_list_palette_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<PaletteSection> sse_decode_list_palette_section(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<PasskeyRow> sse_decode_list_passkey_row(SseDeserializer deserializer);
@@ -2025,6 +2163,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  PalettePicker? sse_decode_opt_box_autoadd_palette_picker(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PalettePlace? sse_decode_opt_box_autoadd_palette_place(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   PersonRow? sse_decode_opt_box_autoadd_person_row(
     SseDeserializer deserializer,
   );
@@ -2048,6 +2196,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  Saved? sse_decode_opt_box_autoadd_saved(SseDeserializer deserializer);
+
+  @protected
   ShareInfo? sse_decode_opt_box_autoadd_share_info(
     SseDeserializer deserializer,
   );
@@ -2069,7 +2220,28 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
+  OutlineHeading sse_decode_outline_heading(SseDeserializer deserializer);
+
+  @protected
+  PaletteContext sse_decode_palette_context(SseDeserializer deserializer);
+
+  @protected
   PaletteDto sse_decode_palette_dto(SseDeserializer deserializer);
+
+  @protected
+  PaletteEntry sse_decode_palette_entry(SseDeserializer deserializer);
+
+  @protected
+  PalettePicker sse_decode_palette_picker(SseDeserializer deserializer);
+
+  @protected
+  PalettePlace sse_decode_palette_place(SseDeserializer deserializer);
+
+  @protected
+  PaletteSection sse_decode_palette_section(SseDeserializer deserializer);
+
+  @protected
+  PaletteTarget sse_decode_palette_target(SseDeserializer deserializer);
 
   @protected
   PasskeyFailure sse_decode_passkey_failure(SseDeserializer deserializer);
@@ -2342,6 +2514,13 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    KansoLinking self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
     KansoLocks self,
     SseSerializer serializer,
@@ -2407,6 +2586,13 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void
   sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
     KansoLibrary self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    KansoLinking self,
     SseSerializer serializer,
   );
 
@@ -2483,6 +2669,13 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void
   sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
     KansoLibrary self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    KansoLinking self,
     SseSerializer serializer,
   );
 
@@ -2761,8 +2954,26 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_palette_context(
+    PaletteContext self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_palette_dto(
     PaletteDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_palette_picker(
+    PalettePicker self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_palette_place(
+    PalettePlace self,
     SseSerializer serializer,
   );
 
@@ -2804,6 +3015,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
     Replacement self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_box_autoadd_saved(Saved self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_search_scope(
@@ -3031,6 +3245,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_link_ref(LinkRef self, SseSerializer serializer);
+
+  @protected
   void sse_encode_link_target(LinkTarget self, SseSerializer serializer);
 
   @protected
@@ -3133,6 +3350,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_list_link_ref(List<LinkRef> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_linked_provider_row(
     List<LinkedProviderRow> self,
     SseSerializer serializer,
@@ -3179,6 +3399,24 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_list_opt_String(List<String?> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_outline_heading(
+    List<OutlineHeading> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_palette_entry(
+    List<PaletteEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_palette_section(
+    List<PaletteSection> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_passkey_row(
@@ -3436,6 +3674,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_palette_picker(
+    PalettePicker? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_palette_place(
+    PalettePlace? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_person_row(
     PersonRow? self,
     SseSerializer serializer,
@@ -3466,6 +3716,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_saved(Saved? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_box_autoadd_share_info(
     ShareInfo? self,
     SseSerializer serializer,
@@ -3490,7 +3743,37 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_outline_heading(
+    OutlineHeading self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_palette_context(
+    PaletteContext self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_palette_dto(PaletteDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_palette_entry(PaletteEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_palette_picker(PalettePicker self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_palette_place(PalettePlace self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_palette_section(
+    PaletteSection self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_palette_target(PaletteTarget self, SseSerializer serializer);
 
   @protected
   void sse_encode_passkey_failure(
@@ -3967,6 +4250,40 @@ class KansoCoreWire implements BaseWire {
       );
   late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary =
       _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibraryPtr
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+
+  void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    ffi.Pointer<ffi.Void> ptr,
+  ) {
+    return _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+      ptr,
+    );
+  }
+
+  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinkingPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+        'frbgen_kanso_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking',
+      );
+  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking =
+      _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinkingPtr
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+
+  void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    ffi.Pointer<ffi.Void> ptr,
+  ) {
+    return _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+      ptr,
+    );
+  }
+
+  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinkingPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+        'frbgen_kanso_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking',
+      );
+  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking =
+      _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinkingPtr
           .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 
   void

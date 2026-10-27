@@ -20,6 +20,7 @@ import '../test/core/bridge/suites/diagnostics_suite.dart';
 import '../test/core/bridge/suites/editor_suite.dart';
 import '../test/core/bridge/suites/gallery_suite.dart';
 import '../test/core/bridge/suites/library_suite.dart';
+import '../test/core/bridge/suites/linking_suite.dart';
 import '../test/core/bridge/suites/locks_suite.dart';
 import '../test/core/bridge/suites/renderer_suite.dart';
 import '../test/core/bridge/suites/shared_suite.dart';
@@ -47,6 +48,7 @@ void main() {
   }
 
   librarySuite(openDeviceLibrary);
+  linkingSuite(openDeviceLibrary);
   locksSuite(
     openDeviceLibrary,
     answer: biometricAnswerOf(
