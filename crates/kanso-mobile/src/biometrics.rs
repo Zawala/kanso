@@ -252,11 +252,14 @@ impl Item {
 
     /// `None` for an item this version can't read.
     fn decode(text: &str) -> Option<Item> {
-        let mut lines = text.lines();
-        if lines.next() != Some(ITEM_V1) {
+        // `split` rather than `lines`: `encode` joins with newlines, so a
+        // trailing field that is empty (no sealed keys yet) is a line of its
+        // own, which `lines` would drop.
+        let mut parts = text.split('\n');
+        if parts.next() != Some(ITEM_V1) {
             return None;
         }
-        let mut next = || URL_SAFE_NO_PAD.decode(lines.next()?).ok();
+        let mut next = || URL_SAFE_NO_PAD.decode(parts.next()?).ok();
         let public = next()?.try_into().ok()?;
         let sealed_private = next()?;
         let ephemeral = next()?.try_into().ok()?;
@@ -526,6 +529,22 @@ mod tests {
         let ticket = issue(Kind::Unlock, &library.inner, Instant::now());
         drop(library);
         assert_eq!(deliver(ticket, status::OK, Some(&B)), answer::NO_TICKET);
+    }
+
+    // no-prop-test: an item with nothing sealed yet is still read back.
+    #[test]
+    fn an_item_with_no_sealed_keys_round_trips() {
+        let item = Item {
+            public: [7; KEY_LEN],
+            sealed_private: Vec::new(),
+            ephemeral: [9; KEY_LEN],
+            sealed_keys: Vec::new(),
+        };
+        let back = Item::decode(&item.encode()).expect("an item with empty fields reads back");
+        assert_eq!(back.public, item.public);
+        assert_eq!(back.sealed_private, item.sealed_private);
+        assert_eq!(back.ephemeral, item.ephemeral);
+        assert_eq!(back.sealed_keys, item.sealed_keys);
     }
 
     proptest::proptest! {
