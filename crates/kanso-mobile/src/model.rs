@@ -477,6 +477,33 @@ pub struct BuiltinTheme {
     pub tokens: ThemeTokens,
 }
 
+/// An icon the phone draws, in an icon theme.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThemedIcon {
+    /// The icon's name in the Lucide set, as the app names it
+    /// (`circle-question-mark`).
+    pub name: String,
+    /// The theme's SVG for it; `None` where the theme leaves the icon out
+    /// and Kanso's own Lucide icon is drawn.
+    pub svg: Option<String>,
+}
+
+/// A built-in icon theme: who made it and a few of its icons.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IconThemeRow {
+    /// The theme's folder name: `lucide`, `phosphor`.
+    pub id: String,
+    pub name: String,
+    /// Empty when the theme names none.
+    pub author: String,
+    /// An SPDX licence identifier; empty when the theme names none.
+    pub license: String,
+    pub source: Option<String>,
+    pub description: Option<String>,
+    /// The icons that show what the theme looks like, in a fixed order.
+    pub preview: Vec<ThemedIcon>,
+}
+
 /// A run of a note's source in a theme's colors. Text between runs, and any
 /// attribute a run leaves `None`, is drawn in the theme's plain text.
 #[derive(Clone, Debug, PartialEq, Eq)]

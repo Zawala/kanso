@@ -39,6 +39,14 @@ abstract class KansoRenderer implements RustOpaqueInterface {
     end: end,
   );
 
+  static Future<List<ThemedIcon>> iconThemeIcons({required String id}) =>
+      KansoCore.instance.api.crateApiRendererKansoRendererIconThemeIcons(
+        id: id,
+      );
+
+  static Future<List<IconThemeRow>> iconThemes() =>
+      KansoCore.instance.api.crateApiRendererKansoRendererIconThemes();
+
   static Future<SvgRow> mathSvg({
     required String source,
     required bool display,

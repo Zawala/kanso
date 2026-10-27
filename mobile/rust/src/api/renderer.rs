@@ -2,8 +2,8 @@
 
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
-    BuiltinTheme, DiagramKind, KansoError, PaletteDto, Renderer, SpanRow, StyledRun, SvgRow,
-    ThemeTokens,
+    BuiltinTheme, DiagramKind, IconThemeRow, KansoError, PaletteDto, Renderer, SpanRow, StyledRun,
+    SvgRow, ThemeTokens, ThemedIcon,
 };
 
 #[frb(opaque)]
@@ -32,6 +32,14 @@ impl KansoRenderer {
 
     pub fn builtin_theme_tokens(id: String) -> Result<ThemeTokens, KansoError> {
         Renderer::builtin_theme_tokens(id)
+    }
+
+    pub fn icon_themes() -> Result<Vec<IconThemeRow>, KansoError> {
+        Renderer::icon_themes()
+    }
+
+    pub fn icon_theme_icons(id: String) -> Result<Vec<ThemedIcon>, KansoError> {
+        Renderer::icon_theme_icons(id)
     }
 
     pub fn styled_runs(

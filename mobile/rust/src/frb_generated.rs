@@ -43,7 +43,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 759027719;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1979329557;
 
 // Section: executor
 
@@ -1414,6 +1414,71 @@ fn wire__crate__api__renderer__KansoRenderer_highlight_impl(
         },
     )
 }
+fn wire__crate__api__renderer__KansoRenderer_icon_theme_icons_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoRenderer_icon_theme_icons",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let output_ok = crate::api::renderer::KansoRenderer::icon_theme_icons(api_id)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__renderer__KansoRenderer_icon_themes_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoRenderer_icon_themes",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let output_ok = crate::api::renderer::KansoRenderer::icon_themes()?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__renderer__KansoRenderer_math_svg_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2150,6 +2215,16 @@ const _: fn() = || {
         let _: Vec<crate::api::types::Range16> = Hit.title_ranges;
         let _: Vec<crate::api::types::Range16> = Hit.snippet_ranges;
     }
+    {
+        let IconThemeRow = None::<crate::api::types::IconThemeRow>.unwrap();
+        let _: String = IconThemeRow.id;
+        let _: String = IconThemeRow.name;
+        let _: String = IconThemeRow.author;
+        let _: String = IconThemeRow.license;
+        let _: Option<String> = IconThemeRow.source;
+        let _: Option<String> = IconThemeRow.description;
+        let _: Vec<crate::api::types::ThemedIcon> = IconThemeRow.preview;
+    }
     match None::<crate::api::types::KansoError>.unwrap() {
         crate::api::types::KansoError::NotFound => {}
         crate::api::types::KansoError::Locked => {}
@@ -2398,6 +2473,11 @@ const _: fn() = || {
         let _: Vec<crate::api::types::SyntaxStyleRow> = ThemeTokens.syntax;
         let _: crate::api::types::PaletteDto = ThemeTokens.palette;
     }
+    {
+        let ThemedIcon = None::<crate::api::types::ThemedIcon>.unwrap();
+        let _: String = ThemedIcon.name;
+        let _: Option<String> = ThemedIcon.svg;
+    }
 };
 
 // Section: related_funcs
@@ -2641,6 +2721,28 @@ impl SseDecode for i64 {
     }
 }
 
+impl SseDecode for crate::api::types::IconThemeRow {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_name = <String>::sse_decode(deserializer);
+        let mut var_author = <String>::sse_decode(deserializer);
+        let mut var_license = <String>::sse_decode(deserializer);
+        let mut var_source = <Option<String>>::sse_decode(deserializer);
+        let mut var_description = <Option<String>>::sse_decode(deserializer);
+        let mut var_preview = <Vec<crate::api::types::ThemedIcon>>::sse_decode(deserializer);
+        return crate::api::types::IconThemeRow {
+            id: var_id,
+            name: var_name,
+            author: var_author,
+            license: var_license,
+            source: var_source,
+            description: var_description,
+            preview: var_preview,
+        };
+    }
+}
+
 impl SseDecode for crate::api::types::KansoError {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2757,6 +2859,18 @@ impl SseDecode for Vec<crate::api::types::Hit> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::types::Hit>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::IconThemeRow> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::IconThemeRow>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -2969,6 +3083,18 @@ impl SseDecode for Vec<crate::api::types::TagRow> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::types::TagRow>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::ThemedIcon> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::ThemedIcon>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -3613,6 +3739,18 @@ impl SseDecode for crate::api::types::ThemeTokens {
     }
 }
 
+impl SseDecode for crate::api::types::ThemedIcon {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_name = <String>::sse_decode(deserializer);
+        let mut var_svg = <Option<String>>::sse_decode(deserializer);
+        return crate::api::types::ThemedIcon {
+            name: var_name,
+            svg: var_svg,
+        };
+    }
+}
+
 impl SseDecode for u16 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3735,61 +3873,73 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        29 => wire__crate__api__renderer__KansoRenderer_math_svg_impl(
+        29 => wire__crate__api__renderer__KansoRenderer_icon_theme_icons_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        30 => wire__crate__api__renderer__KansoRenderer_preview_html_impl(
+        30 => wire__crate__api__renderer__KansoRenderer_icon_themes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        31 => wire__crate__api__renderer__KansoRenderer_set_fonts_impl(
+        31 => wire__crate__api__renderer__KansoRenderer_math_svg_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        32 => wire__crate__api__renderer__KansoRenderer_styled_runs_impl(
+        32 => wire__crate__api__renderer__KansoRenderer_preview_html_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        33 => wire__crate__api__renderer__KansoRenderer_theme_tokens_impl(
+        33 => wire__crate__api__renderer__KansoRenderer_set_fonts_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        34 => {
+        34 => wire__crate__api__renderer__KansoRenderer_styled_runs_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        35 => wire__crate__api__renderer__KansoRenderer_theme_tokens_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        36 => {
             wire__crate__api__sync__KansoSync_check_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        35 => {
+        37 => {
             wire__crate__api__sync__KansoSync_default_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        36 => wire__crate__api__sync__KansoSync_sign_in_password_impl(
+        38 => wire__crate__api__sync__KansoSync_sign_in_password_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        37 => wire__crate__api__sync__KansoSync_sign_out_impl(port, ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__sync__KansoSync_status_impl(port, ptr, rust_vec_len, data_len),
-        39 => {
+        39 => wire__crate__api__sync__KansoSync_sign_out_impl(port, ptr, rust_vec_len, data_len),
+        40 => wire__crate__api__sync__KansoSync_status_impl(port, ptr, rust_vec_len, data_len),
+        41 => {
             wire__crate__api__sync__KansoSync_status_stream_impl(port, ptr, rust_vec_len, data_len)
         }
-        40 => wire__crate__api__sync__KansoSync_sync_now_impl(port, ptr, rust_vec_len, data_len),
-        41 => {
+        42 => wire__crate__api__sync__KansoSync_sync_now_impl(port, ptr, rust_vec_len, data_len),
+        43 => {
             wire__crate__api__diagnostics__backup_excluded_impl(port, ptr, rust_vec_len, data_len)
         }
-        42 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
-        44 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
+        45 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3979,6 +4129,32 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::Hit>>
     for crate::api::types::Hit
 {
     fn into_into_dart(self) -> FrbWrapper<crate::api::types::Hit> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::IconThemeRow> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.id.into_into_dart().into_dart(),
+            self.0.name.into_into_dart().into_dart(),
+            self.0.author.into_into_dart().into_dart(),
+            self.0.license.into_into_dart().into_dart(),
+            self.0.source.into_into_dart().into_dart(),
+            self.0.description.into_into_dart().into_dart(),
+            self.0.preview.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::IconThemeRow>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::IconThemeRow>>
+    for crate::api::types::IconThemeRow
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::IconThemeRow> {
         self.into()
     }
 }
@@ -4855,6 +5031,27 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::ThemeTokens
         self.into()
     }
 }
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::ThemedIcon> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.name.into_into_dart().into_dart(),
+            self.0.svg.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::ThemedIcon>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::ThemedIcon>>
+    for crate::api::types::ThemedIcon
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::ThemedIcon> {
+        self.into()
+    }
+}
 
 impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -5057,6 +5254,19 @@ impl SseEncode for i64 {
     }
 }
 
+impl SseEncode for crate::api::types::IconThemeRow {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.name, serializer);
+        <String>::sse_encode(self.author, serializer);
+        <String>::sse_encode(self.license, serializer);
+        <Option<String>>::sse_encode(self.source, serializer);
+        <Option<String>>::sse_encode(self.description, serializer);
+        <Vec<crate::api::types::ThemedIcon>>::sse_encode(self.preview, serializer);
+    }
+}
+
 impl SseEncode for crate::api::types::KansoError {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5147,6 +5357,16 @@ impl SseEncode for Vec<crate::api::types::Hit> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::types::Hit>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::IconThemeRow> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::IconThemeRow>::sse_encode(item, serializer);
         }
     }
 }
@@ -5319,6 +5539,16 @@ impl SseEncode for Vec<crate::api::types::TagRow> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::types::TagRow>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::ThemedIcon> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::ThemedIcon>::sse_encode(item, serializer);
         }
     }
 }
@@ -5823,6 +6053,14 @@ impl SseEncode for crate::api::types::ThemeTokens {
         <u8>::sse_encode(self.selection_alpha, serializer);
         <Vec<crate::api::types::SyntaxStyleRow>>::sse_encode(self.syntax, serializer);
         <crate::api::types::PaletteDto>::sse_encode(self.palette, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::ThemedIcon {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.name, serializer);
+        <Option<String>>::sse_encode(self.svg, serializer);
     }
 }
 
