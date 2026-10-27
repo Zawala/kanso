@@ -70,7 +70,7 @@ pub fn backlinks(
             ));
         }
     }
-    Ok(merge_by_recency(store, found, added)?)
+    merge_by_recency(store, found, added)
 }
 
 /// Live notes outside the trash that mention note `id`'s title as words of
