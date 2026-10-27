@@ -55,9 +55,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::ffi::CString;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use jni::objects::{JClass, JObject, JString};
+use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jint, jlong};
 use jni::{Env, EnvUnowned};
+use zeroize::Zeroize;
 
 /// Set once the verifier and the Keystore bridge are set up.
 static DONE: AtomicBool = AtomicBool::new(false);
@@ -99,6 +100,36 @@ fn setup(env: &mut Env, context: JObject) -> Result<(), InitError> {
     kanso_tls::init_android(env, context).map_err(|err| InitError(err.to_string()))?;
     DONE.store(true, Ordering::Release);
     Ok(())
+}
+
+/// `KansoNative.biometricAnswer(ticket: Long, status: Int, secret: ByteArray?): Int`:
+/// the native lock plugin's answer to a biometric check, handed to
+/// [`crate::biometric::kanso_biometric_answer`]'s logic. `secret` is the
+/// platform's 32-byte secret when `status` is `0`, else `null`; the copy
+/// made here is zeroed before returning. The caller zeroes its own.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_kanso_kanso_KansoNative_biometricAnswer<'caller>(
+    mut unowned: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    ticket: jlong,
+    status: jint,
+    secret: JByteArray<'caller>,
+) -> jint {
+    unowned
+        .with_env(|env| -> Result<jint, jni::errors::Error> {
+            let mut bytes = if secret.is_null() {
+                None
+            } else {
+                Some(env.convert_byte_array(&secret)?)
+            };
+            let ticket = u64::from_ne_bytes(ticket.to_ne_bytes());
+            let answer = crate::biometric::answer_with(ticket, status, bytes.as_deref());
+            if let Some(bytes) = bytes.as_mut() {
+                bytes.zeroize();
+            }
+            Ok(answer)
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
 /// The sync with no app, for WorkManager (`background::kanso_background_sync`).

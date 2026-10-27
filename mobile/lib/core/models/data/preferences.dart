@@ -50,6 +50,10 @@ abstract class Preferences with _$Preferences {
     /// has been shown.
     @Default(false) bool backupNoticeSeen,
 
+    /// Whether the offer to unlock locked notes with a biometric, made once
+    /// after the first password unlock, has been shown.
+    @Default(false) bool biometricOfferSeen,
+
     /// The notebook new notes go in, unless they are made from a notebook's
     /// own list. Null, or one that is gone or locked, is the first notebook.
     String? defaultNotebookId,

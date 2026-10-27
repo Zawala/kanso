@@ -554,6 +554,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  kanso_lock:
+    dependency: "direct main"
+    description:
+      path: "plugins/kanso_lock"
+      relative: true
+    source: path
+    version: "0.1.0"
   kanso_passkeys:
     dependency: "direct main"
     description:
