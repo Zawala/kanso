@@ -32,8 +32,8 @@
 
 pub mod api;
 pub mod background;
-pub mod capture;
 pub mod biometric;
+pub mod capture;
 pub mod passkey;
 
 #[cfg(target_os = "android")]

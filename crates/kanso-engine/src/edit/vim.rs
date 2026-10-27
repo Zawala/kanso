@@ -18,11 +18,15 @@
 //! `u` and Ctrl-R; one register, kept in step with the system clipboard;
 //! and `:w`, `:q`, `:wq`, `:x` and `:N`.
 //!
+//! [`Session`] is an editor's side of it: the bookkeeping around the state
+//! machine that doesn't draw anything.
+//!
 //! Offsets are UTF-8 byte offsets. A "character" to the cursor is a
 //! grapheme cluster, so an emoji or an accented letter is one step.
 
 mod motion;
 mod object;
+mod session;
 #[cfg(test)]
 mod tests;
 mod text;
@@ -32,6 +36,7 @@ use std::ops::Range;
 use motion::{Context as MotionContext, FindKind, Kind, Motion, Want};
 use text::*;
 
+pub use session::{Base, Input, Keyed, Left, Route, Session, Step};
 pub use text::{clamp_normal, diff};
 
 /// How long the character (grapheme) `text` starts with is; 0 when it
@@ -46,10 +51,14 @@ const MAX_COUNT: usize = 10_000;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Mode {
+    /// `NORMAL`: keys are commands.
     #[default]
     Normal,
+    /// `INSERT`: keys are text.
     Insert,
+    /// `VISUAL`: an operator takes the selection.
     Visual,
+    /// `V-LINE`: operators take whole lines of the selection.
     VisualLine,
 }
 
@@ -64,6 +73,8 @@ impl Mode {
         }
     }
 
+    /// Whether an operator here takes the selection (`VISUAL` or
+    /// `V-LINE`).
     pub fn is_visual(self) -> bool {
         matches!(self, Mode::Visual | Mode::VisualLine)
     }
@@ -73,15 +84,22 @@ impl Mode {
 /// get here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
+    /// A character key.
     Char(char),
+    /// Escape: leaves Insert mode, or drops what was pending.
     Esc,
+    /// As `+` in Normal mode: the next line's start.
     Enter,
+    /// As `h` in Normal mode.
     Backspace,
+    /// Vim has no use for Tab; the editor keeps its own indenting.
     Tab,
+    /// The arrow keys, as `h j k l`.
     Left,
     Right,
     Up,
     Down,
+    /// As `0` and `$`.
     Home,
     End,
     /// Ctrl-R.
@@ -118,7 +136,9 @@ pub struct Outcome {
     pub cursor: usize,
     /// In Visual modes, the text to show selected.
     pub selection: Option<Range<usize>>,
+    /// The mode to show afterwards.
     pub mode: Mode,
+    /// What the editor does for the command: undo, redo, copy, save, close.
     pub effects: Vec<Effect>,
     /// Whether the key was Vim's. Escape in Normal mode with nothing
     /// pending isn't, so it does what it does without Vim.
@@ -128,7 +148,9 @@ pub struct Outcome {
 /// What the footer shows: the mode, and a command being typed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Status {
+    /// The mode the footer names.
     pub mode: Mode,
+    /// The command being typed, as `:` and its text, or the keys so far.
     pub pending: String,
 }
 
@@ -233,7 +255,7 @@ struct Change {
 
 /// The Insert mode a command began.
 #[derive(Clone, Debug)]
-struct Session {
+struct Insertion {
     keys: Vec<Key>,
     count: Option<usize>,
     repeat: Repeat,
@@ -270,7 +292,7 @@ pub struct Vim {
     clip_seen: Option<String>,
     last_find: Option<(FindKind, char)>,
     last_change: Option<Change>,
-    session: Option<Session>,
+    session: Option<Insertion>,
     /// The ex command being typed after `:`.
     ex: Option<String>,
     /// While `.` replays a change, which mustn't record itself.
@@ -292,14 +314,18 @@ enum Span {
 }
 
 impl Vim {
+    /// A state machine in Normal mode with nothing pending, as when a note
+    /// opens.
     pub fn new() -> Vim {
         Vim::default()
     }
 
+    /// The mode the editor is in.
     pub fn mode(&self) -> Mode {
         self.mode
     }
 
+    /// What the footer shows: the mode and a command being typed.
     pub fn status(&self) -> Status {
         Status {
             mode: self.mode,
@@ -477,7 +503,7 @@ impl Vim {
     /// Into Insert mode at `at`, from the command typed so far.
     fn enter_insert(&mut self, work: &mut Work, at: usize, repeat: Repeat) {
         work.cursor = at;
-        self.session = Some(Session {
+        self.session = Some(Insertion {
             keys: std::mem::take(&mut self.keys),
             count: self.total_count(),
             repeat,
@@ -1085,7 +1111,7 @@ impl Vim {
 
     /// The end of Insert mode: a count types the text again, and the
     /// cursor steps back onto the last character typed.
-    fn finish_insert(&mut self, work: &mut Work, inserted: &Inserted, session: Option<&Session>) {
+    fn finish_insert(&mut self, work: &mut Work, inserted: &Inserted, session: Option<&Insertion>) {
         if let Some(session) = session {
             let extra = session.count.unwrap_or(1).clamp(1, MAX_COUNT) - 1;
             if extra > 0 {

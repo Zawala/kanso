@@ -174,9 +174,7 @@ impl SettingsPage {
 pub const MASK: &str = "••••••••";
 
 pub use kanso_engine::sync::StatusLine;
-pub use kanso_engine::sync::words::{
-    NOT_SIGNED_IN, SIGNED_OUT_DETAIL, SYNC_INTERVALS, interval_label, problem_help, sync_every,
-};
+pub use kanso_engine::sync::words::{SYNC_INTERVALS, interval_label, problem_help};
 
 /// The Account page's status (see [`kanso_engine::sync::words::sync_status_line`]),
 /// for these sync settings.
@@ -2033,14 +2031,14 @@ mod tests {
     use proptest::test_runner::FileFailurePersistence;
 
     use super::{
-        FONT_SIZES, NOT_SIGNED_IN, SIGNED_OUT_DETAIL, SYNC_INTERVALS, SettingsPage,
-        api_status_line, display_path, interval_label, mcp_endpoint, parse_port, parse_username,
-        problem_help, step_font_size, sync_every, sync_status_line,
+        FONT_SIZES, SYNC_INTERVALS, SettingsPage, api_status_line, display_path, interval_label,
+        mcp_endpoint, parse_port, parse_username, problem_help, step_font_size, sync_status_line,
     };
     use crate::config::{DEFAULT_FONT_SIZE, SyncSettings};
     use crate::grouping::utc_label;
     use crate::services::{AccountState, ApiState, SyncState, strategies};
     use crate::sidebar::{Tone, sync_line};
+    use kanso_engine::sync::words::{NOT_SIGNED_IN, SIGNED_OUT_DETAIL, sync_every};
 
     /// Shortcuts in Settings' text read as this platform writes them.
     #[test]

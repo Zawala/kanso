@@ -1,9 +1,13 @@
 //! Edits to the Markdown source without a window: what the formatting
 //! toolbar does ([`markdown`]), auto-pairing as you type ([`pairing`]), Tab
-//! and Enter in lists ([`list`]) and tables ([`table`]), and undoing and
-//! redoing them ([`history`]). Each is pure: the
+//! and Enter in lists ([`list`]) and tables ([`table`]), undoing and
+//! redoing them ([`history`]), what a paste puts in the note ([`paste`]) and
+//! image widths and drawings ([`image`]). Each is pure: the
 //! note's text and the selection in, at most one [`Edit`] out, which the
 //! editor applies as one change, so one undo step reverts it.
+//!
+//! Vim keys ([`vim`]) are the same kind of thing, a key at a time: the
+//! state machine, and the [`vim::Session`] an editor holds it in.
 //!
 //! Offsets are UTF-8 byte offsets, as the desktop editor's selection is. An
 //! editor that counts in UTF-16 units converts with [`crate::text`].
@@ -15,10 +19,13 @@
 use std::ops::Range;
 
 pub mod history;
+pub mod image;
 pub mod list;
 pub mod markdown;
 pub mod pairing;
+pub mod paste;
 pub mod table;
+pub mod vim;
 
 /// The selected bytes of a text, `start..end` with an empty range for a
 /// caret.

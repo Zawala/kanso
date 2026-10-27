@@ -22,8 +22,8 @@ use crate::{Failure, Job, Kind, Outcome, Palette, Rgb, Svg, escape, render_block
 
 pub mod app;
 pub use app::{
-    AppMode, DueChip, DueTone, HeadingId, QueryResult, QueryRow, QueryTable, QueryViews, TaskSlot,
-    heading_slug, headings, is_allowed_link, is_allowed_source, sanitize,
+    AppMode, DueChip, DueTone, HeadingId, QueryResult, QueryRow, QueryTable, QueryViews, TaskBox,
+    TaskSlot, heading_slug, headings, is_allowed_link, is_allowed_source, sanitize, task_boxes,
 };
 
 /// An attachment's content type and bytes, by ID (`file:…`).
