@@ -88,6 +88,30 @@ fn biometrics_open_the_notes_after_a_check() {
     assert_eq!(locks.unlock(LOCK_PASSWORD.into()), Ok(true));
 }
 
+// no-prop-test: one ordering of a check and a lock, the race the generation
+// counter closes.
+#[test]
+fn a_check_answered_after_another_lock_opens_nothing() {
+    let phone = lone_phone();
+    let locks = phone.library.locks();
+    let id = note(&phone.library, "Plan", SECRET);
+    locks.lock_note(&id, LOCK_PASSWORD.into()).unwrap();
+    assert_eq!(enroll(&locks, &B), answer::APPLIED);
+    locks.lock().unwrap();
+
+    // The check starts, the app goes to the background and locks again,
+    // then the check's answer arrives: it is for a lock that is over.
+    let ticket = locks.begin_biometric_unlock().unwrap().unwrap();
+    locks.lock_for_background().unwrap();
+    biometrics::deliver(ticket, status::OK, Some(&B));
+    assert!(!locks.is_unlocked().unwrap());
+    assert_eq!(body(&phone, &id), None);
+
+    // A check started after the lock still opens the notes.
+    assert_eq!(unlock(&locks, &B), answer::APPLIED);
+    assert_eq!(body(&phone, &id).as_deref(), Some(SECRET));
+}
+
 // no-prop-test: the ID is one value read before and after a sign-in.
 #[test]
 fn the_library_id_is_stable_and_not_the_device_name() {

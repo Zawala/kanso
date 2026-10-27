@@ -90,11 +90,13 @@ class BiometricKeys(
             // Nothing to delete, or the Keystore is busy: the preferences go
             // anyway, and the next enrolment replaces the key.
         }
+        // Waited for, as a store is: a forgotten secret must not come back
+        // if the process dies before an asynchronous write lands.
         preferences
             .edit()
             .remove(prefKey(libraryId, "ct"))
             .remove(prefKey(libraryId, "iv"))
-            .apply()
+            .commit()
     }
 
     private fun generate(alias: String): SecretKey {
