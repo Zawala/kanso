@@ -170,10 +170,8 @@ String _placePath(ListPlace place) => switch (place) {
   ListPlace_Trash() => '/trash',
   ListPlace_Notebook(:final id) => '/notebooks/${Uri.encodeComponent(id)}',
   ListPlace_Tag(:final id) => '/tags/${Uri.encodeComponent(id)}',
-  ListPlace_Status(:final status) =>
-    '/statuses/${Uri.encodeComponent(status)}',
-  ListPlace_TagPath(:final path) =>
-    '/tag-paths/${Uri.encodeComponent(path)}',
+  ListPlace_Status(:final status) => '/statuses/${Uri.encodeComponent(status)}',
+  ListPlace_TagPath(:final path) => '/tag-paths/${Uri.encodeComponent(path)}',
 };
 
 String _searchQuery(String query, SearchScopeKind scope, String? notebookId) {

@@ -156,7 +156,9 @@ void main() {
       final fixtures = PageFixtures();
       final app = await _pump(tester, fixtures, at: _dailyAt);
       await open(tester);
-      await tester.tap(find.bySemanticsLabel('Monday, October 12, 2026, has a note'));
+      await tester.tap(
+        find.bySemanticsLabel('Monday, October 12, 2026, has a note'),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(CalendarSheet), findsNothing);
       expect(fixtures.journal.calls, <String>['day:2026-10-12']);

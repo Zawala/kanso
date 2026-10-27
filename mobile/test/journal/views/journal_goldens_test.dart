@@ -74,10 +74,25 @@ final List<_Screen> _screens = <_Screen>[
       await tester.pumpAndSettle();
     },
   ),
+  _Screen(
+    'template_new',
+    at: '/notes',
+    interact: (tester, app) async {
+      await _tapLabel(tester, 'New');
+      await tester.tap(find.text('New from template…'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New template'));
+      await tester.pumpAndSettle();
+    },
+  ),
   const _Screen('board_notes', at: '/notes/board'),
   const _Screen('board_tasks', at: '/notes/board?kind=tasks'),
   const _Screen('board_move', at: '/notes/board', interact: _openMove),
-  const _Screen('settings_journal', at: '/notes', interact: _scrollSettingsToEnd),
+  const _Screen(
+    'settings_journal',
+    at: '/notes',
+    interact: _scrollSettingsToEnd,
+  ),
 ];
 
 void main() {

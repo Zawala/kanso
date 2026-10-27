@@ -31,8 +31,7 @@ class BoardColumnView extends StatelessWidget {
   final void Function(CardKey card) onOpen;
   final void Function(CardKey card) onMove;
   final void Function(BoardDrag drag, BoardLane to) onDrop;
-  final void Function({required CardKey card, required bool checked})
-      onToggle;
+  final void Function({required CardKey card, required bool checked}) onToggle;
 
   @override
   Widget build(BuildContext context) {

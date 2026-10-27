@@ -21,7 +21,8 @@ class FixtureBoardRepository implements BoardRepository {
           key: CardKey.note(id: MockIds.weeklyReview),
           title: 'Weekly review',
           noteTitle: '',
-          snippet: 'Finished the sync conflict screen and moved the Garden '
+          snippet:
+              'Finished the sync conflict screen and moved the Garden '
               'notes to next week.',
           checked: false,
           locked: false,
@@ -40,7 +41,8 @@ class FixtureBoardRepository implements BoardRepository {
           key: CardKey.note(id: MockIds.syncDesign),
           title: 'Sync design notes',
           noteTitle: '',
-          snippet: 'Every device keeps a full copy. A change is encrypted '
+          snippet:
+              'Every device keeps a full copy. A change is encrypted '
               'before it leaves the device.',
           checked: false,
           locked: false,
@@ -69,7 +71,7 @@ class FixtureBoardRepository implements BoardRepository {
         title: 'Call about the allotment',
         noteTitle: 'Weekly review',
         snippet: '',
-        due: 'Today 09:00',
+        due: '2026-10-27T09:00',
         checked: false,
         locked: false,
       ),
@@ -96,6 +98,7 @@ class FixtureBoardRepository implements BoardRepository {
         title: 'Plan the beds',
         noteTitle: 'Weekly review',
         snippet: '',
+        due: '2026-10-25',
         checked: true,
         locked: false,
       ),
@@ -217,9 +220,9 @@ class FixtureBoardRepository implements BoardRepository {
         case BoardLane_Status(:final status):
           noteCards[status]!.add(found);
         case BoardLane_Todo():
-          todo.add(found.copyWithChecked(false));
+          todo.add(found.copyWithChecked(checked: false));
         case BoardLane_Done():
-          done.add(found.copyWithChecked(true));
+          done.add(found.copyWithChecked(checked: true));
       }
     }
     return const Right<ApplicationError, CardMoved>(CardMoved.changed);
@@ -227,7 +230,7 @@ class FixtureBoardRepository implements BoardRepository {
 }
 
 extension on BoardCard {
-  BoardCard copyWithChecked(bool checked) => BoardCard(
+  BoardCard copyWithChecked({required bool checked}) => BoardCard(
     key: key,
     title: title,
     noteTitle: noteTitle,

@@ -230,12 +230,12 @@ $PlaceLocationCopyWith<PlaceLocation> get copyWith => _$PlaceLocationCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlaceLocation&&(identical(other.place, place) || other.place == place)&&(identical(other.noteId, noteId) || other.noteId == noteId)&&const DeepCollectionEquality().equals(other.board, board));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlaceLocation&&(identical(other.place, place) || other.place == place)&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.board, board) || other.board == board));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,place,noteId,const DeepCollectionEquality().hash(board));
+int get hashCode => Object.hash(runtimeType,place,noteId,board);
 
 @override
 String toString() {

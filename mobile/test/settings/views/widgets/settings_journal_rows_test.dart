@@ -21,7 +21,10 @@ Future<SettingsBlocs> _pump(
 }) async {
   final page = fixtures ?? PageFixtures();
   final blocs = await SettingsBlocs.start(fixtures: page);
-  registerPageBlocs(FixtureLibraryRepository(), null, page);
+  registerPageBlocsWithFixtures(
+    FixtureLibraryRepository(),
+    fixtures: page,
+  );
   await pumpRouted(
     tester,
     blocs.provide(const SettingsPane()),

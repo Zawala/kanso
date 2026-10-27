@@ -16,6 +16,9 @@ class FixtureReminderNotifier implements ReminderNotifier {
 
   /// What `requestPermission` turns the permission into.
   bool allow = true;
+  Error? cancelFailure;
+  Error? showFailure;
+  Error? scheduleFailure;
   int requests = 0;
   int cancels = 0;
   final List<List<ReminderNote>> shown = <List<ReminderNote>>[];
@@ -38,15 +41,28 @@ class FixtureReminderNotifier implements ReminderNotifier {
   }
 
   @override
-  Future<void> schedule(List<ReminderNote> reminders) async =>
-      scheduled.add(reminders);
+  Future<void> schedule(List<ReminderNote> reminders) async {
+    if (scheduleFailure case final failure?) {
+      throw failure;
+    }
+    scheduled.add(reminders);
+  }
 
   @override
-  Future<void> show(List<ReminderNote> reminders) async =>
-      shown.add(reminders);
+  Future<void> show(List<ReminderNote> reminders) async {
+    if (showFailure case final failure?) {
+      throw failure;
+    }
+    shown.add(reminders);
+  }
 
   @override
-  Future<void> cancelAll() async => cancels++;
+  Future<void> cancelAll() async {
+    cancels++;
+    if (cancelFailure case final failure?) {
+      throw failure;
+    }
+  }
 
   @override
   Future<List<ReminderResponse>> takeResponses() async {

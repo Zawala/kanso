@@ -216,9 +216,7 @@ class BoardPane extends StatelessWidget {
           context.read<BoardBloc>().add(
             BoardEvent.cardMoved(
               card: card,
-              lane: checked
-                  ? const BoardLane.done()
-                  : const BoardLane.todo(),
+              lane: checked ? const BoardLane.done() : const BoardLane.todo(),
             ),
           ),
     );
@@ -277,8 +275,7 @@ class _Columns extends StatelessWidget {
   final void Function(CardKey card) onOpen;
   final void Function(CardKey card) onMove;
   final void Function(BoardDrag drag, BoardLane to) onDrop;
-  final void Function({required CardKey card, required bool checked})
-      onToggle;
+  final void Function({required CardKey card, required bool checked}) onToggle;
 
   @override
   Widget build(BuildContext context) {

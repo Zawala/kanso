@@ -14,6 +14,14 @@ impl KansoLibrary {
         self.0.reminders_plan(now_utc_ms, offset_ms, can_notify)
     }
 
+    pub fn reminders_forget(&self, keys: Vec<String>, now_utc_ms: i64) -> Result<(), KansoError> {
+        self.0.reminders_forget(keys, now_utc_ms)
+    }
+
+    pub fn reminders_forget_future(&self, now_utc_ms: i64) -> Result<(), KansoError> {
+        self.0.reminders_forget_future(now_utc_ms)
+    }
+
     pub fn reminder_answer(
         &self,
         key: String,

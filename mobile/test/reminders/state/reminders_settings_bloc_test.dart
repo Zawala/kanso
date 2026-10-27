@@ -53,6 +53,19 @@ void main() {
         ReminderPlan(showNow: [], schedule: []),
       ),
     );
+    when(
+      () => reminders.forget(
+        keys: any(named: 'keys'),
+        nowUtcMs: any(named: 'nowUtcMs'),
+      ),
+    ).thenAnswer(
+      (_) async => const Right<ApplicationError, void>(null),
+    );
+    when(
+      () => reminders.forgetFuture(nowUtcMs: any(named: 'nowUtcMs')),
+    ).thenAnswer(
+      (_) async => const Right<ApplicationError, void>(null),
+    );
     coordinator = RemindersCoordinator(
       preferences,
       reminders,
@@ -81,15 +94,16 @@ void main() {
     test('turning it on asks for permission once', () async {
       saved = const Preferences(remindersEnabled: false);
       final bloc = await started();
-      bloc.add(const RemindersSettingsEvent.toggled(true));
+      bloc.add(const RemindersSettingsEvent.toggled(enabled: true));
       final state = await bloc.stream.firstWhere(
         (s) => s.permission == ReminderPermission.granted,
       );
       expect(state.enabled, isTrue);
       expect(notifier.requests, 1);
       expect(saved.remindersEnabled, isTrue);
-      bloc.add(const RemindersSettingsEvent.toggled(false));
-      bloc.add(const RemindersSettingsEvent.toggled(true));
+      bloc
+        ..add(const RemindersSettingsEvent.toggled(enabled: false))
+        ..add(const RemindersSettingsEvent.toggled(enabled: true));
       await bloc.stream.firstWhere((s) => s.enabled);
       expect(notifier.requests, 1);
     });
@@ -97,7 +111,7 @@ void main() {
     test('a refusal leaves the switch on and says it is blocked', () async {
       notifier.allow = false;
       final bloc = await started();
-      bloc.add(const RemindersSettingsEvent.toggled(true));
+      bloc.add(const RemindersSettingsEvent.toggled(enabled: true));
       final state = await bloc.stream.firstWhere(
         (s) => s.permission == ReminderPermission.denied,
       );
@@ -107,7 +121,7 @@ void main() {
     test('turning it off saves it and removes the reminders', () async {
       notifier.current = ReminderPermission.granted;
       final bloc = await started();
-      bloc.add(const RemindersSettingsEvent.toggled(false));
+      bloc.add(const RemindersSettingsEvent.toggled(enabled: false));
       await bloc.stream.firstWhere((s) => !s.enabled);
       await Future<void>.delayed(Duration.zero);
       expect(saved.remindersEnabled, isFalse);

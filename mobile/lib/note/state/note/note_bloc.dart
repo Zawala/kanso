@@ -204,7 +204,7 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
         final bodyLine = _pendingBodyLine;
         if (bodyLine != null && lines.isNotEmpty) {
           _pendingBodyLine = null;
-          final caret = lines[bodyLine.clamp(0, lines.length - 1).toInt()].start;
+          final caret = lines[bodyLine.clamp(0, lines.length - 1)].start;
           emit(
             state.copyWith(
               status: NoteScreenStatus.ready,

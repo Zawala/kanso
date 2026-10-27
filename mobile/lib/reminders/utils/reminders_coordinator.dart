@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:clock/clock.dart';
+import 'package:flutter/foundation.dart';
 import 'package:injectable/injectable.dart';
 
 import '../../core/bridge/api/types.dart';
@@ -53,20 +54,33 @@ class RemindersCoordinator {
   StreamSubscription<List<String>>? _changes;
   StreamSubscription<ReminderResponse>? _responses;
   Future<void> _queue = Future<void>.value();
+  bool _started = false;
+  Set<String> _scheduledKeys = <String>{};
 
   /// The tasks the person asked to open from a notification.
   Stream<TaskPlace> get opened => _opened.stream;
 
   /// Starts listening, then answers what was waiting and plans.
   Future<void> start() async {
-    await _changes?.cancel();
-    await _responses?.cancel();
+    if (_started) {
+      await resumed();
+      return;
+    }
+    _started = true;
     _changes = debounceStream(
       _library.changes(),
       remindersDebounce,
     ).listen((_) => unawaited(refresh()));
     _responses = _notifier.responses.listen(
-      (response) => unawaited(_serialised(() => _apply(response))),
+      (response) => unawaited(
+        _serialised(() async {
+          try {
+            await _apply(response);
+          } on Object catch (error, stack) {
+            _report(error, stack, 'applying a live reminder response');
+          }
+        }),
+      ),
     );
     await resumed();
   }
@@ -75,9 +89,17 @@ class RemindersCoordinator {
   /// meanwhile, then plan.
   Future<void> resumed() async {
     await _serialised(() async {
-      final waiting = await _notifier.takeResponses();
-      for (final response in waiting) {
-        await _apply(response);
+      try {
+        final waiting = await _notifier.takeResponses();
+        for (final response in waiting) {
+          try {
+            await _apply(response);
+          } on Object catch (error, stack) {
+            _report(error, stack, 'applying a saved reminder response');
+          }
+        }
+      } on Object catch (error, stack) {
+        _report(error, stack, 'reading saved reminder responses');
       }
       await _plan();
     });
@@ -101,22 +123,79 @@ class RemindersCoordinator {
   Future<void> _plan() async {
     final saved = await _preferences.load();
     final enabled = saved.fold((_) => true, (it) => it.remindersEnabled);
+    final now = clock.now();
+    final nowUtcMs = now.toUtc().millisecondsSinceEpoch;
     if (!enabled) {
-      await _notifier.cancelAll();
+      if (!await _cancelAll()) {
+        return;
+      }
+      await _forgetFuture(nowUtcMs);
+      _scheduledKeys.clear();
       return;
     }
-    final permission = await _notifier.permission();
-    final now = clock.now();
+    ReminderPermission permission;
+    try {
+      permission = await _notifier.permission();
+    } on Object catch (error, stack) {
+      _report(error, stack, 'checking notification permission');
+      permission = ReminderPermission.denied;
+    }
+    if (permission != ReminderPermission.granted) {
+      final cancelled = await _cancelAll();
+      final refused = await _reminders.plan(
+        nowUtcMs: nowUtcMs,
+        offsetMs: now.timeZoneOffset.inMilliseconds,
+        canNotify: false,
+      );
+      refused.fold(
+        (error) =>
+            _report(error, StackTrace.current, 'planning without permission'),
+        (_) {},
+      );
+      if (cancelled) {
+        await _forgetFuture(nowUtcMs);
+        _scheduledKeys.clear();
+      }
+      return;
+    }
     final planned = await _reminders.plan(
-      nowUtcMs: now.toUtc().millisecondsSinceEpoch,
+      nowUtcMs: nowUtcMs,
       offsetMs: now.timeZoneOffset.inMilliseconds,
-      canNotify: permission == ReminderPermission.granted,
+      canNotify: true,
     );
-    // A plan that failed leaves the system's reminders as they are.
-    await planned.fold((_) async {}, (plan) async {
-      await _notifier.show(plan.showNow);
-      await _notifier.schedule(plan.schedule);
-    });
+    await planned.fold(
+      (error) async {
+        _report(error, StackTrace.current, 'planning task reminders');
+      },
+      (plan) async {
+        try {
+          if (plan.showNow.isNotEmpty) {
+            await _notifier.show(plan.showNow);
+          }
+        } on Object catch (error, stack) {
+          _report(error, stack, 'showing due task reminders');
+          await _forget(<String>{
+            ...plan.showNow.map((reminder) => reminder.key),
+            ...plan.schedule
+                .map((reminder) => reminder.key)
+                .where((key) => !_scheduledKeys.contains(key)),
+          }, nowUtcMs);
+          return;
+        }
+        try {
+          await _notifier.schedule(plan.schedule);
+          _scheduledKeys = plan.schedule
+              .map((reminder) => reminder.key)
+              .toSet();
+        } on Object catch (error, stack) {
+          _report(error, stack, 'scheduling future task reminders');
+          if (await _cancelAll()) {
+            await _forgetFuture(nowUtcMs);
+            _scheduledKeys.clear();
+          }
+        }
+      },
+    );
   }
 
   Future<void> _apply(ReminderResponse response) async {
@@ -124,6 +203,11 @@ class RemindersCoordinator {
       key: response.key,
       action: response.action,
       nowUtcMs: clock.now().toUtc().millisecondsSinceEpoch,
+    );
+    answered.fold(
+      (error) =>
+          _report(error, StackTrace.current, 'answering a task reminder'),
+      (_) {},
     );
     if (response.action == ReminderAnswer.open && !_opened.isClosed) {
       final place = answered.fold((_) => null, (it) => it);
@@ -133,5 +217,49 @@ class RemindersCoordinator {
       );
     }
     // Answering wrote to the library: the change stream plans again.
+  }
+
+  Future<bool> _cancelAll() async {
+    try {
+      await _notifier.cancelAll();
+      return true;
+    } on Object catch (error, stack) {
+      _report(error, stack, 'cancelling task reminders');
+      return false;
+    }
+  }
+
+  Future<void> _forget(Set<String> keys, int nowUtcMs) async {
+    if (keys.isEmpty) {
+      return;
+    }
+    final forgotten = await _reminders.forget(
+      keys: keys.toList(growable: false),
+      nowUtcMs: nowUtcMs,
+    );
+    forgotten.fold(
+      (error) => _report(error, StackTrace.current, 'retrying task reminders'),
+      (_) {},
+    );
+  }
+
+  Future<void> _forgetFuture(int nowUtcMs) async {
+    final forgotten = await _reminders.forgetFuture(nowUtcMs: nowUtcMs);
+    forgotten.fold(
+      (error) =>
+          _report(error, StackTrace.current, 'clearing future reminders'),
+      (_) {},
+    );
+  }
+
+  void _report(Object error, StackTrace stack, String operation) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'task reminders',
+        context: ErrorDescription(operation),
+      ),
+    );
   }
 }

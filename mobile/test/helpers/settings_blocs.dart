@@ -16,16 +16,21 @@ import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/lock/state/biometrics/biometrics_bloc.dart';
 import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
+import 'package:kanso/reminders/state/reminders_settings/reminders_settings_bloc.dart';
+import 'package:kanso/reminders/utils/reminders_coordinator.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
 import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
+import 'package:kanso/templates/state/daily_template/daily_template_bloc.dart';
 
 import 'close_bloc_later.dart';
 import 'fixture_about_repository.dart';
 import 'fixture_device_lock_repository.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_reminders_repository.dart';
 import 'fixture_session_repository.dart';
 import 'fixture_sync_repository.dart';
+import 'page_fixtures.dart';
 import 'seeded_account_blocs.dart';
 import 'seeded_appearance_bloc.dart';
 import 'sync_settings_blocs.dart';
@@ -44,6 +49,9 @@ class SettingsBlocs {
     this.device,
     this.lock,
     this.biometrics,
+    this.dailyTemplate,
+    this.reminders,
+    this.fixtures,
   );
 
   final AboutBloc about;
@@ -60,6 +68,11 @@ class SettingsBlocs {
   final FixtureDeviceLockRepository device;
   final LockStatusBloc lock;
   final BiometricsBloc biometrics;
+  final DailyTemplateBloc dailyTemplate;
+  final RemindersSettingsBloc reminders;
+
+  /// The fixtures used by the daily template and reminder settings.
+  final PageFixtures fixtures;
 
   /// Makes them and waits until they have read. The account is [account],
   /// by default none.
@@ -73,7 +86,9 @@ class SettingsBlocs {
     Preferences preferences = const Preferences(),
     FixtureSessionRepository? session,
     FixtureDeviceLockRepository? device,
+    PageFixtures? fixtures,
   }) async {
+    final page = fixtures ?? PageFixtures();
     final about = AboutBloc(FixtureAboutRepository())
       ..add(const AboutEvent.started());
     closeBlocLater(about);
@@ -85,9 +100,9 @@ class SettingsBlocs {
     final index = LibraryIndexBloc(fixture)
       ..add(const LibraryIndexEvent.started());
     closeBlocLater(index);
-    final defaultNotebook = DefaultNotebookBloc(
-      SeededPreferencesRepository(preferences),
-    )..add(const DefaultNotebookEvent.started());
+    final preferencesRepository = SeededPreferencesRepository(preferences);
+    final defaultNotebook = DefaultNotebookBloc(preferencesRepository)
+      ..add(const DefaultNotebookEvent.started());
     closeBlocLater(defaultNotebook);
     if (about.state.status != LoadStatus.ready) {
       await about.stream.firstWhere(
@@ -118,6 +133,32 @@ class SettingsBlocs {
     await lock.stream.firstWhere((state) => state.loaded);
     final biometrics = BiometricsBloc(lockSession, lockDevice);
     closeBlocLater(biometrics);
+    final dailyTemplate = DailyTemplateBloc(page.journal)
+      ..add(const DailyTemplateEvent.started());
+    closeBlocLater(dailyTemplate);
+    final coordinator = RemindersCoordinator(
+      preferencesRepository,
+      FixtureRemindersRepository(),
+      page.notifier,
+      fixture,
+    );
+    addTearDown(() => unawaited(coordinator.dispose()));
+    final reminders = RemindersSettingsBloc(
+      preferencesRepository,
+      page.notifier,
+      coordinator,
+    )..add(const RemindersSettingsEvent.started());
+    closeBlocLater(reminders);
+    if (dailyTemplate.state.status != LoadStatus.ready) {
+      await dailyTemplate.stream.firstWhere(
+        (state) => state.status == LoadStatus.ready,
+      );
+    }
+    if (reminders.state.status != LoadStatus.ready) {
+      await reminders.stream.firstWhere(
+        (state) => state.status == LoadStatus.ready,
+      );
+    }
     return SettingsBlocs._(
       about,
       sync,
@@ -128,6 +169,9 @@ class SettingsBlocs {
       lockDevice,
       lock,
       biometrics,
+      dailyTemplate,
+      reminders,
+      page,
     );
   }
 
@@ -142,6 +186,8 @@ class SettingsBlocs {
     BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
     BlocProvider<LockStatusBloc>.value(value: lock),
     BlocProvider<BiometricsBloc>.value(value: biometrics),
+    BlocProvider<DailyTemplateBloc>.value(value: dailyTemplate),
+    BlocProvider<RemindersSettingsBloc>.value(value: reminders),
   ];
 
   /// [child] with them above it.

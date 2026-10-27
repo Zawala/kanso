@@ -155,9 +155,9 @@ fn the_daily_template_fills_the_day_and_places_the_cursor_in_utf16() {
             .templates()
             .unwrap()
             .iter()
-            .map(|t| t.id.clone())
+            .map(|t| t.id.as_str())
             .collect::<Vec<_>>(),
-        [id.clone()]
+        [id.as_str()]
     );
     library.set_daily_template(Some(id.clone())).unwrap();
     assert_eq!(library.daily_template(), Ok(Some(id.clone())));

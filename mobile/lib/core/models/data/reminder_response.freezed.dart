@@ -25,12 +25,12 @@ $ReminderResponseCopyWith<ReminderResponse> get copyWith => _$ReminderResponseCo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ReminderResponse&&(identical(other.key, key) || other.key == key)&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.line, line) || other.line == line)&&const DeepCollectionEquality().equals(other.action, action));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ReminderResponse&&(identical(other.key, key) || other.key == key)&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.line, line) || other.line == line)&&(identical(other.action, action) || other.action == action));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,key,noteId,line,const DeepCollectionEquality().hash(action));
+int get hashCode => Object.hash(runtimeType,key,noteId,line,action);
 
 @override
 String toString() {
@@ -62,12 +62,12 @@ class _$ReminderResponseCopyWithImpl<$Res>
 
 /// Create a copy of ReminderResponse
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? key = null,Object? noteId = null,Object? line = null,Object? action = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? key = null,Object? noteId = null,Object? line = null,Object? action = null,}) {
   return _then(_self.copyWith(
 key: null == key ? _self.key : key // ignore: cast_nullable_to_non_nullable
 as String,noteId: null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
 as String,line: null == line ? _self.line : line // ignore: cast_nullable_to_non_nullable
-as int,action: freezed == action ? _self.action : action // ignore: cast_nullable_to_non_nullable
+as int,action: null == action ? _self.action : action // ignore: cast_nullable_to_non_nullable
 as ReminderAnswer,
   ));
 }
@@ -227,12 +227,12 @@ _$ReminderResponseCopyWith<_ReminderResponse> get copyWith => __$ReminderRespons
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ReminderResponse&&(identical(other.key, key) || other.key == key)&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.line, line) || other.line == line)&&const DeepCollectionEquality().equals(other.action, action));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ReminderResponse&&(identical(other.key, key) || other.key == key)&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.line, line) || other.line == line)&&(identical(other.action, action) || other.action == action));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,key,noteId,line,const DeepCollectionEquality().hash(action));
+int get hashCode => Object.hash(runtimeType,key,noteId,line,action);
 
 @override
 String toString() {
@@ -264,12 +264,12 @@ class __$ReminderResponseCopyWithImpl<$Res>
 
 /// Create a copy of ReminderResponse
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? key = null,Object? noteId = null,Object? line = null,Object? action = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? key = null,Object? noteId = null,Object? line = null,Object? action = null,}) {
   return _then(_ReminderResponse(
 key: null == key ? _self.key : key // ignore: cast_nullable_to_non_nullable
 as String,noteId: null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
 as String,line: null == line ? _self.line : line // ignore: cast_nullable_to_non_nullable
-as int,action: freezed == action ? _self.action : action // ignore: cast_nullable_to_non_nullable
+as int,action: null == action ? _self.action : action // ignore: cast_nullable_to_non_nullable
 as ReminderAnswer,
   ));
 }

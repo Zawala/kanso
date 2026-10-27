@@ -26,4 +26,15 @@ abstract interface class RemindersRepository {
     required ReminderAnswer action,
     required int nowUtcMs,
   });
+
+  /// Removes only plan entries whose platform delivery failed.
+  Future<Either<ApplicationError, void>> forget({
+    required List<String> keys,
+    required int nowUtcMs,
+  });
+
+  /// Clears future schedule records after reminders are disabled or denied.
+  Future<Either<ApplicationError, void>> forgetFuture({
+    required int nowUtcMs,
+  });
 }

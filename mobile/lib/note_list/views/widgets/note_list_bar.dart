@@ -72,8 +72,7 @@ class NoteListBar extends StatelessWidget {
             : () => bloc.add(
                 NoteListEvent.changeRequested(const NoteChange.trash(), chosen),
               ),
-        onMore: () =>
-            NoteActionsSheet.show(context, bloc: bloc, ids: chosen),
+        onMore: () => NoteActionsSheet.show(context, bloc: bloc, ids: chosen),
       );
     }
     final place = state.place;

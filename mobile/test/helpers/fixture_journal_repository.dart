@@ -13,7 +13,8 @@ import 'package:kanso/core/models/repos/abs/templates_repository.dart';
 /// The journal and the templates, in memory, for widget and golden tests:
 /// a month is laid out here as the library lays it out, the days with a
 /// note are a field, and every call is recorded.
-class FixtureJournalRepository implements JournalRepository, TemplatesRepository {
+class FixtureJournalRepository
+    implements JournalRepository, TemplatesRepository {
   /// The days that have a daily note.
   final Set<(int, int, int)> days = <(int, int, int)>{
     (2026, 10, 3),
@@ -96,7 +97,8 @@ class FixtureJournalRepository implements JournalRepository, TemplatesRepository
     if (error != null) {
       return Left<ApplicationError, MadeNote?>(error);
     }
-    final from = (openNote == null ? null : await dailyDate(openNote)) ?? _of(now);
+    final from =
+        (openNote == null ? null : await dailyDate(openNote)) ?? _of(now);
     final next = DateTime(
       from.year,
       from.month,

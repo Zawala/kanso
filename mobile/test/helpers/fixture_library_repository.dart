@@ -288,7 +288,8 @@ class FixtureLibraryRepository implements LibraryRepository {
       parentId: parentId,
       count: 0,
       locked: false,
-      depth: 0, hasChildren: false,
+      depth: 0,
+      hasChildren: false,
     );
     notebookRows = <NotebookRow>[...notebookRows, made];
     changeStream.add(<String>[made.id]);
@@ -536,8 +537,10 @@ class FixtureLibraryRepository implements LibraryRepository {
     adminActions.add(('renameTag', '$id|$name'));
     tagRows = <TagRow>[
       for (final tag in tagRows)
-        if (tag.id == id) TagRow(id: tag.id, name: name, color: tag.color,
-            count: tag.count) else tag,
+        if (tag.id == id)
+          TagRow(id: tag.id, name: name, color: tag.color, count: tag.count)
+        else
+          tag,
     ];
     return const Right<ApplicationError, Unit>(unit);
   }

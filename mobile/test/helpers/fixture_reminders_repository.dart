@@ -17,10 +17,12 @@ class FixtureRemindersRepository implements RemindersRepository {
     required int nowUtcMs,
     required int offsetMs,
     required bool canNotify,
-  }) async => const Right<ApplicationError, ReminderPlan>(ReminderPlan(
-    showNow: <ReminderNote>[],
-    schedule: <ReminderNote>[],
-  ));
+  }) async => const Right<ApplicationError, ReminderPlan>(
+    ReminderPlan(
+      showNow: <ReminderNote>[],
+      schedule: <ReminderNote>[],
+    ),
+  );
 
   @override
   Future<Either<ApplicationError, TaskPlace?>> answer({
@@ -31,4 +33,15 @@ class FixtureRemindersRepository implements RemindersRepository {
     answers.add((key, action));
     return const Right<ApplicationError, TaskPlace?>(null);
   }
+
+  @override
+  Future<Either<ApplicationError, void>> forget({
+    required List<String> keys,
+    required int nowUtcMs,
+  }) async => const Right<ApplicationError, void>(null);
+
+  @override
+  Future<Either<ApplicationError, void>> forgetFuture({
+    required int nowUtcMs,
+  }) async => const Right<ApplicationError, void>(null);
 }

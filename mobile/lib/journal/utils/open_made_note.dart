@@ -19,8 +19,9 @@ void openMadeNote(BuildContext context, MadeNote made) {
   final here = BrowseLocation.parse(
     router.routerDelegate.currentConfiguration.uri,
   );
-  final target = (here ?? const BrowseLocation.place(ListPlace.all()))
-      .withNote(made.id);
+  final target = (here ?? const BrowseLocation.place(ListPlace.all())).withNote(
+    made.id,
+  );
   final parameters = <String, String>{
     if (made.cursor16 != null)
       KansoRoutes.madeCursorParameter: made.cursor16.toString(),

@@ -54,8 +54,7 @@ void main() {
         );
         await bloc.stream.firstWhere((state) => state.opened != null);
       },
-      verify: (bloc) =>
-          expect(bloc.state.opened?.id, 'note:daily-2026-09-30'),
+      verify: (bloc) => expect(bloc.state.opened?.id, 'note:daily-2026-09-30'),
     );
 
     blocTest<JournalBloc, JournalState>(
@@ -67,8 +66,7 @@ void main() {
         );
         await bloc.stream.firstWhere((state) => state.opened != null);
       }),
-      verify: (bloc) =>
-          expect(bloc.state.opened?.id, 'note:daily-2026-10-27'),
+      verify: (bloc) => expect(bloc.state.opened?.id, 'note:daily-2026-10-27'),
     );
 
     blocTest<JournalBloc, JournalState>(

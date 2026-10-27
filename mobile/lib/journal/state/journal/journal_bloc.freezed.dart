@@ -314,12 +314,12 @@ $JournalDayRequestedEventCopyWith<JournalDayRequestedEvent> get copyWith => _$Jo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is JournalDayRequestedEvent&&const DeepCollectionEquality().equals(other.day, day));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is JournalDayRequestedEvent&&(identical(other.day, day) || other.day == day));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(day));
+int get hashCode => Object.hash(runtimeType,day);
 
 @override
 String toString() {
@@ -351,9 +351,9 @@ class _$JournalDayRequestedEventCopyWithImpl<$Res>
 
 /// Create a copy of JournalEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? day = freezed,}) {
+@pragma('vm:prefer-inline') $Res call({Object? day = null,}) {
   return _then(JournalDayRequestedEvent(
-freezed == day ? _self.day : day // ignore: cast_nullable_to_non_nullable
+null == day ? _self.day : day // ignore: cast_nullable_to_non_nullable
 as DayDate,
   ));
 }
@@ -511,12 +511,12 @@ $JournalStateCopyWith<JournalState> get copyWith => _$JournalStateCopyWithImpl<J
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is JournalState&&(identical(other.working, working) || other.working == working)&&const DeepCollectionEquality().equals(other.opened, opened)&&(identical(other.error, error) || other.error == error));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is JournalState&&(identical(other.working, working) || other.working == working)&&(identical(other.opened, opened) || other.opened == opened)&&(identical(other.error, error) || other.error == error));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,working,const DeepCollectionEquality().hash(opened),error);
+int get hashCode => Object.hash(runtimeType,working,opened,error);
 
 @override
 String toString() {
@@ -727,12 +727,12 @@ _$JournalStateCopyWith<_JournalState> get copyWith => __$JournalStateCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _JournalState&&(identical(other.working, working) || other.working == working)&&const DeepCollectionEquality().equals(other.opened, opened)&&(identical(other.error, error) || other.error == error));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _JournalState&&(identical(other.working, working) || other.working == working)&&(identical(other.opened, opened) || other.opened == opened)&&(identical(other.error, error) || other.error == error));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,working,const DeepCollectionEquality().hash(opened),error);
+int get hashCode => Object.hash(runtimeType,working,opened,error);
 
 @override
 String toString() {

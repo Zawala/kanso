@@ -139,11 +139,14 @@ void main() {
     expect(heard.single.line, 2);
   });
 
-  test('a platform without the channel has no permission and no errors', () async {
-    final notifier = ChannelReminderNotifier();
-    expect(await notifier.permission(), ReminderPermission.notDetermined);
-    expect(await notifier.requestPermission(), isFalse);
-    await notifier.schedule(<ReminderNote>[_reminder]);
-    expect(await notifier.takeResponses(), isEmpty);
-  });
+  test(
+    'a platform without the channel has no permission and no errors',
+    () async {
+      final notifier = ChannelReminderNotifier();
+      expect(await notifier.permission(), ReminderPermission.notDetermined);
+      expect(await notifier.requestPermission(), isFalse);
+      await notifier.schedule(<ReminderNote>[_reminder]);
+      expect(await notifier.takeResponses(), isEmpty);
+    },
+  );
 }

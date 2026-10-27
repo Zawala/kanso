@@ -15,8 +15,8 @@ import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/status_label.dart';
 import '../../../core/views/widgets/kanso_check_row.dart';
 import '../../../core/views/widgets/kanso_pressable.dart';
-import '../../../core/views/widgets/kanso_sheet_group.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
+import '../../../core/views/widgets/kanso_sheet_group.dart';
 import '../../state/note_list/note_list_bloc.dart';
 
 /// How the list is sorted and narrowed, as the desktop's list menu has it:

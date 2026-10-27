@@ -15,7 +15,6 @@ import '../../backups/views/pages/backups_page.dart';
 import '../../board/views/pages/board_page.dart';
 import '../../capture/views/pages/daily_note_page.dart';
 import '../../capture/views/pages/new_note_page.dart';
-import '../../board/views/pages/board_page.dart';
 import '../../crash/views/pages/crash_reports_page.dart';
 import '../../design/views/pages/design_gallery_page.dart';
 import '../../history/views/pages/history_page.dart';

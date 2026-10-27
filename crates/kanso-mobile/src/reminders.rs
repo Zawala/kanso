@@ -106,6 +106,40 @@ impl Library {
         })
     }
 
+    /// Forgets plan entries the platform failed to show or schedule, so the
+    /// next plan can retry them. Successfully shown reminders remain recorded.
+    pub fn reminders_forget(&self, keys: Vec<String>, now_utc_ms: i64) -> Result<(), KansoError> {
+        guard(|| {
+            let store = &self.inner.store;
+            let kept = store.meta(SHOWN_META)?;
+            let mut shown = parse_shown(kept.as_deref());
+            for key in keys {
+                shown.remove(&key);
+            }
+            let record = reminders::record(&mut shown, &[], now_utc_ms);
+            if kept.as_deref() != Some(record.as_str()) {
+                store.set_meta(SHOWN_META, &record)?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Clears planned future reminders after notifications are disabled or
+    /// permission is revoked. Past shown reminders and synced answers stay.
+    pub fn reminders_forget_future(&self, now_utc_ms: i64) -> Result<(), KansoError> {
+        guard(|| {
+            let store = &self.inner.store;
+            let kept = store.meta(SHOWN_META)?;
+            let mut shown = parse_shown(kept.as_deref());
+            shown.retain(|_, at| *at <= now_utc_ms);
+            let record = reminders::record(&mut shown, &[], now_utc_ms);
+            if kept.as_deref() != Some(record.as_str()) {
+                store.set_meta(SHOWN_META, &record)?;
+            }
+            Ok(())
+        })
+    }
+
     /// Records the answer to reminder `key`: the note remembers it was
     /// answered, so no device reminds again, and Mark Done ticks the task
     /// off. For `Open` it says where to go. `None` when the reminder is gone

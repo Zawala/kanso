@@ -4,7 +4,6 @@
 
 import '../../../core/bridge/api/types.dart';
 
-
 /// A card being dragged to another column (on a tablet): which card, and
 /// the column it is dragged from.
 class BoardDrag {

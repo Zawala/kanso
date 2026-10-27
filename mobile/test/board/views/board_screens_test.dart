@@ -7,12 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/board/views/widgets/board_pane.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
+import 'package:kanso/tasks/views/widgets/task_due_chip.dart';
 
 import '../../helpers/browse_blocs.dart';
 import '../../helpers/library_fixtures.dart';
 import '../../helpers/page_fixtures.dart';
 import '../../helpers/pump_browse_app.dart';
-
 
 const Size _phone = Size(393, 852);
 const Size _ipad = Size(1180, 820);
@@ -89,7 +89,12 @@ void main() {
       expect(find.text('To do'), findsOneWidget);
       expect(find.text('Done'), findsOneWidget);
       expect(find.text('Call about the allotment'), findsOneWidget);
-      expect(find.text('Today 09:00'), findsOneWidget);
+      expect(find.text('Tomorrow 09:00'), findsOneWidget);
+      expect(find.byType(TaskDueChip), findsNWidgets(2));
+      expect(
+        tester.widget<Text>(find.text('Yesterday')).style!.decoration,
+        TextDecoration.lineThrough,
+      );
       expect(
         find.text('Tick a task to do it, or touch and hold it to move it.'),
         findsOneWidget,

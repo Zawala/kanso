@@ -947,7 +947,9 @@ pub enum BoardKind {
 pub enum BoardLane {
     /// A note status's column: `none`, `active`, `onHold`, `completed` or
     /// `dropped`, as [`NoteRow::status`] says it.
-    Status { status: String },
+    Status {
+        status: String,
+    },
     Todo,
     Done,
 }
@@ -955,7 +957,9 @@ pub enum BoardLane {
 /// Which card: a note, or a task in its note.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CardKey {
-    Note { id: String },
+    Note {
+        id: String,
+    },
     /// The task as the note's text has it: its line and its words, so a note
     /// that changed since the board was read isn't written to blindly.
     Task {

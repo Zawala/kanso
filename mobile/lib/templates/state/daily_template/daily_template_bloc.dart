@@ -35,8 +35,10 @@ class DailyTemplateBloc extends Bloc<DailyTemplateEvent, DailyTemplateState> {
     DailyTemplateStartedEvent event,
     Emitter<DailyTemplateState> emit,
   ) async {
-    final results = await (_templates.templates(), _templates.dailyTemplate())
-        .wait;
+    final results = await (
+      _templates.templates(),
+      _templates.dailyTemplate(),
+    ).wait;
     if (emit.isDone) {
       return;
     }

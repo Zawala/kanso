@@ -29,8 +29,11 @@ class ChannelReminderNotifier implements ReminderNotifier {
   }
 
   final MethodChannel _channel;
+  // Native marks a response live only when it can send it over this channel.
+  // A single-subscription controller buffers callbacks until the coordinator
+  // subscribes, including a cold-start tap delivered during bootstrap.
   final StreamController<ReminderResponse> _responses =
-      StreamController<ReminderResponse>.broadcast();
+      StreamController<ReminderResponse>();
 
   @override
   Stream<ReminderResponse> get responses => _responses.stream;
@@ -47,13 +50,22 @@ class ChannelReminderNotifier implements ReminderNotifier {
 
   @override
   Future<ReminderPermission> permission() async {
-    final answer = await _invoke<String>('permission');
-    return ReminderPermission.parse(answer);
+    try {
+      final answer = await _invoke<String>('permission');
+      return ReminderPermission.parse(answer);
+    } on PlatformException {
+      return ReminderPermission.denied;
+    }
   }
 
   @override
-  Future<bool> requestPermission() async =>
-      await _invoke<bool>('requestPermission') ?? false;
+  Future<bool> requestPermission() async {
+    try {
+      return await _invoke<bool>('requestPermission') ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
 
   @override
   Future<void> schedule(List<ReminderNote> reminders) =>
@@ -70,8 +82,7 @@ class ChannelReminderNotifier implements ReminderNotifier {
   Future<List<ReminderResponse>> takeResponses() async {
     final answer = await _invoke<List<Object?>>('takeResponses');
     return <ReminderResponse>[
-      for (final item in answer ?? const <Object?>[])
-        ?reminderResponseOf(item),
+      for (final item in answer ?? const <Object?>[]) ?reminderResponseOf(item),
     ];
   }
 
@@ -84,8 +95,6 @@ class ChannelReminderNotifier implements ReminderNotifier {
     try {
       return await _channel.invokeMethod<T>(method, arguments);
     } on MissingPluginException {
-      return null;
-    } on PlatformException {
       return null;
     }
   }

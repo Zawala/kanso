@@ -45,6 +45,10 @@ fn titles(cards: &[BoardCard]) -> Vec<&str> {
     cards.iter().map(|c| c.title.as_str()).collect()
 }
 
+fn is_note(card: &BoardCard, id: &str) -> bool {
+    matches!(&card.key, CardKey::Note { id: found } if found == id)
+}
+
 fn raw_status_note(store: &Store, title: &str, body: &str, status: &str) -> String {
     raw_note(
         store,
@@ -167,8 +171,8 @@ fn a_tasks_board_has_to_do_and_done_in_the_notes_order() {
     assert_eq!(titles(column(&board, &BoardLane::Todo)), ["one"]);
 }
 
-/// A library with a locked note, a note in a locked notebook that was put
-/// there without being sealed, and a plain one, each with tasks.
+/// A library with a sealed note and two notes in a locked notebook: one that
+/// was there before the lock and one that arrived from another device after.
 fn with_locked() -> (Phone, String, String) {
     let phone = phone_with(&Arc::new(MemoryServer::new()), |store| {
         raw_note(
@@ -195,10 +199,15 @@ fn with_locked() -> (Phone, String, String) {
         json!({"title": "Loose", "body": "LOOSETEXT\n- [ ] loose task @2026-10-22T09:00\n", "bookId": vault}),
     );
     kanso_engine::lock::seal_notebook(&store, &vault, &key).unwrap();
-    let again = raw_note(
-        &store,
-        json!({"title": "Slipped in", "body": "SLIPPEDTEXT\n- [ ] slipped task\n", "bookId": vault}),
-    );
+    let again = store
+        .put(
+            kanso_core::DocType::Note,
+            json!({"title": "Slipped in", "body": "SLIPPEDTEXT\n- [ ] slipped task\n", "bookId": vault}),
+            kanso_store::Put::Upsert,
+            kanso_store::Origin::Sync,
+        )
+        .unwrap()
+        .id;
     let _ = loose;
     (phone, sealed, again)
 }
@@ -337,13 +346,15 @@ proptest! {
             };
             prop_assert_eq!(moved, expected);
             model[note] = names[lane].to_owned();
-            let board = library.board(BoardKind::Notes, ListQuery::default()).unwrap();
+            let board = library
+                .board(BoardKind::Notes, ListQuery::default())
+                .unwrap();
             for (i, id) in ids.iter().enumerate() {
                 let view = library.note(id).unwrap();
                 prop_assert_eq!(&view.status, &model[i]);
                 prop_assert_eq!(&view.body, &texts[i]);
                 let lane = column(&board, &status(&model[i]));
-                prop_assert!(lane.iter().any(|c| c.key == CardKey::Note { id: id.clone() }));
+                prop_assert!(lane.iter().any(|card| is_note(card, id)));
             }
             let cards: usize = board.columns.iter().map(|c| c.cards.len()).sum();
             prop_assert_eq!(cards, ids.len());
@@ -383,7 +394,9 @@ proptest! {
             );
             model[task] = done;
             prop_assert_eq!(library.note(&id).unwrap().body.unwrap(), body(&model));
-            let board = library.board(BoardKind::Tasks, ListQuery::default()).unwrap();
+            let board = library
+                .board(BoardKind::Tasks, ListQuery::default())
+                .unwrap();
             let in_done = column(&board, &BoardLane::Done).len();
             prop_assert_eq!(in_done, model.iter().filter(|c| **c).count());
             prop_assert_eq!(

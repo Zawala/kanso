@@ -10,7 +10,8 @@ use kanso_core::tasks::Due;
 use kanso_engine::tasks::display_text;
 use kanso_engine::tasks::reminders::SHOWN_META;
 use kanso_mobile::{
-    KansoError, Library, ReminderAnswer, ReminderNote, ReminderPlan, SCHEDULE_LIMIT, TaskPlace,
+    KansoError, Library, NewNote, ReminderAnswer, ReminderNote, ReminderPlan, SCHEDULE_LIMIT,
+    TaskPlace,
 };
 use kanso_store::Store;
 use kanso_sync::MemoryServer;
@@ -238,12 +239,13 @@ proptest! {
     /// plain notes' reminders are all there; and answering a locked note's
     /// reminder by key writes nothing.
     #[test]
-    fn prop_no_reminders_from_locked_or_trashed_notes(
+    fn prop_reminders_never_come_from_locked_or_trashed_notes(
         states in prop::collection::vec(state(), 1..5),
     ) {
         let phone = phone_with(&Arc::new(MemoryServer::new()), |_| {});
         let library = &phone.library;
         let store = Store::open(phone.path()).unwrap();
+        let plain_book = book(&store, "Plain");
         let vault = book(&store, "Vault");
         let key = kanso_sync::lock::LockKey::create(
             &kanso_sync::lock::LockPassword::new(LOCK_PASSWORD).unwrap(),
@@ -254,33 +256,53 @@ proptest! {
         kanso_engine::lock::seal_notebook(&store, &vault, &key).unwrap();
         let mut plain = Vec::new();
         let mut hidden: Vec<(String, usize)> = Vec::new();
+        let mut close_session = false;
+        let note_in_plain_book = |title: &str, body: &str| {
+            library
+                .create(NewNote {
+                    notebook_id: Some(plain_book.clone()),
+                    title: title.to_owned(),
+                    body: body.to_owned(),
+                    ..NewNote::default()
+                })
+                .unwrap()
+                .id
+        };
         for (i, state) in states.iter().enumerate() {
             let body = format!("- [ ] Task{i} @2026-10-22T09:{:02}\n", i + 1);
             match state {
                 State::Plain => {
-                    plain.push(note(library, &format!("Note{i}"), &body));
+                    plain.push(note_in_plain_book(&format!("Note{i}"), &body));
                 }
                 State::Locked | State::LockedOpen => {
-                    let id = note(library, &format!("Note{i}"), &body);
+                    let id = note_in_plain_book(&format!("Note{i}"), &body);
                     library.locks().lock_note(&id, LOCK_PASSWORD.into()).unwrap();
                     if matches!(state, State::Locked) {
-                        library.locks().lock().unwrap();
+                        close_session = true;
                     }
                     hidden.push((id, i));
                 }
                 State::Trashed => {
-                    let id = note(library, &format!("Note{i}"), &body);
+                    let id = note_in_plain_book(&format!("Note{i}"), &body);
                     library.trash(&id).unwrap();
                     hidden.push((id, i));
                 }
                 State::InLockedNotebook => {
-                    let id = raw_note(
-                        &store,
-                        json!({"title": format!("Note{i}"), "body": body, "bookId": vault}),
-                    );
+                    let id = store
+                        .put(
+                            kanso_core::DocType::Note,
+                            json!({"title": format!("Note{i}"), "body": body, "bookId": vault}),
+                            kanso_store::Put::Upsert,
+                            kanso_store::Origin::Sync,
+                        )
+                        .unwrap()
+                        .id;
                     hidden.push((id, i));
                 }
             }
+        }
+        if close_session {
+            library.locks().lock().unwrap();
         }
         let now = utc("2026-10-22T09:00") + 30_000;
         let got = plan(library, now);
@@ -302,7 +324,7 @@ proptest! {
     /// them and its body is the due words and the note's title; nothing of
     /// the note's other lines is in what the plan says, whatever they are.
     #[test]
-    fn prop_a_reminder_says_only_the_task_the_time_and_the_title(
+    fn prop_reminder_payload_contains_only_display_text_due_label_and_note_title(
         before in prop::collection::vec("[A-Za-z0-9 #*_>|-]{0,20}", 0..4),
         after in prop::collection::vec("[A-Za-z0-9 #*_>|-]{0,20}", 0..4),
         words in "[a-z][a-z ]{0,12}[a-z]",
@@ -331,5 +353,52 @@ proptest! {
         // The line is where the note has it.
         let line = body.lines().position(|l| l.starts_with("- [ ] ")).unwrap();
         prop_assert_eq!(reminder.line as usize, line);
+    }
+
+    /// When notifications are unavailable or switched off, planning returns
+    /// no items and leaves the local shown record byte-for-byte unchanged.
+    #[test]
+    fn prop_can_notify_false_records_nothing(
+        hour in 0u32..24,
+        minute in 0u32..60,
+        previous in prop::option::of(any::<u32>()),
+    ) {
+        let phone = lone_phone();
+        let library = &phone.library;
+        let due = format!("2026-10-22T{hour:02}:{minute:02}");
+        note(library, "Plans", &format!("- [ ] Call @{due}\n"));
+        if let Some(value) = previous {
+            Store::open(phone.path()).unwrap()
+                .set_meta(SHOWN_META, &format!(r#"{{"previous":{value}}}"#))
+                .unwrap();
+        }
+        let before = shown(&phone);
+        let got = library.reminders_plan(utc(&due), OFFSET, false).unwrap();
+        prop_assert!(got.show_now.is_empty());
+        prop_assert!(got.schedule.is_empty());
+        prop_assert_eq!(shown(&phone), before);
+    }
+
+    /// Planning repeatedly before a fire keeps the same task scheduled; once
+    /// it has fired, a later plan neither shows nor schedules it again.
+    #[test]
+    fn prop_scheduled_reminder_is_not_shown_again(
+        hour in 1u32..24,
+        minute in 0u32..60,
+    ) {
+        let phone = lone_phone();
+        let library = &phone.library;
+        let due = format!("2026-10-22T{hour:02}:{minute:02}");
+        note(library, "Plans", &format!("- [ ] Call @{due}\n"));
+        let fire = utc(&due);
+        let first = plan(library, fire - 60_000);
+        prop_assert_eq!(keys(&first.schedule), ["Call"]);
+        prop_assert!(first.show_now.is_empty());
+        let second = plan(library, fire - 30_000);
+        prop_assert_eq!(keys(&second.schedule), ["Call"]);
+        prop_assert!(second.show_now.is_empty());
+        let after = plan(library, fire + 60_000);
+        prop_assert!(after.show_now.is_empty(), "{after:?}");
+        prop_assert!(after.schedule.is_empty(), "{after:?}");
     }
 }

@@ -2,7 +2,6 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/board/state/board/board_bloc.dart';
 import 'package:kanso/core/bridge/api/types.dart';

@@ -215,12 +215,12 @@ $BoardStartedEventCopyWith<BoardStartedEvent> get copyWith => _$BoardStartedEven
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardStartedEvent&&(identical(other.query, query) || other.query == query)&&const DeepCollectionEquality().equals(other.kind, kind));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardStartedEvent&&(identical(other.query, query) || other.query == query)&&(identical(other.kind, kind) || other.kind == kind));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,query,const DeepCollectionEquality().hash(kind));
+int get hashCode => Object.hash(runtimeType,query,kind);
 
 @override
 String toString() {
@@ -252,10 +252,10 @@ class _$BoardStartedEventCopyWithImpl<$Res>
 
 /// Create a copy of BoardEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? query = null,Object? kind = freezed,}) {
+@pragma('vm:prefer-inline') $Res call({Object? query = null,Object? kind = null,}) {
   return _then(BoardStartedEvent(
 query: null == query ? _self.query : query // ignore: cast_nullable_to_non_nullable
-as ListQuery,kind: freezed == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as ListQuery,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
 as BoardKind,
   ));
 }
@@ -282,12 +282,12 @@ $BoardKindChangedEventCopyWith<BoardKindChangedEvent> get copyWith => _$BoardKin
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardKindChangedEvent&&const DeepCollectionEquality().equals(other.kind, kind));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardKindChangedEvent&&(identical(other.kind, kind) || other.kind == kind));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(kind));
+int get hashCode => Object.hash(runtimeType,kind);
 
 @override
 String toString() {
@@ -319,9 +319,9 @@ class _$BoardKindChangedEventCopyWithImpl<$Res>
 
 /// Create a copy of BoardEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? kind = freezed,}) {
+@pragma('vm:prefer-inline') $Res call({Object? kind = null,}) {
   return _then(BoardKindChangedEvent(
-freezed == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
 as BoardKind,
   ));
 }
@@ -453,12 +453,12 @@ $BoardCardMovedEventCopyWith<BoardCardMovedEvent> get copyWith => _$BoardCardMov
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardCardMovedEvent&&const DeepCollectionEquality().equals(other.card, card)&&const DeepCollectionEquality().equals(other.lane, lane));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardCardMovedEvent&&(identical(other.card, card) || other.card == card)&&(identical(other.lane, lane) || other.lane == lane));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(card),const DeepCollectionEquality().hash(lane));
+int get hashCode => Object.hash(runtimeType,card,lane);
 
 @override
 String toString() {
@@ -477,7 +477,7 @@ $Res call({
 });
 
 
-
+$CardKeyCopyWith<$Res> get card;$BoardLaneCopyWith<$Res> get lane;
 
 }
 /// @nodoc
@@ -490,15 +490,33 @@ class _$BoardCardMovedEventCopyWithImpl<$Res>
 
 /// Create a copy of BoardEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? card = freezed,Object? lane = freezed,}) {
+@pragma('vm:prefer-inline') $Res call({Object? card = null,Object? lane = null,}) {
   return _then(BoardCardMovedEvent(
-card: freezed == card ? _self.card : card // ignore: cast_nullable_to_non_nullable
-as CardKey,lane: freezed == lane ? _self.lane : lane // ignore: cast_nullable_to_non_nullable
+card: null == card ? _self.card : card // ignore: cast_nullable_to_non_nullable
+as CardKey,lane: null == lane ? _self.lane : lane // ignore: cast_nullable_to_non_nullable
 as BoardLane,
   ));
 }
 
-
+/// Create a copy of BoardEvent
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$CardKeyCopyWith<$Res> get card {
+  
+  return $CardKeyCopyWith<$Res>(_self.card, (value) {
+    return _then(_self.copyWith(card: value));
+  });
+}/// Create a copy of BoardEvent
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$BoardLaneCopyWith<$Res> get lane {
+  
+  return $BoardLaneCopyWith<$Res>(_self.lane, (value) {
+    return _then(_self.copyWith(lane: value));
+  });
+}
 }
 
 /// @nodoc
@@ -818,12 +836,12 @@ $BoardStateCopyWith<BoardState> get copyWith => _$BoardStateCopyWithImpl<BoardSt
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardState&&(identical(other.query, query) || other.query == query)&&const DeepCollectionEquality().equals(other.kind, kind)&&(identical(other.status, status) || other.status == status)&&const DeepCollectionEquality().equals(other.data, data)&&(identical(other.error, error) || other.error == error)&&(identical(other.notice, notice) || other.notice == notice));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardState&&(identical(other.query, query) || other.query == query)&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.status, status) || other.status == status)&&(identical(other.data, data) || other.data == data)&&(identical(other.error, error) || other.error == error)&&(identical(other.notice, notice) || other.notice == notice));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,query,const DeepCollectionEquality().hash(kind),status,const DeepCollectionEquality().hash(data),error,notice);
+int get hashCode => Object.hash(runtimeType,query,kind,status,data,error,notice);
 
 @override
 String toString() {
@@ -855,10 +873,10 @@ class _$BoardStateCopyWithImpl<$Res>
 
 /// Create a copy of BoardState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? query = freezed,Object? kind = freezed,Object? status = null,Object? data = freezed,Object? error = freezed,Object? notice = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? query = freezed,Object? kind = null,Object? status = null,Object? data = freezed,Object? error = freezed,Object? notice = freezed,}) {
   return _then(_self.copyWith(
 query: freezed == query ? _self.query : query // ignore: cast_nullable_to_non_nullable
-as ListQuery?,kind: freezed == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as ListQuery?,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
 as BoardKind,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as LoadStatus,data: freezed == data ? _self.data : data // ignore: cast_nullable_to_non_nullable
 as BoardView?,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
@@ -1052,12 +1070,12 @@ _$BoardStateCopyWith<_BoardState> get copyWith => __$BoardStateCopyWithImpl<_Boa
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _BoardState&&(identical(other.query, query) || other.query == query)&&const DeepCollectionEquality().equals(other.kind, kind)&&(identical(other.status, status) || other.status == status)&&const DeepCollectionEquality().equals(other.data, data)&&(identical(other.error, error) || other.error == error)&&(identical(other.notice, notice) || other.notice == notice));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _BoardState&&(identical(other.query, query) || other.query == query)&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.status, status) || other.status == status)&&(identical(other.data, data) || other.data == data)&&(identical(other.error, error) || other.error == error)&&(identical(other.notice, notice) || other.notice == notice));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,query,const DeepCollectionEquality().hash(kind),status,const DeepCollectionEquality().hash(data),error,notice);
+int get hashCode => Object.hash(runtimeType,query,kind,status,data,error,notice);
 
 @override
 String toString() {
@@ -1089,10 +1107,10 @@ class __$BoardStateCopyWithImpl<$Res>
 
 /// Create a copy of BoardState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? query = freezed,Object? kind = freezed,Object? status = null,Object? data = freezed,Object? error = freezed,Object? notice = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? query = freezed,Object? kind = null,Object? status = null,Object? data = freezed,Object? error = freezed,Object? notice = freezed,}) {
   return _then(_BoardState(
 query: freezed == query ? _self.query : query // ignore: cast_nullable_to_non_nullable
-as ListQuery?,kind: freezed == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as ListQuery?,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
 as BoardKind,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as LoadStatus,data: freezed == data ? _self.data : data // ignore: cast_nullable_to_non_nullable
 as BoardView?,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable

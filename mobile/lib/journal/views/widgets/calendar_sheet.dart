@@ -131,8 +131,7 @@ class CalendarSheet extends StatelessWidget {
                           child: Center(
                             child: CalendarDayCell(
                               day: day,
-                              onTap: () =>
-                                  Navigator.of(context).pop(day.date),
+                              onTap: () => Navigator.of(context).pop(day.date),
                             ),
                           ),
                         ),

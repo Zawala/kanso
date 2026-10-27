@@ -43,4 +43,19 @@ class RustRemindersRepository implements RemindersRepository {
       nowUtcMs: nowUtcMs,
     ),
   );
+
+  @override
+  Future<Either<ApplicationError, void>> forget({
+    required List<String> keys,
+    required int nowUtcMs,
+  }) => attempt(
+    () => _library.remindersForget(keys: keys, nowUtcMs: nowUtcMs),
+  );
+
+  @override
+  Future<Either<ApplicationError, void>> forgetFuture({
+    required int nowUtcMs,
+  }) => attempt(
+    () => _library.remindersForgetFuture(nowUtcMs: nowUtcMs),
+  );
 }

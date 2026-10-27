@@ -2,9 +2,9 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-
 import 'package:clock/clock.dart';
 import 'package:dartz/dartz.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
@@ -30,6 +30,21 @@ const _reminder = ReminderNote(
     year: 2026,
     month: 10,
     day: 27,
+    hour: 9,
+    minute: 0,
+    second: 0,
+  ),
+);
+const _futureReminder = ReminderNote(
+  key: 'note:a#4',
+  noteId: 'note:a',
+  line: 4,
+  title: 'Pay rent',
+  body: 'Tomorrow 09:00 · Plans',
+  fireAt: LocalTime(
+    year: 2026,
+    month: 10,
+    day: 28,
     hour: 9,
     minute: 0,
     second: 0,
@@ -86,6 +101,19 @@ void main() {
         TaskPlace(noteId: 'note:a', line: 3),
       ),
     );
+    when(
+      () => reminders.forget(
+        keys: any(named: 'keys'),
+        nowUtcMs: any(named: 'nowUtcMs'),
+      ),
+    ).thenAnswer(
+      (_) async => const Right<ApplicationError, void>(null),
+    );
+    when(
+      () => reminders.forgetFuture(nowUtcMs: any(named: 'nowUtcMs')),
+    ).thenAnswer(
+      (_) async => const Right<ApplicationError, void>(null),
+    );
     coordinator = RemindersCoordinator(
       preferences,
       reminders,
@@ -134,6 +162,71 @@ void main() {
       );
     });
 
+    test(
+      'after disabling, a failed show forgets the new schedule too',
+      () async {
+        when(
+          () => reminders.plan(
+            nowUtcMs: any(named: 'nowUtcMs'),
+            offsetMs: any(named: 'offsetMs'),
+            canNotify: true,
+          ),
+        ).thenAnswer(
+          (_) async => const Right<ApplicationError, ReminderPlan>(
+            ReminderPlan(
+              showNow: <ReminderNote>[],
+              schedule: <ReminderNote>[_futureReminder],
+            ),
+          ),
+        );
+        await atTen(coordinator.refresh);
+
+        enabled = false;
+        await atTen(coordinator.refresh);
+        enabled = true;
+        notifier.showFailure = StateError('native presentation failed');
+        when(
+          () => reminders.plan(
+            nowUtcMs: any(named: 'nowUtcMs'),
+            offsetMs: any(named: 'offsetMs'),
+            canNotify: true,
+          ),
+        ).thenAnswer(
+          (_) async => const Right<ApplicationError, ReminderPlan>(
+            ReminderPlan(
+              showNow: <ReminderNote>[_reminder],
+              schedule: <ReminderNote>[_futureReminder],
+            ),
+          ),
+        );
+
+        await atTen(coordinator.refresh);
+
+        verify(
+          () => reminders.forget(
+            keys: <String>['note:a#3', 'note:a#4'],
+            nowUtcMs: any(named: 'nowUtcMs'),
+          ),
+        ).called(1);
+      },
+    );
+
+    test('keeps the core schedule when cancellation fails', () async {
+      final previous = FlutterError.onError;
+      final errors = <FlutterErrorDetails>[];
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = previous);
+      enabled = false;
+      notifier.cancelFailure = StateError('native cancellation failed');
+
+      await atTen(coordinator.refresh);
+
+      expect(errors, hasLength(1));
+      verifyNever(
+        () => reminders.forgetFuture(nowUtcMs: any(named: 'nowUtcMs')),
+      );
+    });
+
     test('without the permission the core is told it cannot notify', () async {
       notifier.current = ReminderPermission.denied;
       await coordinator.refresh();
@@ -143,6 +236,10 @@ void main() {
           offsetMs: any(named: 'offsetMs'),
           canNotify: false,
         ),
+      ).called(1);
+      expect(notifier.cancels, 1);
+      verify(
+        () => reminders.forgetFuture(nowUtcMs: any(named: 'nowUtcMs')),
       ).called(1);
     });
 
@@ -162,6 +259,47 @@ void main() {
       expect(notifier.shown, isEmpty);
       expect(notifier.scheduled, isEmpty);
       expect(notifier.cancels, 0);
+    });
+
+    test('a failed schedule is cleared so a later plan retries it', () async {
+      final previous = FlutterError.onError;
+      final errors = <FlutterErrorDetails>[];
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = previous);
+      notifier.scheduleFailure = StateError('native scheduling failed');
+
+      await coordinator.refresh();
+
+      expect(notifier.cancels, 1);
+      expect(notifier.scheduled, isEmpty);
+      expect(errors, hasLength(1));
+      verify(
+        () => reminders.forgetFuture(nowUtcMs: any(named: 'nowUtcMs')),
+      ).called(1);
+
+      notifier.scheduleFailure = null;
+      clearInteractions(reminders);
+      await coordinator.refresh();
+      expect(notifier.scheduled.single, <ReminderNote>[_reminder]);
+    });
+
+    test('a failed show clears the unshown plan for a retry', () async {
+      final previous = FlutterError.onError;
+      final errors = <FlutterErrorDetails>[];
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = previous);
+      notifier.showFailure = StateError('native presentation failed');
+
+      await coordinator.refresh();
+
+      expect(notifier.scheduled, isEmpty);
+      expect(errors, hasLength(1));
+      verify(
+        () => reminders.forget(
+          keys: <String>['note:a#3'],
+          nowUtcMs: any(named: 'nowUtcMs'),
+        ),
+      ).called(1);
     });
 
     test('answers waiting are applied once, then it plans', () async {
@@ -228,7 +366,9 @@ void main() {
           action: any(named: 'action'),
           nowUtcMs: any(named: 'nowUtcMs'),
         ),
-      ).thenAnswer((_) async => const Right<ApplicationError, TaskPlace?>(null));
+      ).thenAnswer(
+        (_) async => const Right<ApplicationError, TaskPlace?>(null),
+      );
       final places = <TaskPlace>[];
       final subscription = coordinator.opened.listen(places.add);
       addTearDown(subscription.cancel);

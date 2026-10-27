@@ -40,14 +40,18 @@ void main() {
     await pumpUntil(tester, find.bySemanticsLabel('Next day'));
     final today = (await openDay(tester))!;
     final now = DateTime.now();
-    expect((today.year, today.month, today.day), (now.year, now.month, now.day));
+    expect(
+      (today.year, today.month, today.day),
+      (now.year, now.month, now.day),
+    );
 
     // The day before, and back.
     final todaysNote = openNote(tester);
     await tester.tap(find.bySemanticsLabel('Previous day'));
     await pumpUntilTrue(
       tester,
-      () => find.byType(NotePage).evaluate().isNotEmpty &&
+      () =>
+          find.byType(NotePage).evaluate().isNotEmpty &&
           openNote(tester) != todaysNote,
       reason: 'the note of the day before',
     );
@@ -60,7 +64,8 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Next day'));
     await pumpUntilTrue(
       tester,
-      () => find.byType(NotePage).evaluate().isNotEmpty &&
+      () =>
+          find.byType(NotePage).evaluate().isNotEmpty &&
           openNote(tester) == todaysNote,
       reason: 'today again',
     );
@@ -79,7 +84,8 @@ void main() {
     );
     await pumpUntilTrue(
       tester,
-      () => find.byType(CalendarSheet).evaluate().isEmpty &&
+      () =>
+          find.byType(CalendarSheet).evaluate().isEmpty &&
           find.byType(NotePage).evaluate().isNotEmpty &&
           openNote(tester) != todaysNote,
       reason: 'the note of the 15th',

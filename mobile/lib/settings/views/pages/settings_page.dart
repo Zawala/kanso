@@ -30,12 +30,14 @@ class SettingsPage extends StatelessWidget {
           create: (context) => getIt<BiometricsBloc>(),
         ),
         BlocProvider<DailyTemplateBloc>(
-          create: (_) => getIt<DailyTemplateBloc>()
-            ..add(const DailyTemplateEvent.started()),
+          create: (_) =>
+              getIt<DailyTemplateBloc>()
+                ..add(const DailyTemplateEvent.started()),
         ),
         BlocProvider<RemindersSettingsBloc>(
-          create: (_) => getIt<RemindersSettingsBloc>()
-            ..add(const RemindersSettingsEvent.started()),
+          create: (_) =>
+              getIt<RemindersSettingsBloc>()
+                ..add(const RemindersSettingsEvent.started()),
         ),
       ],
       child: RemindersPermissionSync(

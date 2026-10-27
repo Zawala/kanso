@@ -19,7 +19,7 @@ use kanso_core::{DocType, Note, NoteStatus, new_id, now_ms};
 use kanso_engine::links::tags::apply_inline_tags;
 use kanso_engine::list::{self, DAY_MS, DateKey, Filter, RECENT_DAYS};
 use kanso_engine::lock::LockView;
-use kanso_store::{Origin, Put, SearchParams, Sort};
+use kanso_store::{NoteSummary, Origin, Put, SearchParams, Sort};
 use serde_json::{Value, json};
 
 use crate::boundary::{guard, held};

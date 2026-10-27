@@ -127,15 +127,21 @@ void main() {
         ListPlace.notebook(id: 'book:a'),
         board: BoardKind.notes,
       );
-      const tasks = BrowseLocation.place(ListPlace.all(), board: BoardKind.tasks);
+      const tasks = BrowseLocation.place(
+        ListPlace.all(),
+        board: BoardKind.tasks,
+      );
       expect(notes.location, '/notebooks/book%3Aa/board');
       expect(tasks.location, '/notes/board?kind=tasks');
       expect(_parsed(notes.location), notes);
       expect(_parsed(tasks.location), tasks);
-      expect(_parsed('/pinned/board?kind=weird'), const BrowseLocation.place(
-        ListPlace.pinned(),
-        board: BoardKind.notes,
-      ));
+      expect(
+        _parsed('/pinned/board?kind=weird'),
+        const BrowseLocation.place(
+          ListPlace.pinned(),
+          board: BoardKind.notes,
+        ),
+      );
     });
 
     test('opening a note, or closing it, leaves the board', () {

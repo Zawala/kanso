@@ -2,7 +2,6 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-
 part of 'board_bloc.dart';
 
 /// Why the last move did not happen the way it was asked.

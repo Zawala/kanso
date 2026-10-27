@@ -251,6 +251,110 @@ class BindingQuestion {
           answers == other.answers;
 }
 
+class BoardCard {
+  final CardKey key;
+  final String title;
+  final String noteTitle;
+  final String snippet;
+  final String? due;
+  final bool checked;
+  final bool locked;
+
+  const BoardCard({
+    required this.key,
+    required this.title,
+    required this.noteTitle,
+    required this.snippet,
+    this.due,
+    required this.checked,
+    required this.locked,
+  });
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      title.hashCode ^
+      noteTitle.hashCode ^
+      snippet.hashCode ^
+      due.hashCode ^
+      checked.hashCode ^
+      locked.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BoardCard &&
+          runtimeType == other.runtimeType &&
+          key == other.key &&
+          title == other.title &&
+          noteTitle == other.noteTitle &&
+          snippet == other.snippet &&
+          due == other.due &&
+          checked == other.checked &&
+          locked == other.locked;
+}
+
+class BoardColumn {
+  final BoardLane lane;
+  final String label;
+  final List<BoardCard> cards;
+
+  const BoardColumn({
+    required this.lane,
+    required this.label,
+    required this.cards,
+  });
+
+  @override
+  int get hashCode => lane.hashCode ^ label.hashCode ^ cards.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BoardColumn &&
+          runtimeType == other.runtimeType &&
+          lane == other.lane &&
+          label == other.label &&
+          cards == other.cards;
+}
+
+enum BoardKind {
+  notes,
+  tasks,
+}
+
+@freezed
+sealed class BoardLane with _$BoardLane {
+  const BoardLane._();
+
+  const factory BoardLane.status({
+    required String status,
+  }) = BoardLane_Status;
+  const factory BoardLane.todo() = BoardLane_Todo;
+  const factory BoardLane.done() = BoardLane_Done;
+}
+
+class BoardView {
+  final BoardKind kind;
+  final List<BoardColumn> columns;
+
+  const BoardView({
+    required this.kind,
+    required this.columns,
+  });
+
+  @override
+  int get hashCode => kind.hashCode ^ columns.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BoardView &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          columns == other.columns;
+}
+
 class BuiltinTheme {
   final String id;
   final String name;
@@ -294,6 +398,34 @@ class BuiltinTheme {
           tokens == other.tokens;
 }
 
+class CalendarDay {
+  final DayDate date;
+  final bool inMonth;
+  final bool hasNote;
+  final bool isToday;
+
+  const CalendarDay({
+    required this.date,
+    required this.inMonth,
+    required this.hasNote,
+    required this.isToday,
+  });
+
+  @override
+  int get hashCode =>
+      date.hashCode ^ inMonth.hashCode ^ hasNote.hashCode ^ isToday.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CalendarDay &&
+          runtimeType == other.runtimeType &&
+          date == other.date &&
+          inMonth == other.inMonth &&
+          hasNote == other.hasNote &&
+          isToday == other.isToday;
+}
+
 class CaptureOutcome {
   final String noteId;
   final List<String> problems;
@@ -313,6 +445,26 @@ class CaptureOutcome {
           runtimeType == other.runtimeType &&
           noteId == other.noteId &&
           problems == other.problems;
+}
+
+@freezed
+sealed class CardKey with _$CardKey {
+  const CardKey._();
+
+  const factory CardKey.note({
+    required String id,
+  }) = CardKey_Note;
+  const factory CardKey.task({
+    required String noteId,
+    required int line,
+    required String text,
+  }) = CardKey_Task;
+}
+
+enum CardMoved {
+  changed,
+  unchanged,
+  missing,
 }
 
 class Changed {
@@ -598,6 +750,30 @@ enum DateField {
   created,
 }
 
+class DayDate {
+  final int year;
+  final int month;
+  final int day;
+
+  const DayDate({
+    required this.year,
+    required this.month,
+    required this.day,
+  });
+
+  @override
+  int get hashCode => year.hashCode ^ month.hashCode ^ day.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DayDate &&
+          runtimeType == other.runtimeType &&
+          year == other.year &&
+          month == other.month &&
+          day == other.day;
+}
+
 class DeviceRow {
   final String id;
   final String title;
@@ -738,6 +914,30 @@ class DropsSaved {
           notes == other.notes &&
           problems == other.problems &&
           kept == other.kept;
+}
+
+class DueChipRow {
+  final String label;
+  final DueTone tone;
+  final String tooltip;
+
+  const DueChipRow({
+    required this.label,
+    required this.tone,
+    required this.tooltip,
+  });
+
+  @override
+  int get hashCode => label.hashCode ^ tone.hashCode ^ tooltip.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DueChipRow &&
+          runtimeType == other.runtimeType &&
+          label == other.label &&
+          tone == other.tone &&
+          tooltip == other.tooltip;
 }
 
 enum DueTone {
@@ -1817,6 +2017,30 @@ class LockedInfo {
           approvalPending == other.approvalPending;
 }
 
+class MadeNote {
+  final String id;
+  final int? cursor16;
+  final bool titleFirst;
+
+  const MadeNote({
+    required this.id,
+    this.cursor16,
+    required this.titleFirst,
+  });
+
+  @override
+  int get hashCode => id.hashCode ^ cursor16.hashCode ^ titleFirst.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MadeNote &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          cursor16 == other.cursor16 &&
+          titleFirst == other.titleFirst;
+}
+
 class MemberRow {
   final String accountId;
   final String username;
@@ -1887,6 +2111,41 @@ class MentionSpan {
           runtimeType == other.runtimeType &&
           start == other.start &&
           end == other.end;
+}
+
+class MonthGrid {
+  final int year;
+  final int month;
+  final String title;
+  final List<String> weekdayLabels;
+  final List<List<CalendarDay>> weeks;
+
+  const MonthGrid({
+    required this.year,
+    required this.month,
+    required this.title,
+    required this.weekdayLabels,
+    required this.weeks,
+  });
+
+  @override
+  int get hashCode =>
+      year.hashCode ^
+      month.hashCode ^
+      title.hashCode ^
+      weekdayLabels.hashCode ^
+      weeks.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MonthGrid &&
+          runtimeType == other.runtimeType &&
+          year == other.year &&
+          month == other.month &&
+          title == other.title &&
+          weekdayLabels == other.weekdayLabels &&
+          weeks == other.weeks;
 }
 
 class NewNote {
@@ -2683,6 +2942,72 @@ class RecoveryKeyText {
       other is RecoveryKeyText &&
           runtimeType == other.runtimeType &&
           key == other.key;
+}
+
+enum ReminderAnswer {
+  open,
+  markDone,
+  dismiss,
+}
+
+class ReminderNote {
+  final String key;
+  final String noteId;
+  final int line;
+  final String title;
+  final String body;
+  final LocalTime fireAt;
+
+  const ReminderNote({
+    required this.key,
+    required this.noteId,
+    required this.line,
+    required this.title,
+    required this.body,
+    required this.fireAt,
+  });
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      noteId.hashCode ^
+      line.hashCode ^
+      title.hashCode ^
+      body.hashCode ^
+      fireAt.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReminderNote &&
+          runtimeType == other.runtimeType &&
+          key == other.key &&
+          noteId == other.noteId &&
+          line == other.line &&
+          title == other.title &&
+          body == other.body &&
+          fireAt == other.fireAt;
+}
+
+class ReminderPlan {
+  final List<ReminderNote> showNow;
+  final List<ReminderNote> schedule;
+
+  const ReminderPlan({
+    required this.showNow,
+    required this.schedule,
+  });
+
+  @override
+  int get hashCode => showNow.hashCode ^ schedule.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReminderPlan &&
+          runtimeType == other.runtimeType &&
+          showNow == other.showNow &&
+          schedule == other.schedule;
 }
 
 class ReplaceMatch {
@@ -3820,6 +4145,27 @@ class TaskListQuery {
           kept == other.kept;
 }
 
+class TaskPlace {
+  final String noteId;
+  final int line;
+
+  const TaskPlace({
+    required this.noteId,
+    required this.line,
+  });
+
+  @override
+  int get hashCode => noteId.hashCode ^ line.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TaskPlace &&
+          runtimeType == other.runtimeType &&
+          noteId == other.noteId &&
+          line == other.line;
+}
+
 class TaskSection {
   final TaskGroupKind group;
   final String label;
@@ -3842,6 +4188,27 @@ class TaskSection {
           group == other.group &&
           label == other.label &&
           items == other.items;
+}
+
+class TemplateRow {
+  final String id;
+  final String title;
+
+  const TemplateRow({
+    required this.id,
+    required this.title,
+  });
+
+  @override
+  int get hashCode => id.hashCode ^ title.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TemplateRow &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          title == other.title;
 }
 
 class TextChange {

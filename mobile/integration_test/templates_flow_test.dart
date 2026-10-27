@@ -53,7 +53,8 @@ void main() {
     await tester.tap(find.text('Untitled'));
     await pumpUntilTrue(
       tester,
-      () => find.byType(NotePage).evaluate().isNotEmpty &&
+      () =>
+          find.byType(NotePage).evaluate().isNotEmpty &&
           openNote(tester) != template,
       reason: 'the note made from the template',
     );
