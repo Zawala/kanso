@@ -7,6 +7,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# `export` and `publish` fail with context (export.rs).
+anyhow.workspace = true
 # Google's PKCE challenge (account/provider.rs) and attachments' bytes
 # (attach.rs).
 base64.workspace = true
@@ -17,7 +19,8 @@ fastrand.workspace = true
 # (attach.rs). GPUI already builds these decoders for the desktop app.
 image = { version = "0.25", default-features = false, features = ["png", "tiff", "webp", "bmp", "ico"] }
 kanso-core.workspace = true
-# Excalidraw scenes as a note keeps them, and image widths (edit/image.rs).
+# A note's web page (`export`, `publish`) and Excalidraw scenes as a note
+# keeps them, and image widths (edit/image.rs).
 kanso-render.workspace = true
 kanso-store.workspace = true
 # Without the desktop Keychain: secrets go through the `Secrets` trait.
@@ -108,6 +111,8 @@ code-grammars = [
 test-support = ["dep:proptest"]
 
 [dev-dependencies]
+# An export read back by the importer (export.rs).
+kanso-import.workspace = true
 proptest.workspace = true
 tempfile.workspace = true
 # A store that refuses a write, to test a binding that fails.

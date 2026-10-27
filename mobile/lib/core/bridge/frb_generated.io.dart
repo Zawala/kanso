@@ -598,6 +598,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   EditorSnapshot dco_decode_editor_snapshot(dynamic raw);
 
   @protected
+  ExportedPage dco_decode_exported_page(dynamic raw);
+
+  @protected
   double dco_decode_f_32(dynamic raw);
 
   @protected
@@ -1818,6 +1821,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   EditorSnapshot sse_decode_editor_snapshot(SseDeserializer deserializer);
+
+  @protected
+  ExportedPage sse_decode_exported_page(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_32(SseDeserializer deserializer);
@@ -3286,6 +3292,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
     EditorSnapshot self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_exported_page(ExportedPage self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_32(double self, SseSerializer serializer);

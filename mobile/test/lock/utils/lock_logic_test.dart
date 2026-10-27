@@ -129,6 +129,8 @@ void main() {
           actions.contains(NoteMenuAction.lockNow),
           open || lock is LockState_Open,
         );
+        // Any note that is read can be written as a PDF, and it comes first.
+        expect(actions.first, NoteMenuAction.exportPdf);
       }
       expect(actions.toSet().length, actions.length);
     });

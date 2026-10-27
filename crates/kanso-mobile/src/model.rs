@@ -1165,6 +1165,15 @@ impl Default for PreviewOptions {
     }
 }
 
+/// A note as a page to print or keep, and the name a file of it gets.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExportedPage {
+    /// The whole page: one self-contained HTML file.
+    pub html: String,
+    /// The file name it is written as, from the note's title.
+    pub file_name: String,
+}
+
 /// What a tapped address in the preview is. Anything the page doesn't emit,
 /// and anything unsafe, is [`PreviewLink::Nothing`].
 #[derive(Clone, Debug, PartialEq, Eq)]

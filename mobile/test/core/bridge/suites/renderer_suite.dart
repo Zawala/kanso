@@ -239,6 +239,29 @@ void rendererSuite(OpenLibrary open) {
       );
     });
 
+    test(
+      'a note becomes the page the desktop exports, named for a file',
+      () async {
+        final library = await open();
+        final id = await makeNote(
+          library,
+          'Exported: a page',
+          '# Heading\n\nA [[Linked]] word, and `code`.\n',
+        );
+        final page = await library.renderer().pageHtml(
+          id: id,
+          palette: palette,
+          options: const PreviewOptions(size: 16, utcOffsetSecs: 0, code: []),
+        );
+        expect(page.html, contains('<h1'));
+        expect(page.html, contains('code'));
+        // A page anybody can open carries no address only the app answers.
+        expect(page.html, isNot(contains('kanso-task:')));
+        expect(page.fileName, endsWith('.pdf'));
+        expect(page.fileName, isNot(contains(':')));
+      },
+    );
+
     test('the diagram renderer is chosen, and read back', () async {
       final before = await KansoRenderer.diagramRenderer();
       await KansoRenderer.setDiagramRenderer(renderer: DiagramRenderer.kanso);

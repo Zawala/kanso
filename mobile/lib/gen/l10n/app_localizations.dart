@@ -4306,6 +4306,24 @@ abstract class AppLocalizations {
   /// **'Note actions'**
   String get lockMoreTitle;
 
+  /// The note's menu row that writes it as a PDF to share.
+  ///
+  /// In en, this message translates to:
+  /// **'Export as PDF'**
+  String get noteExportPdf;
+
+  /// What is shown while a note is being written as a PDF.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing the PDF'**
+  String get noteExportPreparing;
+
+  /// Said when a note could not be written as a PDF.
+  ///
+  /// In en, this message translates to:
+  /// **'The note could not be exported.'**
+  String get noteExportFailed;
+
   /// The title of the notebook's menu.
   ///
   /// In en, this message translates to:

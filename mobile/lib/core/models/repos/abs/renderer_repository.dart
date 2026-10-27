@@ -28,6 +28,15 @@ abstract interface class RendererRepository {
     PreviewOptions options,
   );
 
+  /// The note [id] as the page the desktop exports: one self-contained
+  /// file whose links anyone who opens it can follow, and the name a file of
+  /// it gets. Locked while the note is locked and closed.
+  Future<Either<ApplicationError, ExportedPage>> pageHtml(
+    String id,
+    PaletteDto palette,
+    PreviewOptions options,
+  );
+
   /// What the address [url], tapped in the preview page of the note
   /// [noteId], leads to; anything unknown or unsafe is
   /// [PreviewLink.nothing].
