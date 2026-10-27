@@ -9,6 +9,8 @@
 
 pub mod diagnostics;
 pub mod library;
+pub mod linking;
+pub mod linking_types;
 pub mod locks;
 pub mod renderer;
 pub mod sync;

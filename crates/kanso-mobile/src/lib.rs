@@ -19,6 +19,9 @@
 //!   locked note's text, snippet, properties, tasks and preview never come
 //!   back while it is closed; only its title and its lock show in a list.
 //!   Keys never cross this edge.
+//! - [`Linking`] (`library.linking()`) has a note's outline, backlinks and
+//!   unlinked mentions, Link on a mention, Open Note and the command palette,
+//!   with a locked note kept out until the lock session is open.
 //! - [`SyncHandle`] (`library.sync()`) signs in to a server, syncs and
 //!   reports its status.
 //! - [`Renderer`] (`library.renderer()`) draws a note's preview, highlights
@@ -47,6 +50,8 @@ mod builtin_themes;
 pub mod diagnostics;
 mod errors;
 mod library;
+mod linking;
+mod linking_model;
 mod locks;
 mod matching;
 mod model;
@@ -59,6 +64,8 @@ mod theme_tokens;
 
 pub use errors::KansoError;
 pub use library::Library;
+pub use linking::Linking;
+pub use linking_model::*;
 pub use locks::LockSession;
 pub use model::*;
 pub use renderer::Renderer;

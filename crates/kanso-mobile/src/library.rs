@@ -15,6 +15,7 @@ use kanso_sync::{Backend, HttpBackend, KdfParams};
 use crate::backup;
 use crate::boundary::{guard, held};
 use crate::errors::KansoError;
+use crate::linking::Linking;
 use crate::locks::LockSession;
 use crate::model::{LockEvent, SyncStatus};
 use crate::renderer::Renderer;
@@ -111,6 +112,13 @@ impl Library {
     /// The lock session: the lock password's keys.
     pub fn locks(&self) -> LockSession {
         LockSession {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Outline, links, Open Note and the command palette.
+    pub fn linking(&self) -> Linking {
+        Linking {
             inner: self.inner.clone(),
         }
     }

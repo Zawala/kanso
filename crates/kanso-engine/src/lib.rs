@@ -27,6 +27,11 @@
 //! component library compiles in, with the same queries, and a test in
 //! `kanso-app` holds the two to the same colors on a corpus of notes.
 //!
+//! Getting around is here as well: [`navigate`] has a note's backlinks and
+//! unlinked mentions and Open Note, [`palette`] the command palette's
+//! catalog and ranking, and [`outline`] the heading the caret is under; all
+//! of them keep a locked note out until the lock session is open.
+//!
 //! Nothing here opens a window, reads a clock of its own or touches the
 //! system's secret store: the caller passes the time, and secrets go through
 //! [`Secrets`].
@@ -44,6 +49,9 @@ pub mod highlight;
 pub mod links;
 pub mod list;
 pub mod lock;
+pub mod navigate;
+pub mod outline;
+pub mod palette;
 #[cfg(any(test, feature = "test-support"))]
 pub mod strategies;
 pub mod sync;

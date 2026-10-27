@@ -28,6 +28,7 @@
 // Section: imports
 
 use crate::api::library::*;
+use crate::api::linking::*;
 use crate::api::locks::*;
 use crate::api::renderer::*;
 use crate::api::sync::*;
@@ -43,7 +44,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 759027719;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 978357487;
 
 // Section: executor
 
@@ -264,6 +265,53 @@ fn wire__crate__api__library__KansoLibrary_create_notebook_impl(
                     std::result::Result::Ok(output_ok)
                 })())
             }
+        },
+    )
+}
+fn wire__crate__api__library__KansoLibrary_linking_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoLibrary_linking",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok =
+                    Ok::<_, ()>(crate::api::library::KansoLibrary::linking(&*api_that_guard))?;
+                std::result::Result::Ok(output_ok)
+            })())
         },
     )
 }
@@ -956,6 +1004,381 @@ fn wire__crate__api__library__KansoLibrary_trash_impl(
                     let api_that_guard = api_that_guard.unwrap();
                     let output_ok =
                         crate::api::library::KansoLibrary::trash(&*api_that_guard, api_id)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__linking__KansoLinking_backlinks_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoLinking_backlinks",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>,
+            >>::sse_decode(&mut deserializer);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok =
+                        crate::api::linking::KansoLinking::backlinks(&*api_that_guard, api_id)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__linking__KansoLinking_current_heading_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoLinking_current_heading",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>,
+            >>::sse_decode(&mut deserializer);
+            let api_headings =
+                <Vec<crate::api::linking_types::OutlineHeading>>::sse_decode(&mut deserializer);
+            let api_line = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok = Ok::<_, ()>(crate::api::linking::KansoLinking::current_heading(
+                    &*api_that_guard,
+                    api_headings,
+                    api_line,
+                ))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__linking__KansoLinking_link_mention_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoLinking_link_mention",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>,
+            >>::sse_decode(&mut deserializer);
+            let api_target_id = <String>::sse_decode(&mut deserializer);
+            let api_mention_id = <String>::sse_decode(&mut deserializer);
+            let api_line = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::linking::KansoLinking::link_mention(
+                        &*api_that_guard,
+                        api_target_id,
+                        api_mention_id,
+                        api_line,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__linking__KansoLinking_outline_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoLinking_outline",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>,
+            >>::sse_decode(&mut deserializer);
+            let api_text = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok = Ok::<_, ()>(crate::api::linking::KansoLinking::outline(
+                    &*api_that_guard,
+                    api_text,
+                ))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__linking__KansoLinking_palette_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoLinking_palette",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>,
+            >>::sse_decode(&mut deserializer);
+            let api_query = <String>::sse_decode(&mut deserializer);
+            let api_context =
+                <crate::api::linking_types::PaletteContext>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::linking::KansoLinking::palette(
+                        &*api_that_guard,
+                        api_query,
+                        api_context,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__linking__KansoLinking_quick_open_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoLinking_quick_open",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>,
+            >>::sse_decode(&mut deserializer);
+            let api_query = <String>::sse_decode(&mut deserializer);
+            let api_open = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::linking::KansoLinking::quick_open(
+                        &*api_that_guard,
+                        api_query,
+                        api_open,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__linking__KansoLinking_unlinked_mentions_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoLinking_unlinked_mentions",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>,
+            >>::sse_decode(&mut deserializer);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::linking::KansoLinking::unlinked_mentions(
+                        &*api_that_guard,
+                        api_id,
+                    )?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -2180,6 +2603,13 @@ const _: fn() = || {
         let _: u32 = LibraryOverview.recent;
         let _: u32 = LibraryOverview.trash;
     }
+    {
+        let LinkRef = None::<crate::api::linking_types::LinkRef>.unwrap();
+        let _: String = LinkRef.id;
+        let _: String = LinkRef.title;
+        let _: u32 = LinkRef.line;
+        let _: String = LinkRef.context;
+    }
     match None::<crate::api::types::ListPlace>.unwrap() {
         crate::api::types::ListPlace::All => {}
         crate::api::types::ListPlace::Pinned => {}
@@ -2281,6 +2711,26 @@ const _: fn() = || {
         let _: u32 = NotebookRow.depth;
     }
     {
+        let OutlineHeading = None::<crate::api::linking_types::OutlineHeading>.unwrap();
+        let _: u8 = OutlineHeading.level;
+        let _: String = OutlineHeading.text;
+        let _: u32 = OutlineHeading.line;
+    }
+    {
+        let PaletteContext = None::<crate::api::linking_types::PaletteContext>.unwrap();
+        let _: Option<String> = PaletteContext.open_note_id;
+        let _: bool = PaletteContext.signed_in;
+        let _: bool = PaletteContext.session_held;
+        let _: bool = PaletteContext.ai_on;
+        let _: bool = PaletteContext.settings_open;
+        let _: bool = PaletteContext.image_line;
+        let _: bool = PaletteContext.audio_line;
+        let _: bool = PaletteContext.shared_note;
+        let _: Vec<String> = PaletteContext.handlers;
+        let _: Option<crate::api::linking_types::PalettePlace> = PaletteContext.showing;
+        let _: u32 = PaletteContext.overdue_tasks;
+    }
+    {
         let PaletteDto = None::<crate::api::types::PaletteDto>.unwrap();
         let _: bool = PaletteDto.dark;
         let _: u32 = PaletteDto.background;
@@ -2296,6 +2746,52 @@ const _: fn() = || {
         let _: u32 = PaletteDto.inline_code_background;
         let _: Option<u32> = PaletteDto.inline_code_text;
         let _: Option<u32> = PaletteDto.table_header_background;
+    }
+    {
+        let PaletteEntry = None::<crate::api::linking_types::PaletteEntry>.unwrap();
+        let _: crate::api::linking_types::PaletteTarget = PaletteEntry.target;
+        let _: String = PaletteEntry.label;
+        let _: String = PaletteEntry.icon;
+        let _: Option<String> = PaletteEntry.description;
+        let _: Option<String> = PaletteEntry.hint;
+        let _: bool = PaletteEntry.checked;
+        let _: u32 = PaletteEntry.depth;
+        let _: Option<String> = PaletteEntry.status;
+    }
+    match None::<crate::api::linking_types::PalettePlace>.unwrap() {
+        crate::api::linking_types::PalettePlace::AllNotes => {}
+        crate::api::linking_types::PalettePlace::Pinned => {}
+        crate::api::linking_types::PalettePlace::Recent => {}
+        crate::api::linking_types::PalettePlace::Tasks => {}
+        crate::api::linking_types::PalettePlace::Notebook { id } => {
+            let _: String = id;
+        }
+        crate::api::linking_types::PalettePlace::Status { name } => {
+            let _: String = name;
+        }
+        crate::api::linking_types::PalettePlace::Shared => {}
+        crate::api::linking_types::PalettePlace::Trash => {}
+    }
+    {
+        let PaletteSection = None::<crate::api::linking_types::PaletteSection>.unwrap();
+        let _: String = PaletteSection.label;
+        let _: Vec<crate::api::linking_types::PaletteEntry> = PaletteSection.entries;
+    }
+    match None::<crate::api::linking_types::PaletteTarget>.unwrap() {
+        crate::api::linking_types::PaletteTarget::Command { id, picker } => {
+            let _: String = id;
+            let _: Option<crate::api::linking_types::PalettePicker> = picker;
+        }
+        crate::api::linking_types::PaletteTarget::Place { place } => {
+            let _: crate::api::linking_types::PalettePlace = place;
+        }
+        crate::api::linking_types::PaletteTarget::Note { id } => {
+            let _: String = id;
+        }
+        crate::api::linking_types::PaletteTarget::Heading { note_id, line } => {
+            let _: String = note_id;
+            let _: u32 = line;
+        }
     }
     {
         let Property = None::<crate::api::types::Property>.unwrap();
@@ -2406,6 +2902,9 @@ flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
     flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>
 );
 flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
+    flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>
+);
+flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
     flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLocks>
 );
 flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
@@ -2430,6 +2929,16 @@ impl SseDecode for KansoLibrary {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <RustOpaqueMoi<
             flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>,
+        >>::sse_decode(deserializer);
+        return flutter_rust_bridge::for_generated::rust_auto_opaque_decode_owned(inner);
+    }
+}
+
+impl SseDecode for KansoLinking {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <RustOpaqueMoi<
+            flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>,
         >>::sse_decode(deserializer);
         return flutter_rust_bridge::for_generated::rust_auto_opaque_decode_owned(inner);
     }
@@ -2467,6 +2976,16 @@ impl SseDecode for KansoSync {
 
 impl SseDecode
     for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <usize>::sse_decode(deserializer);
+        return decode_rust_opaque_moi(inner);
+    }
+}
+
+impl SseDecode
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2714,6 +3233,22 @@ impl SseDecode for crate::api::types::LibraryOverview {
     }
 }
 
+impl SseDecode for crate::api::linking_types::LinkRef {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_title = <String>::sse_decode(deserializer);
+        let mut var_line = <u32>::sse_decode(deserializer);
+        let mut var_context = <String>::sse_decode(deserializer);
+        return crate::api::linking_types::LinkRef {
+            id: var_id,
+            title: var_title,
+            line: var_line,
+            context: var_context,
+        };
+    }
+}
+
 impl SseDecode for Vec<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2762,6 +3297,20 @@ impl SseDecode for Vec<crate::api::types::Hit> {
     }
 }
 
+impl SseDecode for Vec<crate::api::linking_types::LinkRef> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::linking_types::LinkRef>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<Vec<u8>> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2805,6 +3354,48 @@ impl SseDecode for Vec<Option<String>> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<Option<String>>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::linking_types::OutlineHeading> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::linking_types::OutlineHeading>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::linking_types::PaletteEntry> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::linking_types::PaletteEntry>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::linking_types::PaletteSection> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::linking_types::PaletteSection>::sse_decode(
+                deserializer,
+            ));
         }
         return ans_;
     }
@@ -3235,6 +3826,43 @@ impl SseDecode for Option<crate::api::types::NotebookRole> {
     }
 }
 
+impl SseDecode for Option<crate::api::linking_types::PalettePicker> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::linking_types::PalettePicker>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api::linking_types::PalettePlace> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::linking_types::PalettePlace>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api::types::Saved> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::types::Saved>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<crate::api::types::SyncProblemKind> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3267,6 +3895,51 @@ impl SseDecode for Option<u32> {
         } else {
             return None;
         }
+    }
+}
+
+impl SseDecode for crate::api::linking_types::OutlineHeading {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_level = <u8>::sse_decode(deserializer);
+        let mut var_text = <String>::sse_decode(deserializer);
+        let mut var_line = <u32>::sse_decode(deserializer);
+        return crate::api::linking_types::OutlineHeading {
+            level: var_level,
+            text: var_text,
+            line: var_line,
+        };
+    }
+}
+
+impl SseDecode for crate::api::linking_types::PaletteContext {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_openNoteId = <Option<String>>::sse_decode(deserializer);
+        let mut var_signedIn = <bool>::sse_decode(deserializer);
+        let mut var_sessionHeld = <bool>::sse_decode(deserializer);
+        let mut var_aiOn = <bool>::sse_decode(deserializer);
+        let mut var_settingsOpen = <bool>::sse_decode(deserializer);
+        let mut var_imageLine = <bool>::sse_decode(deserializer);
+        let mut var_audioLine = <bool>::sse_decode(deserializer);
+        let mut var_sharedNote = <bool>::sse_decode(deserializer);
+        let mut var_handlers = <Vec<String>>::sse_decode(deserializer);
+        let mut var_showing =
+            <Option<crate::api::linking_types::PalettePlace>>::sse_decode(deserializer);
+        let mut var_overdueTasks = <u32>::sse_decode(deserializer);
+        return crate::api::linking_types::PaletteContext {
+            open_note_id: var_openNoteId,
+            signed_in: var_signedIn,
+            session_held: var_sessionHeld,
+            ai_on: var_aiOn,
+            settings_open: var_settingsOpen,
+            image_line: var_imageLine,
+            audio_line: var_audioLine,
+            shared_note: var_sharedNote,
+            handlers: var_handlers,
+            showing: var_showing,
+            overdue_tasks: var_overdueTasks,
+        };
     }
 }
 
@@ -3303,6 +3976,137 @@ impl SseDecode for crate::api::types::PaletteDto {
             inline_code_text: var_inlineCodeText,
             table_header_background: var_tableHeaderBackground,
         };
+    }
+}
+
+impl SseDecode for crate::api::linking_types::PaletteEntry {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_target = <crate::api::linking_types::PaletteTarget>::sse_decode(deserializer);
+        let mut var_label = <String>::sse_decode(deserializer);
+        let mut var_icon = <String>::sse_decode(deserializer);
+        let mut var_description = <Option<String>>::sse_decode(deserializer);
+        let mut var_hint = <Option<String>>::sse_decode(deserializer);
+        let mut var_checked = <bool>::sse_decode(deserializer);
+        let mut var_depth = <u32>::sse_decode(deserializer);
+        let mut var_status = <Option<String>>::sse_decode(deserializer);
+        return crate::api::linking_types::PaletteEntry {
+            target: var_target,
+            label: var_label,
+            icon: var_icon,
+            description: var_description,
+            hint: var_hint,
+            checked: var_checked,
+            depth: var_depth,
+            status: var_status,
+        };
+    }
+}
+
+impl SseDecode for crate::api::linking_types::PalettePicker {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::linking_types::PalettePicker::Notebook,
+            1 => crate::api::linking_types::PalettePicker::Tag,
+            2 => crate::api::linking_types::PalettePicker::Status,
+            3 => crate::api::linking_types::PalettePicker::GoToNotebook,
+            4 => crate::api::linking_types::PalettePicker::GoToTag,
+            5 => crate::api::linking_types::PalettePicker::WordGoal,
+            6 => crate::api::linking_types::PalettePicker::Template,
+            7 => crate::api::linking_types::PalettePicker::ImageSize,
+            _ => unreachable!("Invalid variant for PalettePicker: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::linking_types::PalettePlace {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                return crate::api::linking_types::PalettePlace::AllNotes;
+            }
+            1 => {
+                return crate::api::linking_types::PalettePlace::Pinned;
+            }
+            2 => {
+                return crate::api::linking_types::PalettePlace::Recent;
+            }
+            3 => {
+                return crate::api::linking_types::PalettePlace::Tasks;
+            }
+            4 => {
+                let mut var_id = <String>::sse_decode(deserializer);
+                return crate::api::linking_types::PalettePlace::Notebook { id: var_id };
+            }
+            5 => {
+                let mut var_name = <String>::sse_decode(deserializer);
+                return crate::api::linking_types::PalettePlace::Status { name: var_name };
+            }
+            6 => {
+                return crate::api::linking_types::PalettePlace::Shared;
+            }
+            7 => {
+                return crate::api::linking_types::PalettePlace::Trash;
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseDecode for crate::api::linking_types::PaletteSection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_label = <String>::sse_decode(deserializer);
+        let mut var_entries =
+            <Vec<crate::api::linking_types::PaletteEntry>>::sse_decode(deserializer);
+        return crate::api::linking_types::PaletteSection {
+            label: var_label,
+            entries: var_entries,
+        };
+    }
+}
+
+impl SseDecode for crate::api::linking_types::PaletteTarget {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_id = <String>::sse_decode(deserializer);
+                let mut var_picker =
+                    <Option<crate::api::linking_types::PalettePicker>>::sse_decode(deserializer);
+                return crate::api::linking_types::PaletteTarget::Command {
+                    id: var_id,
+                    picker: var_picker,
+                };
+            }
+            1 => {
+                let mut var_place =
+                    <crate::api::linking_types::PalettePlace>::sse_decode(deserializer);
+                return crate::api::linking_types::PaletteTarget::Place { place: var_place };
+            }
+            2 => {
+                let mut var_id = <String>::sse_decode(deserializer);
+                return crate::api::linking_types::PaletteTarget::Note { id: var_id };
+            }
+            3 => {
+                let mut var_noteId = <String>::sse_decode(deserializer);
+                let mut var_line = <u32>::sse_decode(deserializer);
+                return crate::api::linking_types::PaletteTarget::Heading {
+                    note_id: var_noteId,
+                    line: var_line,
+                };
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -3666,130 +4470,157 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        5 => wire__crate__api__library__KansoLibrary_list_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__library__KansoLibrary_note_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__library__KansoLibrary_notebooks_impl(
+        6 => wire__crate__api__library__KansoLibrary_list_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__library__KansoLibrary_note_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__library__KansoLibrary_notebooks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        9 => wire__crate__api__library__KansoLibrary_open_impl(port, ptr, rust_vec_len, data_len),
-        10 => {
+        10 => wire__crate__api__library__KansoLibrary_open_impl(port, ptr, rust_vec_len, data_len),
+        11 => {
             wire__crate__api__library__KansoLibrary_overview_impl(port, ptr, rust_vec_len, data_len)
         }
-        11 => wire__crate__api__library__KansoLibrary_properties_impl(
+        12 => wire__crate__api__library__KansoLibrary_properties_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        12 => wire__crate__api__library__KansoLibrary_query_view_impl(
+        13 => wire__crate__api__library__KansoLibrary_query_view_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        14 => wire__crate__api__library__KansoLibrary_save_impl(port, ptr, rust_vec_len, data_len),
-        15 => {
+        15 => wire__crate__api__library__KansoLibrary_save_impl(port, ptr, rust_vec_len, data_len),
+        16 => {
             wire__crate__api__library__KansoLibrary_search_impl(port, ptr, rust_vec_len, data_len)
         }
-        17 => wire__crate__api__library__KansoLibrary_tags_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__library__KansoLibrary_trash_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__locks__KansoLocks_is_note_unlocked_impl(
+        18 => wire__crate__api__library__KansoLibrary_tags_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__library__KansoLibrary_trash_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__linking__KansoLinking_backlinks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        20 => {
+        22 => wire__crate__api__linking__KansoLinking_link_mention_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        24 => {
+            wire__crate__api__linking__KansoLinking_palette_impl(port, ptr, rust_vec_len, data_len)
+        }
+        25 => wire__crate__api__linking__KansoLinking_quick_open_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        26 => wire__crate__api__linking__KansoLinking_unlinked_mentions_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        27 => wire__crate__api__locks__KansoLocks_is_note_unlocked_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        28 => {
             wire__crate__api__locks__KansoLocks_is_unlocked_impl(port, ptr, rust_vec_len, data_len)
         }
-        21 => wire__crate__api__locks__KansoLocks_lock_impl(port, ptr, rust_vec_len, data_len),
-        22 => {
+        29 => wire__crate__api__locks__KansoLocks_lock_impl(port, ptr, rust_vec_len, data_len),
+        30 => {
             wire__crate__api__locks__KansoLocks_lock_events_impl(port, ptr, rust_vec_len, data_len)
         }
-        23 => wire__crate__api__locks__KansoLocks_lock_note_impl(port, ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__locks__KansoLocks_unlock_impl(port, ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__renderer__KansoRenderer_builtin_theme_tokens_impl(
+        31 => wire__crate__api__locks__KansoLocks_lock_note_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__locks__KansoLocks_unlock_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__renderer__KansoRenderer_builtin_theme_tokens_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        26 => wire__crate__api__renderer__KansoRenderer_builtin_themes_impl(
+        34 => wire__crate__api__renderer__KansoRenderer_builtin_themes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        27 => wire__crate__api__renderer__KansoRenderer_diagram_svg_impl(
+        35 => wire__crate__api__renderer__KansoRenderer_diagram_svg_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        28 => wire__crate__api__renderer__KansoRenderer_highlight_impl(
+        36 => wire__crate__api__renderer__KansoRenderer_highlight_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        29 => wire__crate__api__renderer__KansoRenderer_math_svg_impl(
+        37 => wire__crate__api__renderer__KansoRenderer_math_svg_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        30 => wire__crate__api__renderer__KansoRenderer_preview_html_impl(
+        38 => wire__crate__api__renderer__KansoRenderer_preview_html_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        31 => wire__crate__api__renderer__KansoRenderer_set_fonts_impl(
+        39 => wire__crate__api__renderer__KansoRenderer_set_fonts_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        32 => wire__crate__api__renderer__KansoRenderer_styled_runs_impl(
+        40 => wire__crate__api__renderer__KansoRenderer_styled_runs_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        33 => wire__crate__api__renderer__KansoRenderer_theme_tokens_impl(
+        41 => wire__crate__api__renderer__KansoRenderer_theme_tokens_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        34 => {
+        42 => {
             wire__crate__api__sync__KansoSync_check_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        35 => {
+        43 => {
             wire__crate__api__sync__KansoSync_default_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        36 => wire__crate__api__sync__KansoSync_sign_in_password_impl(
+        44 => wire__crate__api__sync__KansoSync_sign_in_password_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        37 => wire__crate__api__sync__KansoSync_sign_out_impl(port, ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__sync__KansoSync_status_impl(port, ptr, rust_vec_len, data_len),
-        39 => {
+        45 => wire__crate__api__sync__KansoSync_sign_out_impl(port, ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__sync__KansoSync_status_impl(port, ptr, rust_vec_len, data_len),
+        47 => {
             wire__crate__api__sync__KansoSync_status_stream_impl(port, ptr, rust_vec_len, data_len)
         }
-        40 => wire__crate__api__sync__KansoSync_sync_now_impl(port, ptr, rust_vec_len, data_len),
-        41 => {
+        48 => wire__crate__api__sync__KansoSync_sync_now_impl(port, ptr, rust_vec_len, data_len),
+        49 => {
             wire__crate__api__diagnostics__backup_excluded_impl(port, ptr, rust_vec_len, data_len)
         }
-        42 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
-        44 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
+        51 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
+        53 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3802,9 +4633,16 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        6 => wire__crate__api__library__KansoLibrary_locks_impl(ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__library__KansoLibrary_renderer_impl(ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__library__KansoLibrary_syncing_impl(ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__library__KansoLibrary_linking_impl(ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__library__KansoLibrary_locks_impl(ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__library__KansoLibrary_renderer_impl(ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__library__KansoLibrary_syncing_impl(ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__linking__KansoLinking_current_heading_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        23 => wire__crate__api__linking__KansoLinking_outline_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3822,6 +4660,21 @@ impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<
 
 impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<KansoLibrary>> for KansoLibrary {
     fn into_into_dart(self) -> FrbWrapper<KansoLibrary> {
+        self.into()
+    }
+}
+
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<KansoLinking> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self.0)
+            .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<KansoLinking> {}
+
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<KansoLinking>> for KansoLinking {
+    fn into_into_dart(self) -> FrbWrapper<KansoLinking> {
         self.into()
     }
 }
@@ -4044,6 +4897,29 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LibraryOver
     for crate::api::types::LibraryOverview
 {
     fn into_into_dart(self) -> FrbWrapper<crate::api::types::LibraryOverview> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::linking_types::LinkRef> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.id.into_into_dart().into_dart(),
+            self.0.title.into_into_dart().into_dart(),
+            self.0.line.into_into_dart().into_dart(),
+            self.0.context.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::linking_types::LinkRef>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::linking_types::LinkRef>>
+    for crate::api::linking_types::LinkRef
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::linking_types::LinkRef> {
         self.into()
     }
 }
@@ -4379,6 +5255,58 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::NotebookRow
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::linking_types::OutlineHeading> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.level.into_into_dart().into_dart(),
+            self.0.text.into_into_dart().into_dart(),
+            self.0.line.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::linking_types::OutlineHeading>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::linking_types::OutlineHeading>>
+    for crate::api::linking_types::OutlineHeading
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::linking_types::OutlineHeading> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::linking_types::PaletteContext> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.open_note_id.into_into_dart().into_dart(),
+            self.0.signed_in.into_into_dart().into_dart(),
+            self.0.session_held.into_into_dart().into_dart(),
+            self.0.ai_on.into_into_dart().into_dart(),
+            self.0.settings_open.into_into_dart().into_dart(),
+            self.0.image_line.into_into_dart().into_dart(),
+            self.0.audio_line.into_into_dart().into_dart(),
+            self.0.shared_note.into_into_dart().into_dart(),
+            self.0.handlers.into_into_dart().into_dart(),
+            self.0.showing.into_into_dart().into_dart(),
+            self.0.overdue_tasks.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::linking_types::PaletteContext>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::linking_types::PaletteContext>>
+    for crate::api::linking_types::PaletteContext
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::linking_types::PaletteContext> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PaletteDto> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -4408,6 +5336,153 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PaletteDto>
     for crate::api::types::PaletteDto
 {
     fn into_into_dart(self) -> FrbWrapper<crate::api::types::PaletteDto> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::linking_types::PaletteEntry> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.target.into_into_dart().into_dart(),
+            self.0.label.into_into_dart().into_dart(),
+            self.0.icon.into_into_dart().into_dart(),
+            self.0.description.into_into_dart().into_dart(),
+            self.0.hint.into_into_dart().into_dart(),
+            self.0.checked.into_into_dart().into_dart(),
+            self.0.depth.into_into_dart().into_dart(),
+            self.0.status.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::linking_types::PaletteEntry>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::linking_types::PaletteEntry>>
+    for crate::api::linking_types::PaletteEntry
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::linking_types::PaletteEntry> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::linking_types::PalettePicker> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::linking_types::PalettePicker::Notebook => 0.into_dart(),
+            crate::api::linking_types::PalettePicker::Tag => 1.into_dart(),
+            crate::api::linking_types::PalettePicker::Status => 2.into_dart(),
+            crate::api::linking_types::PalettePicker::GoToNotebook => 3.into_dart(),
+            crate::api::linking_types::PalettePicker::GoToTag => 4.into_dart(),
+            crate::api::linking_types::PalettePicker::WordGoal => 5.into_dart(),
+            crate::api::linking_types::PalettePicker::Template => 6.into_dart(),
+            crate::api::linking_types::PalettePicker::ImageSize => 7.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::linking_types::PalettePicker>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::linking_types::PalettePicker>>
+    for crate::api::linking_types::PalettePicker
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::linking_types::PalettePicker> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::linking_types::PalettePlace> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::linking_types::PalettePlace::AllNotes => [0.into_dart()].into_dart(),
+            crate::api::linking_types::PalettePlace::Pinned => [1.into_dart()].into_dart(),
+            crate::api::linking_types::PalettePlace::Recent => [2.into_dart()].into_dart(),
+            crate::api::linking_types::PalettePlace::Tasks => [3.into_dart()].into_dart(),
+            crate::api::linking_types::PalettePlace::Notebook { id } => {
+                [4.into_dart(), id.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::linking_types::PalettePlace::Status { name } => {
+                [5.into_dart(), name.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::linking_types::PalettePlace::Shared => [6.into_dart()].into_dart(),
+            crate::api::linking_types::PalettePlace::Trash => [7.into_dart()].into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::linking_types::PalettePlace>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::linking_types::PalettePlace>>
+    for crate::api::linking_types::PalettePlace
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::linking_types::PalettePlace> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::linking_types::PaletteSection> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.label.into_into_dart().into_dart(),
+            self.0.entries.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::linking_types::PaletteSection>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::linking_types::PaletteSection>>
+    for crate::api::linking_types::PaletteSection
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::linking_types::PaletteSection> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::linking_types::PaletteTarget> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::linking_types::PaletteTarget::Command { id, picker } => [
+                0.into_dart(),
+                id.into_into_dart().into_dart(),
+                picker.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::linking_types::PaletteTarget::Place { place } => {
+                [1.into_dart(), place.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::linking_types::PaletteTarget::Note { id } => {
+                [2.into_dart(), id.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::linking_types::PaletteTarget::Heading { note_id, line } => [
+                3.into_dart(),
+                note_id.into_into_dart().into_dart(),
+                line.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::linking_types::PaletteTarget>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::linking_types::PaletteTarget>>
+    for crate::api::linking_types::PaletteTarget
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::linking_types::PaletteTarget> {
         self.into()
     }
 }
@@ -4870,6 +5945,13 @@ impl SseEncode for KansoLibrary {
     }
 }
 
+impl SseEncode for KansoLinking {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>>>::sse_encode(flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self), serializer);
+    }
+}
+
 impl SseEncode for KansoLocks {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4893,6 +5975,17 @@ impl SseEncode for KansoSync {
 
 impl SseEncode
     for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        let (ptr, size) = self.sse_encode_raw();
+        <usize>::sse_encode(ptr, serializer);
+        <i32>::sse_encode(size, serializer);
+    }
+}
+
+impl SseEncode
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5111,6 +6204,16 @@ impl SseEncode for crate::api::types::LibraryOverview {
     }
 }
 
+impl SseEncode for crate::api::linking_types::LinkRef {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.title, serializer);
+        <u32>::sse_encode(self.line, serializer);
+        <String>::sse_encode(self.context, serializer);
+    }
+}
+
 impl SseEncode for Vec<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5151,6 +6254,16 @@ impl SseEncode for Vec<crate::api::types::Hit> {
     }
 }
 
+impl SseEncode for Vec<crate::api::linking_types::LinkRef> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::linking_types::LinkRef>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<Vec<u8>> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5187,6 +6300,36 @@ impl SseEncode for Vec<Option<String>> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <Option<String>>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::linking_types::OutlineHeading> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::linking_types::OutlineHeading>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::linking_types::PaletteEntry> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::linking_types::PaletteEntry>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::linking_types::PaletteSection> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::linking_types::PaletteSection>::sse_encode(item, serializer);
         }
     }
 }
@@ -5534,6 +6677,36 @@ impl SseEncode for Option<crate::api::types::NotebookRole> {
     }
 }
 
+impl SseEncode for Option<crate::api::linking_types::PalettePicker> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::linking_types::PalettePicker>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::linking_types::PalettePlace> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::linking_types::PalettePlace>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::types::Saved> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::types::Saved>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<crate::api::types::SyncProblemKind> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5564,6 +6737,32 @@ impl SseEncode for Option<u32> {
     }
 }
 
+impl SseEncode for crate::api::linking_types::OutlineHeading {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u8>::sse_encode(self.level, serializer);
+        <String>::sse_encode(self.text, serializer);
+        <u32>::sse_encode(self.line, serializer);
+    }
+}
+
+impl SseEncode for crate::api::linking_types::PaletteContext {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Option<String>>::sse_encode(self.open_note_id, serializer);
+        <bool>::sse_encode(self.signed_in, serializer);
+        <bool>::sse_encode(self.session_held, serializer);
+        <bool>::sse_encode(self.ai_on, serializer);
+        <bool>::sse_encode(self.settings_open, serializer);
+        <bool>::sse_encode(self.image_line, serializer);
+        <bool>::sse_encode(self.audio_line, serializer);
+        <bool>::sse_encode(self.shared_note, serializer);
+        <Vec<String>>::sse_encode(self.handlers, serializer);
+        <Option<crate::api::linking_types::PalettePlace>>::sse_encode(self.showing, serializer);
+        <u32>::sse_encode(self.overdue_tasks, serializer);
+    }
+}
+
 impl SseEncode for crate::api::types::PaletteDto {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5581,6 +6780,116 @@ impl SseEncode for crate::api::types::PaletteDto {
         <u32>::sse_encode(self.inline_code_background, serializer);
         <Option<u32>>::sse_encode(self.inline_code_text, serializer);
         <Option<u32>>::sse_encode(self.table_header_background, serializer);
+    }
+}
+
+impl SseEncode for crate::api::linking_types::PaletteEntry {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::linking_types::PaletteTarget>::sse_encode(self.target, serializer);
+        <String>::sse_encode(self.label, serializer);
+        <String>::sse_encode(self.icon, serializer);
+        <Option<String>>::sse_encode(self.description, serializer);
+        <Option<String>>::sse_encode(self.hint, serializer);
+        <bool>::sse_encode(self.checked, serializer);
+        <u32>::sse_encode(self.depth, serializer);
+        <Option<String>>::sse_encode(self.status, serializer);
+    }
+}
+
+impl SseEncode for crate::api::linking_types::PalettePicker {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::linking_types::PalettePicker::Notebook => 0,
+                crate::api::linking_types::PalettePicker::Tag => 1,
+                crate::api::linking_types::PalettePicker::Status => 2,
+                crate::api::linking_types::PalettePicker::GoToNotebook => 3,
+                crate::api::linking_types::PalettePicker::GoToTag => 4,
+                crate::api::linking_types::PalettePicker::WordGoal => 5,
+                crate::api::linking_types::PalettePicker::Template => 6,
+                crate::api::linking_types::PalettePicker::ImageSize => 7,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::linking_types::PalettePlace {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::linking_types::PalettePlace::AllNotes => {
+                <i32>::sse_encode(0, serializer);
+            }
+            crate::api::linking_types::PalettePlace::Pinned => {
+                <i32>::sse_encode(1, serializer);
+            }
+            crate::api::linking_types::PalettePlace::Recent => {
+                <i32>::sse_encode(2, serializer);
+            }
+            crate::api::linking_types::PalettePlace::Tasks => {
+                <i32>::sse_encode(3, serializer);
+            }
+            crate::api::linking_types::PalettePlace::Notebook { id } => {
+                <i32>::sse_encode(4, serializer);
+                <String>::sse_encode(id, serializer);
+            }
+            crate::api::linking_types::PalettePlace::Status { name } => {
+                <i32>::sse_encode(5, serializer);
+                <String>::sse_encode(name, serializer);
+            }
+            crate::api::linking_types::PalettePlace::Shared => {
+                <i32>::sse_encode(6, serializer);
+            }
+            crate::api::linking_types::PalettePlace::Trash => {
+                <i32>::sse_encode(7, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseEncode for crate::api::linking_types::PaletteSection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.label, serializer);
+        <Vec<crate::api::linking_types::PaletteEntry>>::sse_encode(self.entries, serializer);
+    }
+}
+
+impl SseEncode for crate::api::linking_types::PaletteTarget {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::linking_types::PaletteTarget::Command { id, picker } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(id, serializer);
+                <Option<crate::api::linking_types::PalettePicker>>::sse_encode(picker, serializer);
+            }
+            crate::api::linking_types::PaletteTarget::Place { place } => {
+                <i32>::sse_encode(1, serializer);
+                <crate::api::linking_types::PalettePlace>::sse_encode(place, serializer);
+            }
+            crate::api::linking_types::PaletteTarget::Note { id } => {
+                <i32>::sse_encode(2, serializer);
+                <String>::sse_encode(id, serializer);
+            }
+            crate::api::linking_types::PaletteTarget::Heading { note_id, line } => {
+                <i32>::sse_encode(3, serializer);
+                <String>::sse_encode(note_id, serializer);
+                <u32>::sse_encode(line, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -5871,6 +7180,7 @@ mod io {
 
     use super::*;
     use crate::api::library::*;
+    use crate::api::linking::*;
     use crate::api::locks::*;
     use crate::api::renderer::*;
     use crate::api::sync::*;
@@ -5896,6 +7206,20 @@ mod io {
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLibrary>>::decrement_strong_count(ptr as _);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_kanso_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>>::increment_strong_count(ptr as _);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_kanso_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoLinking>>::decrement_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]

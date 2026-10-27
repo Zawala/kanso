@@ -5,6 +5,8 @@
 
 import 'api/diagnostics.dart';
 import 'api/library.dart';
+import 'api/linking.dart';
+import 'api/linking_types.dart';
 import 'api/locks.dart';
 import 'api/renderer.dart';
 import 'api/sync.dart';
@@ -41,12 +43,8 @@ class KansoCore
 
   /// Initialize flutter_rust_bridge in mock mode.
   /// No libraries for FFI are loaded.
-  static void initMock({
-    required KansoCoreApi api,
-  }) {
-    instance.initMockImpl(
-      api: api,
-    );
+  static void initMock({required KansoCoreApi api}) {
+    instance.initMockImpl(api: api);
   }
 
   /// Dispose flutter_rust_bridge
@@ -74,7 +72,7 @@ class KansoCore
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 759027719;
+  int get rustContentHash => 978357487;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -106,6 +104,8 @@ abstract class KansoCoreApi extends BaseApi {
     required String name,
     String? parentId,
   });
+
+  KansoLinking crateApiLibraryKansoLibraryLinking({required KansoLibrary that});
 
   Future<NoteList> crateApiLibraryKansoLibraryList({
     required KansoLibrary that,
@@ -166,6 +166,46 @@ abstract class KansoCoreApi extends BaseApi {
 
   Future<void> crateApiLibraryKansoLibraryTrash({
     required KansoLibrary that,
+    required String id,
+  });
+
+  Future<List<LinkRef>> crateApiLinkingKansoLinkingBacklinks({
+    required KansoLinking that,
+    required String id,
+  });
+
+  int? crateApiLinkingKansoLinkingCurrentHeading({
+    required KansoLinking that,
+    required List<OutlineHeading> headings,
+    required int line,
+  });
+
+  Future<Saved?> crateApiLinkingKansoLinkingLinkMention({
+    required KansoLinking that,
+    required String targetId,
+    required String mentionId,
+    required int line,
+  });
+
+  List<OutlineHeading> crateApiLinkingKansoLinkingOutline({
+    required KansoLinking that,
+    required String text,
+  });
+
+  Future<List<PaletteSection>> crateApiLinkingKansoLinkingPalette({
+    required KansoLinking that,
+    required String query,
+    required PaletteContext context,
+  });
+
+  Future<List<PaletteSection>> crateApiLinkingKansoLinkingQuickOpen({
+    required KansoLinking that,
+    required String query,
+    String? open,
+  });
+
+  Future<List<LinkRef>> crateApiLinkingKansoLinkingUnlinkedMentions({
+    required KansoLinking that,
     required String id,
   });
 
@@ -280,6 +320,14 @@ abstract class KansoCoreApi extends BaseApi {
   get rust_arc_decrement_strong_count_KansoLibrary;
 
   CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_KansoLibraryPtr;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoLinking;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoLinking;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_KansoLinkingPtr;
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_KansoLocks;
@@ -476,6 +524,38 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  KansoLinking crateApiLibraryKansoLibraryLinking({
+    required KansoLibrary that,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLibraryKansoLibraryLinkingConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLibraryKansoLibraryLinkingConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLibrary_linking",
+        argNames: ["that"],
+      );
+
+  @override
   Future<NoteList> crateApiLibraryKansoLibraryList({
     required KansoLibrary that,
     required ListQuery query,
@@ -492,7 +572,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 6,
             port: port_,
           );
         },
@@ -523,7 +603,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -538,10 +618,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiLibraryKansoLibraryLocksConstMeta =>
-      const TaskConstMeta(
-        debugName: "KansoLibrary_locks",
-        argNames: ["that"],
-      );
+      const TaskConstMeta(debugName: "KansoLibrary_locks", argNames: ["that"]);
 
   @override
   Future<NoteView> crateApiLibraryKansoLibraryNote({
@@ -560,7 +637,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 8,
             port: port_,
           );
         },
@@ -596,7 +673,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 9,
             port: port_,
           );
         },
@@ -627,7 +704,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 10,
             port: port_,
           );
         },
@@ -644,10 +721,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiLibraryKansoLibraryOpenConstMeta =>
-      const TaskConstMeta(
-        debugName: "KansoLibrary_open",
-        argNames: ["path"],
-      );
+      const TaskConstMeta(debugName: "KansoLibrary_open", argNames: ["path"]);
 
   @override
   Future<LibraryOverview> crateApiLibraryKansoLibraryOverview({
@@ -664,7 +738,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 11,
             port: port_,
           );
         },
@@ -702,7 +776,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 12,
             port: port_,
           );
         },
@@ -742,7 +816,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 13,
             port: port_,
           );
         },
@@ -775,7 +849,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -816,7 +890,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 15,
             port: port_,
           );
         },
@@ -858,7 +932,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 16,
             port: port_,
           );
         },
@@ -889,7 +963,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
         },
         codec: SseCodec(
           decodeSuccessData:
@@ -924,7 +998,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 18,
             port: port_,
           );
         },
@@ -940,10 +1014,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiLibraryKansoLibraryTagsConstMeta =>
-      const TaskConstMeta(
-        debugName: "KansoLibrary_tags",
-        argNames: ["that"],
-      );
+      const TaskConstMeta(debugName: "KansoLibrary_tags", argNames: ["that"]);
 
   @override
   Future<void> crateApiLibraryKansoLibraryTrash({
@@ -962,7 +1033,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 19,
             port: port_,
           );
         },
@@ -984,6 +1055,272 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  Future<List<LinkRef>> crateApiLinkingKansoLinkingBacklinks({
+    required KansoLinking that,
+    required String id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_link_ref,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLinkingKansoLinkingBacklinksConstMeta,
+        argValues: [that, id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkingKansoLinkingBacklinksConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLinking_backlinks",
+        argNames: ["that", "id"],
+      );
+
+  @override
+  int? crateApiLinkingKansoLinkingCurrentHeading({
+    required KansoLinking that,
+    required List<OutlineHeading> headings,
+    required int line,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+            that,
+            serializer,
+          );
+          sse_encode_list_outline_heading(headings, serializer);
+          sse_encode_u_32(line, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_u_32,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLinkingKansoLinkingCurrentHeadingConstMeta,
+        argValues: [that, headings, line],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkingKansoLinkingCurrentHeadingConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLinking_current_heading",
+        argNames: ["that", "headings", "line"],
+      );
+
+  @override
+  Future<Saved?> crateApiLinkingKansoLinkingLinkMention({
+    required KansoLinking that,
+    required String targetId,
+    required String mentionId,
+    required int line,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+            that,
+            serializer,
+          );
+          sse_encode_String(targetId, serializer);
+          sse_encode_String(mentionId, serializer);
+          sse_encode_u_32(line, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 22,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_saved,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLinkingKansoLinkingLinkMentionConstMeta,
+        argValues: [that, targetId, mentionId, line],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkingKansoLinkingLinkMentionConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLinking_link_mention",
+        argNames: ["that", "targetId", "mentionId", "line"],
+      );
+
+  @override
+  List<OutlineHeading> crateApiLinkingKansoLinkingOutline({
+    required KansoLinking that,
+    required String text,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+            that,
+            serializer,
+          );
+          sse_encode_String(text, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 23)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_outline_heading,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLinkingKansoLinkingOutlineConstMeta,
+        argValues: [that, text],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkingKansoLinkingOutlineConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLinking_outline",
+        argNames: ["that", "text"],
+      );
+
+  @override
+  Future<List<PaletteSection>> crateApiLinkingKansoLinkingPalette({
+    required KansoLinking that,
+    required String query,
+    required PaletteContext context,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+            that,
+            serializer,
+          );
+          sse_encode_String(query, serializer);
+          sse_encode_box_autoadd_palette_context(context, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 24,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_palette_section,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLinkingKansoLinkingPaletteConstMeta,
+        argValues: [that, query, context],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkingKansoLinkingPaletteConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLinking_palette",
+        argNames: ["that", "query", "context"],
+      );
+
+  @override
+  Future<List<PaletteSection>> crateApiLinkingKansoLinkingQuickOpen({
+    required KansoLinking that,
+    required String query,
+    String? open,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+            that,
+            serializer,
+          );
+          sse_encode_String(query, serializer);
+          sse_encode_opt_String(open, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 25,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_palette_section,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLinkingKansoLinkingQuickOpenConstMeta,
+        argValues: [that, query, open],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkingKansoLinkingQuickOpenConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLinking_quick_open",
+        argNames: ["that", "query", "open"],
+      );
+
+  @override
+  Future<List<LinkRef>> crateApiLinkingKansoLinkingUnlinkedMentions({
+    required KansoLinking that,
+    required String id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 26,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_link_ref,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiLinkingKansoLinkingUnlinkedMentionsConstMeta,
+        argValues: [that, id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkingKansoLinkingUnlinkedMentionsConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoLinking_unlinked_mentions",
+        argNames: ["that", "id"],
+      );
+
+  @override
   Future<bool> crateApiLocksKansoLocksIsNoteUnlocked({
     required KansoLocks that,
     required String id,
@@ -1000,7 +1337,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1034,7 +1371,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1068,7 +1405,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1084,10 +1421,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiLocksKansoLocksLockConstMeta =>
-      const TaskConstMeta(
-        debugName: "KansoLocks_lock",
-        argNames: ["that"],
-      );
+      const TaskConstMeta(debugName: "KansoLocks_lock", argNames: ["that"]);
 
   @override
   Stream<LockEvent> crateApiLocksKansoLocksLockEvents({
@@ -1107,7 +1441,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 22,
+              funcId: 30,
               port: port_,
             );
           },
@@ -1149,7 +1483,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1187,7 +1521,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1220,7 +1554,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1250,7 +1584,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1287,7 +1621,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1324,7 +1658,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1361,7 +1695,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1401,7 +1735,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1434,7 +1768,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1473,7 +1807,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1506,7 +1840,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1544,7 +1878,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 42,
             port: port_,
           );
         },
@@ -1574,7 +1908,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 43,
             port: port_,
           );
         },
@@ -1590,10 +1924,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiSyncKansoSyncDefaultServerConstMeta =>
-      const TaskConstMeta(
-        debugName: "KansoSync_default_server",
-        argNames: [],
-      );
+      const TaskConstMeta(debugName: "KansoSync_default_server", argNames: []);
 
   @override
   Future<SyncStatus> crateApiSyncKansoSyncSignInPassword({
@@ -1618,7 +1949,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 44,
             port: port_,
           );
         },
@@ -1652,7 +1983,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 45,
             port: port_,
           );
         },
@@ -1668,10 +1999,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiSyncKansoSyncSignOutConstMeta =>
-      const TaskConstMeta(
-        debugName: "KansoSync_sign_out",
-        argNames: ["that"],
-      );
+      const TaskConstMeta(debugName: "KansoSync_sign_out", argNames: ["that"]);
 
   @override
   Future<SyncStatus> crateApiSyncKansoSyncStatus({required KansoSync that}) {
@@ -1686,7 +2014,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 46,
             port: port_,
           );
         },
@@ -1702,10 +2030,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiSyncKansoSyncStatusConstMeta =>
-      const TaskConstMeta(
-        debugName: "KansoSync_status",
-        argNames: ["that"],
-      );
+      const TaskConstMeta(debugName: "KansoSync_status", argNames: ["that"]);
 
   @override
   Stream<SyncStatus> crateApiSyncKansoSyncStatusStream({
@@ -1725,7 +2050,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 39,
+              funcId: 47,
               port: port_,
             );
           },
@@ -1763,7 +2088,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 48,
             port: port_,
           );
         },
@@ -1779,10 +2104,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiSyncKansoSyncSyncNowConstMeta =>
-      const TaskConstMeta(
-        debugName: "KansoSync_sync_now",
-        argNames: ["that"],
-      );
+      const TaskConstMeta(debugName: "KansoSync_sync_now", argNames: ["that"]);
 
   @override
   Future<bool?> crateApiDiagnosticsBackupExcluded({required String folder}) {
@@ -1794,7 +2116,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 49,
             port: port_,
           );
         },
@@ -1810,10 +2132,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiDiagnosticsBackupExcludedConstMeta =>
-      const TaskConstMeta(
-        debugName: "backup_excluded",
-        argNames: ["folder"],
-      );
+      const TaskConstMeta(debugName: "backup_excluded", argNames: ["folder"]);
 
   @override
   Future<void> crateApiDiagnosticsPanicProbe({required String message}) {
@@ -1825,7 +2144,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 50,
             port: port_,
           );
         },
@@ -1841,10 +2160,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiDiagnosticsPanicProbeConstMeta =>
-      const TaskConstMeta(
-        debugName: "panic_probe",
-        argNames: ["message"],
-      );
+      const TaskConstMeta(debugName: "panic_probe", argNames: ["message"]);
 
   @override
   Future<void> crateApiDiagnosticsSecretsProbe() {
@@ -1855,7 +2171,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 51,
             port: port_,
           );
         },
@@ -1871,10 +2187,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiDiagnosticsSecretsProbeConstMeta =>
-      const TaskConstMeta(
-        debugName: "secrets_probe",
-        argNames: [],
-      );
+      const TaskConstMeta(debugName: "secrets_probe", argNames: []);
 
   @override
   Future<bool> crateApiDiagnosticsTlsReady() {
@@ -1885,7 +2198,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 44,
+            funcId: 52,
             port: port_,
           );
         },
@@ -1901,10 +2214,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   TaskConstMeta get kCrateApiDiagnosticsTlsReadyConstMeta =>
-      const TaskConstMeta(
-        debugName: "tls_ready",
-        argNames: [],
-      );
+      const TaskConstMeta(debugName: "tls_ready", argNames: []);
 
   @override
   Future<String> crateApiDiagnosticsVersion() {
@@ -1915,7 +2225,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 45,
+            funcId: 53,
             port: port_,
           );
         },
@@ -1930,10 +2240,8 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     );
   }
 
-  TaskConstMeta get kCrateApiDiagnosticsVersionConstMeta => const TaskConstMeta(
-    debugName: "version",
-    argNames: [],
-  );
+  TaskConstMeta get kCrateApiDiagnosticsVersionConstMeta =>
+      const TaskConstMeta(debugName: "version", argNames: []);
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_KansoLibrary => wire
@@ -1942,6 +2250,14 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   RustArcDecrementStrongCountFnType
   get rust_arc_decrement_strong_count_KansoLibrary => wire
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLibrary;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_KansoLinking => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_KansoLinking => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking;
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_KansoLocks => wire
@@ -1983,6 +2299,15 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  KansoLinking
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoLinkingImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
   KansoLocks
   dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
     dynamic raw,
@@ -2016,6 +2341,15 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return KansoLibraryImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoLinking
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoLinkingImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -2060,6 +2394,15 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return KansoLibraryImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  KansoLinking
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KansoLinkingImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -2160,9 +2503,33 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PaletteContext dco_decode_box_autoadd_palette_context(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_palette_context(raw);
+  }
+
+  @protected
   PaletteDto dco_decode_box_autoadd_palette_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_palette_dto(raw);
+  }
+
+  @protected
+  PalettePicker dco_decode_box_autoadd_palette_picker(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_palette_picker(raw);
+  }
+
+  @protected
+  PalettePlace dco_decode_box_autoadd_palette_place(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_palette_place(raw);
+  }
+
+  @protected
+  Saved dco_decode_box_autoadd_saved(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_saved(raw);
   }
 
   @protected
@@ -2270,31 +2637,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       case 1:
         return KansoError_Locked();
       case 2:
-        return KansoError_Conflict(
-          currentRev: dco_decode_String(raw[1]),
-        );
+        return KansoError_Conflict(currentRev: dco_decode_String(raw[1]));
       case 3:
-        return KansoError_Invalid(
-          message: dco_decode_String(raw[1]),
-        );
+        return KansoError_Invalid(message: dco_decode_String(raw[1]));
       case 4:
-        return KansoError_Storage(
-          message: dco_decode_String(raw[1]),
-        );
+        return KansoError_Storage(message: dco_decode_String(raw[1]));
       case 5:
-        return KansoError_Network(
-          message: dco_decode_String(raw[1]),
-        );
+        return KansoError_Network(message: dco_decode_String(raw[1]));
       case 6:
         return KansoError_SignedOut();
       case 7:
-        return KansoError_Auth(
-          message: dco_decode_String(raw[1]),
-        );
+        return KansoError_Auth(message: dco_decode_String(raw[1]));
       case 8:
-        return KansoError_Internal(
-          message: dco_decode_String(raw[1]),
-        );
+        return KansoError_Internal(message: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
     }
@@ -2311,6 +2666,20 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       pinned: dco_decode_u_32(arr[1]),
       recent: dco_decode_u_32(arr[2]),
       trash: dco_decode_u_32(arr[3]),
+    );
+  }
+
+  @protected
+  LinkRef dco_decode_link_ref(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return LinkRef(
+      id: dco_decode_String(arr[0]),
+      title: dco_decode_String(arr[1]),
+      line: dco_decode_u_32(arr[2]),
+      context: dco_decode_String(arr[3]),
     );
   }
 
@@ -2339,6 +2708,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<LinkRef> dco_decode_list_link_ref(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_link_ref).toList();
+  }
+
+  @protected
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_list_prim_u_8_strict).toList();
@@ -2363,6 +2738,24 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<OutlineHeading> dco_decode_list_outline_heading(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_outline_heading).toList();
+  }
+
+  @protected
+  List<PaletteEntry> dco_decode_list_palette_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_palette_entry).toList();
+  }
+
+  @protected
+  List<PaletteSection> dco_decode_list_palette_section(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_palette_section).toList();
+  }
+
+  @protected
   ListPlace dco_decode_list_place(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     switch (raw[0]) {
@@ -2373,13 +2766,9 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       case 2:
         return ListPlace_Recent();
       case 3:
-        return ListPlace_Notebook(
-          id: dco_decode_String(raw[1]),
-        );
+        return ListPlace_Notebook(id: dco_decode_String(raw[1]));
       case 4:
-        return ListPlace_Tag(
-          id: dco_decode_String(raw[1]),
-        );
+        return ListPlace_Tag(id: dco_decode_String(raw[1]));
       case 5:
         return ListPlace_Trash();
       default:
@@ -2471,9 +2860,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       case 0:
         return LockEvent_Unlocked();
       case 1:
-        return LockEvent_Locked(
-          reason: dco_decode_lock_reason(raw[1]),
-        );
+        return LockEvent_Locked(reason: dco_decode_lock_reason(raw[1]));
       default:
         throw Exception("unreachable");
     }
@@ -2494,9 +2881,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       case 1:
         return LockState_Open();
       case 2:
-        return LockState_Closed(
-          reason: dco_decode_opt_String(raw[1]),
-        );
+        return LockState_Closed(reason: dco_decode_opt_String(raw[1]));
       default:
         throw Exception("unreachable");
     }
@@ -2522,9 +2907,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       case 0:
         return NoteChange_TogglePin();
       case 1:
-        return NoteChange_Move(
-          notebookId: dco_decode_String(raw[1]),
-        );
+        return NoteChange_Move(notebookId: dco_decode_String(raw[1]));
       case 2:
         return NoteChange_Trash();
       default:
@@ -2644,6 +3027,24 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PalettePicker? dco_decode_opt_box_autoadd_palette_picker(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_palette_picker(raw);
+  }
+
+  @protected
+  PalettePlace? dco_decode_opt_box_autoadd_palette_place(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_palette_place(raw);
+  }
+
+  @protected
+  Saved? dco_decode_opt_box_autoadd_saved(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_saved(raw);
+  }
+
+  @protected
   SyncProblemKind? dco_decode_opt_box_autoadd_sync_problem_kind(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_sync_problem_kind(raw);
@@ -2659,6 +3060,40 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  OutlineHeading dco_decode_outline_heading(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return OutlineHeading(
+      level: dco_decode_u_8(arr[0]),
+      text: dco_decode_String(arr[1]),
+      line: dco_decode_u_32(arr[2]),
+    );
+  }
+
+  @protected
+  PaletteContext dco_decode_palette_context(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 11)
+      throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
+    return PaletteContext(
+      openNoteId: dco_decode_opt_String(arr[0]),
+      signedIn: dco_decode_bool(arr[1]),
+      sessionHeld: dco_decode_bool(arr[2]),
+      aiOn: dco_decode_bool(arr[3]),
+      settingsOpen: dco_decode_bool(arr[4]),
+      imageLine: dco_decode_bool(arr[5]),
+      audioLine: dco_decode_bool(arr[6]),
+      sharedNote: dco_decode_bool(arr[7]),
+      handlers: dco_decode_list_String(arr[8]),
+      showing: dco_decode_opt_box_autoadd_palette_place(arr[9]),
+      overdueTasks: dco_decode_u_32(arr[10]),
+    );
   }
 
   @protected
@@ -2683,6 +3118,92 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       inlineCodeText: dco_decode_opt_box_autoadd_u_32(arr[12]),
       tableHeaderBackground: dco_decode_opt_box_autoadd_u_32(arr[13]),
     );
+  }
+
+  @protected
+  PaletteEntry dco_decode_palette_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return PaletteEntry(
+      target: dco_decode_palette_target(arr[0]),
+      label: dco_decode_String(arr[1]),
+      icon: dco_decode_String(arr[2]),
+      description: dco_decode_opt_String(arr[3]),
+      hint: dco_decode_opt_String(arr[4]),
+      checked: dco_decode_bool(arr[5]),
+      depth: dco_decode_u_32(arr[6]),
+      status: dco_decode_opt_String(arr[7]),
+    );
+  }
+
+  @protected
+  PalettePicker dco_decode_palette_picker(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return PalettePicker.values[raw as int];
+  }
+
+  @protected
+  PalettePlace dco_decode_palette_place(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return PalettePlace_AllNotes();
+      case 1:
+        return PalettePlace_Pinned();
+      case 2:
+        return PalettePlace_Recent();
+      case 3:
+        return PalettePlace_Tasks();
+      case 4:
+        return PalettePlace_Notebook(id: dco_decode_String(raw[1]));
+      case 5:
+        return PalettePlace_Status(name: dco_decode_String(raw[1]));
+      case 6:
+        return PalettePlace_Shared();
+      case 7:
+        return PalettePlace_Trash();
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  PaletteSection dco_decode_palette_section(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return PaletteSection(
+      label: dco_decode_String(arr[0]),
+      entries: dco_decode_list_palette_entry(arr[1]),
+    );
+  }
+
+  @protected
+  PaletteTarget dco_decode_palette_target(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return PaletteTarget_Command(
+          id: dco_decode_String(raw[1]),
+          picker: dco_decode_opt_box_autoadd_palette_picker(raw[2]),
+        );
+      case 1:
+        return PaletteTarget_Place(
+          place: dco_decode_box_autoadd_palette_place(raw[1]),
+        );
+      case 2:
+        return PaletteTarget_Note(id: dco_decode_String(raw[1]));
+      case 3:
+        return PaletteTarget_Heading(
+          noteId: dco_decode_String(raw[1]),
+          line: dco_decode_u_32(raw[2]),
+        );
+      default:
+        throw Exception("unreachable");
+    }
   }
 
   @protected
@@ -2723,10 +3244,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     final arr = raw as List<dynamic>;
     if (arr.length != 2)
       throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return Saved(
-      id: dco_decode_String(arr[0]),
-      rev: dco_decode_String(arr[1]),
-    );
+    return Saved(id: dco_decode_String(arr[0]), rev: dco_decode_String(arr[1]));
   }
 
   @protected
@@ -2740,9 +3258,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       case 2:
         return SearchScope_Tags();
       case 3:
-        return SearchScope_Notebook(
-          id: dco_decode_String(raw[1]),
-        );
+        return SearchScope_Notebook(id: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
     }
@@ -2754,9 +3270,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     final arr = raw as List<dynamic>;
     if (arr.length != 1)
       throw Exception('unexpected arr length: expect 1 but see ${arr.length}');
-    return ServerInfo(
-      signupsOpen: dco_decode_bool(arr[0]),
-    );
+    return ServerInfo(signupsOpen: dco_decode_bool(arr[0]));
   }
 
   @protected
@@ -2969,6 +3483,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  KansoLinking
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoLinkingImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   KansoLocks
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
     SseDeserializer deserializer,
@@ -3011,6 +3537,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return KansoLibraryImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoLinking
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoLinkingImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -3066,6 +3604,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return KansoLibraryImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  KansoLinking
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return KansoLinkingImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -3183,9 +3733,39 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PaletteContext sse_decode_box_autoadd_palette_context(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_palette_context(deserializer));
+  }
+
+  @protected
   PaletteDto sse_decode_box_autoadd_palette_dto(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_palette_dto(deserializer));
+  }
+
+  @protected
+  PalettePicker sse_decode_box_autoadd_palette_picker(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_palette_picker(deserializer));
+  }
+
+  @protected
+  PalettePlace sse_decode_box_autoadd_palette_place(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_palette_place(deserializer));
+  }
+
+  @protected
+  Saved sse_decode_box_autoadd_saved(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_saved(deserializer));
   }
 
   @protected
@@ -3341,6 +3921,21 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  LinkRef sse_decode_link_ref(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_title = sse_decode_String(deserializer);
+    var var_line = sse_decode_u_32(deserializer);
+    var var_context = sse_decode_String(deserializer);
+    return LinkRef(
+      id: var_id,
+      title: var_title,
+      line: var_line,
+      context: var_context,
+    );
+  }
+
+  @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3391,6 +3986,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<LinkRef> sse_decode_list_link_ref(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <LinkRef>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_link_ref(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<Uint8List> sse_decode_list_list_prim_u_8_strict(
     SseDeserializer deserializer,
   ) {
@@ -3436,6 +4043,48 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     var ans_ = <String?>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_opt_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<OutlineHeading> sse_decode_list_outline_heading(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <OutlineHeading>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_outline_heading(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PaletteEntry> sse_decode_list_palette_entry(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PaletteEntry>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_palette_entry(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PaletteSection> sse_decode_list_palette_section(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PaletteSection>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_palette_section(deserializer));
     }
     return ans_;
   }
@@ -3822,6 +4471,43 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PalettePicker? sse_decode_opt_box_autoadd_palette_picker(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_palette_picker(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  PalettePlace? sse_decode_opt_box_autoadd_palette_place(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_palette_place(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Saved? sse_decode_opt_box_autoadd_saved(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_saved(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   SyncProblemKind? sse_decode_opt_box_autoadd_sync_problem_kind(
     SseDeserializer deserializer,
   ) {
@@ -3854,6 +4540,44 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     } else {
       return null;
     }
+  }
+
+  @protected
+  OutlineHeading sse_decode_outline_heading(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_level = sse_decode_u_8(deserializer);
+    var var_text = sse_decode_String(deserializer);
+    var var_line = sse_decode_u_32(deserializer);
+    return OutlineHeading(level: var_level, text: var_text, line: var_line);
+  }
+
+  @protected
+  PaletteContext sse_decode_palette_context(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_openNoteId = sse_decode_opt_String(deserializer);
+    var var_signedIn = sse_decode_bool(deserializer);
+    var var_sessionHeld = sse_decode_bool(deserializer);
+    var var_aiOn = sse_decode_bool(deserializer);
+    var var_settingsOpen = sse_decode_bool(deserializer);
+    var var_imageLine = sse_decode_bool(deserializer);
+    var var_audioLine = sse_decode_bool(deserializer);
+    var var_sharedNote = sse_decode_bool(deserializer);
+    var var_handlers = sse_decode_list_String(deserializer);
+    var var_showing = sse_decode_opt_box_autoadd_palette_place(deserializer);
+    var var_overdueTasks = sse_decode_u_32(deserializer);
+    return PaletteContext(
+      openNoteId: var_openNoteId,
+      signedIn: var_signedIn,
+      sessionHeld: var_sessionHeld,
+      aiOn: var_aiOn,
+      settingsOpen: var_settingsOpen,
+      imageLine: var_imageLine,
+      audioLine: var_audioLine,
+      sharedNote: var_sharedNote,
+      handlers: var_handlers,
+      showing: var_showing,
+      overdueTasks: var_overdueTasks,
+    );
   }
 
   @protected
@@ -3891,6 +4615,100 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       inlineCodeText: var_inlineCodeText,
       tableHeaderBackground: var_tableHeaderBackground,
     );
+  }
+
+  @protected
+  PaletteEntry sse_decode_palette_entry(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_target = sse_decode_palette_target(deserializer);
+    var var_label = sse_decode_String(deserializer);
+    var var_icon = sse_decode_String(deserializer);
+    var var_description = sse_decode_opt_String(deserializer);
+    var var_hint = sse_decode_opt_String(deserializer);
+    var var_checked = sse_decode_bool(deserializer);
+    var var_depth = sse_decode_u_32(deserializer);
+    var var_status = sse_decode_opt_String(deserializer);
+    return PaletteEntry(
+      target: var_target,
+      label: var_label,
+      icon: var_icon,
+      description: var_description,
+      hint: var_hint,
+      checked: var_checked,
+      depth: var_depth,
+      status: var_status,
+    );
+  }
+
+  @protected
+  PalettePicker sse_decode_palette_picker(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return PalettePicker.values[inner];
+  }
+
+  @protected
+  PalettePlace sse_decode_palette_place(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        return PalettePlace_AllNotes();
+      case 1:
+        return PalettePlace_Pinned();
+      case 2:
+        return PalettePlace_Recent();
+      case 3:
+        return PalettePlace_Tasks();
+      case 4:
+        var var_id = sse_decode_String(deserializer);
+        return PalettePlace_Notebook(id: var_id);
+      case 5:
+        var var_name = sse_decode_String(deserializer);
+        return PalettePlace_Status(name: var_name);
+      case 6:
+        return PalettePlace_Shared();
+      case 7:
+        return PalettePlace_Trash();
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  PaletteSection sse_decode_palette_section(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_label = sse_decode_String(deserializer);
+    var var_entries = sse_decode_list_palette_entry(deserializer);
+    return PaletteSection(label: var_label, entries: var_entries);
+  }
+
+  @protected
+  PaletteTarget sse_decode_palette_target(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_id = sse_decode_String(deserializer);
+        var var_picker = sse_decode_opt_box_autoadd_palette_picker(
+          deserializer,
+        );
+        return PaletteTarget_Command(id: var_id, picker: var_picker);
+      case 1:
+        var var_place = sse_decode_box_autoadd_palette_place(deserializer);
+        return PaletteTarget_Place(place: var_place);
+      case 2:
+        var var_id = sse_decode_String(deserializer);
+        return PaletteTarget_Note(id: var_id);
+      case 3:
+        var var_noteId = sse_decode_String(deserializer);
+        var var_line = sse_decode_u_32(deserializer);
+        return PaletteTarget_Heading(noteId: var_noteId, line: var_line);
+      default:
+        throw UnimplementedError('');
+    }
   }
 
   @protected
@@ -4178,6 +4996,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    KansoLinking self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoLinkingImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLocks(
     KansoLocks self,
     SseSerializer serializer,
@@ -4224,6 +5055,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as KansoLibraryImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    KansoLinking self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoLinkingImpl).frbInternalSseEncode(move: false),
       serializer,
     );
   }
@@ -4282,6 +5126,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as KansoLibraryImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoLinking(
+    KansoLinking self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as KansoLinkingImpl).frbInternalSseEncode(move: null),
       serializer,
     );
   }
@@ -4434,12 +5291,45 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_box_autoadd_palette_context(
+    PaletteContext self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_palette_context(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_palette_dto(
     PaletteDto self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_palette_dto(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_palette_picker(
+    PalettePicker self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_palette_picker(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_palette_place(
+    PalettePlace self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_palette_place(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_saved(Saved self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_saved(self, serializer);
   }
 
   @protected
@@ -4573,6 +5463,15 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_link_ref(LinkRef self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.title, serializer);
+    sse_encode_u_32(self.line, serializer);
+    sse_encode_String(self.context, serializer);
+  }
+
+  @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
@@ -4611,6 +5510,15 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_hit(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_link_ref(List<LinkRef> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_link_ref(item, serializer);
     }
   }
 
@@ -4656,6 +5564,42 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_opt_String(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_outline_heading(
+    List<OutlineHeading> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_outline_heading(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_palette_entry(
+    List<PaletteEntry> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_palette_entry(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_palette_section(
+    List<PaletteSection> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_palette_section(item, serializer);
     }
   }
 
@@ -4953,6 +5897,42 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_palette_picker(
+    PalettePicker? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_palette_picker(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_palette_place(
+    PalettePlace? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_palette_place(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_saved(Saved? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_saved(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_sync_problem_kind(
     SyncProblemKind? self,
     SseSerializer serializer,
@@ -4986,6 +5966,36 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_outline_heading(
+    OutlineHeading self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_8(self.level, serializer);
+    sse_encode_String(self.text, serializer);
+    sse_encode_u_32(self.line, serializer);
+  }
+
+  @protected
+  void sse_encode_palette_context(
+    PaletteContext self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_opt_String(self.openNoteId, serializer);
+    sse_encode_bool(self.signedIn, serializer);
+    sse_encode_bool(self.sessionHeld, serializer);
+    sse_encode_bool(self.aiOn, serializer);
+    sse_encode_bool(self.settingsOpen, serializer);
+    sse_encode_bool(self.imageLine, serializer);
+    sse_encode_bool(self.audioLine, serializer);
+    sse_encode_bool(self.sharedNote, serializer);
+    sse_encode_list_String(self.handlers, serializer);
+    sse_encode_opt_box_autoadd_palette_place(self.showing, serializer);
+    sse_encode_u_32(self.overdueTasks, serializer);
+  }
+
+  @protected
   void sse_encode_palette_dto(PaletteDto self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.dark, serializer);
@@ -5002,6 +6012,81 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_u_32(self.inlineCodeBackground, serializer);
     sse_encode_opt_box_autoadd_u_32(self.inlineCodeText, serializer);
     sse_encode_opt_box_autoadd_u_32(self.tableHeaderBackground, serializer);
+  }
+
+  @protected
+  void sse_encode_palette_entry(PaletteEntry self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_palette_target(self.target, serializer);
+    sse_encode_String(self.label, serializer);
+    sse_encode_String(self.icon, serializer);
+    sse_encode_opt_String(self.description, serializer);
+    sse_encode_opt_String(self.hint, serializer);
+    sse_encode_bool(self.checked, serializer);
+    sse_encode_u_32(self.depth, serializer);
+    sse_encode_opt_String(self.status, serializer);
+  }
+
+  @protected
+  void sse_encode_palette_picker(PalettePicker self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_palette_place(PalettePlace self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case PalettePlace_AllNotes():
+        sse_encode_i_32(0, serializer);
+      case PalettePlace_Pinned():
+        sse_encode_i_32(1, serializer);
+      case PalettePlace_Recent():
+        sse_encode_i_32(2, serializer);
+      case PalettePlace_Tasks():
+        sse_encode_i_32(3, serializer);
+      case PalettePlace_Notebook(id: final id):
+        sse_encode_i_32(4, serializer);
+        sse_encode_String(id, serializer);
+      case PalettePlace_Status(name: final name):
+        sse_encode_i_32(5, serializer);
+        sse_encode_String(name, serializer);
+      case PalettePlace_Shared():
+        sse_encode_i_32(6, serializer);
+      case PalettePlace_Trash():
+        sse_encode_i_32(7, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_palette_section(
+    PaletteSection self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.label, serializer);
+    sse_encode_list_palette_entry(self.entries, serializer);
+  }
+
+  @protected
+  void sse_encode_palette_target(PaletteTarget self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case PaletteTarget_Command(id: final id, picker: final picker):
+        sse_encode_i_32(0, serializer);
+        sse_encode_String(id, serializer);
+        sse_encode_opt_box_autoadd_palette_picker(picker, serializer);
+      case PaletteTarget_Place(place: final place):
+        sse_encode_i_32(1, serializer);
+        sse_encode_box_autoadd_palette_place(place, serializer);
+      case PaletteTarget_Note(id: final id):
+        sse_encode_i_32(2, serializer);
+        sse_encode_String(id, serializer);
+      case PaletteTarget_Heading(noteId: final noteId, line: final line):
+        sse_encode_i_32(3, serializer);
+        sse_encode_String(noteId, serializer);
+        sse_encode_u_32(line, serializer);
+    }
   }
 
   @protected
@@ -5232,9 +6317,7 @@ class KansoLibraryImpl extends RustOpaque implements KansoLibrary {
 
   /// The IDs of what changed, in batches, until Dart stops listening.
   Stream<List<String>> changes() =>
-      KansoCore.instance.api.crateApiLibraryKansoLibraryChanges(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiLibraryKansoLibraryChanges(that: this);
 
   Future<Saved> create({required NewNote note}) => KansoCore.instance.api
       .crateApiLibraryKansoLibraryCreate(that: this, note: note);
@@ -5248,25 +6331,23 @@ class KansoLibraryImpl extends RustOpaque implements KansoLibrary {
     parentId: parentId,
   );
 
+  KansoLinking linking() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryLinking(that: this);
+
   Future<NoteList> list({required ListQuery query}) => KansoCore.instance.api
       .crateApiLibraryKansoLibraryList(that: this, query: query);
 
-  KansoLocks locks() => KansoCore.instance.api.crateApiLibraryKansoLibraryLocks(
-    that: this,
-  );
+  KansoLocks locks() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryLocks(that: this);
 
   Future<NoteView> note({required String id}) => KansoCore.instance.api
       .crateApiLibraryKansoLibraryNote(that: this, id: id);
 
   Future<List<NotebookRow>> notebooks() =>
-      KansoCore.instance.api.crateApiLibraryKansoLibraryNotebooks(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiLibraryKansoLibraryNotebooks(that: this);
 
   Future<LibraryOverview> overview() =>
-      KansoCore.instance.api.crateApiLibraryKansoLibraryOverview(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiLibraryKansoLibraryOverview(that: this);
 
   Future<List<Property>> properties({required String id}) => KansoCore
       .instance
@@ -5281,9 +6362,7 @@ class KansoLibraryImpl extends RustOpaque implements KansoLibrary {
       );
 
   KansoRenderer renderer() =>
-      KansoCore.instance.api.crateApiLibraryKansoLibraryRenderer(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiLibraryKansoLibraryRenderer(that: this);
 
   Future<Saved> save({
     required String id,
@@ -5308,17 +6387,86 @@ class KansoLibraryImpl extends RustOpaque implements KansoLibrary {
   );
 
   KansoSync syncing() =>
-      KansoCore.instance.api.crateApiLibraryKansoLibrarySyncing(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiLibraryKansoLibrarySyncing(that: this);
 
   Future<List<TagRow>> tags() =>
-      KansoCore.instance.api.crateApiLibraryKansoLibraryTags(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiLibraryKansoLibraryTags(that: this);
 
   Future<void> trash({required String id}) => KansoCore.instance.api
       .crateApiLibraryKansoLibraryTrash(that: this, id: id);
+}
+
+@sealed
+class KansoLinkingImpl extends RustOpaque implements KansoLinking {
+  // Not to be used by end users
+  KansoLinkingImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  KansoLinkingImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        KansoCore.instance.api.rust_arc_increment_strong_count_KansoLinking,
+    rustArcDecrementStrongCount:
+        KansoCore.instance.api.rust_arc_decrement_strong_count_KansoLinking,
+    rustArcDecrementStrongCountPtr:
+        KansoCore.instance.api.rust_arc_decrement_strong_count_KansoLinkingPtr,
+  );
+
+  Future<List<LinkRef>> backlinks({required String id}) => KansoCore
+      .instance
+      .api
+      .crateApiLinkingKansoLinkingBacklinks(that: this, id: id);
+
+  /// The index of the heading the caret on `line` is under, if any.
+  int? currentHeading({
+    required List<OutlineHeading> headings,
+    required int line,
+  }) => KansoCore.instance.api.crateApiLinkingKansoLinkingCurrentHeading(
+    that: this,
+    headings: headings,
+    line: line,
+  );
+
+  Future<Saved?> linkMention({
+    required String targetId,
+    required String mentionId,
+    required int line,
+  }) => KansoCore.instance.api.crateApiLinkingKansoLinkingLinkMention(
+    that: this,
+    targetId: targetId,
+    mentionId: mentionId,
+    line: line,
+  );
+
+  /// The headings of `text`, in order.
+  List<OutlineHeading> outline({required String text}) => KansoCore.instance.api
+      .crateApiLinkingKansoLinkingOutline(that: this, text: text);
+
+  Future<List<PaletteSection>> palette({
+    required String query,
+    required PaletteContext context,
+  }) => KansoCore.instance.api.crateApiLinkingKansoLinkingPalette(
+    that: this,
+    query: query,
+    context: context,
+  );
+
+  Future<List<PaletteSection>> quickOpen({
+    required String query,
+    String? open,
+  }) => KansoCore.instance.api.crateApiLinkingKansoLinkingQuickOpen(
+    that: this,
+    query: query,
+    open: open,
+  );
+
+  Future<List<LinkRef>> unlinkedMentions({required String id}) => KansoCore
+      .instance
+      .api
+      .crateApiLinkingKansoLinkingUnlinkedMentions(that: this, id: id);
 }
 
 @sealed
@@ -5344,19 +6492,14 @@ class KansoLocksImpl extends RustOpaque implements KansoLocks {
       .crateApiLocksKansoLocksIsNoteUnlocked(that: this, id: id);
 
   Future<bool> isUnlocked() =>
-      KansoCore.instance.api.crateApiLocksKansoLocksIsUnlocked(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiLocksKansoLocksIsUnlocked(that: this);
 
-  Future<void> lock() => KansoCore.instance.api.crateApiLocksKansoLocksLock(
-    that: this,
-  );
+  Future<void> lock() =>
+      KansoCore.instance.api.crateApiLocksKansoLocksLock(that: this);
 
   /// Each time the notes open or close, until Dart stops listening.
   Stream<LockEvent> lockEvents() =>
-      KansoCore.instance.api.crateApiLocksKansoLocksLockEvents(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiLocksKansoLocksLockEvents(that: this);
 
   Future<Saved> lockNote({required String id, required String password}) =>
       KansoCore.instance.api.crateApiLocksKansoLocksLockNote(
@@ -5435,23 +6578,16 @@ class KansoSyncImpl extends RustOpaque implements KansoSync {
     deviceName: deviceName,
   );
 
-  Future<void> signOut() => KansoCore.instance.api.crateApiSyncKansoSyncSignOut(
-    that: this,
-  );
+  Future<void> signOut() =>
+      KansoCore.instance.api.crateApiSyncKansoSyncSignOut(that: this);
 
   Future<SyncStatus> status() =>
-      KansoCore.instance.api.crateApiSyncKansoSyncStatus(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiSyncKansoSyncStatus(that: this);
 
   /// The status now and each time it changes, until Dart stops listening.
   Stream<SyncStatus> statusStream() =>
-      KansoCore.instance.api.crateApiSyncKansoSyncStatusStream(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiSyncKansoSyncStatusStream(that: this);
 
   Future<SyncReportRow> syncNow() =>
-      KansoCore.instance.api.crateApiSyncKansoSyncSyncNow(
-        that: this,
-      );
+      KansoCore.instance.api.crateApiSyncKansoSyncSyncNow(that: this);
 }
