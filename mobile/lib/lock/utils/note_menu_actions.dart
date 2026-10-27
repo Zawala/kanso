@@ -5,21 +5,24 @@
 import '../../core/bridge/api/types.dart';
 import '../models/data/note_menu_action.dart';
 
-/// The lock actions a note's menu offers, in order.
+/// What a note's menu offers, in order.
 ///
-/// A note that was never locked can be locked. A locked note that is open
-/// can have its lock removed. Lock notes now is there whenever they are
-/// open. A locked note that is closed offers nothing: its card unlocks it.
+/// Any note that is read can be exported. A note that was never locked can
+/// be locked. A locked note that is open can have its lock removed. Lock
+/// notes now is there whenever they are open. A locked note that is closed
+/// offers nothing: its card unlocks it.
 List<NoteMenuAction> noteMenuActions({
   required LockState lock,
   required bool unlocked,
 }) {
   return switch (lock) {
     LockState_Plain() => <NoteMenuAction>[
+      NoteMenuAction.exportPdf,
       NoteMenuAction.lockNote,
       if (unlocked) NoteMenuAction.lockNow,
     ],
     LockState_Open() => <NoteMenuAction>[
+      NoteMenuAction.exportPdf,
       NoteMenuAction.removeLock,
       NoteMenuAction.lockNow,
     ],

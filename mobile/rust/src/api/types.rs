@@ -13,18 +13,18 @@ pub use kanso_mobile::{
     AttachmentFile, BindingAnswer, BindingQuestion, BuiltinTheme, CaptureOutcome, Changed,
     ColorRow, CommentPlacement, CommentRow, Completion, CompletionItem, CompletionKind, CursorMark,
     DateField, DeviceRow, DiagramKind, DiagramRenderer, DropsSaved, DueTone, EditCommand,
-    EditOutcome, EditorContext, EditorEvent, EditorRun, EditorSnapshot, FormatKind, GalleryColors,
-    GalleryItem, GalleryKind, HistoryState, Hit, IconThemeRow, ImportEvent, ImportFound,
-    ImportPhase, ImportProgress, ImportSource, ImportSummary, InvitationRow, JoinRow, KansoError,
-    LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveStatus,
-    LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MemberRow, MentionSpan,
-    NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, OpenedDocuments,
-    OpenedFile, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind, PasskeyRow,
-    PersonLookup, PersonRow, PreviewLink, PreviewOptions, PromptState, Property, PropertyKind,
-    ProviderEvent, ProviderKind, QuotaLimit, Range16, RecoveryKeyText, Replacement, RunBatch,
-    SaveState, Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo,
-    ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow, StyledRun,
-    SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow,
+    EditOutcome, EditorContext, EditorEvent, EditorRun, EditorSnapshot, ExportedPage, FormatKind,
+    GalleryColors, GalleryItem, GalleryKind, HistoryState, Hit, IconThemeRow, ImportEvent,
+    ImportFound, ImportPhase, ImportProgress, ImportSource, ImportSummary, InvitationRow, JoinRow,
+    KansoError, LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape,
+    LiveStatus, LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MemberRow,
+    MentionSpan, NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow,
+    OpenedDocuments, OpenedFile, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind,
+    PasskeyRow, PersonLookup, PersonRow, PreviewLink, PreviewOptions, PromptState, Property,
+    PropertyKind, ProviderEvent, ProviderKind, QuotaLimit, Range16, RecoveryKeyText, Replacement,
+    RunBatch, SaveState, Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile,
+    ShareInfo, ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow,
+    StyledRun, SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow,
     SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagRow,
     TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange, ThemeTokens,
     ThemedIcon, Ticked,
@@ -531,6 +531,12 @@ pub struct _ThemeTokens {
     pub selection_alpha: u8,
     pub syntax: Vec<SyntaxStyleRow>,
     pub palette: PaletteDto,
+}
+
+#[frb(mirror(ExportedPage))]
+pub struct _ExportedPage {
+    pub html: String,
+    pub file_name: String,
 }
 
 #[frb(mirror(BuiltinTheme))]

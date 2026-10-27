@@ -902,6 +902,27 @@ class EditorSnapshot {
           save == other.save;
 }
 
+class ExportedPage {
+  final String html;
+  final String fileName;
+
+  const ExportedPage({
+    required this.html,
+    required this.fileName,
+  });
+
+  @override
+  int get hashCode => html.hashCode ^ fileName.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ExportedPage &&
+          runtimeType == other.runtimeType &&
+          html == other.html &&
+          fileName == other.fileName;
+}
+
 enum FormatKind {
   bold,
   italic,

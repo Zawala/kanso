@@ -2435,6 +2435,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get lockMoreTitle => 'Note actions';
 
   @override
+  String get noteExportPdf => 'Export as PDF';
+
+  @override
+  String get noteExportPreparing => 'Preparing the PDF';
+
+  @override
+  String get noteExportFailed => 'The note could not be exported.';
+
+  @override
   String get lockNotebookMenuTitle => 'Notebook actions';
 
   @override

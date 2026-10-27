@@ -3192,6 +3192,18 @@
   "@lockMoreTitle": {
     "description": "The title of the note's menu."
   },
+  "noteExportPdf": "Export as PDF",
+  "@noteExportPdf": {
+    "description": "The note's menu row that writes it as a PDF to share."
+  },
+  "noteExportPreparing": "Preparing the PDF",
+  "@noteExportPreparing": {
+    "description": "What is shown while a note is being written as a PDF."
+  },
+  "noteExportFailed": "The note could not be exported.",
+  "@noteExportFailed": {
+    "description": "Said when a note could not be written as a PDF."
+  },
   "lockNotebookMenuTitle": "Notebook actions",
   "@lockNotebookMenuTitle": {
     "description": "The title of the notebook's menu."
