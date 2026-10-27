@@ -319,12 +319,9 @@ pub struct ActiveTheme {
     pub colors: &'static Colors,
     /// The preview theme's colors, fitted to the UI's editor surface.
     pub preview: PreviewColors,
-    /// The colors a preview's code blocks are drawn in.
-    pub code: Option<Arc<HighlightTheme>>,
-    /// The same colors for a page (an export, a published note), which the
-    /// engine sets: `code` for the component library, this for the engine's
-    /// highlighter (`kanso_engine::export`). A test holds the two to the
-    /// same colors.
+    /// The colors a page's code is drawn in (an export, a published note),
+    /// which the engine sets. The component library's preview code is
+    /// installed separately; a test holds the two to the same colors.
     pub page_code: CodeColors,
 }
 
@@ -434,7 +431,6 @@ pub fn apply(window: Option<&mut Window>, cx: &mut App) {
         ui,
         colors,
         preview,
-        code,
         page_code,
     });
     cx.refresh_windows();
