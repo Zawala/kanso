@@ -1678,6 +1678,7 @@ sealed class Ticked with _$Ticked {
   const factory Ticked.changed({
     required String rev,
     required int undo,
+    required String message,
   }) = Ticked_Changed;
   const factory Ticked.unchanged() = Ticked_Unchanged;
   const factory Ticked.missing() = Ticked_Missing;

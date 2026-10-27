@@ -238,12 +238,14 @@ fn ticking_from_the_board_keeps_the_task_and_undo_puts_it_back() {
     let library = &phone.library;
     let item = single(library);
     assert_eq!(item.text, "Pay");
-    let Ticked::Changed { undo, .. } = library
+    let Ticked::Changed { undo, message, .. } = library
         .set_task(&item.note_id, item.line, &item.source_text, true)
         .unwrap()
     else {
         panic!("not ticked");
     };
+    // The notice says it in the desktop's words, without the date.
+    assert_eq!(message, "Ticked off “Pay”");
     // Read again without the keep: it is gone, and the badge drops.
     let board = library.tasks_at(TaskListQuery::default(), now()).unwrap();
     assert_eq!(texts(&board, TaskGroupKind::Overdue), Vec::<String>::new());

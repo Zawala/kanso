@@ -4485,6 +4485,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
         return Ticked_Changed(
           rev: dco_decode_String(raw[1]),
           undo: dco_decode_CastedPrimitive_u_64(raw[2]),
+          message: dco_decode_String(raw[3]),
         );
       case 1:
         return Ticked_Unchanged();
@@ -6388,7 +6389,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       case 0:
         var var_rev = sse_decode_String(deserializer);
         var var_undo = sse_decode_CastedPrimitive_u_64(deserializer);
-        return Ticked_Changed(rev: var_rev, undo: var_undo);
+        var var_message = sse_decode_String(deserializer);
+        return Ticked_Changed(
+          rev: var_rev,
+          undo: var_undo,
+          message: var_message,
+        );
       case 1:
         return Ticked_Unchanged();
       case 2:
@@ -8071,10 +8077,15 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   void sse_encode_ticked(Ticked self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     switch (self) {
-      case Ticked_Changed(rev: final rev, undo: final undo):
+      case Ticked_Changed(
+        rev: final rev,
+        undo: final undo,
+        message: final message,
+      ):
         sse_encode_i_32(0, serializer);
         sse_encode_String(rev, serializer);
         sse_encode_CastedPrimitive_u_64(undo, serializer);
+        sse_encode_String(message, serializer);
       case Ticked_Unchanged():
         sse_encode_i_32(1, serializer);
       case Ticked_Missing():

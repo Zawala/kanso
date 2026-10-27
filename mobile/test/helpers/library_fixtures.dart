@@ -525,3 +525,118 @@ Map<String, NoteView> readableMockNotes() => <String, NoteView>{
         updatedMs: mockMs(10, 26, 9, 41),
       ),
 };
+
+/// How many tasks of the mock library are overdue.
+const int mockOverdueTasks = 2;
+
+/// Every group of the Tasks place and every tone of a due chip.
+const TaskBoard mockTaskBoard = TaskBoard(
+  groups: <TaskSection>[
+    TaskSection(
+      group: TaskGroupKind.overdue,
+      label: 'Overdue',
+      items: <TaskItem>[
+        TaskItem(
+          key: 'a',
+          noteId: 'n-a',
+          noteTitle: 'Sync design',
+          notebookId: 'b-projects',
+          notebookName: 'Projects',
+          line: 4,
+          text: 'Send Sam the draft',
+          sourceText: 'Send Sam the draft @2026-10-20',
+          checked: false,
+          dueLabel: 'Oct 20',
+          dueTone: DueTone.overdue,
+        ),
+      ],
+    ),
+    TaskSection(
+      group: TaskGroupKind.today,
+      label: 'Today',
+      items: <TaskItem>[
+        TaskItem(
+          key: 'b',
+          noteId: 'n-b',
+          noteTitle: 'Weekly review',
+          notebookId: 'b-work',
+          notebookName: 'Work',
+          line: 9,
+          text: 'Book the venue',
+          sourceText: 'Book the venue @2026-10-27',
+          checked: false,
+          dueLabel: 'Today',
+          dueTone: DueTone.today,
+        ),
+        TaskItem(
+          key: 'c',
+          noteId: 'n-c',
+          noteTitle: 'Groceries',
+          notebookId: 'b-home',
+          notebookName: 'Home',
+          line: 2,
+          text: 'Buy oat milk',
+          sourceText: 'Buy oat milk @2026-10-27',
+          checked: true,
+          dueLabel: 'Today',
+          dueTone: DueTone.done,
+        ),
+      ],
+    ),
+    TaskSection(
+      group: TaskGroupKind.upcoming,
+      label: 'Upcoming',
+      items: <TaskItem>[
+        TaskItem(
+          key: 'd',
+          noteId: 'n-d',
+          noteTitle: 'Trip plan',
+          notebookId: 'b-home',
+          notebookName: 'Home',
+          line: 6,
+          text: 'Renew the passport',
+          sourceText: 'Renew the passport @2026-11-03',
+          checked: false,
+          dueLabel: 'Nov 3',
+          dueTone: DueTone.plain,
+        ),
+      ],
+    ),
+    TaskSection(
+      group: TaskGroupKind.noDate,
+      label: 'No date',
+      items: <TaskItem>[
+        TaskItem(
+          key: 'e',
+          noteId: 'n-e',
+          noteTitle: 'Ideas',
+          notebookId: 'b-work',
+          notebookName: 'Work',
+          line: 1,
+          text: 'Sketch the onboarding screens',
+          sourceText: 'Sketch the onboarding screens',
+          checked: false,
+        ),
+      ],
+    ),
+    TaskSection(
+      group: TaskGroupKind.done,
+      label: 'Completed',
+      items: <TaskItem>[
+        TaskItem(
+          key: 'f',
+          noteId: 'n-f',
+          noteTitle: 'Weekly review',
+          notebookId: 'b-work',
+          notebookName: 'Work',
+          line: 12,
+          text: 'File the expenses',
+          sourceText: 'File the expenses @2026-10-24',
+          checked: true,
+          dueLabel: 'Oct 24',
+          dueTone: DueTone.done,
+        ),
+      ],
+    ),
+  ],
+);

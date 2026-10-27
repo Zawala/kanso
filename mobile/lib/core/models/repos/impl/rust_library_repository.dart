@@ -94,5 +94,28 @@ class RustLibraryRepository implements LibraryRepository {
   }) => attempt(() => _library.queryView(source: source, selfId: selfId));
 
   @override
+  Future<Either<ApplicationError, TaskBoard>> tasks(TaskListQuery query) =>
+      attempt(() => _library.tasks(query: query));
+
+  @override
+  Future<Either<ApplicationError, int>> overdueTasks() =>
+      attempt(_library.overdueTasks);
+
+  @override
+  Future<Either<ApplicationError, Ticked>> setTask({
+    required String noteId,
+    required int line,
+    required String text,
+    required bool checked,
+  }) => attempt(
+    () => _library.setTask(
+      noteId: noteId,
+      line: line,
+      text: text,
+      checked: checked,
+    ),
+  );
+
+  @override
   Stream<List<String>> changes() => cancelableStream(_library.changes());
 }

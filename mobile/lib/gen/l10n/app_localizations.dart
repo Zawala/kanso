@@ -1701,6 +1701,150 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The crash reports couldn’t be read.'**
   String get crashReportsFailedMessage;
+
+  /// The name of a mock screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Note, edit'**
+  String get screenNoteEdit;
+
+  /// The library row for tasks across the notes, and the title of their list.
+  ///
+  /// In en, this message translates to:
+  /// **'Tasks'**
+  String get libraryTasks;
+
+  /// Says how many tasks are overdue, on the Tasks row (read by a screen reader).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 overdue task} other{{count} overdue tasks}}'**
+  String libraryTasksOverdue(int count);
+
+  /// How many tasks the list holds.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 task} other{{count} tasks}}'**
+  String tasksCount(int count);
+
+  /// The button that opens which notebook's tasks to show.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter tasks'**
+  String get tasksFilter;
+
+  /// The title of the sheet that narrows the tasks.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter tasks'**
+  String get tasksFilterTitle;
+
+  /// The choice that shows the tasks of every notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'All notebooks'**
+  String get tasksAllNotebooks;
+
+  /// The switch that shows done tasks too.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Completed'**
+  String get tasksShowCompleted;
+
+  /// The heading above the notebooks a task list can be narrowed to.
+  ///
+  /// In en, this message translates to:
+  /// **'Notebook'**
+  String get tasksNotebooksHeader;
+
+  /// The title when no note has a task.
+  ///
+  /// In en, this message translates to:
+  /// **'No tasks yet'**
+  String get tasksEmptyTitle;
+
+  /// Says how to make a task.
+  ///
+  /// In en, this message translates to:
+  /// **'Write “- [ ] Call Sam @2026-10-25” in any note, and it shows here.'**
+  String get tasksEmptyMessage;
+
+  /// The title when the notebook picked has no tasks.
+  ///
+  /// In en, this message translates to:
+  /// **'No tasks in {notebook}'**
+  String tasksEmptyNotebookTitle(String notebook);
+
+  /// The title when every task is ticked off.
+  ///
+  /// In en, this message translates to:
+  /// **'All done'**
+  String get tasksAllDoneTitle;
+
+  /// Says every task is done.
+  ///
+  /// In en, this message translates to:
+  /// **'Every task is ticked off.'**
+  String get tasksAllDoneMessage;
+
+  /// Says to a screen reader that the tasks are loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading tasks'**
+  String get tasksLoading;
+
+  /// The title of the card shown when the tasks could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The tasks didn\'t load'**
+  String get tasksFailedTitle;
+
+  /// The message of the card shown when the tasks could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong reading the tasks on this device. Try again.'**
+  String get tasksFailedMessage;
+
+  /// Says a task was changed in its note before it could be ticked.
+  ///
+  /// In en, this message translates to:
+  /// **'That task changed in its note. The list is up to date now.'**
+  String get tasksMoved;
+
+  /// Says ticking a task did not happen.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t change the task. Try again.'**
+  String get tasksChangeFailed;
+
+  /// The action that ticks a task off, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Tick off'**
+  String get tasksTickOff;
+
+  /// The action that clears a ticked task, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark not done'**
+  String get tasksTickBack;
+
+  /// The action that opens the note a task is in, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Open note'**
+  String get tasksOpenNote;
+
+  /// The quiet line under a task: its note and its notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'{note} · {notebook}'**
+  String tasksRowContext(String note, String notebook);
+
+  /// A task's due date, for a screen reader.
+  ///
+  /// In en, this message translates to:
+  /// **'Due {due}'**
+  String tasksRowDue(String due);
 }
 
 class _AppLocalizationsDelegate

@@ -50,6 +50,29 @@ class FixtureLibraryRepository implements LibraryRepository {
     1,
   );
 
+  /// What `tasks` answers; a failure shows the Tasks list's error state.
+  Either<ApplicationError, TaskBoard> tasksResult =
+      const Right<ApplicationError, TaskBoard>(mockTaskBoard);
+
+  /// What `overdueTasks` answers.
+  int overdueValue = mockOverdueTasks;
+
+  /// What `setTask` answers.
+  Either<ApplicationError, Ticked> setTaskResult =
+      const Right<ApplicationError, Ticked>(
+        Ticked.changed(rev: 'r2', undo: 7, message: 'Ticked off “Call Sam”'),
+      );
+
+  /// When set, `tasks` waits for it: tasks that are still loading.
+  Completer<void>? tasksGate;
+
+  /// The queries `tasks` was asked.
+  final List<TaskListQuery> taskQueries = <TaskListQuery>[];
+
+  /// The ticks `setTask` was asked for: note, line, text, checked.
+  final List<(String, int, String, bool)> tasksSet =
+      <(String, int, String, bool)>[];
+
   /// The tickets `undo` was asked to take back.
   final List<int> undone = <int>[];
 
@@ -143,6 +166,30 @@ class FixtureLibraryRepository implements LibraryRepository {
     searches.add((text, scope));
     await searchGate?.future;
     return searchResult;
+  }
+
+  @override
+  Future<Either<ApplicationError, TaskBoard>> tasks(
+    TaskListQuery query,
+  ) async {
+    taskQueries.add(query);
+    await tasksGate?.future;
+    return tasksResult;
+  }
+
+  @override
+  Future<Either<ApplicationError, int>> overdueTasks() async =>
+      Right<ApplicationError, int>(overdueValue);
+
+  @override
+  Future<Either<ApplicationError, Ticked>> setTask({
+    required String noteId,
+    required int line,
+    required String text,
+    required bool checked,
+  }) async {
+    tasksSet.add((noteId, line, text, checked));
+    return setTaskResult;
   }
 
   @override

@@ -3768,9 +3768,10 @@ const _: fn() = || {
         let _: Option<String> = ThemedIcon.svg;
     }
     match None::<crate::api::types::Ticked>.unwrap() {
-        crate::api::types::Ticked::Changed { rev, undo } => {
+        crate::api::types::Ticked::Changed { rev, undo, message } => {
             let _: String = rev;
             let _: u64 = undo;
+            let _: String = message;
         }
         crate::api::types::Ticked::Unchanged => {}
         crate::api::types::Ticked::Missing => {}
@@ -5685,9 +5686,11 @@ impl SseDecode for crate::api::types::Ticked {
             0 => {
                 let mut var_rev = <String>::sse_decode(deserializer);
                 let mut var_undo = <u64>::sse_decode(deserializer);
+                let mut var_message = <String>::sse_decode(deserializer);
                 return crate::api::types::Ticked::Changed {
                     rev: var_rev,
                     undo: var_undo,
+                    message: var_message,
                 };
             }
             1 => {
@@ -7675,10 +7678,11 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::ThemedIcon>
 impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::Ticked> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
-            crate::api::types::Ticked::Changed { rev, undo } => [
+            crate::api::types::Ticked::Changed { rev, undo, message } => [
                 0.into_dart(),
                 rev.into_into_dart().into_dart(),
                 undo.into_into_dart().into_dart(),
+                message.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::types::Ticked::Unchanged => [1.into_dart()].into_dart(),
@@ -9216,10 +9220,11 @@ impl SseEncode for crate::api::types::Ticked {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         match self {
-            crate::api::types::Ticked::Changed { rev, undo } => {
+            crate::api::types::Ticked::Changed { rev, undo, message } => {
                 <i32>::sse_encode(0, serializer);
                 <String>::sse_encode(rev, serializer);
                 <u64>::sse_encode(undo, serializer);
+                <String>::sse_encode(message, serializer);
             }
             crate::api::types::Ticked::Unchanged => {
                 <i32>::sse_encode(1, serializer);

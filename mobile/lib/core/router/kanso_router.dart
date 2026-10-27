@@ -18,6 +18,7 @@ import '../../settings/views/pages/icon_themes_page.dart';
 import '../../settings/views/pages/licences_page.dart';
 import '../../settings/views/pages/settings_page.dart';
 import '../../shell/views/widgets/browse_shell.dart';
+import '../../tasks/views/pages/tasks_page.dart';
 import '../../themes/views/pages/theme_picker_page.dart';
 import '../bridge/api/types.dart';
 import '../models/data/browse_location.dart';
@@ -109,6 +110,12 @@ class KansoRouter {
             _placeRoute(
               '${KansoRoutes.tags}/:tagId',
               (state) => ListPlace.tag(id: state.pathParameters['tagId']!),
+            ),
+            GoRoute(
+              path: KansoRoutes.tasks,
+              pageBuilder: (context, state) =>
+                  _listPage(state, single: const TasksPage()),
+              routes: <RouteBase>[_noteRoute()],
             ),
             GoRoute(
               path: KansoRoutes.search,

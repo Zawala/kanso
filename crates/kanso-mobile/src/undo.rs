@@ -83,6 +83,14 @@ impl Library {
             Ok(match ticked {
                 Written::Changed(rev) => Ticked::Changed {
                     rev,
+                    message: {
+                        let name = kanso_engine::tasks::display_text(text);
+                        if checked {
+                            format!("Ticked off “{name}”")
+                        } else {
+                            format!("Opened “{name}” again")
+                        }
+                    },
                     undo: self.keep_undo(Undoable::Task {
                         note_id: note_id.to_owned(),
                         line,

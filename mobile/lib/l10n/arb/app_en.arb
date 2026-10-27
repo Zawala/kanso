@@ -363,15 +363,21 @@
   "@iconsCredit": {
     "description": "Who made an icon theme and under which licence, when both are known.",
     "placeholders": {
-      "author": {"type": "String"},
-      "license": {"type": "String"}
+      "author": {
+        "type": "String"
+      },
+      "license": {
+        "type": "String"
+      }
     }
   },
   "iconsPreview": "Icons in {name}",
   "@iconsPreview": {
     "description": "Says to a screen reader what a row of sample icons shows.",
     "placeholders": {
-      "name": {"type": "String"}
+      "name": {
+        "type": "String"
+      }
     }
   },
   "iconsLoading": "Loading icon themes",
@@ -526,7 +532,9 @@
   "@propertiesRemove": {
     "description": "Removes a property from the note; for a screen reader.",
     "placeholders": {
-      "name": {"type": "String"}
+      "name": {
+        "type": "String"
+      }
     }
   },
   "propertiesConfirmAdd": "Add",
@@ -877,8 +885,12 @@
   "@completionAnnouncement": {
     "description": "What a screen reader says when suggestions for a link or a tag appear: how many, and which one is selected.",
     "placeholders": {
-      "count": {"type": "int"},
-      "label": {"type": "String"}
+      "count": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
     }
   },
   "searchIdleTitle": "Search your notes",
@@ -1165,5 +1177,129 @@
   "crashReportsFailedMessage": "The crash reports couldn’t be read.",
   "@crashReportsFailedMessage": {
     "description": "The message of the card shown when the crash reports could not be read."
+  },
+  "screenNoteEdit": "Note, edit",
+  "@screenNoteEdit": {
+    "description": "The name of a mock screen."
+  },
+  "libraryTasks": "Tasks",
+  "@libraryTasks": {
+    "description": "The library row for tasks across the notes, and the title of their list."
+  },
+  "libraryTasksOverdue": "{count, plural, =1{1 overdue task} other{{count} overdue tasks}}",
+  "@libraryTasksOverdue": {
+    "description": "Says how many tasks are overdue, on the Tasks row (read by a screen reader).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tasksCount": "{count, plural, =1{1 task} other{{count} tasks}}",
+  "@tasksCount": {
+    "description": "How many tasks the list holds.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tasksFilter": "Filter tasks",
+  "@tasksFilter": {
+    "description": "The button that opens which notebook's tasks to show."
+  },
+  "tasksFilterTitle": "Filter tasks",
+  "@tasksFilterTitle": {
+    "description": "The title of the sheet that narrows the tasks."
+  },
+  "tasksAllNotebooks": "All notebooks",
+  "@tasksAllNotebooks": {
+    "description": "The choice that shows the tasks of every notebook."
+  },
+  "tasksShowCompleted": "Show Completed",
+  "@tasksShowCompleted": {
+    "description": "The switch that shows done tasks too."
+  },
+  "tasksNotebooksHeader": "Notebook",
+  "@tasksNotebooksHeader": {
+    "description": "The heading above the notebooks a task list can be narrowed to."
+  },
+  "tasksEmptyTitle": "No tasks yet",
+  "@tasksEmptyTitle": {
+    "description": "The title when no note has a task."
+  },
+  "tasksEmptyMessage": "Write “- [ ] Call Sam @2026-10-25” in any note, and it shows here.",
+  "@tasksEmptyMessage": {
+    "description": "Says how to make a task."
+  },
+  "tasksEmptyNotebookTitle": "No tasks in {notebook}",
+  "@tasksEmptyNotebookTitle": {
+    "description": "The title when the notebook picked has no tasks.",
+    "placeholders": {
+      "notebook": {
+        "type": "String"
+      }
+    }
+  },
+  "tasksAllDoneTitle": "All done",
+  "@tasksAllDoneTitle": {
+    "description": "The title when every task is ticked off."
+  },
+  "tasksAllDoneMessage": "Every task is ticked off.",
+  "@tasksAllDoneMessage": {
+    "description": "Says every task is done."
+  },
+  "tasksLoading": "Loading tasks",
+  "@tasksLoading": {
+    "description": "Says to a screen reader that the tasks are loading."
+  },
+  "tasksFailedTitle": "The tasks didn't load",
+  "@tasksFailedTitle": {
+    "description": "The title of the card shown when the tasks could not be read."
+  },
+  "tasksFailedMessage": "Something went wrong reading the tasks on this device. Try again.",
+  "@tasksFailedMessage": {
+    "description": "The message of the card shown when the tasks could not be read."
+  },
+  "tasksMoved": "That task changed in its note. The list is up to date now.",
+  "@tasksMoved": {
+    "description": "Says a task was changed in its note before it could be ticked."
+  },
+  "tasksChangeFailed": "Couldn't change the task. Try again.",
+  "@tasksChangeFailed": {
+    "description": "Says ticking a task did not happen."
+  },
+  "tasksTickOff": "Tick off",
+  "@tasksTickOff": {
+    "description": "The action that ticks a task off, for a screen reader."
+  },
+  "tasksTickBack": "Mark not done",
+  "@tasksTickBack": {
+    "description": "The action that clears a ticked task, for a screen reader."
+  },
+  "tasksOpenNote": "Open note",
+  "@tasksOpenNote": {
+    "description": "The action that opens the note a task is in, for a screen reader."
+  },
+  "tasksRowContext": "{note} · {notebook}",
+  "@tasksRowContext": {
+    "description": "The quiet line under a task: its note and its notebook.",
+    "placeholders": {
+      "note": {
+        "type": "String"
+      },
+      "notebook": {
+        "type": "String"
+      }
+    }
+  },
+  "tasksRowDue": "Due {due}",
+  "@tasksRowDue": {
+    "description": "A task's due date, for a screen reader.",
+    "placeholders": {
+      "due": {
+        "type": "String"
+      }
+    }
   }
 }

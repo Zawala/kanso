@@ -78,6 +78,25 @@ abstract interface class LibraryRepository {
     String? selfId,
   });
 
+  /// The Tasks place: the tasks of the notes in [query], in groups (Overdue,
+  /// Today, Upcoming, No date and, if asked, Completed), with the desktop's
+  /// labels. A locked note's tasks are left out.
+  Future<Either<ApplicationError, TaskBoard>> tasks(TaskListQuery query);
+
+  /// How many open tasks are overdue: the badge of the Tasks place.
+  Future<Either<ApplicationError, int>> overdueTasks();
+
+  /// Ticks (or clears) the task on [line] of the note [noteId], whose text
+  /// in the note is [text] (a task's `sourceText`), in one write. The result
+  /// says whether the note changed (with the ticket for [undo]), already was
+  /// so, or no longer has that task.
+  Future<Either<ApplicationError, Ticked>> setTask({
+    required String noteId,
+    required int line,
+    required String text,
+    required bool checked,
+  });
+
   /// The IDs of what changed, in batches, as it is written: by this phone, a
   /// sync or the background.
   Stream<List<String>> changes();
