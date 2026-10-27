@@ -931,6 +931,170 @@ class IconThemeRow {
           preview == other.preview;
 }
 
+@freezed
+sealed class ImportEvent with _$ImportEvent {
+  const ImportEvent._();
+
+  const factory ImportEvent.progress(ImportProgress field0) =
+      ImportEvent_Progress;
+  const factory ImportEvent.done(ImportSummary field0) = ImportEvent_Done;
+  const factory ImportEvent.failed(String field0) = ImportEvent_Failed;
+}
+
+class ImportFound {
+  final int notes;
+  final int notebooks;
+  final int tags;
+  final int attachments;
+
+  const ImportFound({
+    required this.notes,
+    required this.notebooks,
+    required this.tags,
+    required this.attachments,
+  });
+
+  @override
+  int get hashCode =>
+      notes.hashCode ^
+      notebooks.hashCode ^
+      tags.hashCode ^
+      attachments.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ImportFound &&
+          runtimeType == other.runtimeType &&
+          notes == other.notes &&
+          notebooks == other.notebooks &&
+          tags == other.tags &&
+          attachments == other.attachments;
+}
+
+enum ImportPhase { reading, notebooks, notes }
+
+class ImportProgress {
+  final ImportPhase? phase;
+  final String label;
+  final int done;
+  final int total;
+  final double fraction;
+
+  const ImportProgress({
+    this.phase,
+    required this.label,
+    required this.done,
+    required this.total,
+    required this.fraction,
+  });
+
+  @override
+  int get hashCode =>
+      phase.hashCode ^
+      label.hashCode ^
+      done.hashCode ^
+      total.hashCode ^
+      fraction.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ImportProgress &&
+          runtimeType == other.runtimeType &&
+          phase == other.phase &&
+          label == other.label &&
+          done == other.done &&
+          total == other.total &&
+          fraction == other.fraction;
+}
+
+class ImportSource {
+  final String kind;
+  final String label;
+  final String hint;
+  final bool picksFiles;
+  final bool picksFolders;
+  final List<String> extensions;
+
+  const ImportSource({
+    required this.kind,
+    required this.label,
+    required this.hint,
+    required this.picksFiles,
+    required this.picksFolders,
+    required this.extensions,
+  });
+
+  @override
+  int get hashCode =>
+      kind.hashCode ^
+      label.hashCode ^
+      hint.hashCode ^
+      picksFiles.hashCode ^
+      picksFolders.hashCode ^
+      extensions.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ImportSource &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          label == other.label &&
+          hint == other.hint &&
+          picksFiles == other.picksFiles &&
+          picksFolders == other.picksFolders &&
+          extensions == other.extensions;
+}
+
+class ImportSummary {
+  final String kind;
+  final bool dryRun;
+  final ImportFound found;
+  final bool empty;
+  final List<String> lines;
+  final List<String> skipped;
+  final List<String> rejected;
+  final String? firstNote;
+
+  const ImportSummary({
+    required this.kind,
+    required this.dryRun,
+    required this.found,
+    required this.empty,
+    required this.lines,
+    required this.skipped,
+    required this.rejected,
+    this.firstNote,
+  });
+
+  @override
+  int get hashCode =>
+      kind.hashCode ^
+      dryRun.hashCode ^
+      found.hashCode ^
+      empty.hashCode ^
+      lines.hashCode ^
+      skipped.hashCode ^
+      rejected.hashCode ^
+      firstNote.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ImportSummary &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          dryRun == other.dryRun &&
+          found == other.found &&
+          empty == other.empty &&
+          lines == other.lines &&
+          skipped == other.skipped &&
+          rejected == other.rejected &&
+          firstNote == other.firstNote;
+}
+
 class InvitationRow {
   final String shareId;
   final String? title;
@@ -1543,6 +1707,44 @@ class NotebookRow {
           color == other.color &&
           role == other.role &&
           depth == other.depth;
+}
+
+class OpenedDocuments {
+  final String? noteId;
+  final List<String> problems;
+
+  const OpenedDocuments({this.noteId, required this.problems});
+
+  @override
+  int get hashCode => noteId.hashCode ^ problems.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OpenedDocuments &&
+          runtimeType == other.runtimeType &&
+          noteId == other.noteId &&
+          problems == other.problems;
+}
+
+class OpenedFile {
+  final String path;
+  final String name;
+  final String? identity;
+
+  const OpenedFile({required this.path, required this.name, this.identity});
+
+  @override
+  int get hashCode => path.hashCode ^ name.hashCode ^ identity.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OpenedFile &&
+          runtimeType == other.runtimeType &&
+          path == other.path &&
+          name == other.name &&
+          identity == other.identity;
 }
 
 class PaletteDto {
