@@ -15,9 +15,11 @@ import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 
+import 'helpers/crash_samples.dart';
 import 'helpers/seeded_appearance_bloc.dart';
 
 Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
@@ -36,6 +38,7 @@ Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
       providers: <BlocProvider<dynamic>>[
         BlocProvider<AppearanceBloc>.value(value: bloc),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
+        BlocProvider<CrashReportsBloc>.value(value: quietCrashReportsBloc()),
       ],
       child: App(router: router),
     ),

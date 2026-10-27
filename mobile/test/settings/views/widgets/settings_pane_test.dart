@@ -49,6 +49,12 @@ Future<_Settings> _pump(
   when(
     about.openWebsite,
   ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
+  when(
+    about.openReleaseNotes,
+  ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
+  when(
+    about.openHelp,
+  ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
   final aboutBloc = AboutBloc(about)..add(const AboutEvent.started());
   final syncBloc = SyncStatusBloc(FixtureSyncRepository(current: status))
     ..add(const SyncStatusEvent.started());
@@ -89,6 +95,8 @@ void main() {
         'About',
         'Version',
         'Website',
+        'Release notes',
+        'Help',
         'Licences',
       ]) {
         expect(find.text(label), findsOneWidget, reason: label);
@@ -100,8 +108,6 @@ void main() {
         'Account',
         'Sign out',
         'Locked notes',
-        'Release notes',
-        'Help',
       ]) {
         expect(find.text(label), findsNothing, reason: label);
       }
@@ -194,6 +200,24 @@ void main() {
       await tester.tap(find.text('Website'));
       await tester.pump();
       verify(screen.about.openWebsite).called(1);
+    });
+
+    testWidgets('the Release notes row opens the release notes', (
+      tester,
+    ) async {
+      final screen = await _pump(tester);
+      await tester.tap(find.text('Release notes'));
+      await tester.pump();
+      verify(screen.about.openReleaseNotes).called(1);
+      verifyNever(screen.about.openWebsite);
+    });
+
+    testWidgets('the Help row opens the help page', (tester) async {
+      final screen = await _pump(tester);
+      await tester.tap(find.text('Help'));
+      await tester.pump();
+      verify(screen.about.openHelp).called(1);
+      verifyNever(screen.about.openWebsite);
     });
 
     testWidgets('the rows go to Theme, Fonts, Text size and Licences', (

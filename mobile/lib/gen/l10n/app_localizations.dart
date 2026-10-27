@@ -406,6 +406,18 @@ abstract class AppLocalizations {
   /// **'Website'**
   String get settingsWebsite;
 
+  /// Opens what changed in each version of Kanso, on the website.
+  ///
+  /// In en, this message translates to:
+  /// **'Release notes'**
+  String get settingsReleaseNotes;
+
+  /// Opens Kanso's help page on the website.
+  ///
+  /// In en, this message translates to:
+  /// **'Help'**
+  String get settingsHelp;
+
   /// Opens the licences of what Kanso is made of.
   ///
   /// In en, this message translates to:
@@ -1245,6 +1257,180 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OK'**
   String get backupNoticeOk;
+
+  /// The app's version, the number of its build and the number of the Shorebird patch it is running.
+  ///
+  /// In en, this message translates to:
+  /// **'{version} ({build}), patch {patch}'**
+  String settingsVersionPatchValue(String version, String build, int patch);
+
+  /// A section of settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy'**
+  String get settingsPrivacy;
+
+  /// Says under Privacy that nothing is sent on its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso sends a crash report only when you choose to.'**
+  String get settingsPrivacyFooter;
+
+  /// The settings row and the page that list the crash reports waiting on the device.
+  ///
+  /// In en, this message translates to:
+  /// **'Crash reports'**
+  String get crashReportsTitle;
+
+  /// Says to a screen reader that the crash reports are being read.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading crash reports'**
+  String get crashReportsLoading;
+
+  /// The title of the page when no crash report is waiting.
+  ///
+  /// In en, this message translates to:
+  /// **'No crash reports'**
+  String get crashReportsEmptyTitle;
+
+  /// Says what will appear on the Crash reports page.
+  ///
+  /// In en, this message translates to:
+  /// **'If Kanso closes unexpectedly, a report waits here until you decide whether to send it.'**
+  String get crashReportsEmptyMessage;
+
+  /// Explains, above the list, what a crash report holds.
+  ///
+  /// In en, this message translates to:
+  /// **'A report holds only where in Kanso’s code something went wrong. It never holds note text, titles or file names. Nothing is sent unless you send it.'**
+  String get crashReportsIntro;
+
+  /// Sends every crash report waiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Send all'**
+  String get crashReportsSendAll;
+
+  /// A crash report's row: the day, and where it came from.
+  ///
+  /// In en, this message translates to:
+  /// **'{day} · {kind}'**
+  String crashReportSubtitle(String day, String kind);
+
+  /// Sends one crash report.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get crashReportSend;
+
+  /// Deletes one crash report without sending it.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get crashReportDelete;
+
+  /// Shows the exact text of a crash report.
+  ///
+  /// In en, this message translates to:
+  /// **'Show report'**
+  String get crashReportShow;
+
+  /// Hides the text of a crash report.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide report'**
+  String get crashReportHide;
+
+  /// Says a crash report is being sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending…'**
+  String get crashReportSending;
+
+  /// The origin of a crash report: an error in Kanso's own code.
+  ///
+  /// In en, this message translates to:
+  /// **'App'**
+  String get crashKindDart;
+
+  /// The origin of a crash report: a crash the system recorded on iPhone or iPad.
+  ///
+  /// In en, this message translates to:
+  /// **'iOS'**
+  String get crashKindIosNative;
+
+  /// The origin of a crash report: a crash in native code on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'Android native'**
+  String get crashKindAndroidNative;
+
+  /// The origin of a crash report: the app stopped responding on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'Android not responding'**
+  String get crashKindAndroidAnr;
+
+  /// The origin of a crash report: an uncaught exception on Android.
+  ///
+  /// In en, this message translates to:
+  /// **'Android'**
+  String get crashKindAndroidJvm;
+
+  /// The title of the card shown after a launch that found crash reports.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso closed unexpectedly'**
+  String get crashNoticeTitle;
+
+  /// Asks whether to send crash reports and says what they hold.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a crash report? It holds only where in Kanso’s code it happened, never note text, titles or file names.'**
+  String get crashNoticeMessage;
+
+  /// Sends the crash reports.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get crashNoticeSend;
+
+  /// Deletes the crash reports without sending them.
+  ///
+  /// In en, this message translates to:
+  /// **'Don’t send'**
+  String get crashNoticeDiscard;
+
+  /// Said after a crash report was sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Report sent. Thank you.'**
+  String get crashOutcomeSent;
+
+  /// Said when the server did not accept a crash report.
+  ///
+  /// In en, this message translates to:
+  /// **'The report couldn’t be sent.'**
+  String get crashOutcomeRejected;
+
+  /// Said when the server asked to wait.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many reports just now. Try again later.'**
+  String get crashOutcomeTryLater;
+
+  /// Said when a crash report could not be sent for lack of a connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn’t reach Kanso. Try again later.'**
+  String get crashOutcomeUnreachable;
+
+  /// The message of the card shown when the crash reports could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'The crash reports couldn’t be read.'**
+  String get crashReportsFailedMessage;
 }
 
 class _AppLocalizationsDelegate

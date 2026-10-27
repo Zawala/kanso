@@ -11,4 +11,10 @@ sealed class AboutEvent with _$AboutEvent {
 
   /// The person chose the website row.
   const factory AboutEvent.websiteOpened() = AboutWebsiteOpenedEvent;
+
+  /// The person chose the release notes row.
+  const factory AboutEvent.releaseNotesOpened() = AboutReleaseNotesOpenedEvent;
+
+  /// The person chose the help row.
+  const factory AboutEvent.helpOpened() = AboutHelpOpenedEvent;
 }

@@ -16,10 +16,12 @@ import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 
 import 'browse_blocs.dart';
+import 'crash_samples.dart';
 import 'fixture_library_repository.dart';
 import 'register_page_blocs.dart';
 import 'seeded_appearance_bloc.dart';
@@ -105,6 +107,7 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<BackupNoticeBloc>.value(
             value: backupNotice ?? hiddenBackupNoticeBloc(),
           ),
+          BlocProvider<CrashReportsBloc>.value(value: quietCrashReportsBloc()),
         ],
         child: App(router: kansoRouter),
       ),
