@@ -16,6 +16,8 @@ import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/lock/state/biometrics/biometrics_bloc.dart';
+import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
 import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
@@ -23,7 +25,9 @@ import 'package:kanso/settings/views/widgets/settings_pane.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../helpers/close_bloc_later.dart';
+import '../../helpers/fixture_device_lock_repository.dart';
 import '../../helpers/fixture_library_repository.dart';
+import '../../helpers/fixture_session_repository.dart';
 import '../../helpers/fixture_sync_repository.dart';
 import '../../helpers/mock_repositories.dart';
 import '../../helpers/pump_routed.dart';
@@ -56,6 +60,15 @@ Future<GoRouter> _pump(WidgetTester tester, {int? patch}) async {
   closeBlocLater(appearance);
   final account = SeededAccountBloc();
   closeBlocLater(account);
+  // Nothing is locked, so there is no Locked notes section.
+  final session = FixtureSessionRepository(hasLockPassword: false);
+  addTearDown(() => unawaited(session.close()));
+  final device = FixtureDeviceLockRepository();
+  final lock = LockStatusBloc(session, device)
+    ..add(const LockStatusEvent.started());
+  closeBlocLater(lock);
+  final biometrics = BiometricsBloc(session, device);
+  closeBlocLater(biometrics);
   final router = await pumpRouted(
     tester,
     MultiBlocProvider(
@@ -67,6 +80,8 @@ Future<GoRouter> _pump(WidgetTester tester, {int? patch}) async {
         BlocProvider<LibraryIndexBloc>.value(value: index),
         BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
         BlocProvider<AccountBloc>.value(value: account),
+        BlocProvider<LockStatusBloc>.value(value: lock),
+        BlocProvider<BiometricsBloc>.value(value: biometrics),
       ],
       child: const SettingsPane(),
     ),

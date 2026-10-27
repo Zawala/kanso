@@ -190,7 +190,7 @@ void main() {
     tester,
   ) async {
     await _pumpLibrary(tester, books: _books(projectsLocked: true));
-    await tester.longPress(find.text('Kanso'));
+    await tester.longPress(find.text('Kanso').last);
     await tester.pumpAndSettle();
     expect(find.text('Lock Notebook…'), findsNothing);
     expect(find.text('Remove Notebook Lock…'), findsNothing);

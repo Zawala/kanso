@@ -32,9 +32,11 @@ import 'package:kanso/shell/state/note_creation/note_creation_bloc.dart';
 import 'account_blocs.dart';
 import 'browse_blocs.dart';
 import 'crash_samples.dart';
+import 'fixture_device_lock_repository.dart';
 import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_renderer_repository.dart';
+import 'fixture_session_repository.dart';
 import 'fixture_shared_notes_repository.dart';
 import 'fixture_sync_repository.dart';
 import 'register_page_blocs.dart';
@@ -82,8 +84,9 @@ class BrowseApp {
 /// BLoCs; by default the phone has no account. [sync] is the sync the
 /// status and the sync settings read. [shared] and [gallery] are
 /// the shared notes and the theme gallery the app reads, if a test has made
-/// them. The app is inside a repaint boundary, [appBoundaryKey], to take a
-/// picture of.
+/// them. [session] and [device] are the lock session and the phone's
+/// biometrics; by default nothing is locked. The app is inside a repaint
+/// boundary, [appBoundaryKey], to take a picture of.
 Future<BrowseApp> pumpBrowseApp(
   WidgetTester tester,
   Size size, {
@@ -99,10 +102,18 @@ Future<BrowseApp> pumpBrowseApp(
   FixtureGalleryRepository? gallery,
   AccountBlocs? accounts,
   FixtureSyncRepository? sync,
+  FixtureSessionRepository? session,
+  FixtureDeviceLockRepository? device,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
-  final blocs = await BrowseBlocs.start(library, sync, shared);
+  final blocs = await BrowseBlocs.start(
+    library,
+    sync,
+    shared,
+    session,
+    device,
+  );
   registerPageBlocs(
     blocs.library,
     renderer,

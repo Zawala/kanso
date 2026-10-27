@@ -14,6 +14,11 @@ class FixtureDeviceLockRepository implements DeviceLockRepository {
 
   BiometricKind kind;
   BiometricOutcome outcome = BiometricOutcome.done;
+
+  /// What the Rust core does when an unlock ends well: a test opens the lock
+  /// session and sends its event here, as the core does on the plugin's
+  /// answer.
+  void Function()? onUnlock;
   final List<String> calls = <String>[];
   final List<bool> secure = <bool>[];
 
@@ -38,6 +43,9 @@ class FixtureDeviceLockRepository implements DeviceLockRepository {
     String reason,
   ) async {
     calls.add('unlock:$ticket:$libraryId');
+    if (outcome == BiometricOutcome.done) {
+      onUnlock?.call();
+    }
     return Right<ApplicationError, BiometricOutcome>(outcome);
   }
 
