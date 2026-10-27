@@ -24,9 +24,11 @@ pub const MAX_WIDTH: u32 = 4000;
 /// An image on a line of its own.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LineImage {
+    /// The image's address.
     pub src: String,
     /// Without any `|300`.
     pub alt: String,
+    /// The width written after `|`, when the image sets one.
     pub width: Option<u32>,
     /// Written `![alt|300](src)`, so a new width is written the same way.
     pub bar: bool,

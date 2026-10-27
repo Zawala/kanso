@@ -53,8 +53,10 @@ pub fn line_lengths<'a>(pieces: impl IntoIterator<Item = &'a str>) -> Vec<usize>
     let mut lengths = vec![0];
     for piece in pieces {
         let mut lines = piece.split('\n');
-        if let Some(first) = lines.next() {
-            *lengths.last_mut().expect("never empty") += first.chars().count();
+        if let Some(first) = lines.next()
+            && let Some(last) = lengths.last_mut()
+        {
+            *last += first.chars().count();
         }
         lengths.extend(lines.map(|line| line.chars().count()));
     }

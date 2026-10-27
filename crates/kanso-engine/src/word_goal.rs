@@ -24,6 +24,7 @@ pub enum GoalSetting {
     Default,
     /// No goal for this note, whatever the default (kept as 0).
     Off,
+    /// This note's own goal, in words.
     Words(u32),
 }
 

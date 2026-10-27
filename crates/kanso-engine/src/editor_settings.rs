@@ -12,9 +12,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ViewMode {
+    /// The source alone.
     Edit,
+    /// Source and preview side by side.
     #[default]
     Split,
+    /// The preview alone.
     Preview,
 }
 
@@ -25,14 +28,18 @@ pub enum EditorFont {
     /// Proportional for writing, monospace beside the preview.
     #[default]
     Auto,
+    /// Proportional everywhere.
     Sans,
+    /// Monospace everywhere.
     Mono,
 }
 
 /// How the editor sets its text in one view mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EditorFace {
+    /// The text is set monospace.
     pub mono: bool,
+    /// The source's lines are numbered.
     pub line_numbers: bool,
 }
 
@@ -69,10 +76,12 @@ pub const DEFAULT_SPLIT_RATIO: f32 = 0.5;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Typewriter {
+    /// Never.
     Off,
     /// Only in focus mode.
     #[default]
     FocusMode,
+    /// In focus mode or out of it.
     Always,
 }
 

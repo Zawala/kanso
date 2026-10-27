@@ -146,8 +146,11 @@ pub fn block_insert(text: &str, range: Range<usize>, block: &str) -> Edit {
 /// An `<img>` tag on its own: `<img src="<attachment link>" width="320">`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImgTag {
+    /// The tag's `src`, as written.
     pub src: String,
+    /// The tag's `alt`, when it has one.
     pub alt: String,
+    /// The tag's `width`, when it sets one.
     pub width: Option<u32>,
 }
 
