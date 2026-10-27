@@ -27,6 +27,16 @@
 //!   diagrams.
 //! - [`background`] is the sync that runs with no app: the code behind the
 //!   C entry `kanso_background_sync` that `mobile/rust` exports.
+//! - A note's past and the library's safety nets: [`Library::history`] lists
+//!   the saved versions, [`Library::history_diff`] says what changed since
+//!   one and [`Library::restore_version`] brings one back (a locked note's
+//!   sealed versions are opened with the session's keys, never returned
+//!   sealed, and not at all while it is closed). [`Library::replace_preview`],
+//!   [`Library::replace_apply`] and [`Library::replace_undo`] are Replace in
+//!   all notes, which never touches a locked note. [`Library::backup_if_due`],
+//!   [`Library::back_up_now`], [`Library::backups`] and
+//!   [`Library::delete_backup`] keep a daily copy of the database inside the
+//!   library's folder (so out of the device's backups) and one on request.
 //! - [`diagnostics`] has the version, the TLS check and the panic probe.
 //!
 //! # The edge
@@ -42,26 +52,33 @@
 
 pub mod background;
 mod backup;
+mod backups;
 pub mod boundary;
 mod builtin_themes;
 pub mod diagnostics;
 mod errors;
+mod history;
 mod library;
 mod locks;
 mod matching;
 mod model;
+mod model_history;
 mod notes;
 mod renderer;
+mod replace;
 pub mod secrets;
 mod stream;
 mod syncing;
 mod theme_tokens;
 
+pub use backups::BACKUPS_SUMMARY;
 pub use errors::KansoError;
 pub use library::Library;
 pub use locks::LockSession;
 pub use model::*;
+pub use model_history::*;
 pub use renderer::Renderer;
+pub use replace::replace_apply_label;
 pub use stream::Sink;
 pub use syncing::SyncHandle;
 

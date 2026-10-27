@@ -22,7 +22,7 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::replace::{Matcher, Pattern, PatternError};
-use kanso_store::{NoteMatches, Planned, ReplaceReport, Store, UndoReport};
+use kanso_store::{NoteMatches, Planned, ReplaceReport, Store};
 
 use crate::clock::Clock;
 use crate::editor::NoteEditor;

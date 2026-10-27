@@ -342,17 +342,6 @@ fn undo_leaves_notes_edited_since() {
     assert_eq!(body(&store, "note:2"), "dog, edited again\n");
 }
 
-/// A pattern that matches even an empty text, so a forged plan has something
-/// to write into a locked note whose text reads as empty.
-fn matches_nothing_and_everything() -> Matcher {
-    Matcher::new(&Pattern {
-        find: "^".into(),
-        regex: true,
-        ..Default::default()
-    })
-    .unwrap()
-}
-
 fn sealed_fields(store: &Store, id: &str) -> serde_json::Value {
     let mut note = store.get_api(id, None, false).unwrap();
     note["body"] = "".into();
@@ -383,6 +372,15 @@ fn replace_never_writes_into_a_locked_note_even_if_the_plan_names_it() {
     store
         .lock_note(sealed_fields(&store, "note:sealed"))
         .unwrap();
+    // Text beside the lock, as an older Kanso on another device can sync it.
+    store
+        .put(
+            DocType::Note,
+            json!({"_id": "note:sealed", "body": "cat from an older Kanso"}),
+            Put::Merge,
+            Origin::Sync,
+        )
+        .unwrap();
     let private = book(&store, "book:private");
     note(&store, "note:inside", "cat\n", &private);
     lock_book_by_sync(&store, &private);
@@ -398,17 +396,17 @@ fn replace_never_writes_into_a_locked_note_even_if_the_plan_names_it() {
         .collect();
     let sealed_before = store.get("note:sealed").unwrap().unwrap();
     let inside_before = store.get("note:inside").unwrap().unwrap();
-    for matcher in [matcher("cat", false), matches_nothing_and_everything()] {
-        let report = store
-            .replace_in_notes(&matcher, "LEAK", &forged, "forged", 9000)
-            .unwrap();
-        // (The open note, changed by the first round, is skipped by the
-        // second as stale.)
-        let skipped: Vec<&str> = report.skipped.iter().map(|s| s.id.as_str()).collect();
-        assert!(skipped.contains(&"note:inside") && skipped.contains(&"note:sealed"));
-        assert!(report.notes.iter().all(|id| id == "note:open"));
-    }
+    let report = store
+        .replace_in_notes(&matcher("cat", false), "LEAK", &forged, "forged", 9000)
+        .unwrap();
+    let skipped: Vec<&str> = report.skipped.iter().map(|s| s.id.as_str()).collect();
+    assert_eq!(skipped, ["note:sealed", "note:inside"]);
+    assert_eq!(report.notes, ["note:open"]);
     assert_eq!(store.get("note:sealed").unwrap().unwrap(), sealed_before);
+    assert_eq!(
+        sealed_before.fields["body"].as_str(),
+        Some("cat from an older Kanso")
+    );
     assert_eq!(store.get("note:inside").unwrap().unwrap(), inside_before);
     let pending = store.unsealed_in_locked_books().unwrap();
     assert_eq!(pending.len(), 1);
