@@ -13,9 +13,11 @@
 import 'package:get_it/get_it.dart' as _i174;
 import 'package:injectable/injectable.dart' as _i526;
 
+import 'core/bridge/api/gallery.dart' as _i783;
 import 'core/bridge/api/library.dart' as _i455;
 import 'core/bridge/api/locks.dart' as _i983;
 import 'core/bridge/api/renderer.dart' as _i832;
+import 'core/bridge/api/shared.dart' as _i315;
 import 'core/bridge/api/sync.dart' as _i591;
 import 'core/configs/app_module.dart' as _i216;
 import 'core/configs/core_module.dart' as _i418;
@@ -23,21 +25,27 @@ import 'core/models/data/design_gallery_access.dart' as _i289;
 import 'core/models/data/library_folder.dart' as _i72;
 import 'core/models/repos/abs/about_repository.dart' as _i80;
 import 'core/models/repos/abs/diagnostics_repository.dart' as _i984;
+import 'core/models/repos/abs/gallery_repository.dart' as _i550;
 import 'core/models/repos/abs/haptics_repository.dart' as _i1056;
 import 'core/models/repos/abs/library_repository.dart' as _i38;
 import 'core/models/repos/abs/licences_repository.dart' as _i951;
 import 'core/models/repos/abs/preferences_repository.dart' as _i384;
 import 'core/models/repos/abs/renderer_repository.dart' as _i732;
 import 'core/models/repos/abs/session_repository.dart' as _i333;
+import 'core/models/repos/abs/shared_notes_repository.dart' as _i374;
 import 'core/models/repos/abs/sync_repository.dart' as _i601;
+import 'core/models/repos/abs/system_share_repository.dart' as _i202;
 import 'core/models/repos/impl/file_preferences_repository.dart' as _i207;
 import 'core/models/repos/impl/flutter_haptics_repository.dart' as _i438;
 import 'core/models/repos/impl/flutter_licences_repository.dart' as _i1025;
+import 'core/models/repos/impl/flutter_system_share_repository.dart' as _i254;
 import 'core/models/repos/impl/package_info_about_repository.dart' as _i489;
 import 'core/models/repos/impl/rust_diagnostics_repository.dart' as _i1062;
+import 'core/models/repos/impl/rust_gallery_repository.dart' as _i692;
 import 'core/models/repos/impl/rust_library_repository.dart' as _i152;
 import 'core/models/repos/impl/rust_renderer_repository.dart' as _i820;
 import 'core/models/repos/impl/rust_session_repository.dart' as _i899;
+import 'core/models/repos/impl/rust_shared_notes_repository.dart' as _i628;
 import 'core/models/repos/impl/rust_sync_repository.dart' as _i564;
 import 'core/router/kanso_router.dart' as _i388;
 import 'core/router/layout_class_notifier.dart' as _i609;
@@ -52,7 +60,12 @@ import 'search/state/search/search_bloc.dart' as _i696;
 import 'settings/state/about/about_bloc.dart' as _i380;
 import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
 import 'settings/state/licences/licences_bloc.dart' as _i570;
+import 'sharing/state/invitations/invitations_bloc.dart' as _i1;
+import 'sharing/state/join_link/join_link_bloc.dart' as _i676;
+import 'sharing/state/share_note/share_note_bloc.dart' as _i252;
+import 'sharing/state/shared_note_live/shared_note_live_bloc.dart' as _i361;
 import 'shell/state/library_pane/library_pane_bloc.dart' as _i612;
+import 'themes/state/theme_gallery/theme_gallery_bloc.dart' as _i569;
 import 'themes/state/theme_picker/theme_picker_bloc.dart' as _i149;
 
 const String _development = 'development';
@@ -86,6 +99,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i380.AboutBloc>(
       () => _i380.AboutBloc(gh<_i80.AboutRepository>()),
+    );
+    gh.lazySingleton<_i202.SystemShareRepository>(
+      () => _i254.FlutterSystemShareRepository(),
     );
     gh.lazySingleton<_i951.LicencesRepository>(
       () => _i1025.FlutterLicencesRepository(),
@@ -131,17 +147,14 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i832.KansoRenderer>(
       () => coreModule.renderer(gh<_i455.KansoLibrary>()),
     );
+    gh.lazySingleton<_i315.KansoShared>(
+      () => coreModule.shared(gh<_i455.KansoLibrary>()),
+    );
+    gh.lazySingleton<_i783.KansoGallery>(
+      () => coreModule.gallery(gh<_i455.KansoLibrary>()),
+    );
     gh.lazySingleton<_i732.RendererRepository>(
       () => _i820.RustRendererRepository(gh<_i832.KansoRenderer>()),
-    );
-    gh.factory<_i149.ThemePickerBloc>(
-      () => _i149.ThemePickerBloc(gh<_i732.RendererRepository>()),
-    );
-    gh.factory<_i551.AppearanceBloc>(
-      () => _i551.AppearanceBloc(
-        gh<_i384.PreferencesRepository>(),
-        gh<_i732.RendererRepository>(),
-      ),
     );
     gh.lazySingleton<_i38.LibraryRepository>(
       () => _i152.RustLibraryRepository(gh<_i455.KansoLibrary>()),
@@ -177,8 +190,45 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i333.SessionRepository>(
       () => _i899.RustSessionRepository(gh<_i983.KansoLocks>()),
     );
+    gh.lazySingleton<_i550.GalleryRepository>(
+      () => _i692.RustGalleryRepository(gh<_i783.KansoGallery>()),
+    );
+    gh.lazySingleton<_i374.SharedNotesRepository>(
+      () => _i628.RustSharedNotesRepository(gh<_i315.KansoShared>()),
+    );
     gh.factory<_i185.SyncStatusBloc>(
       () => _i185.SyncStatusBloc(gh<_i601.SyncRepository>()),
+    );
+    gh.factory<_i569.ThemeGalleryBloc>(
+      () => _i569.ThemeGalleryBloc(gh<_i550.GalleryRepository>()),
+    );
+    gh.factory<_i149.ThemePickerBloc>(
+      () => _i149.ThemePickerBloc(
+        gh<_i732.RendererRepository>(),
+        gh<_i550.GalleryRepository>(),
+      ),
+    );
+    gh.factory<_i252.ShareNoteBloc>(
+      () => _i252.ShareNoteBloc(
+        gh<_i374.SharedNotesRepository>(),
+        gh<_i202.SystemShareRepository>(),
+      ),
+    );
+    gh.factory<_i1.InvitationsBloc>(
+      () => _i1.InvitationsBloc(gh<_i374.SharedNotesRepository>()),
+    );
+    gh.factory<_i676.JoinLinkBloc>(
+      () => _i676.JoinLinkBloc(gh<_i374.SharedNotesRepository>()),
+    );
+    gh.factory<_i361.SharedNoteLiveBloc>(
+      () => _i361.SharedNoteLiveBloc(gh<_i374.SharedNotesRepository>()),
+    );
+    gh.factory<_i551.AppearanceBloc>(
+      () => _i551.AppearanceBloc(
+        gh<_i384.PreferencesRepository>(),
+        gh<_i732.RendererRepository>(),
+        gh<_i550.GalleryRepository>(),
+      ),
     );
     return this;
   }

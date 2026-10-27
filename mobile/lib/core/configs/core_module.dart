@@ -8,9 +8,11 @@ import 'package:injectable/injectable.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../bridge/api/gallery.dart';
 import '../bridge/api/library.dart';
 import '../bridge/api/locks.dart';
 import '../bridge/api/renderer.dart';
+import '../bridge/api/shared.dart';
 import '../bridge/api/sync.dart';
 import '../models/data/library_folder.dart';
 
@@ -61,4 +63,10 @@ abstract class CoreModule {
 
   @lazySingleton
   KansoRenderer renderer(KansoLibrary library) => library.renderer();
+
+  @lazySingleton
+  KansoShared shared(KansoLibrary library) => library.shared();
+
+  @lazySingleton
+  KansoGallery gallery(KansoLibrary library) => library.gallery();
 }

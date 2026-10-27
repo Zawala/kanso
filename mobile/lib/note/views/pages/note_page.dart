@@ -9,6 +9,7 @@ import '../../../core/state/navigation_history/navigation_history_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/syntax_theme_id.dart';
 import '../../../injection.dart';
+import '../../../sharing/views/widgets/shared_note_live.dart';
 import '../../state/note/note_bloc.dart';
 import '../widgets/note_pane.dart';
 import '../widgets/note_theme_sync.dart';
@@ -42,10 +43,14 @@ class NotePage extends StatelessWidget {
       },
       child: NoteThemeSync(
         themeId: themeId,
-        child: Scaffold(
-          resizeToAvoidBottomInset: false,
-          backgroundColor: context.colors.editor,
-          body: NotePane(inPane: inPane),
+        // A shared note's live room is open while the note is.
+        child: SharedNoteLive(
+          noteId: noteId,
+          child: Scaffold(
+            resizeToAvoidBottomInset: false,
+            backgroundColor: context.colors.editor,
+            body: NotePane(inPane: inPane),
+          ),
         ),
       ),
     );

@@ -15,6 +15,7 @@ import '../../models/data/kanso_fonts.dart';
 import '../../models/data/kanso_text_size.dart';
 import '../../models/data/preferences.dart';
 import '../../models/data/theme_selection.dart';
+import '../../models/repos/abs/gallery_repository.dart';
 import '../../models/repos/abs/preferences_repository.dart';
 import '../../models/repos/abs/renderer_repository.dart';
 import '../../utils/palette_from_tokens.dart';
@@ -31,7 +32,7 @@ part 'appearance_state.dart';
 /// this run. Events are handled one after another, in the order they came.
 @injectable
 class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
-  AppearanceBloc(this._preferences, this._renderer)
+  AppearanceBloc(this._preferences, this._renderer, this._gallery)
     : super(const AppearanceState()) {
     // One handler for every event, so they all run one after another in the
     // order they came (a transformer orders only the events of one handler).
@@ -62,6 +63,7 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
           size,
           emit,
         ),
+        AppearanceThemeChangedEvent(:final id) => _onThemeChanged(id, emit),
       },
       transformer: sequential(),
     );
@@ -69,6 +71,7 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
 
   final PreferencesRepository _preferences;
   final RendererRepository _renderer;
+  final GalleryRepository _gallery;
   final Map<String, KansoPalette> _palettes = <String, KansoPalette>{
     KansoPalette.kansoLight.id: KansoPalette.kansoLight,
     KansoPalette.kansoDark.id: KansoPalette.kansoDark,
@@ -99,6 +102,26 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
   ) async {
     final selection = state.selection.picked(id, dark: dark);
     await _select(selection, emit);
+  }
+
+  Future<void> _onThemeChanged(
+    String id,
+    Emitter<AppearanceState> emit,
+  ) async {
+    _palettes.remove(id);
+    final selection = state.selection;
+    final without = selection.without(id);
+    if (without == selection) {
+      return;
+    }
+    final shown = await _paletteSlots(selection);
+    if (shown.complete) {
+      // Updated: the same theme in new colours.
+      emit(state.copyWith(light: shown.light, dark: shown.dark));
+    } else {
+      // Removed: Kanso's own theme in its place.
+      await _select(without, emit);
+    }
   }
 
   Future<void> _onFollowSystemChanged(
@@ -175,7 +198,11 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
     if (known != null) {
       return known;
     }
-    final tokens = await _renderer.builtinThemeTokens(id);
+    // A built-in theme, or one installed from the gallery.
+    var tokens = await _renderer.builtinThemeTokens(id);
+    if (tokens.isLeft()) {
+      tokens = await _gallery.installedThemeTokens(id);
+    }
     return tokens.fold((_) => null, (found) {
       final made = paletteFromTokens(id, found);
       _palettes[id] = made;

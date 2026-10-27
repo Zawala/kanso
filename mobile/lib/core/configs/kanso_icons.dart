@@ -25,9 +25,11 @@ enum KansoIcons {
   circleDot('circle-dot'),
   circlePause('circle-pause'),
   circleHelp('circle-question-mark'),
+  circleUser('circle-user'),
   circleX('circle-x'),
   clock('clock'),
   cloud('cloud'),
+  copy('copy'),
   download('download'),
   ellipsis('ellipsis'),
   externalLink('external-link'),
@@ -65,7 +67,10 @@ enum KansoIcons {
   search('search'),
   settings('settings'),
   shapes('shapes'),
+  share('share-2'),
   shield('shield'),
+  shieldAlert('shield-alert'),
+  shieldCheck('shield-check'),
   sparkles('sparkles'),
   star('star'),
   sun('sun'),
@@ -75,6 +80,7 @@ enum KansoIcons {
   typeface('type'),
   undo('undo-2'),
   user('user'),
+  users('users'),
   close('x');
 
   const KansoIcons(this.lucideName);

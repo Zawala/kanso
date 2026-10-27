@@ -23,6 +23,7 @@ class KansoSidebarRow extends StatelessWidget {
     this.icon,
     this.leading,
     this.count,
+    this.trailing,
     this.selected = false,
     this.chevron = false,
     this.depth = 0,
@@ -36,6 +37,9 @@ class KansoSidebarRow extends StatelessWidget {
   /// Replaces [icon], for a coloured dot.
   final Widget? leading;
   final int? count;
+
+  /// Shown at the end instead of [count]: a badge.
+  final Widget? trailing;
   final bool selected;
   final bool chevron;
   final int depth;
@@ -51,6 +55,7 @@ class KansoSidebarRow extends StatelessWidget {
     final glyph = icon;
     final head = leading;
     final total = count;
+    final end = trailing;
     return KansoPressable(
       onTap: onTap,
       child: Padding(
@@ -93,7 +98,10 @@ class KansoSidebarRow extends StatelessWidget {
                   ),
                 ),
               ),
-              if (total != null) ...<Widget>[
+              if (end != null) ...<Widget>[
+                const SizedBox(width: KansoSpacing.xs),
+                end,
+              ] else if (total != null) ...<Widget>[
                 const SizedBox(width: KansoSpacing.xs),
                 Text(
                   '$total',

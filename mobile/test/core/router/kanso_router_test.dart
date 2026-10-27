@@ -29,6 +29,7 @@ import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/settings/views/pages/fonts_page.dart';
 import 'package:kanso/settings/views/pages/licences_page.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
+import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/themes/views/pages/theme_picker_page.dart';
 
@@ -66,6 +67,7 @@ Future<GoRouter> _pump(
         BlocProvider<AppearanceBloc>.value(value: bloc),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
         BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
+        BlocProvider<InvitationsBloc>.value(value: blocs.invitations),
         BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
