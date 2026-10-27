@@ -2,14 +2,15 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+// ignore_for_file: only_throw_errors
+
 import 'package:dartz/dartz.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/repos/impl/plugin_auth_session_repository.dart';
 import 'package:kanso_auth_session/kanso_auth_session.dart';
-import 'package:kanso_auth_session/src/messages.g.dart'
-    show AuthSessionHostApi;
+import 'package:kanso_auth_session/src/messages.g.dart' show AuthSessionHostApi;
 
 /// The platform’s session, recording what it is asked.
 class _Session extends AuthSessionHostApi {
@@ -47,19 +48,23 @@ void main() {
   tearDown(() => KansoAuthSession.debugApi = AuthSessionHostApi());
 
   group('PluginAuthSessionRepository', () {
-    test('opens the page, and gives the address the session ended at',
-        () async {
-      session.answer = 'kanso://auth/apple?code=abc';
-      expect(
-        await repository.open(
+    test(
+      'opens the page, and gives the address the session ended at',
+      () async {
+        session.answer = 'kanso://auth/apple?code=abc';
+        expect(
+          await repository.open(
+            'https://appleid.example.invalid/auth',
+            callbackScheme: 'kanso',
+          ),
+          const Right<ApplicationError, String?>('kanso://auth/apple?code=abc'),
+        );
+        expect(session.opened, <String>[
           'https://appleid.example.invalid/auth',
-          callbackScheme: 'kanso',
-        ),
-        const Right<ApplicationError, String?>('kanso://auth/apple?code=abc'),
-      );
-      expect(session.opened, <String>['https://appleid.example.invalid/auth']);
-      expect(session.schemes, <String?>['kanso']);
-    });
+        ]);
+        expect(session.schemes, <String?>['kanso']);
+      },
+    );
 
     test('a session that was dismissed gives null', () async {
       expect(

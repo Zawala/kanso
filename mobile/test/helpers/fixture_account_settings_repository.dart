@@ -2,6 +2,8 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 import 'package:dartz/dartz.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
@@ -148,6 +150,6 @@ class FixtureAccountSettingsRepository implements AccountSettingsRepository {
   }
 
   @override
-  Future<Either<ApplicationError, RecoveryKeyText?>> pendingRecoveryKey() async =>
-      _answer<RecoveryKeyText?>(null);
+  Future<Either<ApplicationError, RecoveryKeyText?>>
+  pendingRecoveryKey() async => _answer<RecoveryKeyText?>(null);
 }

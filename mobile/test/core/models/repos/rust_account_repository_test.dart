@@ -2,6 +2,8 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+// ignore_for_file: only_throw_errors
+
 import 'dart:async';
 
 import 'package:dartz/dartz.dart';
@@ -24,7 +26,11 @@ class _Sheet extends PasskeysHostApi {
       <({int ticket, String kind, String options})>[];
 
   @override
-  Future<PasskeyOutcome> run(int ticket, String kind, String optionsJson) async {
+  Future<PasskeyOutcome> run(
+    int ticket,
+    String kind,
+    String optionsJson,
+  ) async {
     asked.add((ticket: ticket, kind: kind, options: optionsJson));
     final broken = failure;
     if (broken != null) {
@@ -76,52 +82,60 @@ void main() {
       );
     });
 
-    test('a sign-in passes everything on, and the library’s error is mapped',
-        () async {
-      when(
-        () => account.signInPassword(
+    test(
+      'a sign-in passes everything on, and the library’s error is mapped',
+      () async {
+        when(
+          () => account.signInPassword(
+            server: 's',
+            username: 'ana',
+            password: 'pw',
+            deviceName: 'iPhone',
+          ),
+        ).thenAnswer(
+          (_) => Future<AccountState>.error(
+            const KansoError.auth(
+              message:
+                  'That username and password don’t '
+                  'match.',
+            ),
+          ),
+        );
+        final result = await repository.signInPassword(
           server: 's',
           username: 'ana',
           password: 'pw',
           deviceName: 'iPhone',
-        ),
-      ).thenAnswer(
-        (_) => Future<AccountState>.error(
-          const KansoError.auth(message: 'That username and password don’t '
-              'match.'),
-        ),
-      );
-      final result = await repository.signInPassword(
-        server: 's',
-        username: 'ana',
-        password: 'pw',
-        deviceName: 'iPhone',
-      );
-      expect(
-        result,
-        const Left<ApplicationError, AccountState>(
-          ApplicationError.auth(
-            message: 'That username and password don’t match.',
+        );
+        expect(
+          result,
+          const Left<ApplicationError, AccountState>(
+            ApplicationError.auth(
+              message: 'That username and password don’t match.',
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
 
-    test('a page that ended and a flow that was cancelled return unit',
-        () async {
-      when(
-        () => account.providerPageEnded(callbackUrl: 'kanso://auth/apple?x=1'),
-      ).thenAnswer((_) async {});
-      when(account.cancelProvider).thenAnswer((_) async {});
-      expect(
-        await repository.providerPageEnded('kanso://auth/apple?x=1'),
-        const Right<ApplicationError, Unit>(unit),
-      );
-      expect(
-        await repository.cancelProvider(),
-        const Right<ApplicationError, Unit>(unit),
-      );
-    });
+    test(
+      'a page that ended and a flow that was cancelled return unit',
+      () async {
+        when(
+          () =>
+              account.providerPageEnded(callbackUrl: 'kanso://auth/apple?x=1'),
+        ).thenAnswer((_) async {});
+        when(account.cancelProvider).thenAnswer((_) async {});
+        expect(
+          await repository.providerPageEnded('kanso://auth/apple?x=1'),
+          const Right<ApplicationError, Unit>(unit),
+        );
+        expect(
+          await repository.cancelProvider(),
+          const Right<ApplicationError, Unit>(unit),
+        );
+      },
+    );
 
     test('an answer to the question, or none, is passed on', () async {
       when(() => account.answerBinding(answer: BindingAnswer.add)).thenAnswer(
@@ -230,23 +244,26 @@ void main() {
       ).called(1);
     });
 
-    test('a phone that cannot run it, and any other failure, are told too',
-        () async {
-      repository.startRelayingPasskeys();
-      sheet.outcome = PasskeyOutcome.unavailable;
-      await relay(request(4, PasskeyRequestKind.register));
-      sheet.outcome = PasskeyOutcome.failed;
-      await relay(request(5, PasskeyRequestKind.register));
-      verify(
-        () => account.passkeyFailed(
-          ticket: 4,
-          failure: PasskeyFailure.unavailable,
-        ),
-      ).called(1);
-      verify(
-        () => account.passkeyFailed(ticket: 5, failure: PasskeyFailure.failed),
-      ).called(1);
-    });
+    test(
+      'a phone that cannot run it, and any other failure, are told too',
+      () async {
+        repository.startRelayingPasskeys();
+        sheet.outcome = PasskeyOutcome.unavailable;
+        await relay(request(4, PasskeyRequestKind.register));
+        sheet.outcome = PasskeyOutcome.failed;
+        await relay(request(5, PasskeyRequestKind.register));
+        verify(
+          () => account.passkeyFailed(
+            ticket: 4,
+            failure: PasskeyFailure.unavailable,
+          ),
+        ).called(1);
+        verify(
+          () =>
+              account.passkeyFailed(ticket: 5, failure: PasskeyFailure.failed),
+        ).called(1);
+      },
+    );
 
     test('a plugin that throws is a failure, not a lost ceremony', () async {
       sheet.failure = StateError('no activity');

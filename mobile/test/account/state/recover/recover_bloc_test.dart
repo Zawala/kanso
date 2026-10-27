@@ -58,8 +58,10 @@ void main() {
 
   group('RecoverBloc', () {
     test('uses the server it is told, else the default one', () async {
-      expect((await started(server: 'https://other.invalid')).state.server,
-          'https://other.invalid');
+      expect(
+        (await started(server: 'https://other.invalid')).state.server,
+        'https://other.invalid',
+      );
       expect((await started()).state.server, _server);
     });
 
@@ -71,14 +73,22 @@ void main() {
         return bloc.state.problem;
       }
 
-      expect(await problemOf(submit(username: '!')),
-          FormProblem.usernameInvalid);
-      expect(await problemOf(submit(recoveryKey: '  ')),
-          FormProblem.recoveryKeyMissing);
-      expect(await problemOf(submit(password: 'short')),
-          FormProblem.passwordTooShort);
-      expect(await problemOf(submit(repeat: 'different password')),
-          FormProblem.passwordsDiffer);
+      expect(
+        await problemOf(submit(username: '!')),
+        FormProblem.usernameInvalid,
+      );
+      expect(
+        await problemOf(submit(recoveryKey: '  ')),
+        FormProblem.recoveryKeyMissing,
+      );
+      expect(
+        await problemOf(submit(password: 'short')),
+        FormProblem.passwordTooShort,
+      );
+      expect(
+        await problemOf(submit(repeat: 'different password')),
+        FormProblem.passwordsDiffer,
+      );
       verifyNever(
         () => account.recover(
           server: any(named: 'server'),

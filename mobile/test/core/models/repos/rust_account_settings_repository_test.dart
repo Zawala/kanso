@@ -34,8 +34,9 @@ void main() {
   group('RustAccountSettingsRepository', () {
     test('the details, and a device signed out', () async {
       when(settings.details).thenAnswer((_) async => _details);
-      when(() => settings.revokeDevice(deviceId: 'd2'))
-          .thenAnswer((_) async => _details);
+      when(
+        () => settings.revokeDevice(deviceId: 'd2'),
+      ).thenAnswer((_) async => _details);
       expect(
         await repository.details(),
         const Right<ApplicationError, AccountDetails>(_details),
@@ -74,8 +75,9 @@ void main() {
       when(
         () => settings.changePassword(current: 'old', newPassword: 'new'),
       ).thenAnswer((_) async => key);
-      when(() => settings.newRecoveryKey(currentPassword: 'pw'))
-          .thenAnswer((_) async => key);
+      when(
+        () => settings.newRecoveryKey(currentPassword: 'pw'),
+      ).thenAnswer((_) async => key);
       expect(
         await repository.changePassword(current: 'old', newPassword: 'new'),
         const Right<ApplicationError, RecoveryKeyText>(key),
@@ -87,10 +89,12 @@ void main() {
     });
 
     test('passkeys are added and removed, and providers unlinked', () async {
-      when(() => settings.addPasskey(currentPassword: 'pw'))
-          .thenAnswer((_) async => _details);
-      when(() => settings.removePasskey(id: 'p1', currentPassword: 'pw'))
-          .thenAnswer((_) async => _details);
+      when(
+        () => settings.addPasskey(currentPassword: 'pw'),
+      ).thenAnswer((_) async => _details);
+      when(
+        () => settings.removePasskey(id: 'p1', currentPassword: 'pw'),
+      ).thenAnswer((_) async => _details);
       when(
         () => settings.unlinkProvider(
           provider: ProviderKind.google,

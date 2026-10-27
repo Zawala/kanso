@@ -72,21 +72,24 @@ void main() {
       expect(ended, <String?>[null]);
     });
 
-    test('a page that could not be opened ends the flow like a dismissed one',
-        () async {
-      driver.handle(const ProviderEvent.openPage(url: 'https://x.invalid/a'));
-      open.complete(
-        const Left<ApplicationError, String?>(
-          ApplicationError.unexpected(message: 'no activity'),
-        ),
-      );
-      await pumpEventQueue();
-      expect(ended, <String?>[null]);
-    });
+    test(
+      'a page that could not be opened ends the flow like a dismissed one',
+      () async {
+        driver.handle(const ProviderEvent.openPage(url: 'https://x.invalid/a'));
+        open.complete(
+          const Left<ApplicationError, String?>(
+            ApplicationError.unexpected(message: 'no activity'),
+          ),
+        );
+        await pumpEventQueue();
+        expect(ended, <String?>[null]);
+      },
+    );
 
     test('a page the app closed is not told to the library', () async {
-      driver.handle(const ProviderEvent.openPage(url: 'https://x.invalid/a'));
-      driver.handle(const ProviderEvent.closePage());
+      driver
+        ..handle(const ProviderEvent.openPage(url: 'https://x.invalid/a'))
+        ..handle(const ProviderEvent.closePage());
       verify(session.close).called(1);
       // The session’s open call completes with null because the app closed
       // it, whenever it gets to.
@@ -125,8 +128,10 @@ void main() {
       driver.handle(const ProviderEvent.closePage());
       final second = Completer<Either<ApplicationError, String?>>();
       when(
-        () => session.open('https://x.invalid/b',
-            callbackScheme: any(named: 'callbackScheme')),
+        () => session.open(
+          'https://x.invalid/b',
+          callbackScheme: any(named: 'callbackScheme'),
+        ),
       ).thenAnswer((_) => second.future);
       driver.handle(const ProviderEvent.openPage(url: 'https://x.invalid/b'));
       second.complete(const Right<ApplicationError, String?>(null));

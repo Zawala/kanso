@@ -41,20 +41,22 @@ void main() {
   });
 
   group('UnlockBloc, the password', () {
-    test('a password no account can have is answered like a wrong one',
-        () async {
-      final bloc = UnlockBloc(account)
-        ..add(
-          const UnlockEvent.passwordSubmitted(
-            username: 'ana',
-            password: 'short',
-          ),
-        );
-      await pumpEventQueue();
-      expect(bloc.state.problem, FormProblem.credentialsDontMatch);
-      verifyNever(() => account.unlockWithPassword(any()));
-      await bloc.close();
-    });
+    test(
+      'a password no account can have is answered like a wrong one',
+      () async {
+        final bloc = UnlockBloc(account)
+          ..add(
+            const UnlockEvent.passwordSubmitted(
+              username: 'ana',
+              password: 'short',
+            ),
+          );
+        await pumpEventQueue();
+        expect(bloc.state.problem, FormProblem.credentialsDontMatch);
+        verifyNever(() => account.unlockWithPassword(any()));
+        await bloc.close();
+      },
+    );
 
     test('the right password opens the notes', () async {
       final gate = Completer<void>();
@@ -98,36 +100,38 @@ void main() {
       await bloc.close();
     });
 
-    test('notes of another account ask the question, and an answer goes on',
-        () async {
-      when(() => account.unlockWithPassword(_password)).thenAnswer(
-        (_) async => const Right<ApplicationError, AccountState>(
-          AccountState.question(
-            BindingQuestion(
-              title: 'This device already has notes',
-              body: '3 notes on this device came from another account.',
-              answers: <BindingAnswer>[BindingAnswer.add],
+    test(
+      'notes of another account ask the question, and an answer goes on',
+      () async {
+        when(() => account.unlockWithPassword(_password)).thenAnswer(
+          (_) async => const Right<ApplicationError, AccountState>(
+            AccountState.question(
+              BindingQuestion(
+                title: 'This device already has notes',
+                body: '3 notes on this device came from another account.',
+                answers: <BindingAnswer>[BindingAnswer.add],
+              ),
             ),
           ),
-        ),
-      );
-      when(() => account.answerBinding(BindingAnswer.add)).thenAnswer(
-        (_) async => const Right<ApplicationError, AccountState>(_signedIn),
-      );
-      final bloc = UnlockBloc(account)
-        ..add(
-          const UnlockEvent.passwordSubmitted(
-            username: 'ana',
-            password: _password,
-          ),
         );
-      await bloc.stream.firstWhere((state) => state.question != null);
-      bloc.add(const UnlockEvent.bindingAnswered(BindingAnswer.add));
-      await bloc.stream.firstWhere((state) => state.outcome != null);
-      expect(bloc.state.outcome, AccountOutcome.signedIn);
-      expect(bloc.state.question, isNull);
-      await bloc.close();
-    });
+        when(() => account.answerBinding(BindingAnswer.add)).thenAnswer(
+          (_) async => const Right<ApplicationError, AccountState>(_signedIn),
+        );
+        final bloc = UnlockBloc(account)
+          ..add(
+            const UnlockEvent.passwordSubmitted(
+              username: 'ana',
+              password: _password,
+            ),
+          );
+        await bloc.stream.firstWhere((state) => state.question != null);
+        bloc.add(const UnlockEvent.bindingAnswered(BindingAnswer.add));
+        await bloc.stream.firstWhere((state) => state.outcome != null);
+        expect(bloc.state.outcome, AccountOutcome.signedIn);
+        expect(bloc.state.question, isNull);
+        await bloc.close();
+      },
+    );
   });
 
   group('UnlockBloc, another device’s approval', () {
@@ -135,8 +139,9 @@ void main() {
 
     setUp(() {
       waits = StreamController<ApprovalWait>();
-      when(() => account.requestApproval('iPhone'))
-          .thenAnswer((_) => waits.stream);
+      when(
+        () => account.requestApproval('iPhone'),
+      ).thenAnswer((_) => waits.stream);
     });
 
     test('the wait goes through its phases and ends approved', () async {
@@ -183,8 +188,9 @@ void main() {
 
       // Trying again asks again.
       final again = StreamController<ApprovalWait>();
-      when(() => account.requestApproval('iPhone'))
-          .thenAnswer((_) => again.stream);
+      when(
+        () => account.requestApproval('iPhone'),
+      ).thenAnswer((_) => again.stream);
       bloc.add(const UnlockEvent.approvalRequested(deviceName: 'iPhone'));
       await bloc.stream.firstWhere(
         (state) => state.approval?.phase is ApprovalPhase_Requesting,
@@ -223,23 +229,24 @@ void main() {
       await bloc.close();
     });
 
-    test('a request the phone made earlier is picked up where it was',
-        () async {
-      final bloc = UnlockBloc(account)
-        ..add(
-          const UnlockEvent.started(
-            resumeApproval: true,
-            deviceName: 'iPhone',
-          ),
-        );
-      await bloc.stream.firstWhere((state) => state.approval != null);
-      verify(() => account.requestApproval('iPhone')).called(1);
-      unawaited(waits.close());
-      await bloc.close();
-    });
+    test(
+      'a request the phone made earlier is picked up where it was',
+      () async {
+        final bloc = UnlockBloc(account)
+          ..add(
+            const UnlockEvent.started(
+              resumeApproval: true,
+              deviceName: 'iPhone',
+            ),
+          );
+        await bloc.stream.firstWhere((state) => state.approval != null);
+        verify(() => account.requestApproval('iPhone')).called(1);
+        unawaited(waits.close());
+        await bloc.close();
+      },
+    );
 
-    test('with no earlier request the screen starts on the password',
-        () async {
+    test('with no earlier request the screen starts on the password', () async {
       final bloc = UnlockBloc(account)
         ..add(
           const UnlockEvent.started(

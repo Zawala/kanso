@@ -144,30 +144,34 @@ void main() {
       verify: (_) => verify(() => sync.syncNow()).called(1),
     );
 
-    test('tells the library when the app is in front and when it is not',
-        () async {
-      when(() => sync.setForeground(foreground: any(named: 'foreground')))
-          .thenAnswer(
-            (_) async => const Right<ApplicationError, Unit>(unit),
-          );
-      final bloc = build()
-        ..add(const SyncStatusEvent.foregroundChanged(foreground: true))
-        ..add(const SyncStatusEvent.foregroundChanged(foreground: false))
-        ..add(const SyncStatusEvent.foregroundChanged(foreground: true));
-      await pumpEventQueue();
-      verifyInOrder(<void Function()>[
-        () => sync.setForeground(foreground: true),
-        () => sync.setForeground(foreground: false),
-        () => sync.setForeground(foreground: true),
-      ]);
-      await bloc.close();
-    });
+    test(
+      'tells the library when the app is in front and when it is not',
+      () async {
+        when(
+          () => sync.setForeground(foreground: any(named: 'foreground')),
+        ).thenAnswer(
+          (_) async => const Right<ApplicationError, Unit>(unit),
+        );
+        final bloc = build()
+          ..add(const SyncStatusEvent.foregroundChanged(foreground: true))
+          ..add(const SyncStatusEvent.foregroundChanged(foreground: false))
+          ..add(const SyncStatusEvent.foregroundChanged(foreground: true));
+        await pumpEventQueue();
+        verifyInOrder(<void Function()>[
+          () => sync.setForeground(foreground: true),
+          () => sync.setForeground(foreground: false),
+          () => sync.setForeground(foreground: true),
+        ]);
+        await bloc.close();
+      },
+    );
 
     test('a failure to say so changes nothing the person sees', () async {
-      when(() => sync.setForeground(foreground: any(named: 'foreground')))
-          .thenAnswer(
-            (_) async => const Left<ApplicationError, Unit>(_offline),
-          );
+      when(
+        () => sync.setForeground(foreground: any(named: 'foreground')),
+      ).thenAnswer(
+        (_) async => const Left<ApplicationError, Unit>(_offline),
+      );
       final bloc = build()
         ..add(const SyncStatusEvent.foregroundChanged(foreground: true));
       await pumpEventQueue();

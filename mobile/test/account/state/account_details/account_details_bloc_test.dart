@@ -84,58 +84,66 @@ void main() {
   }
 
   group('AccountDetailsBloc, reading the account', () {
-    test('reads the details, and tries again when they could not be read',
-        () async {
-      var calls = 0;
-      when(settings.details).thenAnswer((_) async {
-        calls++;
-        return calls == 1
-            ? const Left<ApplicationError, AccountDetails>(
-                ApplicationError.network(message: 'Can’t reach the server.'),
-              )
-            : const Right<ApplicationError, AccountDetails>(_details);
-      });
-      final bloc = AccountDetailsBloc(settings, account, session)
-        ..add(const AccountDetailsEvent.started());
-      await bloc.stream.firstWhere((state) => state.status == LoadStatus.failed);
-      expect(bloc.state.loadError, isA<NetworkError>());
+    test(
+      'reads the details, and tries again when they could not be read',
+      () async {
+        var calls = 0;
+        when(settings.details).thenAnswer((_) async {
+          calls++;
+          return calls == 1
+              ? const Left<ApplicationError, AccountDetails>(
+                  ApplicationError.network(message: 'Can’t reach the server.'),
+                )
+              : const Right<ApplicationError, AccountDetails>(_details);
+        });
+        final bloc = AccountDetailsBloc(settings, account, session)
+          ..add(const AccountDetailsEvent.started());
+        await bloc.stream.firstWhere(
+          (state) => state.status == LoadStatus.failed,
+        );
+        expect(bloc.state.loadError, isA<NetworkError>());
 
-      bloc.add(const AccountDetailsEvent.started());
-      await bloc.stream.firstWhere((state) => state.status == LoadStatus.ready);
-      expect(bloc.state.details, _details);
-      expect(bloc.state.loadError, isNull);
-      await bloc.close();
-    });
+        bloc.add(const AccountDetailsEvent.started());
+        await bloc.stream.firstWhere(
+          (state) => state.status == LoadStatus.ready,
+        );
+        expect(bloc.state.details, _details);
+        expect(bloc.state.loadError, isNull);
+        await bloc.close();
+      },
+    );
   });
 
   group('AccountDetailsBloc, devices', () {
-    test('signing another device out gives the page again, with a notice',
-        () async {
-      when(() => settings.revokeDevice('d2')).thenAnswer(
-        (_) async => Right<ApplicationError, AccountDetails>(
-          AccountDetails(
-            username: _details.username,
-            server: _details.server,
-            devices: <DeviceRow>[_details.devices.first],
-            storageLine: _details.storageLine,
-            hasPassword: true,
-            providers: _details.providers,
-            passkeys: _details.passkeys,
-            recoveryKeyUnsaved: false,
+    test(
+      'signing another device out gives the page again, with a notice',
+      () async {
+        when(() => settings.revokeDevice('d2')).thenAnswer(
+          (_) async => Right<ApplicationError, AccountDetails>(
+            AccountDetails(
+              username: _details.username,
+              server: _details.server,
+              devices: <DeviceRow>[_details.devices.first],
+              storageLine: _details.storageLine,
+              hasPassword: true,
+              providers: _details.providers,
+              passkeys: _details.passkeys,
+              recoveryKeyUnsaved: false,
+            ),
           ),
-        ),
-      );
-      final bloc = await started();
-      bloc.add(const AccountDetailsEvent.deviceRevoked('d2'));
-      await bloc.stream.firstWhere((state) => state.notice != null);
-      expect(
-        bloc.state.notice,
-        const AccountNotice.deviceSignedOut(name: 'Ana’s Mac'),
-      );
-      expect(bloc.state.details?.devices, hasLength(1));
-      expect(bloc.state.busy, isNull);
-      await bloc.close();
-    });
+        );
+        final bloc = await started();
+        bloc.add(const AccountDetailsEvent.deviceRevoked('d2'));
+        await bloc.stream.firstWhere((state) => state.notice != null);
+        expect(
+          bloc.state.notice,
+          const AccountNotice.deviceSignedOut(name: 'Ana’s Mac'),
+        );
+        expect(bloc.state.details?.devices, hasLength(1));
+        expect(bloc.state.busy, isNull);
+        await bloc.close();
+      },
+    );
 
     test('a refusal is the error and the page stays as it was', () async {
       when(() => settings.revokeDevice('d2')).thenAnswer(
@@ -449,86 +457,92 @@ void main() {
       await bloc.close();
     });
 
-    test('linking drives the sign-in page, shows the code and reads again',
-        () async {
-      final steps = StreamController<ProviderEvent>();
-      when(
-        () => settings.linkProvider(
-          provider: ProviderKind.github,
-          currentPassword: _password,
-        ),
-      ).thenAnswer((_) => steps.stream);
-      final bloc = await started();
-      bloc.add(
-        const AccountDetailsEvent.providerLinked(
-          provider: ProviderKind.github,
-          currentPassword: _password,
-        ),
-      );
-      await bloc.stream.firstWhere(
-        (state) => state.busy == AccountTask.linkProvider,
-      );
-      expect(bloc.state.linking, ProviderKind.github);
-
-      steps
-        ..add(const ProviderEvent.openPage(url: 'https://gh.example.invalid/l'))
-        ..add(
-          const ProviderEvent.showCode(
-            userCode: 'ABCD-1234',
-            verificationUri: 'https://gh.example.invalid/login/device',
+    test(
+      'linking drives the sign-in page, shows the code and reads again',
+      () async {
+        final steps = StreamController<ProviderEvent>();
+        when(
+          () => settings.linkProvider(
+            provider: ProviderKind.github,
+            currentPassword: _password,
+          ),
+        ).thenAnswer((_) => steps.stream);
+        final bloc = await started();
+        bloc.add(
+          const AccountDetailsEvent.providerLinked(
+            provider: ProviderKind.github,
+            currentPassword: _password,
           ),
         );
-      await bloc.stream.firstWhere((state) => state.code != null);
-      verify(() => session.open('https://gh.example.invalid/l')).called(1);
+        await bloc.stream.firstWhere(
+          (state) => state.busy == AccountTask.linkProvider,
+        );
+        expect(bloc.state.linking, ProviderKind.github);
 
-      steps
-        ..add(const ProviderEvent.closePage())
-        ..add(
-          const ProviderEvent.finished(
-            AccountState.signedIn(username: 'ana', server: 'https://s'),
+        steps
+          ..add(
+            const ProviderEvent.openPage(url: 'https://gh.example.invalid/l'),
+          )
+          ..add(
+            const ProviderEvent.showCode(
+              userCode: 'ABCD-1234',
+              verificationUri: 'https://gh.example.invalid/login/device',
+            ),
+          );
+        await bloc.stream.firstWhere((state) => state.code != null);
+        verify(() => session.open('https://gh.example.invalid/l')).called(1);
+
+        steps
+          ..add(const ProviderEvent.closePage())
+          ..add(
+            const ProviderEvent.finished(
+              AccountState.signedIn(username: 'ana', server: 'https://s'),
+            ),
+          );
+        unawaited(steps.close());
+        await bloc.stream.firstWhere((state) => state.notice != null);
+        expect(
+          bloc.state.notice,
+          const AccountNotice.providerLinked(provider: ProviderKind.github),
+        );
+        expect(bloc.state.busy, isNull);
+        expect(bloc.state.linking, isNull);
+        expect(bloc.state.code, isNull);
+        await bloc.close();
+      },
+    );
+
+    test(
+      'a link that failed is the library’s words, and nothing changes',
+      () async {
+        final steps = StreamController<ProviderEvent>();
+        when(
+          () => settings.linkProvider(
+            provider: ProviderKind.github,
+            currentPassword: _password,
+          ),
+        ).thenAnswer((_) => steps.stream);
+        final bloc = await started();
+        bloc.add(
+          const AccountDetailsEvent.providerLinked(
+            provider: ProviderKind.github,
+            currentPassword: _password,
           ),
         );
-      unawaited(steps.close());
-      await bloc.stream.firstWhere((state) => state.notice != null);
-      expect(
-        bloc.state.notice,
-        const AccountNotice.providerLinked(provider: ProviderKind.github),
-      );
-      expect(bloc.state.busy, isNull);
-      expect(bloc.state.linking, isNull);
-      expect(bloc.state.code, isNull);
-      await bloc.close();
-    });
-
-    test('a link that failed is the library’s words, and nothing changes',
-        () async {
-      final steps = StreamController<ProviderEvent>();
-      when(
-        () => settings.linkProvider(
-          provider: ProviderKind.github,
-          currentPassword: _password,
-        ),
-      ).thenAnswer((_) => steps.stream);
-      final bloc = await started();
-      bloc.add(
-        const AccountDetailsEvent.providerLinked(
-          provider: ProviderKind.github,
-          currentPassword: _password,
-        ),
-      );
-      await bloc.stream.firstWhere((state) => state.linking != null);
-      steps.add(
-        const ProviderEvent.failed(
-          message: 'That account is already linked to another Kanso account.',
-        ),
-      );
-      unawaited(steps.close());
-      await bloc.stream.firstWhere(
-        (state) => state.error != null && state.busy == null,
-      );
-      expect(bloc.state.notice, isNull);
-      await bloc.close();
-    });
+        await bloc.stream.firstWhere((state) => state.linking != null);
+        steps.add(
+          const ProviderEvent.failed(
+            message: 'That account is already linked to another Kanso account.',
+          ),
+        );
+        unawaited(steps.close());
+        await bloc.stream.firstWhere(
+          (state) => state.error != null && state.busy == null,
+        );
+        expect(bloc.state.notice, isNull);
+        await bloc.close();
+      },
+    );
 
     test('Cancel stops the link and closes the page', () async {
       final steps = StreamController<ProviderEvent>();

@@ -107,7 +107,8 @@ void main() {
         when(() => account.serverMethods(_server)).thenAnswer(
           (_) async => const Left<ApplicationError, ServerMethods>(
             ApplicationError.network(
-              message: 'Can’t reach the server. Your notes are safe on this '
+              message:
+                  'Can’t reach the server. Your notes are safe on this '
                   'device.',
             ),
           ),
@@ -122,48 +123,51 @@ void main() {
       },
     );
 
-    test('another server is asked, and used; an empty one is the default',
-        () async {
-      when(() => account.serverMethods('https://other.example.invalid'))
-          .thenAnswer(
-            (_) async => const Right<ApplicationError, ServerMethods>(
-              ServerMethods(
-                signupsOpen: false,
-                password: true,
-                passkeys: false,
-                providers: <ProviderKind>[],
-              ),
+    test(
+      'another server is asked, and used; an empty one is the default',
+      () async {
+        when(
+          () => account.serverMethods('https://other.example.invalid'),
+        ).thenAnswer(
+          (_) async => const Right<ApplicationError, ServerMethods>(
+            ServerMethods(
+              signupsOpen: false,
+              password: true,
+              passkeys: false,
+              providers: <ProviderKind>[],
             ),
-          );
-      final bloc = await started();
-      bloc.add(const SignInEvent.serverEdited(editing: true));
-      await pumpEventQueue();
-      expect(bloc.state.editingServer, isTrue);
+          ),
+        );
+        final bloc = await started();
+        bloc.add(const SignInEvent.serverEdited(editing: true));
+        await pumpEventQueue();
+        expect(bloc.state.editingServer, isTrue);
 
-      bloc.add(
-        const SignInEvent.serverChosen('  https://other.example.invalid '),
-      );
-      await bloc.stream.firstWhere(
-        (state) =>
-            state.methodsStatus == LoadStatus.ready &&
-            state.server == 'https://other.example.invalid' &&
-            state.methods?.signupsOpen == false,
-      );
-      expect(bloc.state.server, 'https://other.example.invalid');
-      expect(bloc.state.customServer, isTrue);
-      expect(bloc.state.editingServer, isFalse);
-      expect(bloc.state.methods?.passkeys, isFalse);
+        bloc.add(
+          const SignInEvent.serverChosen('  https://other.example.invalid '),
+        );
+        await bloc.stream.firstWhere(
+          (state) =>
+              state.methodsStatus == LoadStatus.ready &&
+              state.server == 'https://other.example.invalid' &&
+              state.methods?.signupsOpen == false,
+        );
+        expect(bloc.state.server, 'https://other.example.invalid');
+        expect(bloc.state.customServer, isTrue);
+        expect(bloc.state.editingServer, isFalse);
+        expect(bloc.state.methods?.passkeys, isFalse);
 
-      bloc.add(const SignInEvent.serverChosen(''));
-      await bloc.stream.firstWhere(
-        (state) =>
-            state.methodsStatus == LoadStatus.ready &&
-            state.server == _server &&
-            state.methods?.passkeys == true,
-      );
-      expect(bloc.state.customServer, isFalse);
-      await bloc.close();
-    });
+        bloc.add(const SignInEvent.serverChosen(''));
+        await bloc.stream.firstWhere(
+          (state) =>
+              state.methodsStatus == LoadStatus.ready &&
+              state.server == _server &&
+              (state.methods?.passkeys ?? false),
+        );
+        expect(bloc.state.customServer, isFalse);
+        await bloc.close();
+      },
+    );
 
     test('the mode is changed, and what was wrong is forgotten', () async {
       final bloc = await started();
@@ -186,44 +190,48 @@ void main() {
   });
 
   group('SignInBloc, a username and password', () {
-    test('a username that breaks the rules is told at once, nothing sent',
-        () async {
-      final bloc = await started();
-      bloc.add(
-        const SignInEvent.passwordSubmitted(
-          username: 'a b',
-          password: _password,
-          deviceName: _device,
-        ),
-      );
-      await pumpEventQueue();
-      expect(bloc.state.problem, FormProblem.usernameInvalid);
-      expect(bloc.state.busy, isNull);
-      verifyNever(
-        () => account.signInPassword(
-          server: any(named: 'server'),
-          username: any(named: 'username'),
-          password: any(named: 'password'),
-          deviceName: any(named: 'deviceName'),
-        ),
-      );
-      await bloc.close();
-    });
+    test(
+      'a username that breaks the rules is told at once, nothing sent',
+      () async {
+        final bloc = await started();
+        bloc.add(
+          const SignInEvent.passwordSubmitted(
+            username: 'a b',
+            password: _password,
+            deviceName: _device,
+          ),
+        );
+        await pumpEventQueue();
+        expect(bloc.state.problem, FormProblem.usernameInvalid);
+        expect(bloc.state.busy, isNull);
+        verifyNever(
+          () => account.signInPassword(
+            server: any(named: 'server'),
+            username: any(named: 'username'),
+            password: any(named: 'password'),
+            deviceName: any(named: 'deviceName'),
+          ),
+        );
+        await bloc.close();
+      },
+    );
 
-    test('a password no account can have is answered like a wrong one',
-        () async {
-      final bloc = await started();
-      bloc.add(
-        const SignInEvent.passwordSubmitted(
-          username: 'ana',
-          password: 'short',
-          deviceName: _device,
-        ),
-      );
-      await pumpEventQueue();
-      expect(bloc.state.problem, FormProblem.credentialsDontMatch);
-      await bloc.close();
-    });
+    test(
+      'a password no account can have is answered like a wrong one',
+      () async {
+        final bloc = await started();
+        bloc.add(
+          const SignInEvent.passwordSubmitted(
+            username: 'ana',
+            password: 'short',
+            deviceName: _device,
+          ),
+        );
+        await pumpEventQueue();
+        expect(bloc.state.problem, FormProblem.credentialsDontMatch);
+        await bloc.close();
+      },
+    );
 
     test('signing in is busy, then ends the flow signed in', () async {
       final gate = Completer<void>();
@@ -284,68 +292,72 @@ void main() {
       await bloc.close();
     });
 
-    test('an account whose notes this phone cannot open yet is locked',
-        () async {
-      when(
-        () => account.signInPassword(
-          server: _server,
-          username: 'ana',
-          password: _password,
-          deviceName: _device,
-        ),
-      ).thenAnswer(
-        (_) async => const Right<ApplicationError, AccountState>(_locked),
-      );
-      final bloc = await started();
-      bloc.add(
-        const SignInEvent.passwordSubmitted(
-          username: 'ana',
-          password: _password,
-          deviceName: _device,
-        ),
-      );
-      await bloc.stream.firstWhere((state) => state.outcome != null);
-      expect(bloc.state.outcome, AccountOutcome.locked);
-      await bloc.close();
-    });
+    test(
+      'an account whose notes this phone cannot open yet is locked',
+      () async {
+        when(
+          () => account.signInPassword(
+            server: _server,
+            username: 'ana',
+            password: _password,
+            deviceName: _device,
+          ),
+        ).thenAnswer(
+          (_) async => const Right<ApplicationError, AccountState>(_locked),
+        );
+        final bloc = await started();
+        bloc.add(
+          const SignInEvent.passwordSubmitted(
+            username: 'ana',
+            password: _password,
+            deviceName: _device,
+          ),
+        );
+        await bloc.stream.firstWhere((state) => state.outcome != null);
+        expect(bloc.state.outcome, AccountOutcome.locked);
+        await bloc.close();
+      },
+    );
 
-    test('notes of another account ask the question, and the answer goes on',
-        () async {
-      when(
-        () => account.signInPassword(
-          server: _server,
-          username: 'ana',
-          password: _password,
-          deviceName: _device,
-        ),
-      ).thenAnswer(
-        (_) async => const Right<ApplicationError, AccountState>(
-          AccountState.question(_question),
-        ),
-      );
-      when(() => account.answerBinding(BindingAnswer.replace)).thenAnswer(
-        (_) async => const Right<ApplicationError, AccountState>(_signedIn),
-      );
-      final bloc = await started();
-      bloc.add(
-        const SignInEvent.passwordSubmitted(
-          username: 'ana',
-          password: _password,
-          deviceName: _device,
-        ),
-      );
-      await bloc.stream.firstWhere((state) => state.question != null);
-      expect(bloc.state.busy, isNull);
-      expect(bloc.state.outcome, isNull);
+    test(
+      'notes of another account ask the question, and the answer goes on',
+      () async {
+        when(
+          () => account.signInPassword(
+            server: _server,
+            username: 'ana',
+            password: _password,
+            deviceName: _device,
+          ),
+        ).thenAnswer(
+          (_) async => const Right<ApplicationError, AccountState>(
+            AccountState.question(_question),
+          ),
+        );
+        when(() => account.answerBinding(BindingAnswer.replace)).thenAnswer(
+          (_) async => const Right<ApplicationError, AccountState>(_signedIn),
+        );
+        final bloc = await started();
+        bloc.add(
+          const SignInEvent.passwordSubmitted(
+            username: 'ana',
+            password: _password,
+            deviceName: _device,
+          ),
+        );
+        await bloc.stream.firstWhere((state) => state.question != null);
+        expect(bloc.state.busy, isNull);
+        expect(bloc.state.outcome, isNull);
 
-      bloc.add(const SignInEvent.bindingAnswered(BindingAnswer.replace));
-      await bloc.stream.firstWhere((state) => state.outcome != null);
-      expect(bloc.state.outcome, AccountOutcome.signedIn);
-      expect(bloc.state.question, isNull);
-      // A sign-in makes no recovery key.
-      verifyNever(account.pendingRecoveryKey);
-      await bloc.close();
-    });
+        bloc.add(const SignInEvent.bindingAnswered(BindingAnswer.replace));
+        await bloc.stream.firstWhere((state) => state.outcome != null);
+        expect(bloc.state.outcome, AccountOutcome.signedIn);
+        expect(bloc.state.question, isNull);
+        // A sign-in makes no recovery key.
+        verifyNever(account.pendingRecoveryKey);
+        await bloc.close();
+      },
+    );
 
     test('cancelling the question leaves the phone signed out', () async {
       when(
@@ -361,8 +373,9 @@ void main() {
         ),
       );
       when(() => account.answerBinding(null)).thenAnswer(
-        (_) async =>
-            const Right<ApplicationError, AccountState>(AccountState.signedOut()),
+        (_) async => const Right<ApplicationError, AccountState>(
+          AccountState.signedOut(),
+        ),
       );
       final bloc = await started();
       bloc.add(
@@ -383,48 +396,62 @@ void main() {
   });
 
   group('SignInBloc, making an account', () {
-    test('the form is checked in the desktop’s order before anything is sent',
-        () async {
-      final bloc = await started();
-      Future<FormProblem?> problemOf(
-        String username,
-        String password,
-        String repeat,
-      ) async {
-        bloc.add(
-          SignInEvent.signUpSubmitted(
-            username: username,
-            password: password,
-            repeat: repeat,
-            deviceName: _device,
+    test(
+      'the form is checked in the desktop’s order before anything is sent',
+      () async {
+        final bloc = await started();
+        Future<FormProblem?> problemOf(
+          String username,
+          String password,
+          String repeat,
+        ) async {
+          bloc.add(
+            SignInEvent.signUpSubmitted(
+              username: username,
+              password: password,
+              repeat: repeat,
+              deviceName: _device,
+            ),
+          );
+          await pumpEventQueue();
+          return bloc.state.problem;
+        }
+
+        expect(
+          await problemOf('a', _password, _password),
+          FormProblem.usernameInvalid,
+        );
+        expect(
+          await problemOf('admin', _password, _password),
+          FormProblem.usernameReserved,
+        );
+        expect(
+          await problemOf('ana', 'short', 'short'),
+          FormProblem.passwordTooShort,
+        );
+        expect(
+          await problemOf('ana', 'x' * 257, 'x' * 257),
+          FormProblem.passwordTooLong,
+        );
+        expect(
+          await problemOf('longname1234', 'longname1234', 'longname1234'),
+          FormProblem.passwordSameAsUsername,
+        );
+        expect(
+          await problemOf('ana', _password, '${_password}x'),
+          FormProblem.passwordsDiffer,
+        );
+        verifyNever(
+          () => account.signUpPassword(
+            server: any(named: 'server'),
+            username: any(named: 'username'),
+            password: any(named: 'password'),
+            deviceName: any(named: 'deviceName'),
           ),
         );
-        await pumpEventQueue();
-        return bloc.state.problem;
-      }
-
-      expect(await problemOf('a', _password, _password),
-          FormProblem.usernameInvalid);
-      expect(await problemOf('admin', _password, _password),
-          FormProblem.usernameReserved);
-      expect(await problemOf('ana', 'short', 'short'),
-          FormProblem.passwordTooShort);
-      expect(await problemOf('ana', 'x' * 257, 'x' * 257),
-          FormProblem.passwordTooLong);
-      expect(await problemOf('longname1234', 'longname1234', 'longname1234'),
-          FormProblem.passwordSameAsUsername);
-      expect(await problemOf('ana', _password, '${_password}x'),
-          FormProblem.passwordsDiffer);
-      verifyNever(
-        () => account.signUpPassword(
-          server: any(named: 'server'),
-          username: any(named: 'username'),
-          password: any(named: 'password'),
-          deviceName: any(named: 'deviceName'),
-        ),
-      );
-      await bloc.close();
-    });
+        await bloc.close();
+      },
+    );
 
     test('a new account ends with its recovery key to write down', () async {
       when(
@@ -540,8 +567,9 @@ void main() {
       when(
         () => account.passkeySignIn(server: _server, deviceName: _device),
       ).thenAnswer(
-        (_) async =>
-            const Right<ApplicationError, AccountState>(AccountState.signedOut()),
+        (_) async => const Right<ApplicationError, AccountState>(
+          AccountState.signedOut(),
+        ),
       );
       final bloc = await started();
       bloc.add(const SignInEvent.passkeySignInPressed(deviceName: _device));
@@ -648,178 +676,190 @@ void main() {
       }
     });
 
-    test('Apple’s page is opened, and its callback goes back to the library',
-        () async {
-      when(
-        () => session.open(
-          'https://appleid.example.invalid/auth',
-          callbackScheme: 'kanso',
-        ),
-      ).thenAnswer(
-        (_) async => const Right<ApplicationError, String?>(
-          'kanso://auth/apple?code=abc',
-        ),
-      );
-      final bloc = await started();
-      bloc.add(
-        const SignInEvent.providerPressed(
-          provider: ProviderKind.apple,
-          deviceName: _device,
-        ),
-      );
-      await bloc.stream.firstWhere(
-        (state) => state.busy == SignInAction.apple,
-      );
-      steps.add(
-        const ProviderEvent.openPage(
-          url: 'https://appleid.example.invalid/auth',
-          callbackScheme: 'kanso',
-        ),
-      );
-      await pumpEventQueue();
-      verify(() => account.providerPageEnded('kanso://auth/apple?code=abc'))
-          .called(1);
+    test(
+      'Apple’s page is opened, and its callback goes back to the library',
+      () async {
+        when(
+          () => session.open(
+            'https://appleid.example.invalid/auth',
+            callbackScheme: 'kanso',
+          ),
+        ).thenAnswer(
+          (_) async => const Right<ApplicationError, String?>(
+            'kanso://auth/apple?code=abc',
+          ),
+        );
+        final bloc = await started();
+        bloc.add(
+          const SignInEvent.providerPressed(
+            provider: ProviderKind.apple,
+            deviceName: _device,
+          ),
+        );
+        await bloc.stream.firstWhere(
+          (state) => state.busy == SignInAction.apple,
+        );
+        steps.add(
+          const ProviderEvent.openPage(
+            url: 'https://appleid.example.invalid/auth',
+            callbackScheme: 'kanso',
+          ),
+        );
+        await pumpEventQueue();
+        verify(
+          () => account.providerPageEnded('kanso://auth/apple?code=abc'),
+        ).called(1);
 
-      steps
-        ..add(const ProviderEvent.closePage())
-        ..add(const ProviderEvent.finished(_signedIn));
-      await bloc.stream.firstWhere((state) => state.outcome != null);
-      expect(bloc.state.outcome, AccountOutcome.signedIn);
-      expect(bloc.state.busy, isNull);
-      unawaited(steps.close());
-      await bloc.close();
-    });
+        steps
+          ..add(const ProviderEvent.closePage())
+          ..add(const ProviderEvent.finished(_signedIn));
+        await bloc.stream.firstWhere((state) => state.outcome != null);
+        expect(bloc.state.outcome, AccountOutcome.signedIn);
+        expect(bloc.state.busy, isNull);
+        unawaited(steps.close());
+        await bloc.close();
+      },
+    );
 
-    test('a page the flow closed is not the person turning away from it',
-        () async {
-      final ended = Completer<Either<ApplicationError, String?>>();
-      when(
-        () => session.open(
-          'http://127.0.0.1:1234/start',
-          callbackScheme: any(named: 'callbackScheme'),
-        ),
-      ).thenAnswer((_) => ended.future);
-      final bloc = await started();
-      bloc.add(
-        const SignInEvent.providerPressed(
-          provider: ProviderKind.apple,
-          deviceName: _device,
-        ),
-      );
-      steps.add(
-        const ProviderEvent.openPage(url: 'http://127.0.0.1:1234/start'),
-      );
-      await pumpEventQueue();
-      // The flow has what it needs: the page is closed, and the session’s
-      // open call completes with null because the app closed it.
-      steps.add(const ProviderEvent.closePage());
-      await pumpEventQueue();
-      verify(session.close).called(greaterThanOrEqualTo(1));
-      ended.complete(const Right<ApplicationError, String?>(null));
-      steps.add(const ProviderEvent.finished(_signedIn));
-      await bloc.stream.firstWhere((state) => state.outcome != null);
-      await pumpEventQueue();
-      verifyNever(() => account.providerPageEnded(any()));
-      unawaited(steps.close());
-      await bloc.close();
-    });
+    test(
+      'a page the flow closed is not the person turning away from it',
+      () async {
+        final ended = Completer<Either<ApplicationError, String?>>();
+        when(
+          () => session.open(
+            'http://127.0.0.1:1234/start',
+            callbackScheme: any(named: 'callbackScheme'),
+          ),
+        ).thenAnswer((_) => ended.future);
+        final bloc = await started();
+        bloc.add(
+          const SignInEvent.providerPressed(
+            provider: ProviderKind.apple,
+            deviceName: _device,
+          ),
+        );
+        steps.add(
+          const ProviderEvent.openPage(url: 'http://127.0.0.1:1234/start'),
+        );
+        await pumpEventQueue();
+        // The flow has what it needs: the page is closed, and the session’s
+        // open call completes with null because the app closed it.
+        steps.add(const ProviderEvent.closePage());
+        await pumpEventQueue();
+        verify(session.close).called(greaterThanOrEqualTo(1));
+        ended.complete(const Right<ApplicationError, String?>(null));
+        steps.add(const ProviderEvent.finished(_signedIn));
+        await bloc.stream.firstWhere((state) => state.outcome != null);
+        await pumpEventQueue();
+        verifyNever(() => account.providerPageEnded(any()));
+        unawaited(steps.close());
+        await bloc.close();
+      },
+    );
 
-    test('a page the person dismissed while the flow needs it cancels it',
-        () async {
-      when(
-        () => session.open(
-          'http://127.0.0.1:1234/start',
-          callbackScheme: any(named: 'callbackScheme'),
-        ),
-      ).thenAnswer(
-        (_) async => const Right<ApplicationError, String?>(null),
-      );
-      final bloc = await started();
-      bloc.add(
-        const SignInEvent.providerPressed(
-          provider: ProviderKind.apple,
-          deviceName: _device,
-        ),
-      );
-      steps.add(
-        const ProviderEvent.openPage(url: 'http://127.0.0.1:1234/start'),
-      );
-      await pumpEventQueue();
-      verify(() => account.providerPageEnded(null)).called(1);
+    test(
+      'a page the person dismissed while the flow needs it cancels it',
+      () async {
+        when(
+          () => session.open(
+            'http://127.0.0.1:1234/start',
+            callbackScheme: any(named: 'callbackScheme'),
+          ),
+        ).thenAnswer(
+          (_) async => const Right<ApplicationError, String?>(null),
+        );
+        final bloc = await started();
+        bloc.add(
+          const SignInEvent.providerPressed(
+            provider: ProviderKind.apple,
+            deviceName: _device,
+          ),
+        );
+        steps.add(
+          const ProviderEvent.openPage(url: 'http://127.0.0.1:1234/start'),
+        );
+        await pumpEventQueue();
+        verify(() => account.providerPageEnded(null)).called(1);
 
-      steps.add(const ProviderEvent.cancelled());
-      await bloc.stream.firstWhere((state) => state.busy == null);
-      expect(bloc.state.error, isNull);
-      expect(bloc.state.outcome, isNull);
-      unawaited(steps.close());
-      await bloc.close();
-    });
+        steps.add(const ProviderEvent.cancelled());
+        await bloc.stream.firstWhere((state) => state.busy == null);
+        expect(bloc.state.error, isNull);
+        expect(bloc.state.outcome, isNull);
+        unawaited(steps.close());
+        await bloc.close();
+      },
+    );
 
-    test('GitHub shows its code, and a new identity is asked for a username',
-        () async {
-      when(
-        () => session.open(any(), callbackScheme: any(named: 'callbackScheme')),
-      ).thenAnswer((_) async {
-        // The page stays open until the app closes it.
-        await Completer<void>().future;
-        return const Right<ApplicationError, String?>(null);
-      });
-      when(() => account.finishProviderSignUp('ana')).thenAnswer(
-        (_) async => const Right<ApplicationError, SignedUp>(
-          SignedUp(state: _signedIn, recoveryKey: sampleRecoveryKey),
-        ),
-      );
-      final bloc = await started();
-      bloc.add(
-        const SignInEvent.providerPressed(
-          provider: ProviderKind.github,
-          deviceName: _device,
-        ),
-      );
-      steps.add(
-        const ProviderEvent.showCode(
-          userCode: 'ABCD-1234',
-          verificationUri: 'https://github.example.invalid/login/device',
-        ),
-      );
-      await bloc.stream.firstWhere((state) => state.code != null);
-      expect(
-        bloc.state.code,
-        const ProviderCode(
-          userCode: 'ABCD-1234',
-          verificationUri: 'https://github.example.invalid/login/device',
-        ),
-      );
+    test(
+      'GitHub shows its code, and a new identity is asked for a username',
+      () async {
+        when(
+          () =>
+              session.open(any(), callbackScheme: any(named: 'callbackScheme')),
+        ).thenAnswer((_) async {
+          // The page stays open until the app closes it.
+          await Completer<void>().future;
+          return const Right<ApplicationError, String?>(null);
+        });
+        when(() => account.finishProviderSignUp('ana')).thenAnswer(
+          (_) async => const Right<ApplicationError, SignedUp>(
+            SignedUp(state: _signedIn, recoveryKey: sampleRecoveryKey),
+          ),
+        );
+        final bloc = await started();
+        bloc.add(
+          const SignInEvent.providerPressed(
+            provider: ProviderKind.github,
+            deviceName: _device,
+          ),
+        );
+        steps.add(
+          const ProviderEvent.showCode(
+            userCode: 'ABCD-1234',
+            verificationUri: 'https://github.example.invalid/login/device',
+          ),
+        );
+        await bloc.stream.firstWhere((state) => state.code != null);
+        expect(
+          bloc.state.code,
+          const ProviderCode(
+            userCode: 'ABCD-1234',
+            verificationUri: 'https://github.example.invalid/login/device',
+          ),
+        );
 
-      bloc.add(const SignInEvent.githubOpened());
-      await pumpEventQueue();
-      verify(
-        () => session.open('https://github.example.invalid/login/device'),
-      ).called(1);
+        bloc.add(const SignInEvent.githubOpened());
+        await pumpEventQueue();
+        verify(
+          () => session.open('https://github.example.invalid/login/device'),
+        ).called(1);
 
-      steps.add(const ProviderEvent.needsUsername(suggested: 'ana'));
-      await bloc.stream.firstWhere((state) => state.askingUsername);
-      expect(bloc.state.suggestedUsername, 'ana');
-      expect(bloc.state.code, isNull);
-      expect(bloc.state.busy, isNull);
+        steps.add(const ProviderEvent.needsUsername(suggested: 'ana'));
+        await bloc.stream.firstWhere((state) => state.askingUsername);
+        expect(bloc.state.suggestedUsername, 'ana');
+        expect(bloc.state.code, isNull);
+        expect(bloc.state.busy, isNull);
 
-      bloc.add(const SignInEvent.usernameChosen('ana'));
-      await bloc.stream.firstWhere((state) => state.outcome != null);
-      expect(bloc.state.recoveryKey, sampleRecoveryKey);
-      expect(bloc.state.suggestedUsername, isNull);
-      unawaited(steps.close());
-      await bloc.close();
-    });
+        bloc.add(const SignInEvent.usernameChosen('ana'));
+        await bloc.stream.firstWhere((state) => state.outcome != null);
+        expect(bloc.state.recoveryKey, sampleRecoveryKey);
+        expect(bloc.state.suggestedUsername, isNull);
+        unawaited(steps.close());
+        await bloc.close();
+      },
+    );
 
-    test('a username that breaks the rules is told before it is sent',
-        () async {
-      final bloc = await started();
-      bloc.add(const SignInEvent.usernameChosen('no way'));
-      await pumpEventQueue();
-      expect(bloc.state.problem, FormProblem.usernameInvalid);
-      verifyNever(() => account.finishProviderSignUp(any()));
-      await bloc.close();
-    });
+    test(
+      'a username that breaks the rules is told before it is sent',
+      () async {
+        final bloc = await started();
+        bloc.add(const SignInEvent.usernameChosen('no way'));
+        await pumpEventQueue();
+        expect(bloc.state.problem, FormProblem.usernameInvalid);
+        verifyNever(() => account.finishProviderSignUp(any()));
+        await bloc.close();
+      },
+    );
 
     test('a flow that failed is the library’s words', () async {
       final bloc = await started();

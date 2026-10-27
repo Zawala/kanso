@@ -58,18 +58,20 @@ void main() {
       await bloc.close();
     });
 
-    test('going behind forgets the requests, and coming back watches again',
-        () async {
-      approvals.prompts = <ApprovalPrompt>[readyPrompt()];
-      final bloc = make()..add(conditions(signedIn: true, foreground: true));
-      await bloc.stream.firstWhere((state) => state.prompts.isNotEmpty);
-      bloc.add(conditions(signedIn: true, foreground: false));
-      await bloc.stream.firstWhere((state) => state.prompts.isEmpty);
-      bloc.add(conditions(signedIn: true, foreground: true));
-      await bloc.stream.firstWhere((state) => state.prompts.isNotEmpty);
-      expect(approvals.watches, 2);
-      await bloc.close();
-    });
+    test(
+      'going behind forgets the requests, and coming back watches again',
+      () async {
+        approvals.prompts = <ApprovalPrompt>[readyPrompt()];
+        final bloc = make()..add(conditions(signedIn: true, foreground: true));
+        await bloc.stream.firstWhere((state) => state.prompts.isNotEmpty);
+        bloc.add(conditions(signedIn: true, foreground: false));
+        await bloc.stream.firstWhere((state) => state.prompts.isEmpty);
+        bloc.add(conditions(signedIn: true, foreground: true));
+        await bloc.stream.firstWhere((state) => state.prompts.isNotEmpty);
+        expect(approvals.watches, 2);
+        await bloc.close();
+      },
+    );
 
     test('a request that is not ready yet is not shown', () async {
       approvals.prompts = <ApprovalPrompt>[
@@ -112,21 +114,23 @@ void main() {
       await bloc.close();
     });
 
-    test('a request that changed after it was made is never approved',
-        () async {
-      final bloc = await watching(<ApprovalPrompt>[
-        readyPrompt(state: PromptState.changed),
-      ]);
-      expect(bloc.state.shown?.state, PromptState.changed);
-      bloc.add(const DeviceApprovalEvent.approved('a1'));
-      await pumpEventQueue();
-      expect(approvals.answers, isEmpty);
+    test(
+      'a request that changed after it was made is never approved',
+      () async {
+        final bloc = await watching(<ApprovalPrompt>[
+          readyPrompt(state: PromptState.changed),
+        ]);
+        expect(bloc.state.shown?.state, PromptState.changed);
+        bloc.add(const DeviceApprovalEvent.approved('a1'));
+        await pumpEventQueue();
+        expect(approvals.answers, isEmpty);
 
-      bloc.add(const DeviceApprovalEvent.declined('a1'));
-      await bloc.stream.firstWhere((state) => state.prompts.isEmpty);
-      expect(approvals.answers, <String>['decline a1']);
-      await bloc.close();
-    });
+        bloc.add(const DeviceApprovalEvent.declined('a1'));
+        await bloc.stream.firstWhere((state) => state.prompts.isEmpty);
+        expect(approvals.answers, <String>['decline a1']);
+        await bloc.close();
+      },
+    );
 
     test('a request nobody asked is not answered', () async {
       final bloc = await watching(<ApprovalPrompt>[readyPrompt()]);
@@ -136,8 +140,7 @@ void main() {
       await bloc.close();
     });
 
-    test('an answer that failed is the error, and the request stays',
-        () async {
+    test('an answer that failed is the error, and the request stays', () async {
       approvals.failure = const ApplicationError.network(
         message: 'Can’t reach the server.',
       );

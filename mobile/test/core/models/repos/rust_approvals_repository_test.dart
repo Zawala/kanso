@@ -2,7 +2,6 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/approvals.dart';
 import 'package:kanso/core/bridge/api/types.dart';
@@ -32,7 +31,9 @@ void main() {
 
   group('RustApprovalsRepository', () {
     test('the requests are read, and watched as they change', () async {
-      when(approvals.refresh).thenAnswer((_) async => <ApprovalPrompt>[_prompt]);
+      when(
+        approvals.refresh,
+      ).thenAnswer((_) async => <ApprovalPrompt>[_prompt]);
       when(approvals.watch).thenAnswer(
         (_) => Stream<List<ApprovalPrompt>>.fromIterable(
           <List<ApprovalPrompt>>[
@@ -53,10 +54,12 @@ void main() {
     });
 
     test('an answer gives the requests that are left', () async {
-      when(() => approvals.approve(id: 'a1'))
-          .thenAnswer((_) async => <ApprovalPrompt>[]);
-      when(() => approvals.decline(id: 'a2'))
-          .thenAnswer((_) async => <ApprovalPrompt>[_prompt]);
+      when(
+        () => approvals.approve(id: 'a1'),
+      ).thenAnswer((_) async => <ApprovalPrompt>[]);
+      when(
+        () => approvals.decline(id: 'a2'),
+      ).thenAnswer((_) async => <ApprovalPrompt>[_prompt]);
       final approved = await repository.approve('a1');
       final declined = await repository.decline('a2');
       expect(approved.getOrElse(() => <ApprovalPrompt>[_prompt]), isEmpty);

@@ -21,7 +21,8 @@ void main() {
           message: 'That username and password don’t match.',
         ),
         const ApplicationError.network(
-          message: 'Can’t reach the server. Your notes are safe on this '
+          message:
+              'Can’t reach the server. Your notes are safe on this '
               'device.',
         ),
         const ApplicationError.storage(message: 'The library is not open.'),

@@ -23,10 +23,10 @@ void main() {
 
   group('RustSyncRepository, the app in front or not', () {
     test('tells the library which', () async {
-      when(() => sync.setForeground(foreground: true))
-          .thenAnswer((_) async {});
-      when(() => sync.setForeground(foreground: false))
-          .thenAnswer((_) async {});
+      when(() => sync.setForeground(foreground: true)).thenAnswer((_) async {});
+      when(
+        () => sync.setForeground(foreground: false),
+      ).thenAnswer((_) async {});
       expect(
         await repository.setForeground(foreground: true),
         const Right<ApplicationError, Unit>(unit),

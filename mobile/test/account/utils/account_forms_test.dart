@@ -2,6 +2,8 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -46,9 +48,11 @@ final List<String> _typed = <String>[
 ];
 
 extension _FormsAny on Any {
-  Generator<String> get typedName =>
-      listWithLengthInRange<String>(0, 36, choose(_typed))
-          .map((chars) => chars.join());
+  Generator<String> get typedName => listWithLengthInRange<String>(
+    0,
+    36,
+    choose(_typed),
+  ).map((chars) => chars.join());
 
   Generator<String> get passwordLike => combine2(
     intInRange(0, 300),
@@ -246,23 +250,25 @@ void main() {
       expect(problem, parts);
     });
 
-    test('a sign-in answers a password no account can have like a wrong one',
-        () {
-      expect(
-        AccountForms.signInProblem('ana', 'short'),
-        FormProblem.credentialsDontMatch,
-      );
-      expect(
-        AccountForms.signInProblem('a b', good),
-        FormProblem.usernameInvalid,
-      );
-      expect(AccountForms.signInProblem('Ana', good), isNull);
-      expect(
-        AccountForms.unlockProblem('short', 'ana'),
-        FormProblem.credentialsDontMatch,
-      );
-      expect(AccountForms.unlockProblem(good, 'ana'), isNull);
-    });
+    test(
+      'a sign-in answers a password no account can have like a wrong one',
+      () {
+        expect(
+          AccountForms.signInProblem('ana', 'short'),
+          FormProblem.credentialsDontMatch,
+        );
+        expect(
+          AccountForms.signInProblem('a b', good),
+          FormProblem.usernameInvalid,
+        );
+        expect(AccountForms.signInProblem('Ana', good), isNull);
+        expect(
+          AccountForms.unlockProblem('short', 'ana'),
+          FormProblem.credentialsDontMatch,
+        );
+        expect(AccountForms.unlockProblem(good, 'ana'), isNull);
+      },
+    );
 
     test('a recovery needs a name, a key and a new password twice', () {
       FormProblem? problem({

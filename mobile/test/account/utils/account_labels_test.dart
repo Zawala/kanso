@@ -2,6 +2,8 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:glados/glados.dart' show Glados, StringAnys, any;
 import 'package:kanso/account/models/data/account_notice.dart';
