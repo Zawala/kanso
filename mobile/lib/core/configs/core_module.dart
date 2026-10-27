@@ -8,6 +8,9 @@ import 'package:injectable/injectable.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../bridge/api/account.dart';
+import '../bridge/api/account_settings.dart';
+import '../bridge/api/approvals.dart';
 import '../bridge/api/gallery.dart';
 import '../bridge/api/library.dart';
 import '../bridge/api/locks.dart';
@@ -60,6 +63,16 @@ abstract class CoreModule {
 
   @lazySingleton
   KansoSync sync(KansoLibrary library) => library.syncing();
+
+  @lazySingleton
+  KansoAccount account(KansoLibrary library) => library.account();
+
+  @lazySingleton
+  KansoAccountSettings accountSettings(KansoLibrary library) =>
+      library.accountSettings();
+
+  @lazySingleton
+  KansoApprovals approvals(KansoLibrary library) => library.approvals();
 
   @lazySingleton
   KansoRenderer renderer(KansoLibrary library) => library.renderer();

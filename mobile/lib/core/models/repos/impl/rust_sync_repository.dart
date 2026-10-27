@@ -58,4 +58,12 @@ class RustSyncRepository implements SyncRepository {
 
   @override
   Stream<SyncStatus> statusStream() => cancelableStream(_sync.statusStream());
+
+  @override
+  Future<Either<ApplicationError, Unit>> setForeground({
+    required bool foreground,
+  }) => attempt(() async {
+    await _sync.setForeground(foreground: foreground);
+    return unit;
+  });
 }

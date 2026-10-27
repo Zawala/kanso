@@ -11,7 +11,9 @@ import 'package:kanso/core/configs/kanso_layout.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
+import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/device_approval/device_approval_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
@@ -20,6 +22,7 @@ import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 
+import 'account_blocs.dart';
 import 'browse_blocs.dart';
 import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
@@ -32,10 +35,19 @@ const Key appBoundaryKey = ValueKey<String>('app-boundary');
 
 /// The app on the mock library, and what a test can look at of it.
 class BrowseApp {
-  BrowseApp(this.router, this.blocs, this.appearance, this.layoutClass);
+  BrowseApp(
+    this.router,
+    this.blocs,
+    this.appearance,
+    this.layoutClass,
+    this.accounts,
+  );
 
   final GoRouter router;
   final BrowseBlocs blocs;
+
+  /// The BLoCs of the account screens.
+  final AccountBlocs accounts;
   final AppearanceBloc appearance;
 
   /// The layout class the router lays its pages out for.
@@ -54,10 +66,11 @@ class BrowseApp {
 /// [tabletDevice] says whether the display is a tablet's, which a narrow
 /// window of one (a Split View half) is not enough to tell; it defaults to
 /// what the window's own size says. [backupNotice] is the notice's BLoC; it
-/// defaults to one that is not shown. [shared] and [gallery] are the shared
-/// notes and the theme gallery the app reads, if a test has made them. The
-/// app is inside a repaint boundary,
-/// [appBoundaryKey], to take a picture of.
+/// defaults to one that is not shown. [accounts] has the account screens'
+/// BLoCs; by default the phone has no account. [shared] and [gallery] are
+/// the shared notes and the theme gallery the app reads, if a test has made
+/// them. The app is inside a repaint boundary, [appBoundaryKey], to take a
+/// picture of.
 Future<BrowseApp> pumpBrowseApp(
   WidgetTester tester,
   Size size, {
@@ -70,11 +83,13 @@ Future<BrowseApp> pumpBrowseApp(
   BackupNoticeBloc? backupNotice,
   FixtureSharedNotesRepository? shared,
   FixtureGalleryRepository? gallery,
+  AccountBlocs? accounts,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start(library, null, shared);
   registerPageBlocs(blocs.library, null, gallery, blocs.shared);
+  final accountBlocs = (accounts ?? AccountBlocs())..register();
   final padding = FakeViewPadding(
     left: safeArea.left * devicePixelRatio,
     top: safeArea.top * devicePixelRatio,
@@ -113,11 +128,21 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<BackupNoticeBloc>.value(
             value: backupNotice ?? hiddenBackupNoticeBloc(),
           ),
+          BlocProvider<AccountBloc>.value(value: accountBlocs.account),
+          BlocProvider<DeviceApprovalBloc>.value(
+            value: accountBlocs.approval,
+          ),
         ],
         child: App(router: kansoRouter),
       ),
     ),
   );
   await tester.pumpAndSettle();
-  return BrowseApp(router, blocs, bloc, kansoRouter.layoutClass);
+  return BrowseApp(
+    router,
+    blocs,
+    bloc,
+    kansoRouter.layoutClass,
+    accountBlocs,
+  );
 }

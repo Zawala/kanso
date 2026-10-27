@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 
+import 'account_blocs.dart';
 import 'browse_blocs.dart';
 import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
@@ -27,9 +28,10 @@ import 'pump_browse_app.dart';
 /// sheet or a note, or to start a selection.
 ///
 /// [library] makes the mock library for each platform, so a test can fail
-/// or hold back what it answers; [backupNotice] makes the backup notice's
-/// BLoC; [shared] and [gallery] make the shared notes and the theme gallery
-/// the app reads. The clock is the mock content's (see [atMockNow]).
+/// or hold back what it answers; [accounts] makes the account screens'
+/// BLoCs for each platform; [backupNotice] makes the backup notice's BLoC;
+/// [shared] and [gallery] make the shared notes and the theme gallery the
+/// app reads. The clock is the mock content's (see [atMockNow]).
 Future<void> expectAppGoldenOnBothPlatforms(
   WidgetTester tester, {
   required String name,
@@ -40,6 +42,7 @@ Future<void> expectAppGoldenOnBothPlatforms(
   Future<BackupNoticeBloc> Function()? backupNotice,
   FixtureSharedNotesRepository Function()? shared,
   FixtureGalleryRepository Function()? gallery,
+  AccountBlocs Function()? accounts,
   Future<void> Function(WidgetTester tester, BrowseApp app)? interact,
 }) async {
   tester.platformDispatcher
@@ -77,6 +80,7 @@ Future<void> expectAppGoldenOnBothPlatforms(
           backupNotice: backupNotice == null ? null : await backupNotice(),
           shared: shared?.call(),
           gallery: gallery?.call(),
+          accounts: accounts?.call(),
         );
         if (interact != null) {
           await interact(tester, app);

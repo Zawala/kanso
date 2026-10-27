@@ -158,7 +158,7 @@ class RustSharedNotesRepository implements SharedNotesRepository {
     Object holder,
   ) => attempt(() async {
     await _shared.openLive(noteId: noteId);
-    _holders.putIfAbsent(noteId, () => Set<Object>.identity()).add(holder);
+    _holders.putIfAbsent(noteId, Set<Object>.identity).add(holder);
     return unit;
   });
 

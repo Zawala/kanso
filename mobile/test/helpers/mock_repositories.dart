@@ -3,6 +3,10 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'package:kanso/core/models/repos/abs/about_repository.dart';
+import 'package:kanso/core/models/repos/abs/account_repository.dart';
+import 'package:kanso/core/models/repos/abs/account_settings_repository.dart';
+import 'package:kanso/core/models/repos/abs/approvals_repository.dart';
+import 'package:kanso/core/models/repos/abs/auth_session_repository.dart';
 import 'package:kanso/core/models/repos/abs/gallery_repository.dart';
 import 'package:kanso/core/models/repos/abs/haptics_repository.dart';
 import 'package:kanso/core/models/repos/abs/library_repository.dart';
@@ -27,3 +31,11 @@ class MockGalleryRepository extends Mock implements GalleryRepository {}
 class MockSharedNotesRepository extends Mock implements SharedNotesRepository {}
 
 class MockSystemShareRepository extends Mock implements SystemShareRepository {}
+class MockAccountRepository extends Mock implements AccountRepository {}
+
+class MockAccountSettingsRepository extends Mock
+    implements AccountSettingsRepository {}
+
+class MockApprovalsRepository extends Mock implements ApprovalsRepository {}
+
+class MockAuthSessionRepository extends Mock implements AuthSessionRepository {}

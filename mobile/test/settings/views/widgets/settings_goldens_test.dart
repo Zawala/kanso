@@ -41,6 +41,10 @@ void main() {
         await expectGoldenOnBothPlatforms(
           tester,
           (await SettingsBlocs.start(
+            account: const AccountState.signedIn(
+              username: 'ana',
+              server: 'https://sync.kansoapp.app',
+            ),
             status: const SyncStatus(
               phase: SyncPhase.synced,
               username: 'ana',

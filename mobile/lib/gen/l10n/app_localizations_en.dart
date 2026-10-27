@@ -591,6 +591,608 @@ class AppLocalizationsEn extends AppLocalizations {
       'The notes on this device aren’t included in device backups.';
 
   @override
+  String get settingsSyncSignIn => 'Sign in';
+
+  @override
+  String get settingsSyncOpenNotes => 'Open your notes on this device';
+
+  @override
+  String get settingsSyncNow => 'Sync now';
+
+  @override
+  String get settingsSyncAccount => 'Account';
+
+  @override
+  String get accountCancel => 'Cancel';
+
+  @override
+  String get accountDone => 'Done';
+
+  @override
+  String get accountRetry => 'Try again';
+
+  @override
+  String get accountCopy => 'Copy';
+
+  @override
+  String get accountCopied => 'Copied';
+
+  @override
+  String get accountSomethingWrong =>
+      'Something went wrong. Try again in a moment.';
+
+  @override
+  String get accountSignedOutError =>
+      'This device was signed out. Sign in again.';
+
+  @override
+  String get accountLoading => 'Loading';
+
+  @override
+  String get accountUsername => 'Username';
+
+  @override
+  String get accountPassword => 'Password';
+
+  @override
+  String get accountRepeatPassword => 'Repeat password';
+
+  @override
+  String get accountNewPassword => 'New password';
+
+  @override
+  String get accountCurrentPassword => 'Current password';
+
+  @override
+  String get formProblemUsernameInvalid =>
+      'Use 3–32 lowercase letters, digits, - or _, starting and ending with a letter or digit.';
+
+  @override
+  String get formProblemUsernameReserved =>
+      'That username is reserved. Try another.';
+
+  @override
+  String get formProblemPasswordTooShort =>
+      'Use at least 12 characters. A few random words work well.';
+
+  @override
+  String get formProblemPasswordTooLong => 'Use at most 256 characters.';
+
+  @override
+  String get formProblemPasswordSameAsUsername =>
+      'Choose a password that isn’t your username.';
+
+  @override
+  String get formProblemPasswordsDiffer => 'The passwords don’t match.';
+
+  @override
+  String get formProblemCredentialsDontMatch =>
+      'That username and password don’t match.';
+
+  @override
+  String get formProblemRecoveryKeyMissing =>
+      'A recovery key has 28 letters and digits, in groups of four.';
+
+  @override
+  String get accountServerLabel => 'Server';
+
+  @override
+  String get accountServerDefault => 'Kanso sync';
+
+  @override
+  String get accountServerChange => 'Use another server';
+
+  @override
+  String get accountServerAddress => 'Server address';
+
+  @override
+  String get accountServerAddressHint => 'https://sync.example.com';
+
+  @override
+  String get accountServerUse => 'Use this server';
+
+  @override
+  String get accountServerUseDefault => 'Use Kanso sync';
+
+  @override
+  String get accountServerChecking => 'Checking the server…';
+
+  @override
+  String get accountServerNoSignups => 'This server isn’t taking new accounts.';
+
+  @override
+  String get accountServerNoMethods =>
+      'This server offers no way to sign in that this app can use.';
+
+  @override
+  String get accountSignInTitle => 'Sign in';
+
+  @override
+  String get accountSignInHeading => 'Sign in to Kanso';
+
+  @override
+  String get accountContinueWithApple => 'Continue with Apple';
+
+  @override
+  String get accountContinueWithGoogle => 'Continue with Google';
+
+  @override
+  String get accountContinueWithGithub => 'Continue with GitHub';
+
+  @override
+  String get accountSignInWithPasskey => 'Sign in with a passkey';
+
+  @override
+  String get accountOr => 'or';
+
+  @override
+  String get accountSignInButton => 'Sign in';
+
+  @override
+  String get accountCreateAccountLink => 'Create an account';
+
+  @override
+  String get accountForgotPassword =>
+      'Forgot your password? Use your recovery key';
+
+  @override
+  String get accountSigningIn => 'Signing in…';
+
+  @override
+  String get accountCreateTitle => 'Create your account';
+
+  @override
+  String get accountCreateButton => 'Create account';
+
+  @override
+  String get accountCreatingButton => 'Creating…';
+
+  @override
+  String get accountCreateWithPasskey => 'Create with a passkey';
+
+  @override
+  String get accountCreateRecoveryNote =>
+      'Kanso can’t reset your password; you’ll get a recovery key instead.';
+
+  @override
+  String get accountSignInInstead => 'I already have an account';
+
+  @override
+  String get accountGithubTitle => 'Continue with GitHub';
+
+  @override
+  String get accountGithubExplain => 'Type this code at GitHub to sign in.';
+
+  @override
+  String get accountGithubOpen => 'Open GitHub';
+
+  @override
+  String get accountGithubWaiting => 'Waiting for you to finish at GitHub…';
+
+  @override
+  String get accountProviderCancel => 'Cancel';
+
+  @override
+  String get accountProviderWaiting =>
+      'Finish signing in in the page that opened. Kanso opens again when you’re done.';
+
+  @override
+  String get accountUsernameTitle => 'Choose a username';
+
+  @override
+  String get accountUsernameExplain =>
+      'Your account is made with this name. You can change it before creating the account.';
+
+  @override
+  String get accountRecoveryKeyTitle => 'Your recovery key';
+
+  @override
+  String get accountRecoveryKeyText =>
+      'If you forget your password, this key and your username are the only way back into your account. Kanso and the server’s owner can’t reset it. Anyone with it can take over your account and read your notes, so keep it somewhere safe, like a password manager or on paper. Each time it’s used, Kanso gives you a new one.';
+
+  @override
+  String get accountRecoveryKeyCopy => 'Copy recovery key';
+
+  @override
+  String get accountRecoveryKeyConfirm =>
+      'I’ve saved my recovery key somewhere safe';
+
+  @override
+  String get accountRecoveryKeyNoneTitle => 'Nothing to save';
+
+  @override
+  String get accountRecoveryKeyNoneMessage =>
+      'There’s no recovery key waiting to be saved.';
+
+  @override
+  String get accountRecoveryKeyFailedTitle => 'The recovery key didn’t load';
+
+  @override
+  String get accountRecoveryKeyFailedMessage =>
+      'Something went wrong reading the recovery key. Try again.';
+
+  @override
+  String get bindingAdd => 'Add them to the account';
+
+  @override
+  String get bindingAddNote =>
+      'They’re encrypted and uploaded. A note deleted in the account but still on this device comes back, and a note changed on both sides keeps both versions.';
+
+  @override
+  String get bindingReplace => 'Replace them with the account’s notes';
+
+  @override
+  String get bindingReplaceNote =>
+      'Kanso saves a backup of this device’s library first, then downloads the account’s notes.';
+
+  @override
+  String get bindingCancel => 'Cancel';
+
+  @override
+  String get accountUnlockTitle => 'Open your notes on this device';
+
+  @override
+  String accountUnlockExplain(String username) {
+    return 'You’re signed in as $username, but this device can’t read your notes yet.';
+  }
+
+  @override
+  String get accountUnlockButton => 'Unlock';
+
+  @override
+  String get accountApproveFromDevice => 'Approve from another device';
+
+  @override
+  String get accountUseRecoveryKey => 'Use your recovery key';
+
+  @override
+  String get accountSignOut => 'Sign out';
+
+  @override
+  String get accountApprovalTitle => 'Approve this device';
+
+  @override
+  String get accountApprovalIntro =>
+      'Open Kanso on a device that’s already signed in and approve this one.';
+
+  @override
+  String get accountApprovalRequesting => 'Asking another device…';
+
+  @override
+  String get accountApprovalWaiting => 'Waiting for another device…';
+
+  @override
+  String get accountApprovalUnlocking => 'Approved. Unlocking this device…';
+
+  @override
+  String get accountApprovalApproved => 'This device is unlocked.';
+
+  @override
+  String get accountApprovalNoDevices =>
+      'No other device answered. Use your recovery key to open this device.';
+
+  @override
+  String get accountApprovalCancelled => 'That request was cancelled.';
+
+  @override
+  String get accountApprovalExpired => 'That request expired.';
+
+  @override
+  String get accountApprovalFailed =>
+      'Can’t reach the server. Your notes are safe on this device.';
+
+  @override
+  String get accountApprovalCompare =>
+      'On your other device, approve the request only if it shows this code.';
+
+  @override
+  String get accountApprovalRecoveryInstead => 'Use your recovery key instead';
+
+  @override
+  String accountApprovalCode(String code) {
+    return 'Code $code';
+  }
+
+  @override
+  String get accountRecoverTitle => 'Reset your password';
+
+  @override
+  String get accountRecoverExplain =>
+      'Enter your recovery key and choose a new password. Your other devices sign out and ask for it, and you get a new recovery key to save.';
+
+  @override
+  String get accountRecoveryKeyField => 'Recovery key';
+
+  @override
+  String get accountRecoveryKeyHint => 'The key you saved, in groups of four.';
+
+  @override
+  String get accountRecoverButton => 'Reset password';
+
+  @override
+  String get accountRecoveringButton => 'Resetting…';
+
+  @override
+  String get accountTitle => 'Account';
+
+  @override
+  String accountSignedInAs(String username) {
+    return 'Signed in as $username';
+  }
+
+  @override
+  String get accountLoadFailedTitle => 'Your account didn’t load';
+
+  @override
+  String get accountLoadFailedMessage =>
+      'Something went wrong reading your account. Try again.';
+
+  @override
+  String get accountRecoveryKeyUnsavedTitle =>
+      'Your new recovery key isn’t saved yet';
+
+  @override
+  String get accountRecoveryKeyUnsavedMessage =>
+      'Save it now: the one you had before no longer works.';
+
+  @override
+  String get accountRecoveryKeyShow => 'Show it';
+
+  @override
+  String get accountDevices => 'Devices';
+
+  @override
+  String get accountThisDevice => 'This device';
+
+  @override
+  String accountLastSeen(String date) {
+    return 'Last seen $date';
+  }
+
+  @override
+  String get accountDeviceSignOut => 'Sign out';
+
+  @override
+  String get accountWaysToSignIn => 'Ways to sign in';
+
+  @override
+  String get accountPasswordRow => 'Password';
+
+  @override
+  String get accountPasswordChange => 'Change';
+
+  @override
+  String get accountPasswordNotSet => 'Not set';
+
+  @override
+  String get accountPasskeys => 'Passkeys';
+
+  @override
+  String get accountPasskeyAdd => 'Add a passkey';
+
+  @override
+  String get accountPasskeyRemove => 'Remove';
+
+  @override
+  String accountPasskeyAdded(String date) {
+    return 'Added $date';
+  }
+
+  @override
+  String accountPasskeyUsed(String added, String used) {
+    return 'Added $added · Last used $used';
+  }
+
+  @override
+  String get accountPasskeyCanUnlock => 'Can unlock a new device';
+
+  @override
+  String get accountPasskeySignsInOnly => 'Signs in only';
+
+  @override
+  String get accountProviderApple => 'Apple';
+
+  @override
+  String get accountProviderGoogle => 'Google';
+
+  @override
+  String get accountProviderGithub => 'GitHub';
+
+  @override
+  String get accountProviderLinked => 'Linked';
+
+  @override
+  String get accountProviderNotLinked => 'Not linked';
+
+  @override
+  String get accountProviderLink => 'Link';
+
+  @override
+  String get accountProviderUnlink => 'Unlink';
+
+  @override
+  String get accountNoProofHere =>
+      'Confirm it’s you with your password. This device can’t use another way for this account yet.';
+
+  @override
+  String get accountRecoveryKeySection => 'Recovery key';
+
+  @override
+  String get accountRecoveryKeyNew => 'Make a new one';
+
+  @override
+  String get accountRecoveryKeyFooter =>
+      'Your recovery key still works if you lose your other ways in.';
+
+  @override
+  String get accountStorage => 'Storage';
+
+  @override
+  String get accountDeleteAccount => 'Delete account';
+
+  @override
+  String get accountWorking => 'Working…';
+
+  @override
+  String accountRevokeTitle(String name) {
+    return 'Sign out $name?';
+  }
+
+  @override
+  String get accountRevokeMessage =>
+      'It stops syncing until someone signs in on it again. Its notes stay on it.';
+
+  @override
+  String accountSignOutTitle(String username) {
+    return 'Sign out of $username?';
+  }
+
+  @override
+  String get accountSignOutMessage =>
+      'Notes stay on this device. Sync stops until you sign in again.';
+
+  @override
+  String get accountSignOutUnsavedKey =>
+      'Your new recovery key hasn’t been saved yet; signing out deletes it.';
+
+  @override
+  String get accountChangePasswordTitle => 'Change password';
+
+  @override
+  String get accountChangePasswordMessage =>
+      'Your other devices sign out and ask for the new password. Your recovery key changes too: the one you saved stops working, and Kanso shows the new one to save.';
+
+  @override
+  String get accountNewRecoveryKeyTitle => 'New recovery key';
+
+  @override
+  String get accountNewRecoveryKeyMessage =>
+      'The key you saved stops working, and Kanso shows the new one to save instead.';
+
+  @override
+  String get accountNewRecoveryKeyButton => 'Make a new key';
+
+  @override
+  String get accountDeleteTitle => 'Delete account';
+
+  @override
+  String accountDeleteMessage(String username) {
+    return 'This deletes $username’s encrypted notes, attachments and devices from the server. Notes on this device stay here, and other devices keep their copies. The server’s backups keep a copy for up to 30 days. This can’t be undone.';
+  }
+
+  @override
+  String accountDeleteTypeUsername(String username) {
+    return 'Type $username to confirm';
+  }
+
+  @override
+  String get accountAddPasskeyTitle => 'Add a passkey';
+
+  @override
+  String get accountAddPasskeyMessage =>
+      'Confirm it’s you with your password, then use your phone’s passkey sheet.';
+
+  @override
+  String accountRemovePasskeyTitle(String label) {
+    return 'Remove $label?';
+  }
+
+  @override
+  String get accountRemovePasskeyMessage =>
+      'You won’t be able to sign in with it any more. Confirm it’s you with your password.';
+
+  @override
+  String get accountRemovePasskeyButton => 'Remove passkey';
+
+  @override
+  String accountLinkTitle(String provider) {
+    return 'Link $provider';
+  }
+
+  @override
+  String get accountLinkMessage =>
+      'Confirm it’s you with your password, then finish in the page that opens.';
+
+  @override
+  String accountUnlinkTitle(String provider) {
+    return 'Unlink $provider?';
+  }
+
+  @override
+  String get accountUnlinkMessage =>
+      'It no longer signs in to this account. Confirm it’s you with your password.';
+
+  @override
+  String get accountConfirmSignOut => 'Sign out';
+
+  @override
+  String accountNoticeDeviceSignedOut(String name) {
+    return 'Signed out $name.';
+  }
+
+  @override
+  String get accountNoticePasskeyAddedCanUnlock =>
+      'Added the passkey. It can unlock: on a new device it signs in and opens your notes.';
+
+  @override
+  String get accountNoticePasskeyAddedSignsIn =>
+      'Added the passkey. It signs in only: a new device will also need approval or your recovery key.';
+
+  @override
+  String get accountNoticePasskeyRemoved => 'Removed the passkey.';
+
+  @override
+  String get accountNoticeProviderLinked =>
+      'Linked. You can sign in with it now.';
+
+  @override
+  String get accountNoticeProviderUnlinked =>
+      'Unlinked. It no longer signs in to this account.';
+
+  @override
+  String get approveDeviceTitle => 'Approve a device';
+
+  @override
+  String approveDeviceMessage(String account, String device, String time) {
+    return 'A device wants to join $account: $device, asked at $time.';
+  }
+
+  @override
+  String get approveDeviceUnnamed => 'A device';
+
+  @override
+  String approveDeviceCompare(String code) {
+    return 'Does it show $code? Only approve if it does.';
+  }
+
+  @override
+  String get approveDeviceChanged =>
+      'This request changed after it was made. Don’t approve.';
+
+  @override
+  String get approveDeviceApprove => 'Approve';
+
+  @override
+  String get approveDeviceDecline => 'Don’t approve';
+
+  @override
+  String approveDeviceMore(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more requests are waiting.',
+      one: '1 more request is waiting.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get accountServerFailedTitle => 'This server didn’t answer';
+
+  @override
+  String get accountDeleteMismatch => 'That isn’t this account’s username.';
+
+  @override
   String settingsVersionValue(String version, String build) {
     return '$version ($build)';
   }

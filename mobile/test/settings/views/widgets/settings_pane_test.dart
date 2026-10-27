@@ -14,6 +14,7 @@ import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
+import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
@@ -24,21 +25,30 @@ import '../../../helpers/close_bloc_later.dart';
 import '../../../helpers/fixture_sync_repository.dart';
 import '../../../helpers/mock_repositories.dart';
 import '../../../helpers/pump_routed.dart';
+import '../../../helpers/seeded_account_blocs.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 
 class _Settings {
-  _Settings(this.router, this.appearance, this.about, this.sync);
+  _Settings(
+    this.router,
+    this.appearance,
+    this.about,
+    this.sync,
+    this.syncRepository,
+  );
 
   final GoRouter router;
   final AppearanceBloc appearance;
   final MockAboutRepository about;
   final SyncStatusBloc sync;
+  final FixtureSyncRepository syncRepository;
 }
 
 Future<_Settings> _pump(
   WidgetTester tester, {
   AppearanceState appearance = const AppearanceState(),
   SyncStatus status = signedOutStatus,
+  AccountState account = const AccountState.signedOut(),
 }) async {
   final about = MockAboutRepository();
   when(about.version).thenAnswer(
@@ -50,9 +60,12 @@ Future<_Settings> _pump(
     about.openWebsite,
   ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
   final aboutBloc = AboutBloc(about)..add(const AboutEvent.started());
-  final syncBloc = SyncStatusBloc(FixtureSyncRepository(current: status))
+  final syncRepository = FixtureSyncRepository(current: status);
+  final syncBloc = SyncStatusBloc(syncRepository)
     ..add(const SyncStatusEvent.started());
   final appearanceBloc = SeededAppearanceBloc(appearance);
+  final accountBloc = SeededAccountBloc(AccountBlocState(account: account));
+  closeBlocLater(accountBloc);
   closeBlocLater(aboutBloc);
   closeBlocLater(syncBloc);
   closeBlocLater(appearanceBloc);
@@ -62,6 +75,7 @@ Future<_Settings> _pump(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<AppearanceBloc>.value(value: appearanceBloc),
         BlocProvider<SyncStatusBloc>.value(value: syncBloc),
+        BlocProvider<AccountBloc>.value(value: accountBloc),
         BlocProvider<AboutBloc>.value(value: aboutBloc),
       ],
       child: const SettingsPane(),
@@ -70,7 +84,7 @@ Future<_Settings> _pump(
   );
   await tester.pump();
   await tester.pump();
-  return _Settings(router, appearanceBloc, about, syncBloc);
+  return _Settings(router, appearanceBloc, about, syncBloc, syncRepository);
 }
 
 void main() {
@@ -85,7 +99,7 @@ void main() {
         'Fonts',
         'Text size',
         'Sync',
-        'Status',
+        'Sign in',
         'About',
         'Version',
         'Website',
@@ -97,7 +111,8 @@ void main() {
         'General',
         'Default notebook',
         'Icons',
-        'Account',
+        'Status',
+        'Sync now',
         'Sign out',
         'Locked notes',
         'Release notes',
@@ -154,21 +169,64 @@ void main() {
       expect(find.text('Nord'), findsOneWidget);
     });
 
-    testWidgets('the Sync row shows the live status, Off while signed out', (
+    testWidgets('signed out, Sync has a row that signs in and no status', (
       tester,
     ) async {
-      await _pump(tester);
-      expect(find.text('Off'), findsOneWidget);
-      await _pump(
+      final screen = await _pump(tester);
+      expect(find.text('Sign in'), findsOneWidget);
+      expect(find.text('Status'), findsNothing);
+      await tester.tap(find.text('Sign in'));
+      await tester.pumpAndSettle();
+      expect(topOf(screen.router), '/settings/account/sign-in');
+    });
+
+    testWidgets('signed in, Sync has the account, the live status and Sync '
+        'now', (tester) async {
+      final screen = await _pump(
         tester,
+        account: const AccountState.signedIn(
+          username: 'ana',
+          server: 'https://example.invalid',
+        ),
         status: const SyncStatus(
           phase: SyncPhase.synced,
           username: 'ana',
           conflicts: 0,
         ),
       );
+      expect(find.text('ana'), findsOneWidget);
+      expect(find.text('Status'), findsOneWidget);
       expect(find.text('Synced'), findsOneWidget);
-      expect(find.text('Off'), findsNothing);
+      expect(find.text('Sign in'), findsNothing);
+
+      await tester.tap(find.text('Sync now'));
+      await tester.pump();
+      expect(screen.syncRepository.syncs, 1);
+
+      await tester.tap(find.text('ana'));
+      await tester.pumpAndSettle();
+      expect(topOf(screen.router), '/settings/account');
+    });
+
+    testWidgets('locked, Sync has a row that opens the notes on this device', (
+      tester,
+    ) async {
+      final screen = await _pump(
+        tester,
+        account: const AccountState.locked(
+          LockedInfo(
+            username: 'ana',
+            server: 'https://example.invalid',
+            hasPassword: true,
+            approvalPending: false,
+          ),
+        ),
+      );
+      expect(find.text('Open your notes on this device'), findsOneWidget);
+      expect(find.text('Sync now'), findsNothing);
+      await tester.tap(find.text('Open your notes on this device'));
+      await tester.pumpAndSettle();
+      expect(topOf(screen.router), '/settings/account/unlock');
     });
 
     testWidgets('says under Sync that the notes are not in device backups', (

@@ -16,7 +16,9 @@ import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
+import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/device_approval/device_approval_bloc.dart';
 import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
@@ -33,6 +35,7 @@ import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/themes/views/pages/theme_picker_page.dart';
 
+import '../../helpers/account_blocs.dart';
 import '../../helpers/browse_blocs.dart';
 import '../../helpers/register_page_blocs.dart';
 import '../../helpers/seeded_appearance_bloc.dart';
@@ -61,6 +64,7 @@ Future<GoRouter> _pump(
   if (at != null) {
     router.go(at);
   }
+  final accounts = AccountBlocs();
   await tester.pumpWidget(
     MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
@@ -72,6 +76,8 @@ Future<GoRouter> _pump(
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
+        BlocProvider<AccountBloc>.value(value: accounts.account),
+        BlocProvider<DeviceApprovalBloc>.value(value: accounts.approval),
       ],
       child: App(router: kansoRouter),
     ),

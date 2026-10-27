@@ -26,8 +26,12 @@ void main() {
 
   setUp(() {
     shared = MockSharedNotesRepository();
-    when(() => shared.openLive(any(), any())).thenAnswer((_) async => _ok(unit));
-    when(() => shared.closeLive(any(), any())).thenAnswer((_) async => _ok(unit));
+    when(
+      () => shared.openLive(any(), any()),
+    ).thenAnswer((_) async => _ok(unit));
+    when(
+      () => shared.closeLive(any(), any()),
+    ).thenAnswer((_) async => _ok(unit));
   });
 
   SharedNoteLiveBloc build() => SharedNoteLiveBloc(shared);
