@@ -235,7 +235,7 @@ void main() {
       shared.invitationList = <InvitationRow>[invitationRow('s_1')];
       await tester.tap(find.text('Shared with you'));
       await tester.pumpAndSettle();
-      expect(whereIs(router), '/shared');
+      expect(topOf(router), '/shared');
       expect(invitations.state.invitations.length, 1);
     });
 

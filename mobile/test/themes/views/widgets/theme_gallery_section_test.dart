@@ -310,7 +310,7 @@ void main() {
       final fixtures = FixtureGalleryRepository()..installGate = gate;
       final picker = await _pump(tester, fixtures);
       picker.gallery.add(const ThemeGalleryEvent.installed('dusk'));
-      await tester.pump();
+      await _settle(tester);
       expect(_in('Dusk', find.text('Installing…')), findsOneWidget);
       gate.complete();
       await _settle(tester);
