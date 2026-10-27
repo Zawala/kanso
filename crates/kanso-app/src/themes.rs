@@ -455,7 +455,7 @@ pub fn apply(window: Option<&mut Window>, cx: &mut App) {
 /// The component library's colors for a preview's code blocks, given the
 /// themes in use and how they fit (`Tokens::fit`): the preview theme's own
 /// when it isn't the syntax theme, else the syntax theme's.
-fn code_highlight(
+pub(crate) fn code_highlight(
     syntax: &ResolvedTheme,
     preview: &ResolvedTheme,
     tokens: &Tokens,

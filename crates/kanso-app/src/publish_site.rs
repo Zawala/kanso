@@ -353,11 +353,11 @@ impl Render for PublishSiteView {
                 let publish = self.plan.publish.clone().expect("published");
                 let link = self.link().unwrap_or_default();
                 let mono = cx.theme().mono_font_family.clone();
-                let published = crate::publish::when_label(Clock::local_ms(cx, publish.published_at));
+                let published = kanso_engine::publish::when_label(Clock::local_ms(cx, publish.published_at));
                 let expires = match publish.expires_at {
                     None => "The link doesn't expire.".to_owned(),
-                    Some(at) if at <= now => format!("The link expired on {}.", crate::publish::when_label(Clock::local_ms(cx, at))),
-                    Some(at) => format!("The link stops working on {}.", crate::publish::when_label(Clock::local_ms(cx, at))),
+                    Some(at) if at <= now => format!("The link expired on {}.", kanso_engine::publish::when_label(Clock::local_ms(cx, at))),
+                    Some(at) => format!("The link stops working on {}.", kanso_engine::publish::when_label(Clock::local_ms(cx, at))),
                 };
                 let changed = self.plan.is_outdated(&publish);
                 body.child(paragraph(
