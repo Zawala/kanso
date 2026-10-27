@@ -9,12 +9,13 @@
 use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
-    BuiltinTheme, Changed, ColorRow, DateField, DiagramKind, DueTone, Hit, KansoError,
-    LibraryOverview, ListPlace, ListQuery, ListShape, LockEvent, LockReason, LockState, NewNote,
-    NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto, Property,
-    PropertyKind, Range16, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun, SvgRow,
-    SyncPhase, SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow, TagRow,
-    TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, ThemeTokens, Ticked,
+    BuiltinTheme, Changed, ColorRow, DateField, DiagramKind, DueTone, Hit, IconThemeRow,
+    KansoError, LibraryOverview, ListPlace, ListQuery, ListShape, LockEvent, LockReason, LockState,
+    NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, PaletteDto,
+    Property, PropertyKind, Range16, Saved, SearchScope, ServerInfo, SortKey, SpanRow, StyledRun,
+    SvgRow, SyncPhase, SyncProblemKind, SyncReportRow, SyncStatus, SyntaxStyleRow, Table, TableRow,
+    TagRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, ThemeTokens,
+    ThemedIcon, Ticked,
 };
 
 #[frb(mirror(KansoError))]
@@ -409,6 +410,23 @@ pub struct _BuiltinTheme {
     pub source: Option<String>,
     pub dark: bool,
     pub tokens: ThemeTokens,
+}
+
+#[frb(mirror(ThemedIcon))]
+pub struct _ThemedIcon {
+    pub name: String,
+    pub svg: Option<String>,
+}
+
+#[frb(mirror(IconThemeRow))]
+pub struct _IconThemeRow {
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub license: String,
+    pub source: Option<String>,
+    pub description: Option<String>,
+    pub preview: Vec<ThemedIcon>,
 }
 
 #[frb(mirror(StyledRun))]

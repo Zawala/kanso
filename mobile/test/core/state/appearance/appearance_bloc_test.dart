@@ -12,6 +12,7 @@ import 'package:kanso/core/models/data/appearance_status.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
+import 'package:kanso/core/models/data/kanso_icon_set.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
@@ -24,6 +25,21 @@ import '../../../helpers/theme_tokens.dart';
 
 final KansoPalette _nord = fakePalette('nord', dark: true);
 final KansoPalette _github = fakePalette('github-light');
+
+const IconThemeRow _phosphorRow = IconThemeRow(
+  id: 'phosphor',
+  name: 'Phosphor',
+  author: 'Phosphor Icons',
+  license: 'MIT',
+  preview: <ThemedIcon>[],
+);
+
+/// Phosphor as the bloc keeps it: only the icons it draws.
+const KansoIconSet _phosphor = KansoIconSet(
+  id: 'phosphor',
+  name: 'Phosphor',
+  svgs: <String, String>{'search': '<svg id="search"/>'},
+);
 
 void main() {
   late MockPreferencesRepository preferences;
@@ -53,6 +69,24 @@ void main() {
     );
     when(() => renderer.builtinThemeTokens('github-light')).thenAnswer(
       (_) async => Right<ApplicationError, ThemeTokens>(tokensFor(_github)),
+    );
+    when(() => renderer.iconThemes()).thenAnswer(
+      (_) async => const Right<ApplicationError, List<IconThemeRow>>(
+        <IconThemeRow>[_phosphorRow],
+      ),
+    );
+    when(() => renderer.iconThemeIcons('phosphor')).thenAnswer(
+      (_) async => const Right<ApplicationError, List<ThemedIcon>>(
+        <ThemedIcon>[
+          ThemedIcon(name: 'search', svg: '<svg id="search"/>'),
+          ThemedIcon(name: 'pin'),
+        ],
+      ),
+    );
+    when(() => renderer.iconThemeIcons('gone')).thenAnswer(
+      (_) async => const Left<ApplicationError, List<ThemedIcon>>(
+        ApplicationError.notFound(message: 'No such icon theme.'),
+      ),
     );
     when(() => renderer.builtinThemeTokens('gone')).thenAnswer(
       (_) async => const Left<ApplicationError, ThemeTokens>(
@@ -310,6 +344,83 @@ void main() {
         );
         expect(saved.themeSelection, bloc.state.selection);
       },
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      "started draws Kanso's own icons without asking the core for any",
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.started()),
+      verify: (bloc) {
+        expect(bloc.state.iconSet, KansoIconSet.lucide);
+        verifyNever(() => renderer.iconThemes());
+        verifyNever(() => renderer.iconThemeIcons(any()));
+      },
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'started shows the icon theme that was saved, with the icons it draws',
+      setUp: () => saved = const Preferences(iconTheme: 'phosphor'),
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.started()),
+      expect: () => <AppearanceState>[
+        const AppearanceState(
+          iconSet: _phosphor,
+          status: AppearanceStatus.ready,
+        ),
+      ],
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      "started with an icon theme that cannot be read shows Kanso's own and "
+      'says it failed',
+      setUp: () => saved = const Preferences(iconTheme: 'gone'),
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.started()),
+      expect: () => <AppearanceState>[
+        const AppearanceState(status: AppearanceStatus.failed),
+      ],
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'iconThemePicked shows the icon theme at once and saves its ID',
+      build: build,
+      act: (bloc) =>
+          bloc.add(const AppearanceEvent.iconThemePicked('phosphor')),
+      expect: () => <AppearanceState>[
+        const AppearanceState(iconSet: _phosphor),
+      ],
+      verify: (_) => expect(saved.iconTheme, 'phosphor'),
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      "iconThemePicked back to Lucide draws Kanso's own icons and saves it",
+      setUp: () => saved = const Preferences(iconTheme: 'phosphor'),
+      build: build,
+      seed: () => const AppearanceState(iconSet: _phosphor),
+      act: (bloc) => bloc.add(const AppearanceEvent.iconThemePicked('lucide')),
+      expect: () => <AppearanceState>[const AppearanceState()],
+      verify: (_) => expect(saved.iconTheme, 'lucide'),
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'iconThemePicked reads an icon theme once and keeps it',
+      build: build,
+      act: (bloc) => bloc
+        ..add(const AppearanceEvent.iconThemePicked('phosphor'))
+        ..add(const AppearanceEvent.iconThemePicked('lucide'))
+        ..add(const AppearanceEvent.iconThemePicked('phosphor')),
+      verify: (bloc) {
+        expect(bloc.state.iconSet, _phosphor);
+        verify(() => renderer.iconThemeIcons('phosphor')).called(1);
+      },
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'iconThemePicked for a theme that is not there changes nothing',
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.iconThemePicked('gone')),
+      expect: () => <AppearanceState>[],
+      verify: (_) => verifyNever(() => preferences.update(any())),
     );
 
     test('a palette is the mapping of its tokens', () {

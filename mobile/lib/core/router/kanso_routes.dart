@@ -38,6 +38,7 @@ abstract final class KansoRoutes {
   /// Settings, a sheet on a tablet and a page on a phone.
   static const String settings = '/settings';
   static const String settingsTheme = '/settings/theme';
+  static const String settingsIcons = '/settings/icons';
   static const String settingsFonts = '/settings/fonts';
   static const String settingsLicences = '/settings/licences';
 

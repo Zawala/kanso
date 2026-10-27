@@ -65,6 +65,40 @@ void rendererSuite(OpenLibrary open) {
       );
     });
 
+    test("the built-in icon themes are the desktop's, Lucide first", () async {
+      final themes = await KansoRenderer.iconThemes();
+      expect(themes.length, greaterThan(20));
+      expect(themes.first.id, 'lucide');
+      expect(themes.first.name, 'Lucide');
+      expect(themes.map((theme) => theme.id).toSet(), hasLength(themes.length));
+      final phosphor = themes.firstWhere((theme) => theme.id == 'phosphor');
+      expect(phosphor.name, 'Phosphor');
+      expect(phosphor.license, 'MIT');
+      expect(phosphor.preview, hasLength(5));
+      expect(phosphor.preview.any((icon) => icon.svg != null), isTrue);
+      expect(themes.first.preview.every((icon) => icon.svg == null), isTrue);
+    });
+
+    test(
+      'a theme draws the icons it has and leaves the rest to Lucide',
+      () async {
+        final lucide = await KansoRenderer.iconThemeIcons(id: 'lucide');
+        expect(lucide, isNotEmpty);
+        expect(lucide.every((icon) => icon.svg == null), isTrue);
+        final phosphor = await KansoRenderer.iconThemeIcons(id: 'phosphor');
+        expect(phosphor.map((icon) => icon.name), lucide.map((i) => i.name));
+        final drawn = phosphor.where((icon) => icon.svg != null).toList();
+        expect(drawn.length, greaterThan(40));
+        for (final icon in drawn) {
+          expect(icon.svg, contains('<svg'), reason: icon.name);
+        }
+        await expectLater(
+          KansoRenderer.iconThemeIcons(id: 'nope'),
+          throwsA(isA<KansoError_NotFound>()),
+        );
+      },
+    );
+
     test("source is styled in a theme's colours", () async {
       const text = '# Title\n\nSome `code` here.\n';
       final runs = await KansoRenderer.styledRuns(

@@ -50,6 +50,15 @@ class RustRendererRepository implements RendererRepository {
   ) => attempt(() => KansoRenderer.builtinThemeTokens(id: id));
 
   @override
+  Future<Either<ApplicationError, List<IconThemeRow>>> iconThemes() =>
+      attempt(KansoRenderer.iconThemes);
+
+  @override
+  Future<Either<ApplicationError, List<ThemedIcon>>> iconThemeIcons(
+    String id,
+  ) => attempt(() => KansoRenderer.iconThemeIcons(id: id));
+
+  @override
   Future<Either<ApplicationError, List<StyledRun>>> styledRuns(
     String text, {
     required int start,

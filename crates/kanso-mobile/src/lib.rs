@@ -46,6 +46,7 @@ pub mod boundary;
 mod builtin_themes;
 pub mod diagnostics;
 mod errors;
+mod icons;
 mod library;
 mod locks;
 mod matching;

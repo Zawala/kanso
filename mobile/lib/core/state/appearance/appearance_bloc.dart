@@ -12,6 +12,7 @@ import '../../configs/kanso_palette.dart';
 import '../../models/data/appearance_status.dart';
 import '../../models/data/kanso_font_family.dart';
 import '../../models/data/kanso_fonts.dart';
+import '../../models/data/kanso_icon_set.dart';
 import '../../models/data/kanso_text_size.dart';
 import '../../models/data/preferences.dart';
 import '../../models/data/theme_selection.dart';
@@ -23,8 +24,8 @@ part 'appearance_bloc.freezed.dart';
 part 'appearance_event.dart';
 part 'appearance_state.dart';
 
-/// Holds how the app looks: the themes it is drawn in, the fonts of notes
-/// and the size of their text.
+/// Holds how the app looks: the themes it is drawn in, the icon theme, the
+/// fonts of notes and the size of their text.
 ///
 /// Every choice is shown at once and then saved in the preferences, so it is
 /// still there at the next start. A choice that cannot be saved stays for
@@ -45,6 +46,10 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
         ),
         AppearanceFollowSystemChangedEvent(:final follow) =>
           _onFollowSystemChanged(follow, emit),
+        AppearanceIconThemePickedEvent(:final id) => _onIconThemePicked(
+          id,
+          emit,
+        ),
         AppearanceEditorFontChangedEvent(:final font) => _changeFonts(
           emit,
           state.fonts.copyWith(editorFont: font),
@@ -73,19 +78,24 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
     KansoPalette.kansoLight.id: KansoPalette.kansoLight,
     KansoPalette.kansoDark.id: KansoPalette.kansoDark,
   };
+  final Map<String, KansoIconSet> _iconSets = <String, KansoIconSet>{
+    KansoIconSet.lucideId: KansoIconSet.lucide,
+  };
 
   Future<void> _onStarted(Emitter<AppearanceState> emit) async {
     final loaded = await _preferences.load();
     final preferences = loaded.getOrElse(Preferences.new);
     final shown = await _paletteSlots(preferences.themeSelection);
+    final icons = await _iconSet(preferences.iconTheme);
     emit(
       AppearanceState(
         selection: preferences.themeSelection,
         light: shown.light,
         dark: shown.dark,
+        iconSet: icons ?? KansoIconSet.lucide,
         fonts: preferences.fonts,
         textSize: preferences.textSize,
-        status: loaded.isRight() && shown.complete
+        status: loaded.isRight() && shown.complete && icons != null
             ? AppearanceStatus.ready
             : AppearanceStatus.failed,
       ),
@@ -99,6 +109,20 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
   ) async {
     final selection = state.selection.picked(id, dark: dark);
     await _select(selection, emit);
+  }
+
+  /// Shows the icon theme [id] and saves it, unless it cannot be read: an
+  /// icon theme that is not there changes nothing.
+  Future<void> _onIconThemePicked(
+    String id,
+    Emitter<AppearanceState> emit,
+  ) async {
+    final icons = await _iconSet(id);
+    if (icons == null) {
+      return;
+    }
+    emit(state.copyWith(iconSet: icons));
+    await _preferences.update((current) => current.copyWith(iconTheme: id));
   }
 
   Future<void> _onFollowSystemChanged(
@@ -179,6 +203,40 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
     return tokens.fold((_) => null, (found) {
       final made = paletteFromTokens(id, found);
       _palettes[id] = made;
+      return made;
+    });
+  }
+
+  /// The icon theme [id] with the SVGs it draws; read once and kept. `null`
+  /// when it cannot be read or is not one.
+  Future<KansoIconSet?> _iconSet(String id) async {
+    final known = _iconSets[id];
+    if (known != null) {
+      return known;
+    }
+    final themes = await _renderer.iconThemes();
+    final icons = await _renderer.iconThemeIcons(id);
+    final name = themes
+        .map(
+          (rows) => rows
+              .where((row) => row.id == id)
+              .map((row) => row.name)
+              .firstOrNull,
+        )
+        .getOrElse(() => null);
+    return icons.fold((_) => null, (found) {
+      if (name == null) {
+        return null;
+      }
+      final made = KansoIconSet(
+        id: id,
+        name: name,
+        svgs: <String, String>{
+          for (final icon in found)
+            if (icon.svg != null) icon.name: icon.svg!,
+        },
+      );
+      _iconSets[id] = made;
       return made;
     });
   }

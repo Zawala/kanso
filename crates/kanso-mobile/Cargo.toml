@@ -57,3 +57,8 @@ kanso-mobile = { path = ".", features = ["test-support"] }
 kanso-engine = { workspace = true, features = ["test-support"] }
 proptest.workspace = true
 tempfile.workspace = true
+
+[build-dependencies]
+# build.rs reads the built-in icon themes' JSON to pick the SVGs the phone
+# draws.
+serde_json.workspace = true

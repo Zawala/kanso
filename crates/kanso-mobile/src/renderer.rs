@@ -15,9 +15,11 @@ use kanso_render::{Failure, Job, Kind, Outcome, Palette, Rgb, html, render_block
 use crate::boundary::guard;
 use crate::builtin_themes;
 use crate::errors::KansoError;
+use crate::icons;
 use crate::library::{Inner, Library};
 use crate::model::{
-    BuiltinTheme, DiagramKind, PaletteDto, Range16, SpanRow, StyledRun, SvgRow, ThemeTokens,
+    BuiltinTheme, DiagramKind, IconThemeRow, PaletteDto, Range16, SpanRow, StyledRun, SvgRow,
+    ThemeTokens, ThemedIcon,
 };
 use crate::theme_tokens;
 
@@ -96,6 +98,19 @@ impl Renderer {
     /// and kept. [`KansoError::NotFound`] for an ID that isn't one.
     pub fn builtin_theme_tokens(id: String) -> Result<ThemeTokens, KansoError> {
         guard(|| builtin_themes::get(&id).map(|theme| theme.tokens.clone()))
+    }
+
+    /// The built-in icon themes, in the order of the desktop's Settings (Lucide,
+    /// Kanso's own, first), each with a few icons that show its look.
+    pub fn icon_themes() -> Result<Vec<IconThemeRow>, KansoError> {
+        guard(icons::all)
+    }
+
+    /// Every icon the app draws, as the built-in icon theme `id` draws it:
+    /// its SVG, or `None` where it leaves the icon out and Kanso's own Lucide
+    /// icon shows. [`KansoError::NotFound`] for an ID that isn't one.
+    pub fn icon_theme_icons(id: String) -> Result<Vec<ThemedIcon>, KansoError> {
+        guard(|| icons::icons_of(&id))
     }
 
     /// The runs of `text` between `start` and `end` (UTF-16 units) that the

@@ -207,6 +207,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
+  IconThemeRow dco_decode_icon_theme_row(dynamic raw);
+
+  @protected
   KansoError dco_decode_kanso_error(dynamic raw);
 
   @protected
@@ -223,6 +226,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<Hit> dco_decode_list_hit(dynamic raw);
+
+  @protected
+  List<IconThemeRow> dco_decode_list_icon_theme_row(dynamic raw);
 
   @protected
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
@@ -274,6 +280,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<TaskSection> dco_decode_list_task_section(dynamic raw);
+
+  @protected
+  List<ThemedIcon> dco_decode_list_themed_icon(dynamic raw);
 
   @protected
   LockEvent dco_decode_lock_event(dynamic raw);
@@ -409,6 +418,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   ThemeTokens dco_decode_theme_tokens(dynamic raw);
+
+  @protected
+  ThemedIcon dco_decode_themed_icon(dynamic raw);
 
   @protected
   Ticked dco_decode_ticked(dynamic raw);
@@ -609,6 +621,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
+  IconThemeRow sse_decode_icon_theme_row(SseDeserializer deserializer);
+
+  @protected
   KansoError sse_decode_kanso_error(SseDeserializer deserializer);
 
   @protected
@@ -627,6 +642,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<Hit> sse_decode_list_hit(SseDeserializer deserializer);
+
+  @protected
+  List<IconThemeRow> sse_decode_list_icon_theme_row(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<Uint8List> sse_decode_list_list_prim_u_8_strict(
@@ -682,6 +702,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<TaskSection> sse_decode_list_task_section(SseDeserializer deserializer);
+
+  @protected
+  List<ThemedIcon> sse_decode_list_themed_icon(SseDeserializer deserializer);
 
   @protected
   LockEvent sse_decode_lock_event(SseDeserializer deserializer);
@@ -821,6 +844,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   ThemeTokens sse_decode_theme_tokens(SseDeserializer deserializer);
+
+  @protected
+  ThemedIcon sse_decode_themed_icon(SseDeserializer deserializer);
 
   @protected
   Ticked sse_decode_ticked(SseDeserializer deserializer);
@@ -1054,6 +1080,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
+  void sse_encode_icon_theme_row(IconThemeRow self, SseSerializer serializer);
+
+  @protected
   void sse_encode_kanso_error(KansoError self, SseSerializer serializer);
 
   @protected
@@ -1076,6 +1105,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_list_hit(List<Hit> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_icon_theme_row(
+    List<IconThemeRow> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_list_prim_u_8_strict(
@@ -1143,6 +1178,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_list_task_section(
     List<TaskSection> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_themed_icon(
+    List<ThemedIcon> self,
     SseSerializer serializer,
   );
 
@@ -1295,6 +1336,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_theme_tokens(ThemeTokens self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_themed_icon(ThemedIcon self, SseSerializer serializer);
 
   @protected
   void sse_encode_ticked(Ticked self, SseSerializer serializer);

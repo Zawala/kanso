@@ -22,6 +22,7 @@ import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 
 import 'browse_blocs.dart';
 import 'fixture_library_repository.dart';
+import 'fixture_renderer_repository.dart';
 import 'register_page_blocs.dart';
 import 'seeded_appearance_bloc.dart';
 
@@ -45,7 +46,8 @@ class BrowseApp {
 
 /// Pumps the whole app, as `main` builds it but over the mock library, open
 /// at [at] in a window of [size], light. [library] is the library to use
-/// when a test has made one.
+/// when a test has made one; [renderer] likewise for the renderer the pages
+/// make their BLoCs on.
 ///
 /// [devicePixelRatio] and [safeArea] (in logical pixels) are the window's
 /// density and the status bar and home indicator the platform reports.
@@ -60,6 +62,7 @@ Future<BrowseApp> pumpBrowseApp(
   String at = '/notes',
   AppearanceState appearance = const AppearanceState(),
   FixtureLibraryRepository? library,
+  FixtureRendererRepository? renderer,
   double devicePixelRatio = 1,
   EdgeInsets safeArea = EdgeInsets.zero,
   bool? tabletDevice,
@@ -68,7 +71,7 @@ Future<BrowseApp> pumpBrowseApp(
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start(library);
-  registerPageBlocs(blocs.library, null, blocs.undoNotice);
+  registerPageBlocs(blocs.library, renderer, blocs.undoNotice);
   final padding = FakeViewPadding(
     left: safeArea.left * devicePixelRatio,
     top: safeArea.top * devicePixelRatio,

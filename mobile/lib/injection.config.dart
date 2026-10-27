@@ -52,6 +52,7 @@ import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 import 'search/state/search/search_bloc.dart' as _i696;
 import 'settings/state/about/about_bloc.dart' as _i380;
 import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
+import 'settings/state/icon_themes/icon_themes_bloc.dart' as _i636;
 import 'settings/state/licences/licences_bloc.dart' as _i570;
 import 'shell/state/library_pane/library_pane_bloc.dart' as _i612;
 import 'themes/state/theme_picker/theme_picker_bloc.dart' as _i149;
@@ -134,6 +135,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i732.RendererRepository>(
       () => _i820.RustRendererRepository(gh<_i832.KansoRenderer>()),
+    );
+    gh.factory<_i636.IconThemesBloc>(
+      () => _i636.IconThemesBloc(gh<_i732.RendererRepository>()),
     );
     gh.factory<_i149.ThemePickerBloc>(
       () => _i149.ThemePickerBloc(gh<_i732.RendererRepository>()),

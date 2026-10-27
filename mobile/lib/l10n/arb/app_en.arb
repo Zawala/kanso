@@ -323,6 +323,53 @@
   "@settingsFonts": {
     "description": "The settings row that opens the fonts of notes."
   },
+  "settingsIcons": "Icons",
+  "@settingsIcons": {
+    "description": "The settings row that opens the icon themes."
+  },
+  "iconsTitle": "Icons",
+  "@iconsTitle": {
+    "description": "The title of the page where the icon theme is chosen."
+  },
+  "iconsFooter": "The icon themes of the desktop app. Choosing one changes every icon at once; an icon a theme doesn’t draw stays Kanso’s own.",
+  "@iconsFooter": {
+    "description": "Explains the icon themes, under the list."
+  },
+  "iconsCredit": "{author}, {license}",
+  "@iconsCredit": {
+    "description": "Who made an icon theme and under which licence, when both are known.",
+    "placeholders": {
+      "author": {"type": "String"},
+      "license": {"type": "String"}
+    }
+  },
+  "iconsPreview": "Icons in {name}",
+  "@iconsPreview": {
+    "description": "Says to a screen reader what a row of sample icons shows.",
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "iconsLoading": "Loading icon themes",
+  "@iconsLoading": {
+    "description": "Says to a screen reader that the icon themes are being read."
+  },
+  "iconsFailedTitle": "The icon themes didn’t load",
+  "@iconsFailedTitle": {
+    "description": "The title of the card shown when the icon themes could not be read."
+  },
+  "iconsFailedMessage": "Something went wrong reading the icon themes. Try again.",
+  "@iconsFailedMessage": {
+    "description": "The message of the card shown when the icon themes could not be read."
+  },
+  "iconsEmptyTitle": "No icon themes",
+  "@iconsEmptyTitle": {
+    "description": "The title of the card shown when there are no icon themes to choose from."
+  },
+  "iconsEmptyMessage": "Kanso’s own icons are in use.",
+  "@iconsEmptyMessage": {
+    "description": "The message of the card shown when there are no icon themes to choose from."
+  },
   "settingsBack": "Back",
   "@settingsBack": {
     "description": "Goes back to the page before."
