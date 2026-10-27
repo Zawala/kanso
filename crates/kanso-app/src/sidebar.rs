@@ -1760,9 +1760,7 @@ pub(crate) fn tone_color(tone: Tone, colors: &Colors) -> Rgb {
     }
 }
 
-pub use kanso_engine::sync::words::{
-    SIGN_IN_TO_SYNC, WAITING_FOR_APPROVAL, problem_label, sync_line,
-};
+pub use kanso_engine::sync::words::{SIGN_IN_TO_SYNC, sync_line};
 
 /// Who the footer names: the account while signed in (or asked to sign in
 /// again), else this Mac's user.
@@ -1997,9 +1995,10 @@ pub(crate) fn mention_badge(unread: usize) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        SIGN_IN_TO_SYNC, SyncState, Tone, WAITING_FOR_APPROVAL, api_icon, footer_name, initials,
-        problem_label, status_choice_after, status_group_open, sync_line, tone_icon, visible_tags,
+        SIGN_IN_TO_SYNC, SyncState, Tone, api_icon, footer_name, initials, status_choice_after,
+        status_group_open, sync_line, tone_icon, visible_tags,
     };
+    use kanso_engine::sync::words::{WAITING_FOR_APPROVAL, problem_label};
     use std::collections::HashSet;
 
     use super::{BookFolds, flat_tag_ids, visible_book_rows, visible_tag_rows};

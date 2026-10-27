@@ -31,7 +31,9 @@ pub enum Route {
 /// The editor as a key finds it.
 #[derive(Clone, Debug)]
 pub struct Input<'a> {
+    /// The note's text, as it is now.
     pub text: &'a str,
+    /// Where the editor's selection is.
     pub selection: Selection,
     /// The editor's caret, which is the selection's end.
     pub caret: usize,
@@ -52,12 +54,14 @@ pub enum Keyed {
     /// Vim's, but a change or Insert mode in a read-only note: Vim is back
     /// in Normal mode with nothing pending, and the text stays as it is.
     Refused,
+    /// Vim's, with what to apply.
     Handled(Step),
 }
 
 /// A key Vim took.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Step {
+    /// What the key did.
     pub outcome: Outcome,
     /// Where Vim's cursor was in the text handed in: the selection's start,
     /// or the caret for none.
@@ -98,7 +102,9 @@ impl Step {
 /// session's mark (the cursor then) goes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Base {
+    /// The text before the command that began Insert mode.
     pub text: String,
+    /// Where the session's mark (the cursor then) goes in it.
     pub mark: usize,
 }
 
@@ -188,6 +194,7 @@ impl Session {
         Session::default()
     }
 
+    /// The mode the editor is in.
     pub fn mode(&self) -> Mode {
         self.vim.mode()
     }
