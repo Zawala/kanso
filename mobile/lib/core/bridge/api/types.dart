@@ -51,6 +51,26 @@ class BuiltinTheme {
           tokens == other.tokens;
 }
 
+class Changed {
+  final int count;
+  final int? undo;
+  final String message;
+
+  const Changed({required this.count, this.undo, required this.message});
+
+  @override
+  int get hashCode => count.hashCode ^ undo.hashCode ^ message.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Changed &&
+          runtimeType == other.runtimeType &&
+          count == other.count &&
+          undo == other.undo &&
+          message == other.message;
+}
+
 class ColorRow {
   final String name;
   final int rgb;

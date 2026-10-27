@@ -28,10 +28,11 @@ use crate::errors::KansoError;
 use crate::library::Library;
 use crate::matching::ranges;
 use crate::model::{
-    DateField, Hit, LibraryOverview, ListPlace, ListQuery, ListShape, LockState, NewNote,
+    Changed, DateField, Hit, LibraryOverview, ListPlace, ListQuery, ListShape, LockState, NewNote,
     NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, Property, PropertyKind,
     Saved, SearchScope, SortKey, Table, TableRow, TagRow,
 };
+use crate::undo::Undoable;
 
 impl Library {
     /// The notes a place lists, with the layout the desktop gives that list:
@@ -107,15 +108,17 @@ impl Library {
     }
 
     /// Makes one change to every note in `ids` in one write, and says how
-    /// many notes it wrote (none when they were already as asked). Pinning
-    /// pins them all, or unpins them when they are all pinned.
+    /// many notes it wrote (none when they were already as asked), the
+    /// sentence for the notice that offers Undo, and the ticket for
+    /// [`Library::undo`]. Pinning pins them all, or unpins them when they
+    /// are all pinned.
     ///
     /// Nothing is written when an ID isn't a note ([`KansoError::NotFound`]),
     /// or when unlocked notes would go into a locked notebook or a note
     /// would leave one ([`KansoError::Locked`]): those go one at a time, with
     /// the lock open, as on the desktop. A locked note can be pinned, trashed
     /// and moved between unlocked notebooks.
-    pub fn change(&self, ids: Vec<String>, change: NoteChange) -> Result<u32, KansoError> {
+    pub fn change(&self, ids: Vec<String>, change: NoteChange) -> Result<Changed, KansoError> {
         guard(|| {
             let store = &self.inner.store;
             let mut seen = std::collections::HashSet::new();
@@ -171,12 +174,26 @@ impl Library {
                 return Err(KansoError::Locked);
             }
             if edits.is_empty() {
-                return Ok(0);
+                return Ok(Changed::default());
             }
-            let count = edits.len() as u32;
-            let changes = edits.into_iter().map(|edit| edit.change).collect();
+            let count = edits.len();
+            let place = match &change {
+                Change::Move(book) => store
+                    .books()?
+                    .into_iter()
+                    .find(|b| &b.id == book)
+                    .map(|b| b.name)
+                    .unwrap_or_default(),
+                _ => String::new(),
+            };
+            let message = batch::summary(&change, count, &place, batch::turned_on(&change, &edits));
+            let changes = edits.iter().map(|edit| edit.change.clone()).collect();
             store.merge_many(DocType::Note, changes, Origin::Ui)?;
-            Ok(count)
+            Ok(Changed {
+                count: count as u32,
+                undo: Some(self.keep_undo(Undoable::Fields(edits))),
+                message,
+            })
         })
     }
 

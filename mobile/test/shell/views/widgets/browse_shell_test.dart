@@ -20,6 +20,7 @@ import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_drawer_scope.dart';
 import 'package:kanso/core/views/widgets/kanso_sheet.dart';
 import 'package:kanso/core/views/widgets/kanso_sidebar_row.dart';
@@ -50,7 +51,7 @@ Future<GoRouter> _pump(
   final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
   final blocs = await BrowseBlocs.start();
-  registerPageBlocs(blocs.library);
+  registerPageBlocs(blocs.library, null, blocs.undoNotice);
   tester.view
     ..physicalSize = size
     ..devicePixelRatio = 1;
@@ -74,6 +75,7 @@ Future<GoRouter> _pump(
         BlocProvider<SyncStatusBloc>.value(value: blocs.sync),
         BlocProvider<ListNavigationBloc>.value(value: blocs.listNavigation),
         BlocProvider<LibraryPaneBloc>.value(value: blocs.libraryPane),
+        BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
       ],
       child: App(router: kansoRouter),

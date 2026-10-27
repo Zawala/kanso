@@ -40,10 +40,18 @@ class FixtureLibraryRepository implements LibraryRepository {
       Right<ApplicationError, List<Hit>>(mockHits);
 
   /// What `change` answers.
-  Either<ApplicationError, int> changeResult =
-      const Right<ApplicationError, int>(
-        1,
+  Either<ApplicationError, Changed> changeResult =
+      const Right<ApplicationError, Changed>(
+        Changed(count: 1, undo: 1, message: 'Pinned 1 note.'),
       );
+
+  /// What `undo` answers.
+  Either<ApplicationError, int> undoResult = const Right<ApplicationError, int>(
+    1,
+  );
+
+  /// The tickets `undo` was asked to take back.
+  final List<int> undone = <int>[];
 
   /// When set, `list` waits for it: a list that is still loading.
   Completer<void>? listGate;
@@ -84,7 +92,13 @@ class FixtureLibraryRepository implements LibraryRepository {
       Right<ApplicationError, LibraryOverview>(overviewValue);
 
   @override
-  Future<Either<ApplicationError, int>> change(
+  Future<Either<ApplicationError, int>> undo(int ticket) async {
+    undone.add(ticket);
+    return undoResult;
+  }
+
+  @override
+  Future<Either<ApplicationError, Changed>> change(
     List<String> ids,
     NoteChange change,
   ) async {

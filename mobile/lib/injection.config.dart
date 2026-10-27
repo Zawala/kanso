@@ -46,6 +46,7 @@ import 'core/state/library_index/library_index_bloc.dart' as _i861;
 import 'core/state/list_navigation/list_navigation_bloc.dart' as _i907;
 import 'core/state/navigation_history/navigation_history_bloc.dart' as _i272;
 import 'core/state/sync_status/sync_status_bloc.dart' as _i185;
+import 'core/state/undo_notice/undo_notice_bloc.dart' as _i985;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 import 'search/state/search/search_bloc.dart' as _i696;
@@ -158,17 +159,16 @@ extension GetItInjectableX on _i174.GetIt {
     gh.factory<_i696.SearchBloc>(
       () => _i696.SearchBloc(gh<_i38.LibraryRepository>()),
     );
-    gh.factory<_i351.NoteListBloc>(
-      () => _i351.NoteListBloc(
-        gh<_i38.LibraryRepository>(),
-        gh<_i384.PreferencesRepository>(),
-        gh<_i1056.HapticsRepository>(),
-      ),
-    );
     gh.factory<_i618.NoteBloc>(
       () => _i618.NoteBloc(
         gh<_i38.LibraryRepository>(),
         gh<_i732.RendererRepository>(),
+      ),
+    );
+    gh.lazySingleton<_i985.UndoNoticeBloc>(
+      () => _i985.UndoNoticeBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i1056.HapticsRepository>(),
       ),
     );
     gh.lazySingleton<_i601.SyncRepository>(
@@ -179,6 +179,14 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i185.SyncStatusBloc>(
       () => _i185.SyncStatusBloc(gh<_i601.SyncRepository>()),
+    );
+    gh.factory<_i351.NoteListBloc>(
+      () => _i351.NoteListBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i384.PreferencesRepository>(),
+        gh<_i1056.HapticsRepository>(),
+        gh<_i985.UndoNoticeBloc>(),
+      ),
     );
     return this;
   }

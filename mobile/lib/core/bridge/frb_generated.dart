@@ -82,7 +82,7 @@ class KansoCore
 }
 
 abstract class KansoCoreApi extends BaseApi {
-  Future<int> crateApiLibraryKansoLibraryChange({
+  Future<Changed> crateApiLibraryKansoLibraryChange({
     required KansoLibrary that,
     required List<String> ids,
     required NoteChange change,
@@ -335,7 +335,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   });
 
   @override
-  Future<int> crateApiLibraryKansoLibraryChange({
+  Future<Changed> crateApiLibraryKansoLibraryChange({
     required KansoLibrary that,
     required List<String> ids,
     required NoteChange change,
@@ -358,7 +358,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_u_32,
+          decodeSuccessData: sse_decode_changed,
           decodeErrorData: sse_decode_kanso_error,
         ),
         constMeta: kCrateApiLibraryKansoLibraryChangeConstMeta,
@@ -2363,6 +2363,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  Changed dco_decode_changed(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return Changed(
+      count: dco_decode_u_32(arr[0]),
+      undo: dco_decode_opt_CastedPrimitive_u_64(arr[1]),
+      message: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
   ColorRow dco_decode_color_row(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2769,6 +2782,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   int? dco_decode_opt_CastedPrimitive_i_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_CastedPrimitive_i_64(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_CastedPrimitive_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_CastedPrimitive_u_64(raw);
   }
 
   @protected
@@ -3496,6 +3515,15 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  Changed sse_decode_changed(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_count = sse_decode_u_32(deserializer);
+    var var_undo = sse_decode_opt_CastedPrimitive_u_64(deserializer);
+    var var_message = sse_decode_String(deserializer);
+    return Changed(count: var_count, undo: var_undo, message: var_message);
+  }
+
+  @protected
   ColorRow sse_decode_color_row(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_name = sse_decode_String(deserializer);
@@ -4059,6 +4087,17 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_CastedPrimitive_i_64(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  int? sse_decode_opt_CastedPrimitive_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_CastedPrimitive_u_64(deserializer));
     } else {
       return null;
     }
@@ -4896,6 +4935,14 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_changed(Changed self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.count, serializer);
+    sse_encode_opt_CastedPrimitive_u_64(self.undo, serializer);
+    sse_encode_String(self.message, serializer);
+  }
+
+  @protected
   void sse_encode_color_row(ColorRow self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.name, serializer);
@@ -5351,6 +5398,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_opt_CastedPrimitive_u_64(
+    int? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_CastedPrimitive_u_64(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -5748,12 +5808,14 @@ class KansoLibraryImpl extends RustOpaque implements KansoLibrary {
         KansoCore.instance.api.rust_arc_decrement_strong_count_KansoLibraryPtr,
   );
 
-  Future<int> change({required List<String> ids, required NoteChange change}) =>
-      KansoCore.instance.api.crateApiLibraryKansoLibraryChange(
-        that: this,
-        ids: ids,
-        change: change,
-      );
+  Future<Changed> change({
+    required List<String> ids,
+    required NoteChange change,
+  }) => KansoCore.instance.api.crateApiLibraryKansoLibraryChange(
+    that: this,
+    ids: ids,
+    change: change,
+  );
 
   /// The IDs of what changed, in batches, until Dart stops listening.
   Stream<List<String>> changes() =>
@@ -5827,8 +5889,6 @@ class KansoLibraryImpl extends RustOpaque implements KansoLibrary {
     limit: limit,
   );
 
-  /// Ticks (or clears) a task in its note, in one write; the ticket takes
-  /// it back with `undo`.
   Future<Ticked> setTask({
     required String noteId,
     required int line,
@@ -5858,8 +5918,6 @@ class KansoLibraryImpl extends RustOpaque implements KansoLibrary {
   Future<void> trash({required String id}) => KansoCore.instance.api
       .crateApiLibraryKansoLibraryTrash(that: this, id: id);
 
-  /// Takes back the change kept under `ticket`; says how many notes it
-  /// wrote.
   Future<int> undo({required int ticket}) => KansoCore.instance.api
       .crateApiLibraryKansoLibraryUndo(that: this, ticket: ticket);
 }

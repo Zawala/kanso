@@ -507,6 +507,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noteListDismiss => 'OK';
 
   @override
+  String get undoNoticeUndo => 'Undo';
+
+  @override
   String get noteLoading => 'Loading the note';
 
   @override

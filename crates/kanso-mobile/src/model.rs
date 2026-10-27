@@ -204,6 +204,19 @@ pub struct NewNote {
     pub body: String,
 }
 
+/// What a change to several notes did.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Changed {
+    /// How many notes were written (none when they were already as asked).
+    pub count: u32,
+    /// The ticket that takes the change back (`Library::undo`); none when
+    /// nothing was written.
+    pub undo: Option<u64>,
+    /// What the notice says, like the desktop's ("Moved 3 notes to the
+    /// trash."); empty when nothing was written.
+    pub message: String,
+}
+
 /// What ticking (or clearing) a task did.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ticked {

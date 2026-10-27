@@ -2351,6 +2351,12 @@ const _: fn() = || {
         let _: crate::api::types::ThemeTokens = BuiltinTheme.tokens;
     }
     {
+        let Changed = None::<crate::api::types::Changed>.unwrap();
+        let _: u32 = Changed.count;
+        let _: Option<u64> = Changed.undo;
+        let _: String = Changed.message;
+    }
+    {
         let ColorRow = None::<crate::api::types::ColorRow>.unwrap();
         let _: String = ColorRow.name;
         let _: u32 = ColorRow.rgb;
@@ -2815,6 +2821,20 @@ impl SseDecode for crate::api::types::BuiltinTheme {
             source: var_source,
             dark: var_dark,
             tokens: var_tokens,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::Changed {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_count = <u32>::sse_decode(deserializer);
+        let mut var_undo = <Option<u64>>::sse_decode(deserializer);
+        let mut var_message = <String>::sse_decode(deserializer);
+        return crate::api::types::Changed {
+            count: var_count,
+            undo: var_undo,
+            message: var_message,
         };
     }
 }
@@ -3472,6 +3492,17 @@ impl SseDecode for Option<i64> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<i64>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<u64>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -4317,6 +4348,28 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::BuiltinThem
     for crate::api::types::BuiltinTheme
 {
     fn into_into_dart(self) -> FrbWrapper<crate::api::types::BuiltinTheme> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::Changed> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.count.into_into_dart().into_dart(),
+            self.0.undo.into_into_dart().into_dart(),
+            self.0.message.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::Changed>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::Changed>>
+    for crate::api::types::Changed
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::Changed> {
         self.into()
     }
 }
@@ -5577,6 +5630,15 @@ impl SseEncode for crate::api::types::BuiltinTheme {
     }
 }
 
+impl SseEncode for crate::api::types::Changed {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u32>::sse_encode(self.count, serializer);
+        <Option<u64>>::sse_encode(self.undo, serializer);
+        <String>::sse_encode(self.message, serializer);
+    }
+}
+
 impl SseEncode for crate::api::types::ColorRow {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6118,6 +6180,16 @@ impl SseEncode for Option<i64> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <i64>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <u64>::sse_encode(value, serializer);
         }
     }
 }
