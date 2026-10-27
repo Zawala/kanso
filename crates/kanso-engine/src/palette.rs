@@ -512,20 +512,29 @@ mod tests {
         fn prop_sections_are_ranked_best_first(query in "[a-z]{1,4}") {
             let ctx = context(open(false, false, false));
             for section in search(&query, &ctx) {
+                // Notes carry Open Note's own score, which also matches the
+                // text, so a listed note need not have the query in its
+                // title. The claims here are about the commands.
                 let scores: Vec<Option<i64>> = section
                     .entries
                     .iter()
-                    .map(|e| {
-                        let keywords: &[&str] = match &e.target {
-                            Target::Command { id, .. } => command(id).map_or(&[], |c| c.keywords),
-                            _ => &[],
-                        };
-                        item_score(&query, &e.label, keywords)
+                    .filter(|e| matches!(e.target, Target::Command { .. }))
+                    .map(|e| match &e.target {
+                        Target::Command { id, .. } => {
+                            let keywords = command(id).map_or(&[][..], |c| c.keywords);
+                            item_score(&query, &e.label, keywords)
+                        }
+                        _ => None,
                     })
                     .collect();
+                prop_assert!(
+                    scores.iter().all(Option::is_some),
+                    "{} has an unranked command: {:?}",
+                    section.label,
+                    scores
+                );
                 let fitting: Vec<i64> = scores.iter().flatten().copied().collect();
                 prop_assert!(fitting.windows(2).all(|w| w[0] >= w[1]), "{:?}", scores);
-                prop_assert!(scores.iter().all(Option::is_some));
             }
         }
     }

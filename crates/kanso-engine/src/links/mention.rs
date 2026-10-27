@@ -63,17 +63,22 @@ mod tests {
     use kanso_core::links::note_links;
     use proptest::prelude::*;
 
-    fn store() -> (tempfile::TempDir, Store) {
+    fn store() -> (tempfile::TempDir, Store, String) {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path().join("kanso.db")).unwrap();
-        (dir, store)
+        // A note needs a book that exists (the store checks the reference).
+        let book = store
+            .put(DocType::Book, json!({"name": "B"}), Put::Upsert, Origin::Ui)
+            .unwrap()
+            .id;
+        (dir, store, book)
     }
 
-    fn put(store: &Store, title: &str, body: &str) -> String {
+    fn put(store: &Store, book: &str, title: &str, body: &str) -> String {
         store
             .put(
                 DocType::Note,
-                json!({"title": title, "body": body}),
+                json!({"title": title, "body": body, "bookId": book}),
                 Put::Upsert,
                 Origin::Ui,
             )
@@ -94,14 +99,14 @@ mod tests {
             lead in "[a-z]{0,6} ",
             tail in " [a-z]{0,6}",
         ) {
-            let (_dir, store) = store();
-            let target = put(&store, &title, "");
+            let (_dir, store, book) = store();
+            let target = put(&store, &book, &title, "");
             let line = format!("{lead}{}{tail}", title.to_lowercase());
             let mut lines = before.clone();
             lines.push(line.clone());
             lines.extend(after.clone());
             let body = lines.join("\n");
-            let mention = put(&store, "Other", &body);
+            let mention = put(&store, &book, "Other", &body);
             let at = before.len() as u32;
             let rev = link_mention(&store, &target, &mention, at).unwrap();
             prop_assert!(rev.is_some());
@@ -130,9 +135,9 @@ mod tests {
             body in "[0-9 ]{0,20}(\n[0-9 ]{0,10}){0,3}",
             line in 0u32..6,
         ) {
-            let (_dir, store) = store();
-            let target = put(&store, &title, "");
-            let mention = put(&store, "Other", &body);
+            let (_dir, store, book) = store();
+            let target = put(&store, &book, &title, "");
+            let mention = put(&store, &book, "Other", &body);
             let before = store.note(&mention).unwrap().unwrap();
             prop_assert_eq!(link_mention(&store, &target, &mention, line).unwrap(), None);
             let after = store.note(&mention).unwrap().unwrap();
@@ -145,10 +150,11 @@ mod tests {
     // tests above cover the shape for any text.
     #[test]
     fn the_mention_keeps_its_case_and_neighbours() {
-        let (_dir, store) = store();
-        let target = put(&store, "Zettelkasten", "");
+        let (_dir, store, book) = store();
+        let target = put(&store, &book, "Zettelkasten", "");
         let mention = put(
             &store,
+            &book,
             "Other",
             "intro\nI use my zettelkasten daily.\noutro",
         );

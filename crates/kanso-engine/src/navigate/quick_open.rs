@@ -281,10 +281,20 @@ mod tests {
     use super::*;
     use crate::navigate::model::OpenedNote;
 
-    fn store() -> (tempfile::TempDir, Store) {
+    fn store() -> (tempfile::TempDir, Store, String) {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path().join("kanso.db")).unwrap();
-        (dir, store)
+        // A note needs a book that exists (the store checks the reference).
+        let inbox = store
+            .put(
+                DocType::Book,
+                json!({"name": "Inbox"}),
+                Put::Upsert,
+                Origin::Ui,
+            )
+            .unwrap()
+            .id;
+        (dir, store, inbox)
     }
 
     fn put(store: &Store, title: &str, body: &str, book: &str) -> String {
@@ -327,10 +337,10 @@ mod tests {
             library in notes(),
             query in prop_oneof![Just(String::new()), words(), "[a-z]{1,3}"],
         ) {
-            let (_dir, store) = store();
+            let (_dir, store, inbox) = store();
             let mut trashed = HashSet::new();
             for (title, heading, in_trash) in &library {
-                let book = if *in_trash { "trash" } else { "book:inbox" };
+                let book = if *in_trash { "trash" } else { inbox.as_str() };
                 let id = put(&store, &title.join(" "), &format!("# {heading}\ntext"), book);
                 if *in_trash {
                     trashed.insert(id);
@@ -360,9 +370,9 @@ mod tests {
         /// Notes whose titles have the words come before the rest.
         #[test]
         fn prop_title_matches_come_first(library in notes(), word in words()) {
-            let (_dir, store) = store();
+            let (_dir, store, inbox) = store();
             for (title, heading, _) in &library {
-                put(&store, &title.join(" "), &format!("# {heading}\nthe {word} in text"), "book:inbox");
+                put(&store, &title.join(" "), &format!("# {heading}\nthe {word} in text"), &inbox);
             }
             let found = search(&store, &word, false, &LockedNotes::closed()).unwrap();
             let titled = |n: &NoteHit| n.title.to_lowercase().contains(&word);
@@ -377,9 +387,9 @@ mod tests {
     // the sections say so; one fixed library.
     #[test]
     fn nothing_typed_lists_recent_notes_and_a_query_lists_notes_then_headings() {
-        let (_dir, store) = store();
-        let first = put(&store, "First", "# Plan\nx", "book:inbox");
-        let second = put(&store, "Second", "# Plans\nx", "book:inbox");
+        let (_dir, store, inbox) = store();
+        let first = put(&store, "First", "# Plan\nx", &inbox);
+        let second = put(&store, "Second", "# Plans\nx", &inbox);
         let found = search(&store, "", true, &LockedNotes::closed()).unwrap();
         assert_eq!(found.notes.len(), 2);
         let listed = sections("", &found, Some(&second), &[]);
@@ -408,7 +418,7 @@ mod tests {
     // no-prop-test: one opened note's headings found after a fixed query.
     #[test]
     fn an_opened_notes_headings_are_found() {
-        let (_dir, store) = store();
+        let (_dir, store, _inbox) = store();
         let locks = LockedNotes {
             opened: vec![OpenedNote {
                 id: "note:locked".into(),
