@@ -33,6 +33,36 @@ fn tree(library: &Library) -> std::collections::HashMap<&'static str, String> {
     ids
 }
 
+/// The IDs of the notebooks `id` is inside, nearest last: the tree `tree`
+/// builds.
+fn ancestors(ids: &std::collections::HashMap<&'static str, String>, id: &str) -> Vec<String> {
+    let parents = [("a1", "a"), ("a1x", "a1"), ("b1", "b")];
+    let mut here = ids
+        .iter()
+        .find(|(_, value)| value.as_str() == id)
+        .map(|(name, _)| *name);
+    let mut out = Vec::new();
+    while let Some(child) = here {
+        let Some((_, parent)) = parents.iter().find(|(name, _)| *name == child) else {
+            break;
+        };
+        out.push(ids[parent].clone());
+        here = Some(parent);
+    }
+    out
+}
+
+/// The tag names a tag is nested inside, from its name.
+fn tag_ancestors(name: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    for (at, ch) in name.char_indices() {
+        if ch == '/' {
+            out.push(&name[..at]);
+        }
+    }
+    out
+}
+
 // no-prop-test: a fixed tree, walked through folding and showing; the
 // invariants over any tree are below.
 #[test]
@@ -92,7 +122,8 @@ proptest! {
 
     /// Invariants over any folds: every shown row's parent shows and is
     /// open; toggling twice leaves the notebook's openness as it was; the
-    /// notebook showing is always shown.
+    /// notebook showing shows unless one of the notebooks around it was
+    /// folded with its arrow while it showed.
     #[test]
     fn prop_folds_show_only_what_is_open(
         open in proptest::collection::btree_set(0usize..5, 0..5),
@@ -123,7 +154,18 @@ proptest! {
             prop_assert!(!v.open || v.parent);
         }
         if let Some(showing) = &showing {
-            prop_assert!(shown_ids.contains(showing.as_str()));
+            let folded_here = folds.folded_at.as_deref() == Some(showing.as_str());
+            let hidden = ancestors(&ids, showing).iter().any(|above| {
+                folded_here
+                    && folds.folded.iter().any(|folded| folded == above)
+                    && !folds.open.iter().any(|open| open == above)
+            });
+            prop_assert_eq!(
+                shown_ids.contains(showing.as_str()),
+                !hidden,
+                "{} hidden by a folded notebook around it",
+                showing
+            );
         }
         // Two taps on one arrow are no change to what shows.
         let target = id(0);
@@ -296,7 +338,18 @@ proptest! {
         }
         for tag in &tags {
             let chip = every.chips.iter().any(|c| c.id == tag.id);
-            prop_assert!(chip || in_tree.contains(tag.id.as_str()), "{} nowhere", tag.name);
+            // A level folded above a nested tag still holds it: unfolding its
+            // row shows the tag, as the desktop's tree does.
+            let reachable = every.tree.iter().any(|row| {
+                tag_ancestors(&tag.name)
+                    .iter()
+                    .any(|above| above.eq_ignore_ascii_case(&row.path))
+            });
+            prop_assert!(
+                chip || in_tree.contains(tag.id.as_str()) || reachable,
+                "{} nowhere",
+                tag.name
+            );
         }
         let places = library.tag_places(all, Some(selected.clone()), vec![], None).unwrap();
         if !all {

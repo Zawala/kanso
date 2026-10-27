@@ -121,4 +121,86 @@ abstract interface class LibraryRepository {
   /// The IDs of what changed, in batches, as it is written: by this phone, a
   /// sync or the background.
   Stream<List<String>> changes();
+
+  /// The statuses a note can have, and what the desktop calls them.
+  Future<Either<ApplicationError, List<StatusChoice>>> statuses();
+
+  /// Deletes every note in the trash for good; how many.
+  Future<Either<ApplicationError, int>> emptyTrash();
+
+  /// Copies note [id] as the desktop does: its text, notebook, tags and
+  /// status, titled "(copy)".
+  Future<Either<ApplicationError, Saved>> duplicate(String id);
+
+  /// The wiki-link to note [id] to paste elsewhere, and what to say.
+  Future<Either<ApplicationError, CopiedLink>> noteLink(
+    String id, {
+    required bool kanso,
+  });
+
+  /// The notebook rows that show with [folds] applied, around [showing].
+  Future<Either<ApplicationError, List<VisibleNotebook>>> visibleNotebooks(
+    FoldState folds, {
+    String? showing,
+  });
+
+  /// The folds after a tap on notebook [id]'s arrow.
+  Future<Either<ApplicationError, FoldState>> toggleFold(
+    FoldState folds,
+    String id, {
+    String? showing,
+  });
+
+  /// The tag chips and the nested tag tree, folded as [openPaths] say.
+  Future<Either<ApplicationError, TagPlaces>> tagPlaces({
+    required bool all,
+    required List<String> openPaths,
+    String? selected,
+    String? showing,
+  });
+
+  /// Renames notebook [id]; names needn't be unique.
+  Future<Either<ApplicationError, Unit>> renameNotebook(String id, String name);
+
+  /// Deletes notebook [id] and what is inside it.
+  Future<Either<ApplicationError, Unit>> deleteNotebook(String id);
+
+  /// Sets notebook [id]'s icon, or takes its own away with null.
+  Future<Either<ApplicationError, Unit>> setNotebookIcon(
+    String id,
+    String? icon,
+  );
+
+  /// Sets notebook [id]'s colour (`#RRGGBB`), or takes its own away.
+  Future<Either<ApplicationError, Unit>> setNotebookColor(
+    String id,
+    String? color,
+  );
+
+  /// Names a tag [name], making it.
+  Future<Either<ApplicationError, TagRow>> createTag(String name);
+
+  /// Renames tag [id]; names needn't be unique.
+  Future<Either<ApplicationError, Unit>> renameTag(String id, String name);
+
+  /// Deletes tag [id], and takes it off the notes that had it.
+  Future<Either<ApplicationError, Unit>> deleteTag(String id);
+
+  /// Sets tag [id]'s colour (`red`, `default`, ...).
+  Future<Either<ApplicationError, Unit>> setTagColor(String id, String color);
+
+  /// The notebook icons matching [query].
+  Future<Either<ApplicationError, List<IconChoice>>> notebookIcons(
+    String query,
+  );
+
+  /// The notebook colours the desktop offers.
+  Future<Either<ApplicationError, List<ColorChoice>>> notebookColors();
+
+  /// The tag colours the desktop offers.
+  Future<Either<ApplicationError, List<ColorChoice>>> tagColors();
+
+  /// `#rrggbb` for [text] when it spells a colour (`#rgb`, `#rrggbb`, the
+  /// `#` optional and any case), or null when it does not.
+  String? parseColor(String text);
 }

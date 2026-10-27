@@ -11,23 +11,24 @@ use flutter_rust_bridge::frb;
 pub use kanso_mobile::{
     AccountDetails, AccountState, AccountStep, ApprovalPhase, ApprovalPrompt, ApprovalWait,
     AttachmentFile, BindingAnswer, BindingQuestion, BuiltinTheme, CaptureOutcome, Changed,
-    ColorRow, CommentPlacement, CommentRow, Completion, CompletionItem, CompletionKind, CursorMark,
-    DateField, DeviceRow, DiagramKind, DiagramRenderer, DropsSaved, DueTone, EditCommand,
-    EditOutcome, EditorContext, EditorEvent, EditorRun, EditorSnapshot, FormatKind, GalleryColors,
-    GalleryItem, GalleryKind, HistoryState, Hit, IconThemeRow, ImportEvent, ImportFound,
-    ImportPhase, ImportProgress, ImportSource, ImportSummary, InvitationRow, JoinRow, KansoError,
-    LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveStatus,
-    LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MemberRow, MentionSpan,
-    NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, OpenedDocuments,
-    OpenedFile, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind, PasskeyRow,
-    PersonLookup, PersonRow, PreviewLink, PreviewOptions, PromptState, Property, PropertyKind,
-    ProviderEvent, ProviderKind, QuotaLimit, Range16, RecoveryKeyText, Replacement, RunBatch,
-    SaveState, Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo,
-    ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow, StatusCount, StyledRun,
-    SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow,
-    SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagRow,
-    TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange, ThemeTokens,
-    ThemedIcon, Ticked,
+    ColorChoice, ColorRow, CommentPlacement, CommentRow, Completion, CompletionItem,
+    CompletionKind, CopiedLink, CursorMark, DateField, DeviceRow, DiagramKind, DiagramRenderer,
+    DropsSaved, DueTone, EditCommand, EditOutcome, EditorContext, EditorEvent, EditorRun,
+    EditorSnapshot, FoldState, FormatKind, GalleryColors, GalleryItem, GalleryKind, HistoryState,
+    Hit, IconChoice, IconThemeRow, ImportEvent, ImportFound, ImportPhase, ImportProgress,
+    ImportSource, ImportSummary, InvitationRow, JoinRow, KansoError, LibraryOverview, LinkTarget,
+    LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveStatus, LocalTime, LockEvent,
+    LockReason, LockState, LockStatus, LockedInfo, MemberRow, MentionSpan, NewNote, NoteChange,
+    NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, OpenedDocuments, OpenedFile,
+    PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind, PasskeyRow, PersonLookup,
+    PersonRow, PreviewLink, PreviewOptions, PromptState, Property, PropertyKind, ProviderEvent,
+    ProviderKind, QuotaLimit, Range16, RecoveryKeyText, Replacement, RunBatch, SaveState, Saved,
+    SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo, ShareLinkRow, ShareRole,
+    SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow, StatusChoice, StatusCount,
+    StyledRun, SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow,
+    SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow,
+    TagPlaces, TagRow, TagTreeRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection,
+    TextChange, ThemeTokens, ThemedIcon, Ticked, VisibleNotebook,
 };
 
 #[frb(mirror(KansoError))]
@@ -280,6 +281,62 @@ pub struct _TagRow {
     pub name: String,
     pub color: u32,
     pub count: u32,
+}
+
+#[frb(mirror(StatusChoice))]
+pub struct _StatusChoice {
+    pub status: String,
+    pub label: String,
+}
+
+#[frb(mirror(ColorChoice))]
+pub struct _ColorChoice {
+    pub name: String,
+    pub rgb: u32,
+}
+
+#[frb(mirror(IconChoice))]
+pub struct _IconChoice {
+    pub name: String,
+    pub label: String,
+}
+
+#[frb(mirror(FoldState))]
+pub struct _FoldState {
+    pub open: Vec<String>,
+    pub folded_at: Option<String>,
+    pub folded: Vec<String>,
+}
+
+#[frb(mirror(VisibleNotebook))]
+pub struct _VisibleNotebook {
+    pub row: NotebookRow,
+    pub open: bool,
+    pub parent: bool,
+}
+
+#[frb(mirror(TagTreeRow))]
+pub struct _TagTreeRow {
+    pub path: String,
+    pub label: String,
+    pub tag_id: Option<String>,
+    pub count: u32,
+    pub depth: u32,
+    pub parent: bool,
+    pub open: bool,
+}
+
+#[frb(mirror(TagPlaces))]
+pub struct _TagPlaces {
+    pub chips: Vec<TagRow>,
+    pub more: bool,
+    pub tree: Vec<TagTreeRow>,
+}
+
+#[frb(mirror(CopiedLink))]
+pub struct _CopiedLink {
+    pub text: String,
+    pub message: String,
 }
 
 #[frb(mirror(Hit))]

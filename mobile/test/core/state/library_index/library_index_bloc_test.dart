@@ -16,7 +16,13 @@ import 'package:mocktail/mocktail.dart';
 import '../../../helpers/library_fixtures.dart';
 import '../../../helpers/mock_repositories.dart';
 
-const _overview = LibraryOverview(all: 7, pinned: 2, recent: 3, trash: 1);
+const _overview = LibraryOverview(
+  all: 7,
+  pinned: 2,
+  recent: 3,
+  trash: 1,
+  byStatus: <StatusCount>[],
+);
 const _failure = ApplicationError.storage(message: 'Disk error.');
 
 void main() {
@@ -25,6 +31,12 @@ void main() {
   var notebooks = <NotebookRow>[];
   var tags = <TagRow>[];
   var overview = _overview;
+
+  setUpAll(() {
+    registerFallbackValue(
+      const FoldState(open: <String>[], folded: <String>[]),
+    );
+  });
 
   setUp(() {
     notebooks = <NotebookRow>[
@@ -48,6 +60,35 @@ void main() {
     );
     when(() => library.overdueTasks()).thenAnswer(
       (_) async => const Right<ApplicationError, int>(2),
+    );
+    when(() => library.statuses()).thenAnswer(
+      (_) async =>
+          const Right<ApplicationError, List<StatusChoice>>(<StatusChoice>[]),
+    );
+    // The bloc reads the tree for whatever it is about to show; the rows
+    // themselves are the engine's to decide, so these stay empty here.
+    when(
+      () => library.visibleNotebooks(any(), showing: any(named: 'showing')),
+    ).thenAnswer(
+      (_) async => const Right<ApplicationError, List<VisibleNotebook>>(
+        <VisibleNotebook>[],
+      ),
+    );
+    when(
+      () => library.tagPlaces(
+        all: any(named: 'all'),
+        selected: any(named: 'selected'),
+        openPaths: any(named: 'openPaths'),
+        showing: any(named: 'showing'),
+      ),
+    ).thenAnswer(
+      (_) async => const Right<ApplicationError, TagPlaces>(
+        TagPlaces(
+          chips: <TagRow>[],
+          more: false,
+          tree: <TagTreeRow>[],
+        ),
+      ),
     );
   });
 
@@ -94,6 +135,7 @@ void main() {
           pinned: 0,
           recent: 0,
           trash: 0,
+          byStatus: <StatusCount>[],
         );
       },
       build: build,
@@ -194,6 +236,7 @@ void main() {
           pinned: 2,
           recent: 4,
           trash: 1,
+          byStatus: <StatusCount>[],
         );
         notebooks = <NotebookRow>[
           ...notebooks,

@@ -180,7 +180,7 @@ void main() {
             name: 'Vault',
             count: 1,
             locked: true,
-            depth: 0,
+            depth: 0, hasChildren: false,
           ),
         ];
       final blocs = await BrowseBlocs.start(library);

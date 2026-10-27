@@ -66,11 +66,27 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<NotebookRow> createNotebook({required String name, String? parentId});
 
+  /// Names a tag `name`, making it; returns the tag.
+  Future<TagRow> createTag({required String name});
+
   /// Deletes a backup made with `back_up_now`; refuses any other.
   Future<void> deleteBackup({required String path});
 
+  /// Deletes notebook `id` and the notebooks inside it, as the desktop
+  /// does; its notes and anything under its lock need opening first.
+  Future<void> deleteNotebook({required String id});
+
+  /// Deletes tag `id`, and takes it off the notes that had it.
+  Future<void> deleteTag({required String id});
+
+  /// Copies note `id` as the desktop does; returns the copy.
+  Future<Saved> duplicate({required String id});
+
   /// Opens note `id` for editing. Locked while it is locked and closed.
   Future<KansoEditor> edit({required String id});
+
+  /// Deletes every note in the trash for good; says how many.
+  Future<int> emptyTrash();
 
   KansoGallery gallery();
 
@@ -97,6 +113,19 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<NoteView> note({required String id});
 
+  /// The wiki-link to note `id` to paste elsewhere, and what to say.
+  Future<CopiedLink> noteLink({required String id, required bool kanso});
+
+  /// The notebook colours the desktop offers.
+  static List<ColorChoice> notebookColors() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryNotebookColors();
+
+  /// The notebook icons matching `query`, in the catalogue's order.
+  static List<IconChoice> notebookIcons({required String query}) => KansoCore
+      .instance
+      .api
+      .crateApiLibraryKansoLibraryNotebookIcons(query: query);
+
   Future<List<NotebookRow>> notebooks();
 
   /// Opens (creating if needed) the library whose database file is `path`.
@@ -117,9 +146,19 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<LibraryOverview> overview();
 
+  /// `#RRGGBB` for `text`, or null when it isn't a colour.
+  static String? parseColor({required String text}) =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryParseColor(text: text);
+
   Future<List<Property>> properties({required String id});
 
   Future<Table> queryView({required String source, String? selfId});
+
+  /// Renames notebook `id`; names needn't be unique.
+  Future<void> renameNotebook({required String id, required String name});
+
+  /// Renames tag `id`; names needn't be unique.
+  Future<void> renameTag({required String id, required String name});
 
   KansoRenderer renderer();
 
@@ -158,6 +197,17 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required int limit,
   });
 
+  /// Sets notebook `id`'s colour to `color` (`#RRGGBB`), or takes its own
+  /// colour away with null.
+  Future<void> setNotebookColor({required String id, String? color});
+
+  /// Sets notebook `id`'s icon to the Lucide icon named `icon`, or takes
+  /// its own icon away with null.
+  Future<void> setNotebookIcon({required String id, String? icon});
+
+  /// Sets tag `id`'s colour to `color` (`red`, `default`, ...).
+  Future<void> setTagColor({required String id, required String color});
+
   Future<Ticked> setTask({
     required String noteId,
     required int line,
@@ -167,7 +217,23 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   KansoShared shared();
 
+  /// The statuses a note can have, and what the desktop calls them.
+  static List<StatusChoice> statuses() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryStatuses();
+
   KansoSync syncing();
+
+  /// The tag colours the desktop offers.
+  static List<ColorChoice> tagColors() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryTagColors();
+
+  /// The sidebar's tag chips and nested tag tree.
+  Future<TagPlaces> tagPlaces({
+    required bool all,
+    String? selected,
+    required List<String> openPaths,
+    String? showing,
+  });
 
   Future<List<TagRow>> tags();
 
@@ -178,6 +244,13 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// The ID of today's daily note at the phone's local time `now`, made
   /// if it isn't there.
   Future<String> todayNote({required LocalTime now});
+
+  /// The folds after a tap on notebook `id`'s arrow.
+  Future<FoldState> toggleFold({
+    required FoldState folds,
+    required String id,
+    String? showing,
+  });
 
   /// Ticks (or clears) the `index`-th task box of a note drawn at
   /// `base_rev`.
@@ -190,4 +263,11 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   Future<void> trash({required String id});
 
   Future<int> undo({required int ticket});
+
+  /// The notebook rows that show with `folds` applied, around the notebook
+  /// showing.
+  Future<List<VisibleNotebook>> visibleNotebooks({
+    required FoldState folds,
+    String? showing,
+  });
 }

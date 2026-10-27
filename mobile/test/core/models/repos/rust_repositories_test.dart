@@ -140,7 +140,7 @@ void main() {
         parentId: 'b_1',
         count: 0,
         locked: false,
-        depth: 1,
+        depth: 1, hasChildren: false,
       );
       when(
         () => library.createNotebook(name: 'Plans', parentId: 'b_1'),
