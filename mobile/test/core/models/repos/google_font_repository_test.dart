@@ -11,9 +11,11 @@ import 'package:kanso/core/models/data/library_folder.dart';
 import 'package:kanso/core/models/repos/impl/file_google_font_repository.dart';
 import 'package:kanso/core/models/repos/impl/google_font_source.dart';
 
+final List<int> _trueType = <int>[0, 1, 0, 0, ...List<int>.filled(32, 7)];
+
 class FakeGoogleFontSource implements GoogleFontSource {
   int downloads = 0;
-  List<int> bytes = <int>[1, 2, 3, 4];
+  List<int> bytes = _trueType;
   Exception? failure;
 
   @override
@@ -95,6 +97,40 @@ void main() {
         await File('${folder.path}/fonts/lora.ttf').readAsBytes(),
         source.bytes,
       );
+    });
+
+    test('rejects a web-only font and leaves no cache', () async {
+      source.bytes = <int>[0x77, 0x4f, 0x46, 0x32, ...List<int>.filled(32, 1)];
+      final result = await repository.load('Lora');
+      expect(result.isLeft(), isTrue);
+      expect(
+        result.fold((error) => error is InvalidError, (_) => false),
+        isTrue,
+      );
+      expect(registrar.families, isEmpty);
+      expect(
+        File('${folder.path}/fonts/lora.ttf').existsSync(),
+        isFalse,
+      );
+    });
+
+    test('replaces an unusable cached file with a fresh download', () async {
+      final cache = File('${folder.path}/fonts/lora.ttf');
+      await cache.parent.create(recursive: true);
+      await cache.writeAsBytes(<int>[
+        0x77,
+        0x4f,
+        0x46,
+        0x32,
+        ...List<int>.filled(32, 1),
+      ]);
+
+      expect(
+        await repository.load('Lora'),
+        const Right<ApplicationError, String>('Lora'),
+      );
+      expect(source.downloads, 1);
+      expect(await cache.readAsBytes(), _trueType);
     });
 
     test('returns a network failure without claiming a cached font', () async {

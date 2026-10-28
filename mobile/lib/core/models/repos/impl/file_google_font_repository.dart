@@ -57,15 +57,30 @@ class FileGoogleFontRepository implements GoogleFontRepository {
     }
     final file = File(p.join(_folder.path, 'fonts', '${_cacheKey(name)}.ttf'));
     try {
-      List<int> bytes;
+      List<int>? bytes;
       if (file.existsSync()) {
         bytes = await file.readAsBytes();
-      } else {
+        if (!isFlutterFontFile(bytes)) {
+          // A cache written by an older build may hold WOFF or EOT. It is
+          // not usable by the engine, so replace it instead of failing every
+          // launch with the same bad file.
+          await file.delete();
+          bytes = null;
+        }
+      }
+      if (bytes == null) {
         bytes = await _source.download(name);
         if (bytes.isEmpty) {
           return const Left<ApplicationError, String>(
             ApplicationError.network(
               message: 'Google Fonts returned an empty file.',
+            ),
+          );
+        }
+        if (!isFlutterFontFile(bytes)) {
+          return const Left<ApplicationError, String>(
+            ApplicationError.invalid(
+              message: 'Google Fonts returned a format Flutter cannot load.',
             ),
           );
         }
@@ -82,6 +97,10 @@ class FileGoogleFontRepository implements GoogleFontRepository {
         ApplicationError.network(message: error.message),
       );
     } on HttpException catch (error) {
+      return Left<ApplicationError, String>(
+        ApplicationError.invalid(message: error.message),
+      );
+    } on FormatException catch (error) {
       return Left<ApplicationError, String>(
         ApplicationError.invalid(message: error.message),
       );
