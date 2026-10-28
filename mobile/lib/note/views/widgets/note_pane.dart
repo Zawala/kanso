@@ -19,6 +19,8 @@ import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
 import '../../../editor/views/widgets/note_editor_pane.dart';
+import '../../../journal/views/widgets/journal_opener.dart';
+import '../../../journal/views/widgets/note_journal_actions.dart';
 import '../../../lock/views/widgets/privacy_cover_sync.dart';
 import '../../../sharing/state/comments/comments_bloc.dart';
 import '../../../sharing/state/shared_note_status/shared_note_status_bloc.dart';
@@ -85,168 +87,175 @@ class NotePane extends StatelessWidget {
     } on ProviderNotFoundException {
       hasStatus = false;
     }
-    return NoteModeShortcuts(
-      child: ColoredBox(
-        color: context.colors.editor,
-        child: BlocBuilder<NavigationHistoryBloc, NavigationHistoryState>(
-          builder: (context, steps) {
-            void goBack() =>
-                history.add(const NavigationHistoryEvent.backRequested());
-            void goForward() =>
-                history.add(const NavigationHistoryEvent.forwardRequested());
-            return BlocBuilder<NoteBloc, NoteState>(
-              buildWhen: (before, now) =>
-                  before.mode != now.mode ||
-                  before.status != now.status ||
-                  before.note != now.note,
-              builder: (context, shown) {
-                final note = shown.note;
-                final readable =
-                    shown.status == NoteScreenStatus.ready && note != null;
-                final editing = readable && shown.mode == NoteMode.edit;
-                // The keyboard has the foot of the screen: the bar of the
-                // page gives way to it and the editor's own bar.
-                final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
-                return Column(
-                  children: <Widget>[
-                    NoteTopBar(
-                      phone: !inPane,
-                      onBack: () => leave(context),
-                      onGoBack: steps.canGoBack ? goBack : null,
-                      onGoForward: steps.canGoForward ? goForward : null,
-                      trailing: <Widget>[
-                        if (readable) ...<Widget>[
-                          NoteModeToggle(
-                            mode: shown.mode,
-                            onChanged: (mode) => context.read<NoteBloc>().add(
-                              NoteEvent.modeChanged(mode),
+    return JournalOpener(
+      child: NoteModeShortcuts(
+        child: ColoredBox(
+          color: context.colors.editor,
+          child: BlocBuilder<NavigationHistoryBloc, NavigationHistoryState>(
+            builder: (context, steps) {
+              void goBack() =>
+                  history.add(const NavigationHistoryEvent.backRequested());
+              void goForward() =>
+                  history.add(const NavigationHistoryEvent.forwardRequested());
+              return BlocBuilder<NoteBloc, NoteState>(
+                buildWhen: (before, now) =>
+                    before.mode != now.mode ||
+                    before.status != now.status ||
+                    before.note != now.note,
+                builder: (context, shown) {
+                  final note = shown.note;
+                  final readable =
+                      shown.status == NoteScreenStatus.ready && note != null;
+                  final editing = readable && shown.mode == NoteMode.edit;
+                  // The keyboard has the foot of the screen: the bar of the
+                  // page gives way to it and the editor's own bar.
+                  final keyboardUp =
+                      MediaQuery.viewInsetsOf(context).bottom > 0;
+                  void retry() =>
+                      context.read<NoteBloc>().add(const NoteEvent.retried());
+
+                  return Column(
+                    children: <Widget>[
+                      NoteTopBar(
+                        phone: !inPane,
+                        onBack: () => leave(context),
+                        onGoBack: steps.canGoBack ? goBack : null,
+                        onGoForward: steps.canGoForward ? goForward : null,
+                        trailing: <Widget>[
+                          if (readable) const NoteJournalActions(),
+                          if (readable) ...<Widget>[
+                            NoteModeToggle(
+                              mode: shown.mode,
+                              onChanged: (mode) => context.read<NoteBloc>().add(
+                                NoteEvent.modeChanged(mode),
+                              ),
                             ),
-                          ),
-                          KansoIconButton(
-                            icon: KansoIcons.info,
-                            semanticLabel: l10n.noteInfo,
-                            onPressed: () => showKansoBottomSheet<void>(
-                              context,
-                              builder: (_) =>
-                                  BlocProvider<NoteDiscoveryBloc>.value(
-                                    value: context.read<NoteDiscoveryBloc>(),
-                                    child: NoteInfoSheet(
-                                      note: note,
-                                      index: context
-                                          .read<LibraryIndexBloc>()
-                                          .state,
-                                    ),
-                                  ),
-                            ),
-                          ),
-                        ],
-                        if (comments != null && readable)
-                          CommentsButton(
-                            // The words are selected in the editor: open
-                            // it first.
-                            onSelect: (commentId) {
-                              if (!editing) {
-                                context.read<NoteBloc>().add(
-                                  const NoteEvent.modeChanged(NoteMode.edit),
-                                );
-                              }
-                              comments?.add(CommentsEvent.selected(commentId));
-                            },
-                          ),
-                        const ShareNoteButton(),
-                        const NoteLockMenuButton(),
-                      ],
-                    ),
-                    if (hasStatus && readable)
-                      SharedNoteStatusStrip(gutter: gutter),
-                    Expanded(
-                      child: editing
-                          ? NoteEditorPane(
-                              noteId: shown.noteId,
-                              gutter: gutter,
-                              caret: shown.caret,
-                              caretInBody: shown.caretInBody,
-                              scroll: shown.scroll,
-                              // A note made with no title is titled first,
-                              // unless it is to be dictated into.
-                              focusTitle:
-                                  shown.openedNew &&
-                                  !shown.startInText &&
-                                  note.title.isEmpty,
-                            )
-                          : BlocBuilder<LibraryIndexBloc, LibraryIndexState>(
-                              builder: (context, index) {
-                                return BlocBuilder<NoteBloc, NoteState>(
-                                  builder: (context, state) {
-                                    final note = state.note;
-                                    return switch (state.status) {
-                                      NoteScreenStatus.loading =>
-                                        NoteLoadingPane(gutter: gutter),
-                                      NoteScreenStatus.ready
-                                          when note != null =>
-                                        NoteBody(
-                                          note: note,
-                                          lines: state.lines,
-                                          index: index,
-                                          gutter: gutter,
-                                          onEditAt: (offset) =>
-                                              context.read<NoteBloc>().add(
-                                                NoteEvent.modeChanged(
-                                                  NoteMode.edit,
-                                                  bodyCaret: offset,
-                                                ),
-                                              ),
-                                        ),
-                                      NoteScreenStatus.locked
-                                          when note != null =>
-                                        LockedNotePane(
-                                          noteId: note.id,
-                                          title: note.title,
-                                          gutter: gutter,
-                                        ),
-                                      NoteScreenStatus.ready ||
-                                      NoteScreenStatus.locked ||
-                                      NoteScreenStatus.notFound =>
-                                        const NoteNotFoundPane(),
-                                      NoteScreenStatus.failed => Center(
-                                        child: Padding(
-                                          padding: EdgeInsets.all(gutter),
-                                          child: KansoMessageCard(
-                                            icon: KansoIcons.fileText,
-                                            title: l10n.noteFailedTitle,
-                                            message: l10n.noteFailedMessage,
-                                            actions: <Widget>[
-                                              KansoButton(
-                                                label: l10n.retry,
-                                                onPressed: () => context
-                                                    .read<NoteBloc>()
-                                                    .add(
-                                                      const NoteEvent.retried(),
-                                                    ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
+                            KansoIconButton(
+                              icon: KansoIcons.info,
+                              semanticLabel: l10n.noteInfo,
+                              onPressed: () => showKansoBottomSheet<void>(
+                                context,
+                                builder: (_) =>
+                                    BlocProvider<NoteDiscoveryBloc>.value(
+                                      value: context
+                                          .read<NoteDiscoveryBloc>(),
+                                      child: NoteInfoSheet(
+                                        note: note,
+                                        index: context
+                                            .read<LibraryIndexBloc>()
+                                            .state,
                                       ),
-                                    };
-                                  },
+                                    ),
+                              ),
+                            ),
+                          ],
+                          if (comments != null && readable)
+                            CommentsButton(
+                              // The words are selected in the editor: open
+                              // it first.
+                              onSelect: (commentId) {
+                                if (!editing) {
+                                  context.read<NoteBloc>().add(
+                                    const NoteEvent.modeChanged(NoteMode.edit),
+                                  );
+                                }
+                                comments?.add(
+                                  CommentsEvent.selected(commentId),
                                 );
                               },
                             ),
-                    ),
-                    if (!inPane && !(editing && keyboardUp))
-                      NoteBottomBar(
-                        onGoBack: steps.canGoBack ? goBack : null,
-                        onGoForward: steps.canGoForward ? goForward : null,
-                        onSearch: () =>
-                            context.go(const BrowseLocation.search().location),
-                        onSettings: () => context.push(KansoRoutes.settings),
+                          const ShareNoteButton(),
+                          const NoteLockMenuButton(),
+                        ],
                       ),
-                  ],
-                );
-              },
-            );
-          },
+                      if (hasStatus && readable)
+                        SharedNoteStatusStrip(gutter: gutter),
+                      Expanded(
+                        child: editing
+                            ? NoteEditorPane(
+                                noteId: shown.noteId,
+                                gutter: gutter,
+                                caret: shown.caret,
+                                caretInBody: shown.caretInBody,
+                                scroll: shown.scroll,
+                                // A note made with no title is titled first,
+                                // unless it is to be dictated into.
+                                focusTitle:
+                                    shown.openedNew &&
+                                    !shown.startInText &&
+                                    note.title.isEmpty,
+                              )
+                            : BlocBuilder<LibraryIndexBloc, LibraryIndexState>(
+                                builder: (context, index) {
+                                  return BlocBuilder<NoteBloc, NoteState>(
+                                    builder: (context, state) {
+                                      final note = state.note;
+                                      return switch (state.status) {
+                                        NoteScreenStatus.loading =>
+                                          NoteLoadingPane(gutter: gutter),
+                                        NoteScreenStatus.ready
+                                            when note != null =>
+                                          NoteBody(
+                                            note: note,
+                                            lines: state.lines,
+                                            index: index,
+                                            gutter: gutter,
+                                            onEditAt: (offset) =>
+                                                context.read<NoteBloc>().add(
+                                                  NoteEvent.modeChanged(
+                                                    NoteMode.edit,
+                                                    bodyCaret: offset,
+                                                  ),
+                                                ),
+                                          ),
+                                        NoteScreenStatus.locked
+                                            when note != null =>
+                                          LockedNotePane(
+                                            noteId: note.id,
+                                            title: note.title,
+                                            gutter: gutter,
+                                          ),
+                                        NoteScreenStatus.ready ||
+                                        NoteScreenStatus.locked ||
+                                        NoteScreenStatus.notFound =>
+                                          const NoteNotFoundPane(),
+                                        NoteScreenStatus.failed => Center(
+                                          child: Padding(
+                                            padding: EdgeInsets.all(gutter),
+                                            child: KansoMessageCard(
+                                              icon: KansoIcons.fileText,
+                                              title: l10n.noteFailedTitle,
+                                              message: l10n.noteFailedMessage,
+                                              actions: <Widget>[
+                                                KansoButton(
+                                                  label: l10n.retry,
+                                                  onPressed: retry,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      };
+                                    },
+                                  );
+                                },
+                              ),
+                      ),
+                      if (!inPane && !(editing && keyboardUp))
+                        NoteBottomBar(
+                          onGoBack: steps.canGoBack ? goBack : null,
+                          onGoForward: steps.canGoForward ? goForward : null,
+                          onSearch: () => context.go(
+                            const BrowseLocation.search().location,
+                          ),
+                          onSettings: () => context.push(KansoRoutes.settings),
+                        ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );

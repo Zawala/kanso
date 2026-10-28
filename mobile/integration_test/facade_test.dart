@@ -16,16 +16,20 @@ import 'package:path_provider/path_provider.dart';
 import '../test/core/bridge/suites/account_settings_suite.dart';
 import '../test/core/bridge/suites/account_suite.dart';
 import '../test/core/bridge/suites/approvals_suite.dart';
+import '../test/core/bridge/suites/boards_suite.dart';
 import '../test/core/bridge/suites/diagnostics_suite.dart';
 import '../test/core/bridge/suites/discovery_suite.dart';
 import '../test/core/bridge/suites/editor_suite.dart';
 import '../test/core/bridge/suites/gallery_suite.dart';
+import '../test/core/bridge/suites/journal_suite.dart';
 import '../test/core/bridge/suites/library_suite.dart';
 import '../test/core/bridge/suites/linking_suite.dart';
 import '../test/core/bridge/suites/locks_suite.dart';
+import '../test/core/bridge/suites/reminders_suite.dart';
 import '../test/core/bridge/suites/renderer_suite.dart';
 import '../test/core/bridge/suites/shared_suite.dart';
 import '../test/core/bridge/suites/sync_suite.dart';
+import '../test/core/bridge/suites/templates_suite.dart';
 import '../test/helpers/biometric_answer.dart';
 
 /// Every call of the bridge, on a simulator or an emulator: the library the
@@ -68,6 +72,10 @@ void main() {
   gallerySuite(openDeviceLibrary);
   editorSuite(openDeviceLibrary);
   discoverySuite(openDeviceLibrary);
+  journalSuite(openDeviceLibrary);
+  templatesSuite(openDeviceLibrary);
+  boardsSuite(openDeviceLibrary);
+  remindersSuite(openDeviceLibrary);
 
   group('the platform verifier', () {
     test(

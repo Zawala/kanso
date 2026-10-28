@@ -12,6 +12,7 @@ import '../../account/views/pages/recovery_key_page.dart';
 import '../../account/views/pages/sign_in_page.dart';
 import '../../account/views/pages/unlock_page.dart';
 import '../../backups/views/pages/backups_page.dart';
+import '../../board/views/pages/board_page.dart';
 import '../../capture/views/pages/daily_note_page.dart';
 import '../../capture/views/pages/new_note_page.dart';
 import '../../crash/views/pages/crash_reports_page.dart';
@@ -363,7 +364,33 @@ class KansoRouter {
       path: path,
       pageBuilder: (context, state) =>
           _listPage(state, single: NoteListPage(place: place(state))),
-      routes: <RouteBase>[_noteRoute()],
+      routes: <RouteBase>[_noteRoute(), _boardRoute(place)],
+    );
+  }
+
+  /// The board of a place's notes, as its phone page or its tablet note pane.
+  GoRoute _boardRoute(ListPlace Function(GoRouterState) place) {
+    return GoRoute(
+      path: KansoRoutes.board,
+      pageBuilder: (context, state) {
+        final kind = state.uri.queryParameters['kind'] == BoardKind.tasks.name
+            ? BoardKind.tasks
+            : BoardKind.notes;
+        final currentPlace = place(state);
+        return layoutClass.value == LayoutClass.single
+            ? CupertinoPage<void>(
+                key: state.pageKey,
+                child: BoardPage(place: currentPlace, kind: kind),
+              )
+            : NoTransitionPage<void>(
+                key: state.pageKey,
+                child: BoardPage(
+                  place: currentPlace,
+                  kind: kind,
+                  inPane: true,
+                ),
+              );
+      },
     );
   }
 
@@ -372,17 +399,42 @@ class KansoRouter {
       path: '${KansoRoutes.note}/:noteId',
       pageBuilder: (context, state) {
         final noteId = state.pathParameters['noteId']!;
+        final line = _nonNegativeInt(
+          state.uri.queryParameters[KansoRoutes.taskLineParameter],
+        );
+        final cursor16 = _nonNegativeInt(
+          state.uri.queryParameters[KansoRoutes.madeCursorParameter],
+        );
+        final titleFirst =
+            state.uri.queryParameters[KansoRoutes.madeTitleFirstParameter] ==
+            '1';
         return layoutClass.value == LayoutClass.single
             ? CupertinoPage<void>(
                 key: state.pageKey,
-                child: NotePage(noteId: noteId),
+                child: NotePage(
+                  noteId: noteId,
+                  bodyLine: line,
+                  cursor16: cursor16,
+                  titleFirst: titleFirst,
+                ),
               )
             : NoTransitionPage<void>(
                 key: state.pageKey,
-                child: NotePage(noteId: noteId, inPane: true),
+                child: NotePage(
+                  noteId: noteId,
+                  inPane: true,
+                  bodyLine: line,
+                  cursor16: cursor16,
+                  titleFirst: titleFirst,
+                ),
               );
       },
     );
+  }
+
+  int? _nonNegativeInt(String? value) {
+    final parsed = int.tryParse(value ?? '');
+    return parsed == null || parsed < 0 ? null : parsed;
   }
 
   /// The page of a place or a search itself. In one pane it is the list,

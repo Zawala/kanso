@@ -1,14 +1,14 @@
-//! The board's cards and columns, apart from drawing (`board_view.rs`):
-//! the notes the list shows laid out by status, or their tasks as To do
-//! and Done. A card moves to another column by a drag or by the keyboard,
-//! and a move changes one thing in its note: the note's status, or the
-//! task's box.
+//! The board's cards and columns without a window: the notes a list shows
+//! laid out by status, or their tasks as To do and Done. A card moves to
+//! another column by a drag or by the keyboard, and a move changes one thing
+//! in its note: the note's status, or the task's box. The desktop draws it
+//! in `board_view.rs`, the mobile app in Flutter.
 
 use kanso_core::{DocType, NoteStatus};
 use kanso_store::{CheckOff, NoteSummary, Origin, Put, Store, StoreError, TaskRow};
 use serde_json::json;
 
-use crate::tasks_view::TaskId;
+use crate::tasks::TaskId;
 
 /// What a board lays out.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -320,8 +320,6 @@ pub fn cards(kind: BoardKind, notes: Vec<NoteSummary>, tasks: Vec<TaskRow>) -> V
 
 #[cfg(test)]
 mod tests {
-    // Not `super::*`: GPUI's own `test` attribute would shadow the built-in
-    // one inside `proptest!`.
     use super::{Board, BoardKind, Card, CardId, Lane, Move, Written, cards, write_move};
     use kanso_core::{DocType, NoteStatus};
     use kanso_store::{NoteSummary, Origin, Put, Store, TaskQuery};
@@ -597,7 +595,7 @@ mod tests {
         let Card::Task(row) = &cards[0] else {
             unreachable!()
         };
-        let mut gone = crate::tasks_view::TaskId::of(row);
+        let mut gone = crate::tasks::TaskId::of(row);
         gone.text = "not there".into();
         let mv = Move {
             id: CardId::Task(gone),

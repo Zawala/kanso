@@ -54,6 +54,7 @@ import 'fixture_renderer_repository.dart';
 import 'fixture_session_repository.dart';
 import 'fixture_shared_notes_repository.dart';
 import 'fixture_sync_repository.dart';
+import 'page_fixtures.dart';
 import 'register_page_blocs.dart';
 import 'seeded_appearance_bloc.dart';
 import 'sync_settings_blocs.dart';
@@ -99,7 +100,8 @@ class BrowseApp {
 /// BLoCs; by default the phone has no account. [sync] is the sync the
 /// status and the sync settings read. [shared] and [gallery] are
 /// the shared notes and the theme gallery the app reads, if a test has made
-/// them. [session] and [device] are the lock session and the phone's
+/// them. [fixtures] supplies the journal, board and reminder fixtures.
+/// [session] and [device] are the lock session and the phone's
 /// biometrics; by default nothing is locked. The app is inside a repaint
 /// boundary, [appBoundaryKey], to take a picture of.
 Future<BrowseApp> pumpBrowseApp(
@@ -123,6 +125,7 @@ Future<BrowseApp> pumpBrowseApp(
   FixtureHistoryRepository? history,
   FixtureReplaceRepository? replace,
   FixtureBackupsRepository? backups,
+  PageFixtures? fixtures,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
@@ -143,6 +146,7 @@ Future<BrowseApp> pumpBrowseApp(
     history,
     replace,
     backups,
+    fixtures,
   );
   final accountBlocs = (accounts ?? AccountBlocs())..register();
   final opened =

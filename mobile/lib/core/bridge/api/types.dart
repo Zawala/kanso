@@ -64,12 +64,20 @@ sealed class AccountState with _$AccountState {
     required String username,
     required String server,
   }) = AccountState_SignedIn;
-  const factory AccountState.locked(LockedInfo field0) = AccountState_Locked;
-  const factory AccountState.question(BindingQuestion field0) =
-      AccountState_Question;
+  const factory AccountState.locked(
+    LockedInfo field0,
+  ) = AccountState_Locked;
+  const factory AccountState.question(
+    BindingQuestion field0,
+  ) = AccountState_Question;
 }
 
-enum AccountStep { stoppingSync, derivingKeys, contacting, saving }
+enum AccountStep {
+  stoppingSync,
+  derivingKeys,
+  contacting,
+  saving,
+}
 
 @freezed
 sealed class ApprovalPhase with _$ApprovalPhase {
@@ -83,8 +91,9 @@ sealed class ApprovalPhase with _$ApprovalPhase {
   const factory ApprovalPhase.noDevices() = ApprovalPhase_NoDevices;
   const factory ApprovalPhase.cancelled() = ApprovalPhase_Cancelled;
   const factory ApprovalPhase.expired() = ApprovalPhase_Expired;
-  const factory ApprovalPhase.failed({required String message}) =
-      ApprovalPhase_Failed;
+  const factory ApprovalPhase.failed({
+    required String message,
+  }) = ApprovalPhase_Failed;
 }
 
 class ApprovalPrompt {
@@ -213,7 +222,10 @@ class BackupFile {
           bytes == other.bytes;
 }
 
-enum BindingAnswer { add, replace }
+enum BindingAnswer {
+  add,
+  replace,
+}
 
 class BindingQuestion {
   final String title;
@@ -237,6 +249,114 @@ class BindingQuestion {
           title == other.title &&
           body == other.body &&
           answers == other.answers;
+}
+
+class BoardCard {
+  final CardKey key;
+  final String title;
+  final String noteTitle;
+  final String snippet;
+  final String? due;
+  final DueChipRow? dueChip;
+  final bool checked;
+  final bool locked;
+
+  const BoardCard({
+    required this.key,
+    required this.title,
+    required this.noteTitle,
+    required this.snippet,
+    this.due,
+    this.dueChip,
+    required this.checked,
+    required this.locked,
+  });
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      title.hashCode ^
+      noteTitle.hashCode ^
+      snippet.hashCode ^
+      due.hashCode ^
+      dueChip.hashCode ^
+      checked.hashCode ^
+      locked.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BoardCard &&
+          runtimeType == other.runtimeType &&
+          key == other.key &&
+          title == other.title &&
+          noteTitle == other.noteTitle &&
+          snippet == other.snippet &&
+          due == other.due &&
+          dueChip == other.dueChip &&
+          checked == other.checked &&
+          locked == other.locked;
+}
+
+class BoardColumn {
+  final BoardLane lane;
+  final String label;
+  final List<BoardCard> cards;
+
+  const BoardColumn({
+    required this.lane,
+    required this.label,
+    required this.cards,
+  });
+
+  @override
+  int get hashCode => lane.hashCode ^ label.hashCode ^ cards.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BoardColumn &&
+          runtimeType == other.runtimeType &&
+          lane == other.lane &&
+          label == other.label &&
+          cards == other.cards;
+}
+
+enum BoardKind {
+  notes,
+  tasks,
+}
+
+@freezed
+sealed class BoardLane with _$BoardLane {
+  const BoardLane._();
+
+  const factory BoardLane.status({
+    required String status,
+  }) = BoardLane_Status;
+  const factory BoardLane.todo() = BoardLane_Todo;
+  const factory BoardLane.done() = BoardLane_Done;
+}
+
+class BoardView {
+  final BoardKind kind;
+  final List<BoardColumn> columns;
+
+  const BoardView({
+    required this.kind,
+    required this.columns,
+  });
+
+  @override
+  int get hashCode => kind.hashCode ^ columns.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BoardView &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          columns == other.columns;
 }
 
 class BuiltinTheme {
@@ -282,11 +402,42 @@ class BuiltinTheme {
           tokens == other.tokens;
 }
 
+class CalendarDay {
+  final DayDate date;
+  final bool inMonth;
+  final bool hasNote;
+  final bool isToday;
+
+  const CalendarDay({
+    required this.date,
+    required this.inMonth,
+    required this.hasNote,
+    required this.isToday,
+  });
+
+  @override
+  int get hashCode =>
+      date.hashCode ^ inMonth.hashCode ^ hasNote.hashCode ^ isToday.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CalendarDay &&
+          runtimeType == other.runtimeType &&
+          date == other.date &&
+          inMonth == other.inMonth &&
+          hasNote == other.hasNote &&
+          isToday == other.isToday;
+}
+
 class CaptureOutcome {
   final String noteId;
   final List<String> problems;
 
-  const CaptureOutcome({required this.noteId, required this.problems});
+  const CaptureOutcome({
+    required this.noteId,
+    required this.problems,
+  });
 
   @override
   int get hashCode => noteId.hashCode ^ problems.hashCode;
@@ -300,12 +451,36 @@ class CaptureOutcome {
           problems == other.problems;
 }
 
+@freezed
+sealed class CardKey with _$CardKey {
+  const CardKey._();
+
+  const factory CardKey.note({
+    required String id,
+  }) = CardKey_Note;
+  const factory CardKey.task({
+    required String noteId,
+    required int line,
+    required String text,
+  }) = CardKey_Task;
+}
+
+enum CardMoved {
+  changed,
+  unchanged,
+  missing,
+}
+
 class Changed {
   final int count;
   final int? undo;
   final String message;
 
-  const Changed({required this.count, this.undo, required this.message});
+  const Changed({
+    required this.count,
+    this.undo,
+    required this.message,
+  });
 
   @override
   int get hashCode => count.hashCode ^ undo.hashCode ^ message.hashCode;
@@ -324,7 +499,10 @@ class ColorChoice {
   final String name;
   final int rgb;
 
-  const ColorChoice({required this.name, required this.rgb});
+  const ColorChoice({
+    required this.name,
+    required this.rgb,
+  });
 
   @override
   int get hashCode => name.hashCode ^ rgb.hashCode;
@@ -342,7 +520,10 @@ class ColorRow {
   final String name;
   final int rgb;
 
-  const ColorRow({required this.name, required this.rgb});
+  const ColorRow({
+    required this.name,
+    required this.rgb,
+  });
 
   @override
   int get hashCode => name.hashCode ^ rgb.hashCode;
@@ -364,8 +545,9 @@ sealed class CommentPlacement with _$CommentPlacement {
     required int start,
     required int end,
   }) = CommentPlacement_Anchored;
-  const factory CommentPlacement.orphaned({required int at}) =
-      CommentPlacement_Orphaned;
+  const factory CommentPlacement.orphaned({
+    required int at,
+  }) = CommentPlacement_Orphaned;
 }
 
 class CommentRow {
@@ -502,13 +684,19 @@ class CompletionItem {
           newNote == other.newNote;
 }
 
-enum CompletionKind { wiki, tag }
+enum CompletionKind {
+  wiki,
+  tag,
+}
 
 class CopiedLink {
   final String text;
   final String message;
 
-  const CopiedLink({required this.text, required this.message});
+  const CopiedLink({
+    required this.text,
+    required this.message,
+  });
 
   @override
   int get hashCode => text.hashCode ^ message.hashCode;
@@ -561,7 +749,34 @@ class CursorMark {
           dark == other.dark;
 }
 
-enum DateField { updated, created }
+enum DateField {
+  updated,
+  created,
+}
+
+class DayDate {
+  final int year;
+  final int month;
+  final int day;
+
+  const DayDate({
+    required this.year,
+    required this.month,
+    required this.day,
+  });
+
+  @override
+  int get hashCode => year.hashCode ^ month.hashCode ^ day.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DayDate &&
+          runtimeType == other.runtimeType &&
+          year == other.year &&
+          month == other.month &&
+          day == other.day;
+}
 
 class DeviceRow {
   final String id;
@@ -591,9 +806,15 @@ class DeviceRow {
           lastSeenMs == other.lastSeenMs;
 }
 
-enum DiagramKind { mermaid, excalidraw }
+enum DiagramKind {
+  mermaid,
+  excalidraw,
+}
 
-enum DiagramRenderer { pele, kanso }
+enum DiagramRenderer {
+  pele,
+  kanso,
+}
 
 class DiffHunk {
   final List<DiffLine> lines;
@@ -634,7 +855,11 @@ class DiffHunk {
           oldEnd == other.oldEnd;
 }
 
-enum DiffKind { same, added, removed }
+enum DiffKind {
+  same,
+  added,
+  removed,
+}
 
 class DiffLine {
   final DiffKind kind;
@@ -734,16 +959,50 @@ class DropsSaved {
           kept == other.kept;
 }
 
-enum DueTone { plain, today, overdue, done }
+class DueChipRow {
+  final String label;
+  final DueTone tone;
+  final String tooltip;
+
+  const DueChipRow({
+    required this.label,
+    required this.tone,
+    required this.tooltip,
+  });
+
+  @override
+  int get hashCode => label.hashCode ^ tone.hashCode ^ tooltip.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DueChipRow &&
+          runtimeType == other.runtimeType &&
+          label == other.label &&
+          tone == other.tone &&
+          tooltip == other.tooltip;
+}
+
+enum DueTone {
+  plain,
+  today,
+  overdue,
+  done,
+}
 
 @freezed
 sealed class EditCommand with _$EditCommand {
   const EditCommand._();
 
-  const factory EditCommand.enter({required bool plain}) = EditCommand_Enter;
-  const factory EditCommand.tab({required bool out}) = EditCommand_Tab;
-  const factory EditCommand.format({required FormatKind format}) =
-      EditCommand_Format;
+  const factory EditCommand.enter({
+    required bool plain,
+  }) = EditCommand_Enter;
+  const factory EditCommand.tab({
+    required bool out,
+  }) = EditCommand_Tab;
+  const factory EditCommand.format({
+    required FormatKind format,
+  }) = EditCommand_Format;
   const factory EditCommand.cycleHeading() = EditCommand_CycleHeading;
   const factory EditCommand.wikiLink() = EditCommand_WikiLink;
   const factory EditCommand.insert({
@@ -822,15 +1081,20 @@ class EditorContext {
 sealed class EditorEvent with _$EditorEvent {
   const EditorEvent._();
 
-  const factory EditorEvent.saved({required String rev, required int atMs}) =
-      EditorEvent_Saved;
-  const factory EditorEvent.incoming({required bool deleted}) =
-      EditorEvent_Incoming;
-  const factory EditorEvent.reloaded({required EditorSnapshot snapshot}) =
-      EditorEvent_Reloaded;
+  const factory EditorEvent.saved({
+    required String rev,
+    required int atMs,
+  }) = EditorEvent_Saved;
+  const factory EditorEvent.incoming({
+    required bool deleted,
+  }) = EditorEvent_Incoming;
+  const factory EditorEvent.reloaded({
+    required EditorSnapshot snapshot,
+  }) = EditorEvent_Reloaded;
   const factory EditorEvent.closed() = EditorEvent_Closed;
-  const factory EditorEvent.failed({required String message}) =
-      EditorEvent_Failed;
+  const factory EditorEvent.failed({
+    required String message,
+  }) = EditorEvent_Failed;
 }
 
 class EditorRun {
@@ -927,7 +1191,10 @@ class ExportedPage {
   final String html;
   final String fileName;
 
-  const ExportedPage({required this.html, required this.fileName});
+  const ExportedPage({
+    required this.html,
+    required this.fileName,
+  });
 
   @override
   int get hashCode => html.hashCode ^ fileName.hashCode;
@@ -946,7 +1213,11 @@ class FoldState {
   final String? foldedAt;
   final List<String> folded;
 
-  const FoldState({required this.open, this.foldedAt, required this.folded});
+  const FoldState({
+    required this.open,
+    this.foldedAt,
+    required this.folded,
+  });
 
   @override
   int get hashCode => open.hashCode ^ foldedAt.hashCode ^ folded.hashCode;
@@ -1102,13 +1373,19 @@ class GalleryItem {
           disabled == other.disabled;
 }
 
-enum GalleryKind { colorTheme, iconTheme }
+enum GalleryKind {
+  colorTheme,
+  iconTheme,
+}
 
 class GraphEdgeRow {
   final int from;
   final int to;
 
-  const GraphEdgeRow({required this.from, required this.to});
+  const GraphEdgeRow({
+    required this.from,
+    required this.to,
+  });
 
   @override
   int get hashCode => from.hashCode ^ to.hashCode;
@@ -1127,8 +1404,12 @@ sealed class GraphFilter with _$GraphFilter {
   const GraphFilter._();
 
   const factory GraphFilter.all() = GraphFilter_All;
-  const factory GraphFilter.book({required String id}) = GraphFilter_Book;
-  const factory GraphFilter.tag({required String id}) = GraphFilter_Tag;
+  const factory GraphFilter.book({
+    required String id,
+  }) = GraphFilter_Book;
+  const factory GraphFilter.tag({
+    required String id,
+  }) = GraphFilter_Tag;
 }
 
 class GraphLayout {
@@ -1214,8 +1495,9 @@ class GraphNodeRow {
 sealed class GraphRequest with _$GraphRequest {
   const GraphRequest._();
 
-  const factory GraphRequest.library_({required GraphFilter filter}) =
-      GraphRequest_Library;
+  const factory GraphRequest.library_({
+    required GraphFilter filter,
+  }) = GraphRequest_Library;
   const factory GraphRequest.local({
     required String center,
     required int hops,
@@ -1226,7 +1508,10 @@ class HistoryState {
   final bool canUndo;
   final bool canRedo;
 
-  const HistoryState({required this.canUndo, required this.canRedo});
+  const HistoryState({
+    required this.canUndo,
+    required this.canRedo,
+  });
 
   @override
   int get hashCode => canUndo.hashCode ^ canRedo.hashCode;
@@ -1269,7 +1554,10 @@ class IconChoice {
   final String name;
   final String label;
 
-  const IconChoice({required this.name, required this.label});
+  const IconChoice({
+    required this.name,
+    required this.label,
+  });
 
   @override
   int get hashCode => name.hashCode ^ label.hashCode;
@@ -1331,7 +1619,11 @@ class ImageToRead {
   final String md5;
   final Uint8List bytes;
 
-  const ImageToRead({required this.id, required this.md5, required this.bytes});
+  const ImageToRead({
+    required this.id,
+    required this.md5,
+    required this.bytes,
+  });
 
   @override
   int get hashCode => id.hashCode ^ md5.hashCode ^ bytes.hashCode;
@@ -1350,10 +1642,15 @@ class ImageToRead {
 sealed class ImportEvent with _$ImportEvent {
   const ImportEvent._();
 
-  const factory ImportEvent.progress(ImportProgress field0) =
-      ImportEvent_Progress;
-  const factory ImportEvent.done(ImportSummary field0) = ImportEvent_Done;
-  const factory ImportEvent.failed(String field0) = ImportEvent_Failed;
+  const factory ImportEvent.progress(
+    ImportProgress field0,
+  ) = ImportEvent_Progress;
+  const factory ImportEvent.done(
+    ImportSummary field0,
+  ) = ImportEvent_Done;
+  const factory ImportEvent.failed(
+    String field0,
+  ) = ImportEvent_Failed;
 }
 
 class ImportFound {
@@ -1387,7 +1684,11 @@ class ImportFound {
           attachments == other.attachments;
 }
 
-enum ImportPhase { reading, notebooks, notes }
+enum ImportPhase {
+  reading,
+  notebooks,
+  notes,
+}
 
 class ImportProgress {
   final ImportPhase? phase;
@@ -1575,18 +1876,25 @@ sealed class KansoError with _$KansoError implements FrbException {
 
   const factory KansoError.notFound() = KansoError_NotFound;
   const factory KansoError.locked() = KansoError_Locked;
-  const factory KansoError.conflict({required String currentRev}) =
-      KansoError_Conflict;
-  const factory KansoError.invalid({required String message}) =
-      KansoError_Invalid;
-  const factory KansoError.storage({required String message}) =
-      KansoError_Storage;
-  const factory KansoError.network({required String message}) =
-      KansoError_Network;
+  const factory KansoError.conflict({
+    required String currentRev,
+  }) = KansoError_Conflict;
+  const factory KansoError.invalid({
+    required String message,
+  }) = KansoError_Invalid;
+  const factory KansoError.storage({
+    required String message,
+  }) = KansoError_Storage;
+  const factory KansoError.network({
+    required String message,
+  }) = KansoError_Network;
   const factory KansoError.signedOut() = KansoError_SignedOut;
-  const factory KansoError.auth({required String message}) = KansoError_Auth;
-  const factory KansoError.internal({required String message}) =
-      KansoError_Internal;
+  const factory KansoError.auth({
+    required String message,
+  }) = KansoError_Auth;
+  const factory KansoError.internal({
+    required String message,
+  }) = KansoError_Internal;
 }
 
 class LibraryOverview {
@@ -1628,17 +1936,25 @@ class LibraryOverview {
 sealed class LinkTarget with _$LinkTarget {
   const LinkTarget._();
 
-  const factory LinkTarget.note({required String id}) = LinkTarget_Note;
-  const factory LinkTarget.newNote({required String title}) =
-      LinkTarget_NewNote;
-  const factory LinkTarget.web({required String url}) = LinkTarget_Web;
+  const factory LinkTarget.note({
+    required String id,
+  }) = LinkTarget_Note;
+  const factory LinkTarget.newNote({
+    required String title,
+  }) = LinkTarget_NewNote;
+  const factory LinkTarget.web({
+    required String url,
+  }) = LinkTarget_Web;
 }
 
 class LinkedProviderRow {
   final ProviderKind provider;
   final bool linked;
 
-  const LinkedProviderRow({required this.provider, required this.linked});
+  const LinkedProviderRow({
+    required this.provider,
+    required this.linked,
+  });
 
   @override
   int get hashCode => provider.hashCode ^ linked.hashCode;
@@ -1659,10 +1975,18 @@ sealed class ListPlace with _$ListPlace {
   const factory ListPlace.all() = ListPlace_All;
   const factory ListPlace.pinned() = ListPlace_Pinned;
   const factory ListPlace.recent() = ListPlace_Recent;
-  const factory ListPlace.notebook({required String id}) = ListPlace_Notebook;
-  const factory ListPlace.tag({required String id}) = ListPlace_Tag;
-  const factory ListPlace.status({required String status}) = ListPlace_Status;
-  const factory ListPlace.tagPath({required String path}) = ListPlace_TagPath;
+  const factory ListPlace.notebook({
+    required String id,
+  }) = ListPlace_Notebook;
+  const factory ListPlace.tag({
+    required String id,
+  }) = ListPlace_Tag;
+  const factory ListPlace.status({
+    required String status,
+  }) = ListPlace_Status;
+  const factory ListPlace.tagPath({
+    required String path,
+  }) = ListPlace_TagPath;
   const factory ListPlace.trash() = ListPlace_Trash;
 }
 
@@ -1808,11 +2132,16 @@ sealed class LockEvent with _$LockEvent {
   const LockEvent._();
 
   const factory LockEvent.unlocked() = LockEvent_Unlocked;
-  const factory LockEvent.locked({required LockReason reason}) =
-      LockEvent_Locked;
+  const factory LockEvent.locked({
+    required LockReason reason,
+  }) = LockEvent_Locked;
 }
 
-enum LockReason { manual, idle, background }
+enum LockReason {
+  manual,
+  idle,
+  background,
+}
 
 @freezed
 sealed class LockState with _$LockState {
@@ -1820,7 +2149,9 @@ sealed class LockState with _$LockState {
 
   const factory LockState.plain() = LockState_Plain;
   const factory LockState.open() = LockState_Open;
-  const factory LockState.closed({String? reason}) = LockState_Closed;
+  const factory LockState.closed({
+    String? reason,
+  }) = LockState_Closed;
 }
 
 class LockStatus {
@@ -1879,14 +2210,39 @@ class LockedInfo {
           approvalPending == other.approvalPending;
 }
 
+class MadeNote {
+  final String id;
+  final int? cursor16;
+  final bool titleFirst;
+
+  const MadeNote({
+    required this.id,
+    this.cursor16,
+    required this.titleFirst,
+  });
+
+  @override
+  int get hashCode => id.hashCode ^ cursor16.hashCode ^ titleFirst.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MadeNote &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          cursor16 == other.cursor16 &&
+          titleFirst == other.titleFirst;
+}
+
 @freezed
 sealed class MeaningResult with _$MeaningResult {
   const MeaningResult._();
 
   const factory MeaningResult.off() = MeaningResult_Off;
   const factory MeaningResult.noModel() = MeaningResult_NoModel;
-  const factory MeaningResult.found({required List<RelatedRow> rows}) =
-      MeaningResult_Found;
+  const factory MeaningResult.found({
+    required List<RelatedRow> rows,
+  }) = MeaningResult_Found;
 }
 
 class MemberRow {
@@ -1944,7 +2300,10 @@ class MentionSpan {
   final int start;
   final int end;
 
-  const MentionSpan({required this.start, required this.end});
+  const MentionSpan({
+    required this.start,
+    required this.end,
+  });
 
   @override
   int get hashCode => start.hashCode ^ end.hashCode;
@@ -1956,6 +2315,41 @@ class MentionSpan {
           runtimeType == other.runtimeType &&
           start == other.start &&
           end == other.end;
+}
+
+class MonthGrid {
+  final int year;
+  final int month;
+  final String title;
+  final List<String> weekdayLabels;
+  final List<List<CalendarDay>> weeks;
+
+  const MonthGrid({
+    required this.year,
+    required this.month,
+    required this.title,
+    required this.weekdayLabels,
+    required this.weeks,
+  });
+
+  @override
+  int get hashCode =>
+      year.hashCode ^
+      month.hashCode ^
+      title.hashCode ^
+      weekdayLabels.hashCode ^
+      weeks.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MonthGrid &&
+          runtimeType == other.runtimeType &&
+          year == other.year &&
+          month == other.month &&
+          title == other.title &&
+          weekdayLabels == other.weekdayLabels &&
+          weeks == other.weeks;
 }
 
 class NewNote {
@@ -2006,13 +2400,19 @@ sealed class NoteChange with _$NoteChange {
   const NoteChange._();
 
   const factory NoteChange.togglePin() = NoteChange_TogglePin;
-  const factory NoteChange.move({required String notebookId}) = NoteChange_Move;
+  const factory NoteChange.move({
+    required String notebookId,
+  }) = NoteChange_Move;
   const factory NoteChange.trash() = NoteChange_Trash;
-  const factory NoteChange.setStatus({required String status}) =
-      NoteChange_SetStatus;
-  const factory NoteChange.addTag({required String tagId}) = NoteChange_AddTag;
-  const factory NoteChange.removeTag({required String tagId}) =
-      NoteChange_RemoveTag;
+  const factory NoteChange.setStatus({
+    required String status,
+  }) = NoteChange_SetStatus;
+  const factory NoteChange.addTag({
+    required String tagId,
+  }) = NoteChange_AddTag;
+  const factory NoteChange.removeTag({
+    required String tagId,
+  }) = NoteChange_RemoveTag;
   const factory NoteChange.restore() = NoteChange_Restore;
   const factory NoteChange.deleteForever() = NoteChange_DeleteForever;
 }
@@ -2052,7 +2452,10 @@ class NoteList {
   final List<NoteRow> rows;
   final ListShape shape;
 
-  const NoteList({required this.rows, required this.shape});
+  const NoteList({
+    required this.rows,
+    required this.shape,
+  });
 
   @override
   int get hashCode => rows.hashCode ^ shape.hashCode;
@@ -2070,7 +2473,10 @@ class NoteMeaning {
   final List<SuggestedTag> tags;
   final TwinRow? twin;
 
-  const NoteMeaning({required this.tags, this.twin});
+  const NoteMeaning({
+    required this.tags,
+    this.twin,
+  });
 
   @override
   int get hashCode => tags.hashCode ^ twin.hashCode;
@@ -2257,7 +2663,11 @@ class NoteView {
           updatedMs == other.updatedMs;
 }
 
-enum NotebookRole { inbox, journal, templates }
+enum NotebookRole {
+  inbox,
+  journal,
+  templates,
+}
 
 class NotebookRow {
   final String id;
@@ -2318,7 +2728,10 @@ class OpenedDocuments {
   final String? noteId;
   final List<String> problems;
 
-  const OpenedDocuments({this.noteId, required this.problems});
+  const OpenedDocuments({
+    this.noteId,
+    required this.problems,
+  });
 
   @override
   int get hashCode => noteId.hashCode ^ problems.hashCode;
@@ -2337,7 +2750,11 @@ class OpenedFile {
   final String name;
   final String? identity;
 
-  const OpenedFile({required this.path, required this.name, this.identity});
+  const OpenedFile({
+    required this.path,
+    required this.name,
+    this.identity,
+  });
 
   @override
   int get hashCode => path.hashCode ^ name.hashCode ^ identity.hashCode;
@@ -2423,7 +2840,11 @@ class PaletteDto {
           tableHeaderBackground == other.tableHeaderBackground;
 }
 
-enum PasskeyFailure { cancelled, unavailable, failed }
+enum PasskeyFailure {
+  cancelled,
+  unavailable,
+  failed,
+}
 
 class PasskeyRequest {
   final int ticket;
@@ -2449,7 +2870,10 @@ class PasskeyRequest {
           optionsJson == other.optionsJson;
 }
 
-enum PasskeyRequestKind { register, assert_ }
+enum PasskeyRequestKind {
+  register,
+  assert_,
+}
 
 class PasskeyRow {
   final String id;
@@ -2490,7 +2914,9 @@ class PasskeyRow {
 sealed class PersonLookup with _$PersonLookup {
   const PersonLookup._();
 
-  const factory PersonLookup.found(PersonRow field0) = PersonLookup_Found;
+  const factory PersonLookup.found(
+    PersonRow field0,
+  ) = PersonLookup_Found;
   const factory PersonLookup.changed({
     PersonRow? pinned,
     required PersonRow offered,
@@ -2532,7 +2958,10 @@ class PlannedNote {
   final String id;
   final String rev;
 
-  const PlannedNote({required this.id, required this.rev});
+  const PlannedNote({
+    required this.id,
+    required this.rev,
+  });
 
   @override
   int get hashCode => id.hashCode ^ rev.hashCode;
@@ -2555,20 +2984,30 @@ sealed class PreviewLink with _$PreviewLink {
     String? heading,
     String? anchor,
   }) = PreviewLink_Note;
-  const factory PreviewLink.newNote({required String title}) =
-      PreviewLink_NewNote;
-  const factory PreviewLink.tag({required String name}) = PreviewLink_Tag;
-  const factory PreviewLink.heading({required String id}) = PreviewLink_Heading;
-  const factory PreviewLink.web({required String url}) = PreviewLink_Web;
+  const factory PreviewLink.newNote({
+    required String title,
+  }) = PreviewLink_NewNote;
+  const factory PreviewLink.tag({
+    required String name,
+  }) = PreviewLink_Tag;
+  const factory PreviewLink.heading({
+    required String id,
+  }) = PreviewLink_Heading;
+  const factory PreviewLink.web({
+    required String url,
+  }) = PreviewLink_Web;
   const factory PreviewLink.attachment({
     required String id,
     required String name,
     required String contentType,
     required int size,
   }) = PreviewLink_Attachment;
-  const factory PreviewLink.task({required int index}) = PreviewLink_Task;
-  const factory PreviewLink.copyCode({required int index}) =
-      PreviewLink_CopyCode;
+  const factory PreviewLink.task({
+    required int index,
+  }) = PreviewLink_Task;
+  const factory PreviewLink.copyCode({
+    required int index,
+  }) = PreviewLink_CopyCode;
   const factory PreviewLink.due() = PreviewLink_Due;
   const factory PreviewLink.nothing() = PreviewLink_Nothing;
 }
@@ -2608,7 +3047,12 @@ class PreviewOptions {
           code == other.code;
 }
 
-enum PromptState { new_, challenged, ready, changed }
+enum PromptState {
+  new_,
+  challenged,
+  ready,
+  changed,
+}
 
 class Property {
   final String key;
@@ -2638,7 +3082,14 @@ class Property {
           items == other.items;
 }
 
-enum PropertyKind { text, number, bool, date, list, raw }
+enum PropertyKind {
+  text,
+  number,
+  bool,
+  date,
+  list,
+  raw,
+}
 
 @freezed
 sealed class ProviderEvent with _$ProviderEvent {
@@ -2653,28 +3104,50 @@ sealed class ProviderEvent with _$ProviderEvent {
     required String verificationUri,
   }) = ProviderEvent_ShowCode;
   const factory ProviderEvent.closePage() = ProviderEvent_ClosePage;
-  const factory ProviderEvent.needsUsername({required String suggested}) =
-      ProviderEvent_NeedsUsername;
-  const factory ProviderEvent.finished(AccountState field0) =
-      ProviderEvent_Finished;
-  const factory ProviderEvent.failed({required String message}) =
-      ProviderEvent_Failed;
+  const factory ProviderEvent.needsUsername({
+    required String suggested,
+  }) = ProviderEvent_NeedsUsername;
+  const factory ProviderEvent.finished(
+    AccountState field0,
+  ) = ProviderEvent_Finished;
+  const factory ProviderEvent.failed({
+    required String message,
+  }) = ProviderEvent_Failed;
   const factory ProviderEvent.cancelled() = ProviderEvent_Cancelled;
 }
 
-enum ProviderKind { apple, google, github }
+enum ProviderKind {
+  apple,
+  google,
+  github,
+}
 
-enum PushEnvironmentKind { production, development }
+enum PushEnvironmentKind {
+  production,
+  development,
+}
 
-enum PushPlatformKind { apns, fcm }
+enum PushPlatformKind {
+  apns,
+  fcm,
+}
 
-enum QuotaLimit { docs, docBytes, files, fileBytes, server }
+enum QuotaLimit {
+  docs,
+  docBytes,
+  files,
+  fileBytes,
+  server,
+}
 
 class Range16 {
   final int start;
   final int end;
 
-  const Range16({required this.start, required this.end});
+  const Range16({
+    required this.start,
+    required this.end,
+  });
 
   @override
   int get hashCode => start.hashCode ^ end.hashCode;
@@ -2691,7 +3164,9 @@ class Range16 {
 class RecoveryKeyText {
   final String key;
 
-  const RecoveryKeyText({required this.key});
+  const RecoveryKeyText({
+    required this.key,
+  });
 
   @override
   int get hashCode => key.hashCode;
@@ -2737,7 +3212,11 @@ class RelatedState {
   final String? title;
   final String? detail;
 
-  const RelatedState({required this.status, this.title, this.detail});
+  const RelatedState({
+    required this.status,
+    this.title,
+    this.detail,
+  });
 
   @override
   int get hashCode => status.hashCode ^ title.hashCode ^ detail.hashCode;
@@ -2766,9 +3245,78 @@ sealed class RelatedStatus with _$RelatedStatus {
     required int done,
     required int total,
   }) = RelatedStatus_Indexing;
-  const factory RelatedStatus.ready({required int notes}) = RelatedStatus_Ready;
-  const factory RelatedStatus.failed({required String message}) =
-      RelatedStatus_Failed;
+  const factory RelatedStatus.ready({
+    required int notes,
+  }) = RelatedStatus_Ready;
+  const factory RelatedStatus.failed({
+    required String message,
+  }) = RelatedStatus_Failed;
+}
+
+enum ReminderAnswer {
+  open,
+  markDone,
+  dismiss,
+}
+
+class ReminderNote {
+  final String key;
+  final String noteId;
+  final int line;
+  final String title;
+  final String body;
+  final LocalTime fireAt;
+
+  const ReminderNote({
+    required this.key,
+    required this.noteId,
+    required this.line,
+    required this.title,
+    required this.body,
+    required this.fireAt,
+  });
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      noteId.hashCode ^
+      line.hashCode ^
+      title.hashCode ^
+      body.hashCode ^
+      fireAt.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReminderNote &&
+          runtimeType == other.runtimeType &&
+          key == other.key &&
+          noteId == other.noteId &&
+          line == other.line &&
+          title == other.title &&
+          body == other.body &&
+          fireAt == other.fireAt;
+}
+
+class ReminderPlan {
+  final List<ReminderNote> showNow;
+  final List<ReminderNote> schedule;
+
+  const ReminderPlan({
+    required this.showNow,
+    required this.schedule,
+  });
+
+  @override
+  int get hashCode => showNow.hashCode ^ schedule.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReminderPlan &&
+          runtimeType == other.runtimeType &&
+          showNow == other.showNow &&
+          schedule == other.schedule;
 }
 
 class ReplaceMatch {
@@ -2991,7 +3539,10 @@ class RunBatch {
   final int version;
   final List<EditorRun> runs;
 
-  const RunBatch({required this.version, required this.runs});
+  const RunBatch({
+    required this.version,
+    required this.runs,
+  });
 
   @override
   int get hashCode => version.hashCode ^ runs.hashCode;
@@ -3009,19 +3560,27 @@ class RunBatch {
 sealed class SaveState with _$SaveState {
   const SaveState._();
 
-  const factory SaveState.saved({required String rev, required int atMs}) =
-      SaveState_Saved;
+  const factory SaveState.saved({
+    required String rev,
+    required int atMs,
+  }) = SaveState_Saved;
   const factory SaveState.pending() = SaveState_Pending;
-  const factory SaveState.conflict({required bool deleted}) =
-      SaveState_Conflict;
-  const factory SaveState.failed({required String message}) = SaveState_Failed;
+  const factory SaveState.conflict({
+    required bool deleted,
+  }) = SaveState_Conflict;
+  const factory SaveState.failed({
+    required String message,
+  }) = SaveState_Failed;
 }
 
 class Saved {
   final String id;
   final String rev;
 
-  const Saved({required this.id, required this.rev});
+  const Saved({
+    required this.id,
+    required this.rev,
+  });
 
   @override
   int get hashCode => id.hashCode ^ rev.hashCode;
@@ -3042,14 +3601,17 @@ sealed class SearchScope with _$SearchScope {
   const factory SearchScope.all() = SearchScope_All;
   const factory SearchScope.titles() = SearchScope_Titles;
   const factory SearchScope.tags() = SearchScope_Tags;
-  const factory SearchScope.notebook({required String id}) =
-      SearchScope_Notebook;
+  const factory SearchScope.notebook({
+    required String id,
+  }) = SearchScope_Notebook;
 }
 
 class ServerInfo {
   final bool signupsOpen;
 
-  const ServerInfo({required this.signupsOpen});
+  const ServerInfo({
+    required this.signupsOpen,
+  });
 
   @override
   int get hashCode => signupsOpen.hashCode;
@@ -3099,7 +3661,12 @@ class Share {
   final String? url;
   final List<ShareFile> files;
 
-  const Share({this.subject, this.text, this.url, required this.files});
+  const Share({
+    this.subject,
+    this.text,
+    this.url,
+    required this.files,
+  });
 
   @override
   int get hashCode =>
@@ -3121,7 +3688,11 @@ class ShareFile {
   final String? contentType;
   final Uint8List bytes;
 
-  const ShareFile({required this.name, this.contentType, required this.bytes});
+  const ShareFile({
+    required this.name,
+    this.contentType,
+    required this.bytes,
+  });
 
   @override
   int get hashCode => name.hashCode ^ contentType.hashCode ^ bytes.hashCode;
@@ -3203,7 +3774,12 @@ class ShareLinkRow {
           expiresMs == other.expiresMs;
 }
 
-enum ShareRole { owner, editor, commenter, viewer }
+enum ShareRole {
+  owner,
+  editor,
+  commenter,
+  viewer,
+}
 
 class SharedEvent {
   final List<String> noteIds;
@@ -3251,7 +3827,10 @@ class SignedUp {
   final AccountState state;
   final RecoveryKeyText recoveryKey;
 
-  const SignedUp({required this.state, required this.recoveryKey});
+  const SignedUp({
+    required this.state,
+    required this.recoveryKey,
+  });
 
   @override
   int get hashCode => state.hashCode ^ recoveryKey.hashCode;
@@ -3265,13 +3844,20 @@ class SignedUp {
           recoveryKey == other.recoveryKey;
 }
 
-enum SortKey { updated, created, title }
+enum SortKey {
+  updated,
+  created,
+  title,
+}
 
 class SpanRow {
   final Range16 range;
   final List<String> tokens;
 
-  const SpanRow({required this.range, required this.tokens});
+  const SpanRow({
+    required this.range,
+    required this.tokens,
+  });
 
   @override
   int get hashCode => range.hashCode ^ tokens.hashCode;
@@ -3289,7 +3875,10 @@ class StatusChoice {
   final String status;
   final String label;
 
-  const StatusChoice({required this.status, required this.label});
+  const StatusChoice({
+    required this.status,
+    required this.label,
+  });
 
   @override
   int get hashCode => status.hashCode ^ label.hashCode;
@@ -3307,7 +3896,10 @@ class StatusCount {
   final String status;
   final int count;
 
-  const StatusCount({required this.status, required this.count});
+  const StatusCount({
+    required this.status,
+    required this.count,
+  });
 
   @override
   int get hashCode => status.hashCode ^ count.hashCode;
@@ -3327,7 +3919,12 @@ class StyledRun {
   final bool? italic;
   final int? weight;
 
-  const StyledRun({required this.range, this.color, this.italic, this.weight});
+  const StyledRun({
+    required this.range,
+    this.color,
+    this.italic,
+    this.weight,
+  });
 
   @override
   int get hashCode =>
@@ -3404,14 +4001,19 @@ sealed class SyncAccount with _$SyncAccount {
   const factory SyncAccount.signedIn() = SyncAccount_SignedIn;
   const factory SyncAccount.locked() = SyncAccount_Locked;
   const factory SyncAccount.sessionEnded() = SyncAccount_SessionEnded;
-  const factory SyncAccount.busy(AccountStep field0) = SyncAccount_Busy;
+  const factory SyncAccount.busy(
+    AccountStep field0,
+  ) = SyncAccount_Busy;
 }
 
 class SyncIntervalOption {
   final int minutes;
   final String label;
 
-  const SyncIntervalOption({required this.minutes, required this.label});
+  const SyncIntervalOption({
+    required this.minutes,
+    required this.label,
+  });
 
   @override
   int get hashCode => minutes.hashCode ^ label.hashCode;
@@ -3425,7 +4027,13 @@ class SyncIntervalOption {
           label == other.label;
 }
 
-enum SyncPhase { signedOut, idle, syncing, synced, failed }
+enum SyncPhase {
+  signedOut,
+  idle,
+  syncing,
+  synced,
+  failed,
+}
 
 enum SyncProblemKind {
   signedOut,
@@ -3482,7 +4090,10 @@ class SyncSettingsRow {
   final bool enabled;
   final int intervalSecs;
 
-  const SyncSettingsRow({required this.enabled, required this.intervalSecs});
+  const SyncSettingsRow({
+    required this.enabled,
+    required this.intervalSecs,
+  });
 
   @override
   int get hashCode => enabled.hashCode ^ intervalSecs.hashCode;
@@ -3583,7 +4194,12 @@ class SyncStatusLine {
           detail == other.detail;
 }
 
-enum SyncTone { good, busy, quiet, warning }
+enum SyncTone {
+  good,
+  busy,
+  quiet,
+  warning,
+}
 
 class SyntaxStyleRow {
   final String token;
@@ -3617,7 +4233,10 @@ class Table {
   final List<String> columns;
   final List<TableRow> rows;
 
-  const Table({required this.columns, required this.rows});
+  const Table({
+    required this.columns,
+    required this.rows,
+  });
 
   @override
   int get hashCode => columns.hashCode ^ rows.hashCode;
@@ -3636,7 +4255,11 @@ class TableRow {
   final String title;
   final List<String?> cells;
 
-  const TableRow({required this.id, required this.title, required this.cells});
+  const TableRow({
+    required this.id,
+    required this.title,
+    required this.cells,
+  });
 
   @override
   int get hashCode => id.hashCode ^ title.hashCode ^ cells.hashCode;
@@ -3749,7 +4372,9 @@ class TagTreeRow {
 class TaskBoard {
   final List<TaskSection> groups;
 
-  const TaskBoard({required this.groups});
+  const TaskBoard({
+    required this.groups,
+  });
 
   @override
   int get hashCode => groups.hashCode;
@@ -3762,7 +4387,13 @@ class TaskBoard {
           groups == other.groups;
 }
 
-enum TaskGroupKind { overdue, today, upcoming, noDate, done }
+enum TaskGroupKind {
+  overdue,
+  today,
+  upcoming,
+  noDate,
+  done,
+}
 
 class TaskItem {
   final String key;
@@ -3847,6 +4478,27 @@ class TaskListQuery {
           kept == other.kept;
 }
 
+class TaskPlace {
+  final String noteId;
+  final int line;
+
+  const TaskPlace({
+    required this.noteId,
+    required this.line,
+  });
+
+  @override
+  int get hashCode => noteId.hashCode ^ line.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TaskPlace &&
+          runtimeType == other.runtimeType &&
+          noteId == other.noteId &&
+          line == other.line;
+}
+
 class TaskSection {
   final TaskGroupKind group;
   final String label;
@@ -3869,6 +4521,27 @@ class TaskSection {
           group == other.group &&
           label == other.label &&
           items == other.items;
+}
+
+class TemplateRow {
+  final String id;
+  final String title;
+
+  const TemplateRow({
+    required this.id,
+    required this.title,
+  });
+
+  @override
+  int get hashCode => id.hashCode ^ title.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TemplateRow &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          title == other.title;
 }
 
 class TextChange {
@@ -3961,7 +4634,10 @@ class ThemedIcon {
   final String name;
   final String? svg;
 
-  const ThemedIcon({required this.name, this.svg});
+  const ThemedIcon({
+    required this.name,
+    this.svg,
+  });
 
   @override
   int get hashCode => name.hashCode ^ svg.hashCode;
@@ -3993,7 +4669,11 @@ class TwinRow {
   final String title;
   final int percent;
 
-  const TwinRow({required this.id, required this.title, required this.percent});
+  const TwinRow({
+    required this.id,
+    required this.title,
+    required this.percent,
+  });
 
   @override
   int get hashCode => id.hashCode ^ title.hashCode ^ percent.hashCode;

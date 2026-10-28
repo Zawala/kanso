@@ -60,6 +60,10 @@ abstract class Preferences with _$Preferences {
 
     /// Whether pictures attached to notes are read on this device for search.
     @Default(false) bool searchImageText,
+
+    /// Whether this phone may show reminders for tasks with a due time.
+    /// Notification permission is asked separately by the operating system.
+    @Default(true) bool remindersEnabled,
   }) = _Preferences;
 
   factory Preferences.fromJson(Map<String, dynamic> json) =>

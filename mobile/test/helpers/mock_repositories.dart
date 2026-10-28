@@ -13,6 +13,7 @@ import 'package:kanso/core/models/repos/abs/gallery_repository.dart';
 import 'package:kanso/core/models/repos/abs/haptics_repository.dart';
 import 'package:kanso/core/models/repos/abs/library_repository.dart';
 import 'package:kanso/core/models/repos/abs/licences_repository.dart';
+import 'package:kanso/core/models/repos/abs/reminders_repository.dart';
 import 'package:kanso/core/models/repos/abs/session_repository.dart';
 import 'package:kanso/core/models/repos/abs/shared_notes_repository.dart';
 import 'package:kanso/core/models/repos/abs/sync_repository.dart';
@@ -28,6 +29,7 @@ import 'package:mocktail/mocktail.dart';
 class MockLibraryRepository extends Mock implements LibraryRepository {}
 
 class MockDiscoveryRepository extends Mock implements DiscoveryRepository {}
+class MockRemindersRepository extends Mock implements RemindersRepository {}
 
 class MockSyncRepository extends Mock implements SyncRepository {}
 

@@ -7,17 +7,23 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart' show addTearDown;
 import 'package:kanso/backups/models/repos/abs/backups_repository.dart';
 import 'package:kanso/backups/state/backups/backups_bloc.dart';
+import 'package:kanso/board/state/board/board_bloc.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
+import 'package:kanso/editor/state/editor/editor_bloc.dart';
 import 'package:kanso/graph/state/graph/graph_bloc.dart';
 import 'package:kanso/history/models/repos/abs/history_repository.dart';
 import 'package:kanso/history/state/note_history/note_history_bloc.dart';
 import 'package:kanso/injection.dart';
+import 'package:kanso/journal/state/calendar/calendar_bloc.dart';
+import 'package:kanso/journal/state/journal/journal_bloc.dart';
 import 'package:kanso/library/state/new_notebook/new_notebook_bloc.dart';
 import 'package:kanso/note/models/repos/impl/memory_note_place_repository.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
 import 'package:kanso/note/state/note_discovery/note_discovery_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/push/state/push_setting/push_setting_bloc.dart';
+import 'package:kanso/reminders/state/reminders_settings/reminders_settings_bloc.dart';
+import 'package:kanso/reminders/utils/reminders_coordinator.dart';
 import 'package:kanso/replace/models/repos/abs/replace_repository.dart';
 import 'package:kanso/replace/state/replace_notes/replace_notes_bloc.dart';
 import 'package:kanso/search/state/search/search_bloc.dart';
@@ -30,10 +36,16 @@ import 'package:kanso/sharing/state/share_note/share_note_bloc.dart';
 import 'package:kanso/sharing/state/shared_note_live/shared_note_live_bloc.dart';
 import 'package:kanso/sharing/state/shared_note_status/shared_note_status_bloc.dart';
 import 'package:kanso/tasks/state/tasks/tasks_bloc.dart';
+import 'package:kanso/templates/state/daily_template/daily_template_bloc.dart';
+import 'package:kanso/templates/state/template_picker/template_picker_bloc.dart';
 import 'package:kanso/themes/state/theme_gallery/theme_gallery_bloc.dart';
 import 'package:kanso/themes/state/theme_picker/theme_picker_bloc.dart';
 
 import 'browse_blocs.dart';
+import 'fake_editor_document.dart';
+import 'fake_editor_repository.dart';
+import 'fake_media_picker_repository.dart';
+import 'fake_web_link_repository.dart';
 import 'fixture_about_repository.dart';
 import 'fixture_discovery_repository.dart';
 import 'fixture_gallery_repository.dart';
@@ -41,9 +53,11 @@ import 'fixture_library_repository.dart';
 import 'fixture_licences_repository.dart';
 import 'fixture_parity_repositories.dart';
 import 'fixture_push_repository.dart';
+import 'fixture_reminders_repository.dart';
 import 'fixture_renderer_repository.dart';
 import 'fixture_shared_notes_repository.dart';
 import 'fixture_system_share_repository.dart';
+import 'page_fixtures.dart';
 import 'seeded_appearance_bloc.dart';
 
 /// Registers, for a test that builds the app's pages, the BLoCs the pages
@@ -63,7 +77,44 @@ void registerPageBlocs(
   FixtureHistoryRepository? history,
   FixtureReplaceRepository? replace,
   FixtureBackupsRepository? backups,
+  PageFixtures? fixtures,
 ]) {
+  _registerPageBlocs(
+    library: library,
+    renderer: renderer,
+    undo: undo,
+    gallery: gallery,
+    shared: shared,
+    system: system,
+    history: history,
+    replace: replace,
+    backups: backups,
+    fixtures: fixtures,
+  );
+}
+
+/// Registers the page BLoCs with one shared fixture bundle.
+void registerPageBlocsWithFixtures(
+  FixtureLibraryRepository library, {
+  required PageFixtures fixtures,
+}) {
+  _registerPageBlocs(library: library, fixtures: fixtures);
+}
+
+void _registerPageBlocs({
+  required FixtureLibraryRepository library,
+  FixtureRendererRepository? renderer,
+  UndoNoticeBloc? undo,
+  FixtureGalleryRepository? gallery,
+  FixtureSharedNotesRepository? shared,
+  FixtureSystemShareRepository? system,
+  FixtureHistoryRepository? history,
+  FixtureReplaceRepository? replace,
+  FixtureBackupsRepository? backups,
+  PageFixtures? fixtures,
+}) {
+  final page = fixtures ?? PageFixtures();
+  page.journal.library = library;
   final themes = gallery ?? FixtureGalleryRepository();
   final sharing = shared ?? FixtureSharedNotesRepository();
   final clipboard = system ?? FixtureSystemShareRepository();
@@ -209,5 +260,36 @@ void registerPageBlocs(
     getIt.unregister<BackupsRepository>();
   }
   getIt.registerLazySingleton<BackupsRepository>(() => libraryBackups);
+  void register<T extends Object>(T Function() make) {
+    if (getIt.isRegistered<T>()) {
+      getIt.unregister<T>();
+    }
+    getIt.registerFactory<T>(make);
+  }
+
+  register<JournalBloc>(() => JournalBloc(page.journal, page.journal));
+  register<EditorBloc>(
+    () => EditorBloc(
+      FakeEditorRepository(document: FakeEditorDocument()),
+      FakeWebLinkRepository(),
+      FakeMediaPickerRepository(),
+    ),
+  );
+  register<CalendarBloc>(() => CalendarBloc(page.journal));
+  register<TemplatePickerBloc>(() => TemplatePickerBloc(page.journal));
+  register<DailyTemplateBloc>(() => DailyTemplateBloc(page.journal));
+  register<BoardBloc>(() => BoardBloc(page.boards, library));
+
+  final preferences = ForgetfulPreferencesRepository();
+  final coordinator = RemindersCoordinator(
+    preferences,
+    FixtureRemindersRepository(),
+    page.notifier,
+    library,
+  );
+  register<RemindersSettingsBloc>(
+    () => RemindersSettingsBloc(preferences, page.notifier, coordinator),
+  );
+  addTearDown(() => unawaited(coordinator.dispose()));
   addTearDown(() => unawaited(getIt.reset()));
 }

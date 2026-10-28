@@ -33,9 +33,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get libraryTrash => 'Trash';
 
   @override
-  String get libraryStatuses => 'Status';
-
-  @override
   String get openSettings => 'Settings';
 
   @override
@@ -618,15 +615,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get emptyTagMessage => 'Notes with this tag will appear in this list.';
-
-  @override
-  String emptyStatusTitle(String status) {
-    return 'No notes marked $status';
-  }
-
-  @override
-  String get emptyStatusMessage =>
-      'Notes with this status will appear in this list.';
 
   @override
   String get emptyNarrowedTitle => 'No notes match';
@@ -2549,15 +2537,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get lockMoreTitle => 'Note actions';
 
   @override
-  String get noteExportPdf => 'Export as PDF';
-
-  @override
-  String get noteExportPreparing => 'Preparing the PDF';
-
-  @override
-  String get noteExportFailed => 'The note could not be exported.';
-
-  @override
   String get lockNotebookMenuTitle => 'Notebook actions';
 
   @override
@@ -3207,6 +3186,249 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get replaceProblemSearch => 'The notes couldn’t be searched.';
+
+  @override
+  String get journalPreviousDay => 'Previous day';
+
+  @override
+  String get journalNextDay => 'Next day';
+
+  @override
+  String get journalCalendar => 'Calendar';
+
+  @override
+  String get journalTodaysNote => 'Today’s note';
+
+  @override
+  String get journalCalendarTitle => 'Journal';
+
+  @override
+  String get journalFailed => 'Couldn’t make that note. Try again.';
+
+  @override
+  String get calendarPreviousMonth => 'Previous month';
+
+  @override
+  String get calendarNextMonth => 'Next month';
+
+  @override
+  String get calendarToday => 'Today';
+
+  @override
+  String get calendarHint =>
+      'A dot marks a day with a note. Tap a day to open it, or to start it from the daily template.';
+
+  @override
+  String get calendarFailed => 'The calendar couldn’t be read.';
+
+  @override
+  String calendarDayLabel(String date) {
+    return '$date';
+  }
+
+  @override
+  String calendarDayWithNote(String date) {
+    return '$date, has a note';
+  }
+
+  @override
+  String calendarDayToday(String date) {
+    return '$date, today';
+  }
+
+  @override
+  String calendarDayTodayWithNote(String date) {
+    return '$date, today, has a note';
+  }
+
+  @override
+  String get newMenuTitle => 'New';
+
+  @override
+  String get newMenuLabel => 'New';
+
+  @override
+  String get newFromTemplate => 'New from template…';
+
+  @override
+  String get newTemplate => 'New template';
+
+  @override
+  String get templatePickerTitle => 'New from template';
+
+  @override
+  String get templatesEmptyTitle => 'No templates yet';
+
+  @override
+  String get templatesEmptyMessage =>
+      'Notes in the Templates notebook show here. New template makes one.';
+
+  @override
+  String get templatesFailed => 'The templates couldn’t be read.';
+
+  @override
+  String get settingsDailyNotes => 'Daily notes';
+
+  @override
+  String get settingsDailyTemplate => 'Daily template';
+
+  @override
+  String get dailyTemplateNone => 'None';
+
+  @override
+  String dailyTemplateDetail(String date, String time, String cursor) {
+    return 'New daily notes start from this template, with $date, $time and $cursor filled in.';
+  }
+
+  @override
+  String get dailyTemplateDetailEmpty =>
+      'New daily notes start empty. Notes in the Templates notebook can be chosen here; New template makes one.';
+
+  @override
+  String get dailyTemplateFailed => 'Couldn’t set the daily template.';
+
+  @override
+  String get settingsReminders => 'Reminders';
+
+  @override
+  String get settingsRemindMe => 'Remind me of tasks';
+
+  @override
+  String get settingsRemindersDetail =>
+      'A notification when a task with a time comes due, like “- [ ] Call Sam @2026-10-25T09:00”.';
+
+  @override
+  String get settingsRemindersDenied =>
+      'Notifications are turned off for Kanso. Allow them in your device’s settings to get reminders.';
+
+  @override
+  String get settingsRemindersFailed => 'Couldn’t save that setting.';
+
+  @override
+  String get listOptionsBoard => 'Board';
+
+  @override
+  String get boardTitle => 'Board';
+
+  @override
+  String get boardNotes => 'Notes';
+
+  @override
+  String get boardTasks => 'Tasks';
+
+  @override
+  String get boardKindLabel => 'Board';
+
+  @override
+  String get boardClose => 'Close board';
+
+  @override
+  String get boardLaneNoStatus => 'No status';
+
+  @override
+  String get boardLaneTodo => 'To do';
+
+  @override
+  String get boardLaneDone => 'Done';
+
+  @override
+  String get boardEmptyNotesTitle => 'No notes here';
+
+  @override
+  String get boardEmptyNotesMessage =>
+      'Notes in this list show here, a column for each status.';
+
+  @override
+  String get boardEmptyTasksTitle => 'No tasks in these notes';
+
+  @override
+  String get boardEmptyTasksMessage =>
+      'Write “- [ ] Call Sam” in a note, and it shows here.';
+
+  @override
+  String get boardHintNotes =>
+      'Touch and hold a card to move it to another status.';
+
+  @override
+  String get boardHintTasks =>
+      'Tick a task to do it, or touch and hold it to move it.';
+
+  @override
+  String get boardHintNotesDrag => 'Drag a card to change its status.';
+
+  @override
+  String get boardHintTasksDrag => 'Drag a task to Done to tick it off.';
+
+  @override
+  String get boardMoveTo => 'Move to…';
+
+  @override
+  String get boardMoveSheetTitle => 'Move to';
+
+  @override
+  String get boardMoveFailed => 'Couldn’t move the card.';
+
+  @override
+  String get boardChangedInNote =>
+      'That task changed in its note. The board is up to date now.';
+
+  @override
+  String get boardFailedTitle => 'The board didn’t load';
+
+  @override
+  String get boardFailedMessage =>
+      'Something went wrong reading the notes on this device. Try again.';
+
+  @override
+  String boardTaskCount(int done, int total) {
+    return '$done/$total tasks';
+  }
+
+  @override
+  String boardColumnLabel(String lane, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count cards',
+      one: '1 card',
+    );
+    return '$lane, $_temp0';
+  }
+
+  @override
+  String get boardTickTask => 'Mark done';
+
+  @override
+  String get boardUntickTask => 'Mark not done';
+
+  @override
+  String boardTaskDue(String when) {
+    return 'Due $when';
+  }
+
+  @override
+  String get boardNoticeDismiss => 'OK';
+
+  @override
+  String get libraryStatuses => 'Status';
+
+  @override
+  String emptyStatusTitle(String status) {
+    return 'No notes marked $status';
+  }
+
+  @override
+  String get emptyStatusMessage =>
+      'Notes with this status will appear in this list.';
+
+  @override
+  String get noteExportPdf => 'Export as PDF';
+
+  @override
+  String get noteExportPreparing => 'Preparing the PDF';
+
+  @override
+  String get noteExportFailed => 'The note could not be exported.';
 
   @override
   String get libraryNewSubNotebook => 'New Sub-notebook';

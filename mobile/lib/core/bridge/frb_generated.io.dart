@@ -395,6 +395,21 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   BindingQuestion dco_decode_binding_question(dynamic raw);
 
   @protected
+  BoardCard dco_decode_board_card(dynamic raw);
+
+  @protected
+  BoardColumn dco_decode_board_column(dynamic raw);
+
+  @protected
+  BoardKind dco_decode_board_kind(dynamic raw);
+
+  @protected
+  BoardLane dco_decode_board_lane(dynamic raw);
+
+  @protected
+  BoardView dco_decode_board_view(dynamic raw);
+
+  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
@@ -410,10 +425,22 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   BindingQuestion dco_decode_box_autoadd_binding_question(dynamic raw);
 
   @protected
+  BoardLane dco_decode_box_autoadd_board_lane(dynamic raw);
+
+  @protected
   bool dco_decode_box_autoadd_bool(dynamic raw);
 
   @protected
+  CardKey dco_decode_box_autoadd_card_key(dynamic raw);
+
+  @protected
   Completion dco_decode_box_autoadd_completion(dynamic raw);
+
+  @protected
+  DayDate dco_decode_box_autoadd_day_date(dynamic raw);
+
+  @protected
+  DueChipRow dco_decode_box_autoadd_due_chip_row(dynamic raw);
 
   @protected
   DueTone dco_decode_box_autoadd_due_tone(dynamic raw);
@@ -471,6 +498,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   LockedInfo dco_decode_box_autoadd_locked_info(dynamic raw);
+
+  @protected
+  MadeNote dco_decode_box_autoadd_made_note(dynamic raw);
 
   @protected
   NewNote dco_decode_box_autoadd_new_note(dynamic raw);
@@ -545,6 +575,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   TaskListQuery dco_decode_box_autoadd_task_list_query(dynamic raw);
 
   @protected
+  TaskPlace dco_decode_box_autoadd_task_place(dynamic raw);
+
+  @protected
   TextChange dco_decode_box_autoadd_text_change(dynamic raw);
 
   @protected
@@ -560,7 +593,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   BuiltinTheme dco_decode_builtin_theme(dynamic raw);
 
   @protected
+  CalendarDay dco_decode_calendar_day(dynamic raw);
+
+  @protected
   CaptureOutcome dco_decode_capture_outcome(dynamic raw);
+
+  @protected
+  CardKey dco_decode_card_key(dynamic raw);
+
+  @protected
+  CardMoved dco_decode_card_moved(dynamic raw);
 
   @protected
   Changed dco_decode_changed(dynamic raw);
@@ -596,6 +638,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   DateField dco_decode_date_field(dynamic raw);
 
   @protected
+  DayDate dco_decode_day_date(dynamic raw);
+
+  @protected
   DeviceRow dco_decode_device_row(dynamic raw);
 
   @protected
@@ -618,6 +663,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DropsSaved dco_decode_drops_saved(dynamic raw);
+
+  @protected
+  DueChipRow dco_decode_due_chip_row(dynamic raw);
 
   @protected
   DueTone dco_decode_due_tone(dynamic raw);
@@ -752,7 +800,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<BindingAnswer> dco_decode_list_binding_answer(dynamic raw);
 
   @protected
+  List<BoardCard> dco_decode_list_board_card(dynamic raw);
+
+  @protected
+  List<BoardColumn> dco_decode_list_board_column(dynamic raw);
+
+  @protected
   List<BuiltinTheme> dco_decode_list_builtin_theme(dynamic raw);
+
+  @protected
+  List<CalendarDay> dco_decode_list_calendar_day(dynamic raw);
 
   @protected
   List<ColorChoice> dco_decode_list_color_choice(dynamic raw);
@@ -810,6 +867,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<LinkedProviderRow> dco_decode_list_linked_provider_row(dynamic raw);
+
+  @protected
+  List<List<CalendarDay>> dco_decode_list_list_calendar_day(dynamic raw);
 
   @protected
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
@@ -877,6 +937,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<RelatedRow> dco_decode_list_related_row(dynamic raw);
 
   @protected
+  List<ReminderNote> dco_decode_list_reminder_note(dynamic raw);
+
+  @protected
   List<ReplaceMatch> dco_decode_list_replace_match(dynamic raw);
 
   @protected
@@ -928,6 +991,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<TaskSection> dco_decode_list_task_section(dynamic raw);
 
   @protected
+  List<TemplateRow> dco_decode_list_template_row(dynamic raw);
+
+  @protected
   List<ThemedIcon> dco_decode_list_themed_icon(dynamic raw);
 
   @protected
@@ -955,6 +1021,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   LockedInfo dco_decode_locked_info(dynamic raw);
 
   @protected
+  MadeNote dco_decode_made_note(dynamic raw);
+
+  @protected
   MeaningResult dco_decode_meaning_result(dynamic raw);
 
   @protected
@@ -962,6 +1031,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   MentionSpan dco_decode_mention_span(dynamic raw);
+
+  @protected
+  MonthGrid dco_decode_month_grid(dynamic raw);
 
   @protected
   NewNote dco_decode_new_note(dynamic raw);
@@ -1021,6 +1093,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   Completion? dco_decode_opt_box_autoadd_completion(dynamic raw);
 
   @protected
+  DayDate? dco_decode_opt_box_autoadd_day_date(dynamic raw);
+
+  @protected
+  DueChipRow? dco_decode_opt_box_autoadd_due_chip_row(dynamic raw);
+
+  @protected
   DueTone? dco_decode_opt_box_autoadd_due_tone(dynamic raw);
 
   @protected
@@ -1046,6 +1124,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   LiveStatus? dco_decode_opt_box_autoadd_live_status(dynamic raw);
+
+  @protected
+  MadeNote? dco_decode_opt_box_autoadd_made_note(dynamic raw);
 
   @protected
   NotebookRole? dco_decode_opt_box_autoadd_notebook_role(dynamic raw);
@@ -1084,6 +1165,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   SyncProblemKind? dco_decode_opt_box_autoadd_sync_problem_kind(dynamic raw);
+
+  @protected
+  TaskPlace? dco_decode_opt_box_autoadd_task_place(dynamic raw);
 
   @protected
   TwinRow? dco_decode_opt_box_autoadd_twin_row(dynamic raw);
@@ -1186,6 +1270,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   RelatedStatus dco_decode_related_status(dynamic raw);
+
+  @protected
+  ReminderAnswer dco_decode_reminder_answer(dynamic raw);
+
+  @protected
+  ReminderNote dco_decode_reminder_note(dynamic raw);
+
+  @protected
+  ReminderPlan dco_decode_reminder_plan(dynamic raw);
 
   @protected
   ReplaceMatch dco_decode_replace_match(dynamic raw);
@@ -1329,7 +1422,13 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   TaskListQuery dco_decode_task_list_query(dynamic raw);
 
   @protected
+  TaskPlace dco_decode_task_place(dynamic raw);
+
+  @protected
   TaskSection dco_decode_task_section(dynamic raw);
+
+  @protected
+  TemplateRow dco_decode_template_row(dynamic raw);
 
   @protected
   TextChange dco_decode_text_change(dynamic raw);
@@ -1685,6 +1784,21 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   BindingQuestion sse_decode_binding_question(SseDeserializer deserializer);
 
   @protected
+  BoardCard sse_decode_board_card(SseDeserializer deserializer);
+
+  @protected
+  BoardColumn sse_decode_board_column(SseDeserializer deserializer);
+
+  @protected
+  BoardKind sse_decode_board_kind(SseDeserializer deserializer);
+
+  @protected
+  BoardLane sse_decode_board_lane(SseDeserializer deserializer);
+
+  @protected
+  BoardView sse_decode_board_view(SseDeserializer deserializer);
+
+  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
@@ -1706,10 +1820,22 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  BoardLane sse_decode_box_autoadd_board_lane(SseDeserializer deserializer);
+
+  @protected
   bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
 
   @protected
+  CardKey sse_decode_box_autoadd_card_key(SseDeserializer deserializer);
+
+  @protected
   Completion sse_decode_box_autoadd_completion(SseDeserializer deserializer);
+
+  @protected
+  DayDate sse_decode_box_autoadd_day_date(SseDeserializer deserializer);
+
+  @protected
+  DueChipRow sse_decode_box_autoadd_due_chip_row(SseDeserializer deserializer);
 
   @protected
   DueTone sse_decode_box_autoadd_due_tone(SseDeserializer deserializer);
@@ -1779,6 +1905,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   LockedInfo sse_decode_box_autoadd_locked_info(SseDeserializer deserializer);
+
+  @protected
+  MadeNote sse_decode_box_autoadd_made_note(SseDeserializer deserializer);
 
   @protected
   NewNote sse_decode_box_autoadd_new_note(SseDeserializer deserializer);
@@ -1875,6 +2004,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  TaskPlace sse_decode_box_autoadd_task_place(SseDeserializer deserializer);
+
+  @protected
   TextChange sse_decode_box_autoadd_text_change(SseDeserializer deserializer);
 
   @protected
@@ -1890,7 +2022,16 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   BuiltinTheme sse_decode_builtin_theme(SseDeserializer deserializer);
 
   @protected
+  CalendarDay sse_decode_calendar_day(SseDeserializer deserializer);
+
+  @protected
   CaptureOutcome sse_decode_capture_outcome(SseDeserializer deserializer);
+
+  @protected
+  CardKey sse_decode_card_key(SseDeserializer deserializer);
+
+  @protected
+  CardMoved sse_decode_card_moved(SseDeserializer deserializer);
 
   @protected
   Changed sse_decode_changed(SseDeserializer deserializer);
@@ -1926,6 +2067,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   DateField sse_decode_date_field(SseDeserializer deserializer);
 
   @protected
+  DayDate sse_decode_day_date(SseDeserializer deserializer);
+
+  @protected
   DeviceRow sse_decode_device_row(SseDeserializer deserializer);
 
   @protected
@@ -1948,6 +2092,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   DropsSaved sse_decode_drops_saved(SseDeserializer deserializer);
+
+  @protected
+  DueChipRow sse_decode_due_chip_row(SseDeserializer deserializer);
 
   @protected
   DueTone sse_decode_due_tone(SseDeserializer deserializer);
@@ -2088,9 +2235,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  List<BoardCard> sse_decode_list_board_card(SseDeserializer deserializer);
+
+  @protected
+  List<BoardColumn> sse_decode_list_board_column(SseDeserializer deserializer);
+
+  @protected
   List<BuiltinTheme> sse_decode_list_builtin_theme(
     SseDeserializer deserializer,
   );
+
+  @protected
+  List<CalendarDay> sse_decode_list_calendar_day(SseDeserializer deserializer);
 
   @protected
   List<ColorChoice> sse_decode_list_color_choice(SseDeserializer deserializer);
@@ -2160,6 +2316,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<LinkedProviderRow> sse_decode_list_linked_provider_row(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<List<CalendarDay>> sse_decode_list_list_calendar_day(
     SseDeserializer deserializer,
   );
 
@@ -2239,6 +2400,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<RelatedRow> sse_decode_list_related_row(SseDeserializer deserializer);
 
   @protected
+  List<ReminderNote> sse_decode_list_reminder_note(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<ReplaceMatch> sse_decode_list_replace_match(
     SseDeserializer deserializer,
   );
@@ -2302,6 +2468,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<TaskSection> sse_decode_list_task_section(SseDeserializer deserializer);
 
   @protected
+  List<TemplateRow> sse_decode_list_template_row(SseDeserializer deserializer);
+
+  @protected
   List<ThemedIcon> sse_decode_list_themed_icon(SseDeserializer deserializer);
 
   @protected
@@ -2331,6 +2500,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   LockedInfo sse_decode_locked_info(SseDeserializer deserializer);
 
   @protected
+  MadeNote sse_decode_made_note(SseDeserializer deserializer);
+
+  @protected
   MeaningResult sse_decode_meaning_result(SseDeserializer deserializer);
 
   @protected
@@ -2338,6 +2510,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   MentionSpan sse_decode_mention_span(SseDeserializer deserializer);
+
+  @protected
+  MonthGrid sse_decode_month_grid(SseDeserializer deserializer);
 
   @protected
   NewNote sse_decode_new_note(SseDeserializer deserializer);
@@ -2403,6 +2578,14 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  DayDate? sse_decode_opt_box_autoadd_day_date(SseDeserializer deserializer);
+
+  @protected
+  DueChipRow? sse_decode_opt_box_autoadd_due_chip_row(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   DueTone? sse_decode_opt_box_autoadd_due_tone(SseDeserializer deserializer);
 
   @protected
@@ -2442,6 +2625,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   LiveStatus? sse_decode_opt_box_autoadd_live_status(
     SseDeserializer deserializer,
   );
+
+  @protected
+  MadeNote? sse_decode_opt_box_autoadd_made_note(SseDeserializer deserializer);
 
   @protected
   NotebookRole? sse_decode_opt_box_autoadd_notebook_role(
@@ -2496,6 +2682,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   SyncProblemKind? sse_decode_opt_box_autoadd_sync_problem_kind(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TaskPlace? sse_decode_opt_box_autoadd_task_place(
     SseDeserializer deserializer,
   );
 
@@ -2606,6 +2797,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   RelatedStatus sse_decode_related_status(SseDeserializer deserializer);
+
+  @protected
+  ReminderAnswer sse_decode_reminder_answer(SseDeserializer deserializer);
+
+  @protected
+  ReminderNote sse_decode_reminder_note(SseDeserializer deserializer);
+
+  @protected
+  ReminderPlan sse_decode_reminder_plan(SseDeserializer deserializer);
 
   @protected
   ReplaceMatch sse_decode_replace_match(SseDeserializer deserializer);
@@ -2753,7 +2953,13 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   TaskListQuery sse_decode_task_list_query(SseDeserializer deserializer);
 
   @protected
+  TaskPlace sse_decode_task_place(SseDeserializer deserializer);
+
+  @protected
   TaskSection sse_decode_task_section(SseDeserializer deserializer);
+
+  @protected
+  TemplateRow sse_decode_template_row(SseDeserializer deserializer);
 
   @protected
   TextChange sse_decode_text_change(SseDeserializer deserializer);
@@ -3173,6 +3379,21 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_board_card(BoardCard self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_board_column(BoardColumn self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_board_kind(BoardKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_board_lane(BoardLane self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_board_view(BoardView self, SseSerializer serializer);
+
+  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
@@ -3200,11 +3421,29 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_board_lane(
+    BoardLane self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_card_key(CardKey self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_completion(
     Completion self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_day_date(DayDate self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_due_chip_row(
+    DueChipRow self,
     SseSerializer serializer,
   );
 
@@ -3313,6 +3552,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_box_autoadd_locked_info(
     LockedInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_made_note(
+    MadeNote self,
     SseSerializer serializer,
   );
 
@@ -3449,6 +3694,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_task_place(
+    TaskPlace self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_text_change(
     TextChange self,
     SseSerializer serializer,
@@ -3467,10 +3718,19 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_builtin_theme(BuiltinTheme self, SseSerializer serializer);
 
   @protected
+  void sse_encode_calendar_day(CalendarDay self, SseSerializer serializer);
+
+  @protected
   void sse_encode_capture_outcome(
     CaptureOutcome self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_card_key(CardKey self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_card_moved(CardMoved self, SseSerializer serializer);
 
   @protected
   void sse_encode_changed(Changed self, SseSerializer serializer);
@@ -3515,6 +3775,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_date_field(DateField self, SseSerializer serializer);
 
   @protected
+  void sse_encode_day_date(DayDate self, SseSerializer serializer);
+
+  @protected
   void sse_encode_device_row(DeviceRow self, SseSerializer serializer);
 
   @protected
@@ -3543,6 +3806,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_drops_saved(DropsSaved self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_due_chip_row(DueChipRow self, SseSerializer serializer);
 
   @protected
   void sse_encode_due_tone(DueTone self, SseSerializer serializer);
@@ -3698,8 +3964,26 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_list_board_card(
+    List<BoardCard> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_board_column(
+    List<BoardColumn> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_builtin_theme(
     List<BuiltinTheme> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_calendar_day(
+    List<CalendarDay> self,
     SseSerializer serializer,
   );
 
@@ -3799,6 +4083,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_list_linked_provider_row(
     List<LinkedProviderRow> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_list_calendar_day(
+    List<List<CalendarDay>> self,
     SseSerializer serializer,
   );
 
@@ -3911,6 +4201,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_list_reminder_note(
+    List<ReminderNote> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_replace_match(
     List<ReplaceMatch> self,
     SseSerializer serializer,
@@ -3998,6 +4294,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_list_template_row(
+    List<TemplateRow> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_themed_icon(
     List<ThemedIcon> self,
     SseSerializer serializer,
@@ -4031,6 +4333,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_locked_info(LockedInfo self, SseSerializer serializer);
 
   @protected
+  void sse_encode_made_note(MadeNote self, SseSerializer serializer);
+
+  @protected
   void sse_encode_meaning_result(MeaningResult self, SseSerializer serializer);
 
   @protected
@@ -4038,6 +4343,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_mention_span(MentionSpan self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_month_grid(MonthGrid self, SseSerializer serializer);
 
   @protected
   void sse_encode_new_note(NewNote self, SseSerializer serializer);
@@ -4109,6 +4417,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_day_date(
+    DayDate? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_due_chip_row(
+    DueChipRow? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_due_tone(
     DueTone? self,
     SseSerializer serializer,
@@ -4156,6 +4476,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_opt_box_autoadd_live_status(
     LiveStatus? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_made_note(
+    MadeNote? self,
     SseSerializer serializer,
   );
 
@@ -4225,6 +4551,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_opt_box_autoadd_sync_problem_kind(
     SyncProblemKind? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_task_place(
+    TaskPlace? self,
     SseSerializer serializer,
   );
 
@@ -4365,6 +4697,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_related_status(RelatedStatus self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_reminder_answer(
+    ReminderAnswer self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_reminder_note(ReminderNote self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_reminder_plan(ReminderPlan self, SseSerializer serializer);
 
   @protected
   void sse_encode_replace_match(ReplaceMatch self, SseSerializer serializer);
@@ -4535,7 +4879,13 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_task_list_query(TaskListQuery self, SseSerializer serializer);
 
   @protected
+  void sse_encode_task_place(TaskPlace self, SseSerializer serializer);
+
+  @protected
   void sse_encode_task_section(TaskSection self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_template_row(TemplateRow self, SseSerializer serializer);
 
   @protected
   void sse_encode_text_change(TextChange self, SseSerializer serializer);

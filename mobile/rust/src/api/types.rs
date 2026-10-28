@@ -10,28 +10,30 @@ use flutter_rust_bridge::frb;
 // Public: the generated code names these types by this module's path.
 pub use kanso_mobile::{
     AccountDetails, AccountState, AccountStep, ApprovalPhase, ApprovalPrompt, ApprovalWait,
-    AttachmentFile, BindingAnswer, BindingQuestion, BuiltinTheme, CaptureOutcome, Changed,
-    ColorChoice, ColorRow, CommentPlacement, CommentRow, Completion, CompletionItem,
-    CompletionKind, CopiedLink, CursorMark, DateField, DeviceRow, DiagramKind, DiagramRenderer,
-    DiscoveryMeasure, DropsSaved, DueTone, EditCommand, EditOutcome, EditorContext, EditorEvent,
+    AttachmentFile, BindingAnswer, BindingQuestion, BoardCard, BoardColumn, BoardKind, BoardLane,
+    BoardView, BuiltinTheme, CalendarDay, CaptureOutcome, CardKey, CardMoved, Changed, ColorChoice,
+    ColorRow, CommentPlacement, CommentRow, Completion, CompletionItem, CompletionKind, CopiedLink,
+    CursorMark, DateField, DayDate, DeviceRow, DiagramKind, DiagramRenderer, DiscoveryMeasure,
+    DropsSaved, DueChipRow, DueTone, EditCommand, EditOutcome, EditorContext, EditorEvent,
     EditorRun, EditorSnapshot, ExportedPage, FoldState, FormatKind, GalleryColors, GalleryItem,
     GalleryKind, GraphEdgeRow, GraphFilter, GraphLayout, GraphNodeRow, GraphRequest, HistoryState,
     Hit, IconChoice, IconThemeRow, ImageToRead, ImportEvent, ImportFound, ImportPhase,
     ImportProgress, ImportSource, ImportSummary, InvitationRow, JoinRow, KansoError,
     LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveStatus,
-    LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MeaningResult, MemberRow,
-    MentionSpan, NewNote, NoteChange, NoteList, NoteMeaning, NoteRow, NoteView, NotebookRole,
-    NotebookRow, OpenedDocuments, OpenedFile, PaletteDto, PasskeyFailure, PasskeyRequest,
-    PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow, PreviewLink, PreviewOptions,
-    PromptState, Property, PropertyKind, ProviderEvent, ProviderKind, PushEnvironmentKind,
-    PushPlatformKind, QuotaLimit, Range16, RecoveryKeyText, RelatedRow, RelatedState,
-    RelatedStatus, Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo, ServerMethods,
-    Share, ShareFile, ShareInfo, ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp,
-    SortKey, SpanRow, StatusChoice, StatusCount, StyledRun, SuggestedTag, SvgRow, SyncAccount,
-    SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus,
-    SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagPlaces, TagRow, TagTreeRow,
-    TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange, ThemeTokens,
-    ThemedIcon, Ticked, TwinRow, VisibleNotebook,
+    LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MadeNote, MeaningResult,
+    MemberRow, MentionSpan, MonthGrid, NewNote, NoteChange, NoteList, NoteMeaning, NoteRow,
+    NoteView, NotebookRole, NotebookRow, OpenedDocuments, OpenedFile, PaletteDto, PasskeyFailure,
+    PasskeyRequest, PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow, PreviewLink,
+    PreviewOptions, PromptState, Property, PropertyKind, ProviderEvent, ProviderKind,
+    PushEnvironmentKind, PushPlatformKind, QuotaLimit, Range16, RecoveryKeyText, RelatedRow,
+    RelatedState, RelatedStatus, ReminderAnswer, ReminderNote, ReminderPlan, Replacement, RunBatch,
+    SaveState, Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo,
+    ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow,
+    StatusChoice, StatusCount, StyledRun, SuggestedTag, SvgRow, SyncAccount, SyncIntervalOption,
+    SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine,
+    SyncTone, SyntaxStyleRow, Table, TableRow, TagPlaces, TagRow, TagTreeRow, TaskBoard,
+    TaskGroupKind, TaskItem, TaskListQuery, TaskPlace, TaskSection, TemplateRow, TextChange,
+    ThemeTokens, ThemedIcon, Ticked, TwinRow, VisibleNotebook,
 };
 
 #[frb(mirror(KansoError))]
@@ -1380,6 +1382,136 @@ pub struct _LocalTime {
     pub hour: u32,
     pub minute: u32,
     pub second: u32,
+}
+
+#[frb(mirror(DayDate))]
+pub struct _DayDate {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
+}
+
+#[frb(mirror(MadeNote))]
+pub struct _MadeNote {
+    pub id: String,
+    pub cursor16: Option<u32>,
+    pub title_first: bool,
+}
+
+#[frb(mirror(CalendarDay))]
+pub struct _CalendarDay {
+    pub date: DayDate,
+    pub in_month: bool,
+    pub has_note: bool,
+    pub is_today: bool,
+}
+
+#[frb(mirror(MonthGrid))]
+pub struct _MonthGrid {
+    pub year: i32,
+    pub month: u32,
+    pub title: String,
+    pub weekday_labels: Vec<String>,
+    pub weeks: Vec<Vec<CalendarDay>>,
+}
+
+#[frb(mirror(TemplateRow))]
+pub struct _TemplateRow {
+    pub id: String,
+    pub title: String,
+}
+
+#[frb(mirror(BoardKind))]
+pub enum _BoardKind {
+    Notes,
+    Tasks,
+}
+
+#[frb(mirror(BoardLane))]
+pub enum _BoardLane {
+    Status { status: String },
+    Todo,
+    Done,
+}
+
+#[frb(mirror(CardKey))]
+pub enum _CardKey {
+    Note {
+        id: String,
+    },
+    Task {
+        note_id: String,
+        line: u32,
+        text: String,
+    },
+}
+
+#[frb(mirror(BoardCard))]
+pub struct _BoardCard {
+    pub key: CardKey,
+    pub title: String,
+    pub note_title: String,
+    pub snippet: String,
+    pub due: Option<String>,
+    pub due_chip: Option<DueChipRow>,
+    pub checked: bool,
+    pub locked: bool,
+}
+
+#[frb(mirror(BoardColumn))]
+pub struct _BoardColumn {
+    pub lane: BoardLane,
+    pub label: String,
+    pub cards: Vec<BoardCard>,
+}
+
+#[frb(mirror(BoardView))]
+pub struct _BoardView {
+    pub kind: BoardKind,
+    pub columns: Vec<BoardColumn>,
+}
+
+#[frb(mirror(CardMoved))]
+pub enum _CardMoved {
+    Changed,
+    Unchanged,
+    Missing,
+}
+
+#[frb(mirror(DueChipRow))]
+pub struct _DueChipRow {
+    pub label: String,
+    pub tone: DueTone,
+    pub tooltip: String,
+}
+
+#[frb(mirror(ReminderNote))]
+pub struct _ReminderNote {
+    pub key: String,
+    pub note_id: String,
+    pub line: u32,
+    pub title: String,
+    pub body: String,
+    pub fire_at: LocalTime,
+}
+
+#[frb(mirror(ReminderPlan))]
+pub struct _ReminderPlan {
+    pub show_now: Vec<ReminderNote>,
+    pub schedule: Vec<ReminderNote>,
+}
+
+#[frb(mirror(ReminderAnswer))]
+pub enum _ReminderAnswer {
+    Open,
+    MarkDone,
+    Dismiss,
+}
+
+#[frb(mirror(TaskPlace))]
+pub struct _TaskPlace {
+    pub note_id: String,
+    pub line: u32,
 }
 
 #[frb(mirror(Share))]
