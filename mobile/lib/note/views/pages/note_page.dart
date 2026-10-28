@@ -14,6 +14,7 @@ import '../../../sharing/state/comments/comments_bloc.dart';
 import '../../../sharing/state/shared_note_status/shared_note_status_bloc.dart';
 import '../../../sharing/views/widgets/shared_note_live.dart';
 import '../../state/note/note_bloc.dart';
+import '../../state/note_discovery/note_discovery_bloc.dart';
 import '../widgets/note_pane.dart';
 import '../widgets/note_theme_sync.dart';
 
@@ -59,6 +60,11 @@ class NotePage extends StatelessWidget {
                 create: (_) =>
                     getIt<SharedNoteStatusBloc>()
                       ..add(SharedNoteStatusEvent.started(noteId)),
+              ),
+              BlocProvider<NoteDiscoveryBloc>(
+                create: (_) =>
+                    getIt<NoteDiscoveryBloc>()
+                      ..add(NoteDiscoveryEvent.started(noteId)),
               ),
               // Unlocking this note, if it is locked.
               BlocProvider<UnlockBloc>(create: (_) => getIt<UnlockBloc>()),
