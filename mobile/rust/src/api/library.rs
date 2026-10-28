@@ -30,7 +30,7 @@ use super::sync::KansoSync;
 
 /// An open library. Cheap to clone on the Rust side; Dart holds one.
 #[frb(opaque)]
-pub struct KansoLibrary(Library);
+pub struct KansoLibrary(pub(super) Library);
 
 impl KansoLibrary {
     /// Opens (creating if needed) the library whose database file is `path`.

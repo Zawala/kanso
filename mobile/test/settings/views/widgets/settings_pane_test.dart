@@ -28,10 +28,12 @@ import 'package:kanso/lock/state/biometrics/biometrics_bloc.dart';
 import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/push/state/push_setting/push_setting_bloc.dart';
 import 'package:kanso/push/views/widgets/push_setting_notice.dart';
+import 'package:kanso/reminders/state/reminders_settings/reminders_settings_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
 import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
+import 'package:kanso/templates/state/daily_template/daily_template_bloc.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../../helpers/close_bloc_later.dart';
@@ -142,6 +144,8 @@ Future<_Settings> _pump(
         BlocProvider<PushSettingBloc>.value(value: pushBloc),
         BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
         BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
+        BlocProvider<DailyTemplateBloc>.value(value: blocs.dailyTemplate),
+        BlocProvider<RemindersSettingsBloc>.value(value: blocs.reminders),
       ],
       child: const SettingsPane(),
     ),

@@ -20,6 +20,8 @@ import '../../../core/views/widgets/kanso_large_title.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../push/views/widgets/push_setting_notice_host.dart';
+import '../../../reminders/views/widgets/reminders_section.dart';
+import '../../../templates/views/widgets/daily_template_section.dart';
 import '../../state/about/about_bloc.dart';
 import '../../state/default_notebook/default_notebook_bloc.dart';
 import 'locked_notes_section.dart';
@@ -163,6 +165,10 @@ class SettingsPane extends StatelessWidget {
                     ),
                     const SizedBox(height: KansoSpacing.lg),
                     const SettingsSyncSection(iconInset: iconInset),
+                    const SizedBox(height: KansoSpacing.lg),
+                    const DailyTemplateSection(dividerIndent: iconInset),
+                    const SizedBox(height: KansoSpacing.lg),
+                    const RemindersSection(dividerIndent: iconInset),
                     const SizedBox(height: KansoSpacing.lg),
                     KansoGroupedSection(
                       title: l10n.settingsPrivacy,

@@ -20,13 +20,29 @@ import '../widgets/note_theme_sync.dart';
 /// One note, opened from a place or a search: read when it is opened, and
 /// given up when it is left.
 class NotePage extends StatelessWidget {
-  const NotePage({required this.noteId, this.inPane = false, super.key});
+  const NotePage({
+    required this.noteId,
+    this.inPane = false,
+    this.bodyLine,
+    this.cursor16,
+    this.titleFirst = false,
+    super.key,
+  });
 
   final String noteId;
 
   /// Whether it is the note pane of a wide window rather than a page of its
   /// own, with nowhere to go back to.
   final bool inPane;
+
+  /// A task source line to open in Edit, if a reminder led here.
+  final int? bodyLine;
+
+  /// A template cursor in UTF-16 units, if a template led here.
+  final int? cursor16;
+
+  /// Whether a template made an untitled note that should focus its title.
+  final bool titleFirst;
 
   @override
   Widget build(BuildContext context) {
@@ -35,14 +51,24 @@ class NotePage extends StatelessWidget {
     final themeId = syntaxThemeId(context);
     return BlocProvider<NoteBloc>(
       // Another note is a new read: nothing of the last is kept.
-      key: ValueKey<String>(noteId),
+      key: ValueKey<String>(
+        '$noteId:${bodyLine ?? ''}:${cursor16 ?? ''}:$titleFirst',
+      ),
       create: (context) {
         // A note opened by a link, or any way but a list, is a visit too;
         // one the history is already at changes nothing.
         context.read<NavigationHistoryBloc>().add(
           NavigationHistoryEvent.visited(noteId),
         );
-        return getIt<NoteBloc>()..add(NoteEvent.started(noteId, themeId));
+        return getIt<NoteBloc>()..add(
+          NoteEvent.started(
+            noteId,
+            themeId,
+            bodyLine: bodyLine,
+            cursor16: cursor16,
+            titleFirst: titleFirst,
+          ),
+        );
       },
       child: NoteThemeSync(
         themeId: themeId,

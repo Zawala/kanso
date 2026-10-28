@@ -940,6 +940,598 @@ as String,
 }
 
 /// @nodoc
+mixin _$BoardLane {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardLane);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'BoardLane()';
+}
+
+
+}
+
+/// @nodoc
+class $BoardLaneCopyWith<$Res>  {
+$BoardLaneCopyWith(BoardLane _, $Res Function(BoardLane) __);
+}
+
+
+/// Adds pattern-matching-related methods to [BoardLane].
+extension BoardLanePatterns on BoardLane {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( BoardLane_Status value)?  status,TResult Function( BoardLane_Todo value)?  todo,TResult Function( BoardLane_Done value)?  done,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case BoardLane_Status() when status != null:
+return status(_that);case BoardLane_Todo() when todo != null:
+return todo(_that);case BoardLane_Done() when done != null:
+return done(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( BoardLane_Status value)  status,required TResult Function( BoardLane_Todo value)  todo,required TResult Function( BoardLane_Done value)  done,}){
+final _that = this;
+switch (_that) {
+case BoardLane_Status():
+return status(_that);case BoardLane_Todo():
+return todo(_that);case BoardLane_Done():
+return done(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( BoardLane_Status value)?  status,TResult? Function( BoardLane_Todo value)?  todo,TResult? Function( BoardLane_Done value)?  done,}){
+final _that = this;
+switch (_that) {
+case BoardLane_Status() when status != null:
+return status(_that);case BoardLane_Todo() when todo != null:
+return todo(_that);case BoardLane_Done() when done != null:
+return done(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String status)?  status,TResult Function()?  todo,TResult Function()?  done,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case BoardLane_Status() when status != null:
+return status(_that.status);case BoardLane_Todo() when todo != null:
+return todo();case BoardLane_Done() when done != null:
+return done();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String status)  status,required TResult Function()  todo,required TResult Function()  done,}) {final _that = this;
+switch (_that) {
+case BoardLane_Status():
+return status(_that.status);case BoardLane_Todo():
+return todo();case BoardLane_Done():
+return done();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String status)?  status,TResult? Function()?  todo,TResult? Function()?  done,}) {final _that = this;
+switch (_that) {
+case BoardLane_Status() when status != null:
+return status(_that.status);case BoardLane_Todo() when todo != null:
+return todo();case BoardLane_Done() when done != null:
+return done();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class BoardLane_Status extends BoardLane {
+  const BoardLane_Status({required this.status}): super._();
+  
+
+ final  String status;
+
+/// Create a copy of BoardLane
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$BoardLane_StatusCopyWith<BoardLane_Status> get copyWith => _$BoardLane_StatusCopyWithImpl<BoardLane_Status>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardLane_Status&&(identical(other.status, status) || other.status == status));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,status);
+
+@override
+String toString() {
+  return 'BoardLane.status(status: $status)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $BoardLane_StatusCopyWith<$Res> implements $BoardLaneCopyWith<$Res> {
+  factory $BoardLane_StatusCopyWith(BoardLane_Status value, $Res Function(BoardLane_Status) _then) = _$BoardLane_StatusCopyWithImpl;
+@useResult
+$Res call({
+ String status
+});
+
+
+
+
+}
+/// @nodoc
+class _$BoardLane_StatusCopyWithImpl<$Res>
+    implements $BoardLane_StatusCopyWith<$Res> {
+  _$BoardLane_StatusCopyWithImpl(this._self, this._then);
+
+  final BoardLane_Status _self;
+  final $Res Function(BoardLane_Status) _then;
+
+/// Create a copy of BoardLane
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? status = null,}) {
+  return _then(BoardLane_Status(
+status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class BoardLane_Todo extends BoardLane {
+  const BoardLane_Todo(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardLane_Todo);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'BoardLane.todo()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class BoardLane_Done extends BoardLane {
+  const BoardLane_Done(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BoardLane_Done);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'BoardLane.done()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+mixin _$CardKey {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CardKey);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'CardKey()';
+}
+
+
+}
+
+/// @nodoc
+class $CardKeyCopyWith<$Res>  {
+$CardKeyCopyWith(CardKey _, $Res Function(CardKey) __);
+}
+
+
+/// Adds pattern-matching-related methods to [CardKey].
+extension CardKeyPatterns on CardKey {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( CardKey_Note value)?  note,TResult Function( CardKey_Task value)?  task,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case CardKey_Note() when note != null:
+return note(_that);case CardKey_Task() when task != null:
+return task(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( CardKey_Note value)  note,required TResult Function( CardKey_Task value)  task,}){
+final _that = this;
+switch (_that) {
+case CardKey_Note():
+return note(_that);case CardKey_Task():
+return task(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( CardKey_Note value)?  note,TResult? Function( CardKey_Task value)?  task,}){
+final _that = this;
+switch (_that) {
+case CardKey_Note() when note != null:
+return note(_that);case CardKey_Task() when task != null:
+return task(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String id)?  note,TResult Function( String noteId,  int line,  String text)?  task,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case CardKey_Note() when note != null:
+return note(_that.id);case CardKey_Task() when task != null:
+return task(_that.noteId,_that.line,_that.text);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String id)  note,required TResult Function( String noteId,  int line,  String text)  task,}) {final _that = this;
+switch (_that) {
+case CardKey_Note():
+return note(_that.id);case CardKey_Task():
+return task(_that.noteId,_that.line,_that.text);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String id)?  note,TResult? Function( String noteId,  int line,  String text)?  task,}) {final _that = this;
+switch (_that) {
+case CardKey_Note() when note != null:
+return note(_that.id);case CardKey_Task() when task != null:
+return task(_that.noteId,_that.line,_that.text);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class CardKey_Note extends CardKey {
+  const CardKey_Note({required this.id}): super._();
+  
+
+ final  String id;
+
+/// Create a copy of CardKey
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$CardKey_NoteCopyWith<CardKey_Note> get copyWith => _$CardKey_NoteCopyWithImpl<CardKey_Note>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CardKey_Note&&(identical(other.id, id) || other.id == id));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,id);
+
+@override
+String toString() {
+  return 'CardKey.note(id: $id)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $CardKey_NoteCopyWith<$Res> implements $CardKeyCopyWith<$Res> {
+  factory $CardKey_NoteCopyWith(CardKey_Note value, $Res Function(CardKey_Note) _then) = _$CardKey_NoteCopyWithImpl;
+@useResult
+$Res call({
+ String id
+});
+
+
+
+
+}
+/// @nodoc
+class _$CardKey_NoteCopyWithImpl<$Res>
+    implements $CardKey_NoteCopyWith<$Res> {
+  _$CardKey_NoteCopyWithImpl(this._self, this._then);
+
+  final CardKey_Note _self;
+  final $Res Function(CardKey_Note) _then;
+
+/// Create a copy of CardKey
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
+  return _then(CardKey_Note(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class CardKey_Task extends CardKey {
+  const CardKey_Task({required this.noteId, required this.line, required this.text}): super._();
+  
+
+ final  String noteId;
+ final  int line;
+ final  String text;
+
+/// Create a copy of CardKey
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$CardKey_TaskCopyWith<CardKey_Task> get copyWith => _$CardKey_TaskCopyWithImpl<CardKey_Task>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CardKey_Task&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.line, line) || other.line == line)&&(identical(other.text, text) || other.text == text));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,noteId,line,text);
+
+@override
+String toString() {
+  return 'CardKey.task(noteId: $noteId, line: $line, text: $text)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $CardKey_TaskCopyWith<$Res> implements $CardKeyCopyWith<$Res> {
+  factory $CardKey_TaskCopyWith(CardKey_Task value, $Res Function(CardKey_Task) _then) = _$CardKey_TaskCopyWithImpl;
+@useResult
+$Res call({
+ String noteId, int line, String text
+});
+
+
+
+
+}
+/// @nodoc
+class _$CardKey_TaskCopyWithImpl<$Res>
+    implements $CardKey_TaskCopyWith<$Res> {
+  _$CardKey_TaskCopyWithImpl(this._self, this._then);
+
+  final CardKey_Task _self;
+  final $Res Function(CardKey_Task) _then;
+
+/// Create a copy of CardKey
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? noteId = null,Object? line = null,Object? text = null,}) {
+  return _then(CardKey_Task(
+noteId: null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
+as String,line: null == line ? _self.line : line // ignore: cast_nullable_to_non_nullable
+as int,text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$CommentPlacement {
 
 

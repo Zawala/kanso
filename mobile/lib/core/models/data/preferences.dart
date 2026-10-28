@@ -57,6 +57,10 @@ abstract class Preferences with _$Preferences {
     /// The notebook new notes go in, unless they are made from a notebook's
     /// own list. Null, or one that is gone or locked, is the first notebook.
     String? defaultNotebookId,
+
+    /// Whether this phone may show reminders for tasks with a due time.
+    /// Notification permission is asked separately by the operating system.
+    @Default(true) bool remindersEnabled,
   }) = _Preferences;
 
   factory Preferences.fromJson(Map<String, dynamic> json) =>

@@ -898,6 +898,187 @@ pub struct LocalTime {
     pub second: u32,
 }
 
+/// A calendar day.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DayDate {
+    pub year: i32,
+    /// 1 to 12.
+    pub month: u32,
+    /// 1 to 31.
+    pub day: u32,
+}
+
+/// A note found or made, for the app to open.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MadeNote {
+    pub id: String,
+    /// Where a template put `{{cursor}}`, as a UTF-16 offset into the text.
+    pub cursor16: Option<u32>,
+    /// Whether the keyboard goes to the title first: the note has none yet.
+    pub title_first: bool,
+}
+
+/// A day in the Journal's month calendar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CalendarDay {
+    pub date: DayDate,
+    /// In the month itself, not a neighbour's.
+    pub in_month: bool,
+    /// The day has a daily note outside the trash.
+    pub has_note: bool,
+    pub is_today: bool,
+}
+
+/// A month in whole weeks, from the week's first day.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MonthGrid {
+    pub year: i32,
+    /// 1 to 12.
+    pub month: u32,
+    /// "October 2026".
+    pub title: String,
+    /// The weekdays' short names, in the weeks' order: "Mon" first, or "Sun".
+    pub weekday_labels: Vec<String>,
+    /// Four to six weeks of seven days.
+    pub weeks: Vec<Vec<CalendarDay>>,
+}
+
+/// A note in the Templates notebook.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TemplateRow {
+    pub id: String,
+    pub title: String,
+}
+
+/// What a board lays out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BoardKind {
+    /// Notes, in a column per status.
+    Notes,
+    /// Tasks, in To do and Done.
+    Tasks,
+}
+
+/// A board's column.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BoardLane {
+    /// A note status's column: `none`, `active`, `onHold`, `completed` or
+    /// `dropped`, as [`NoteRow::status`] says it.
+    Status {
+        status: String,
+    },
+    Todo,
+    Done,
+}
+
+/// Which card: a note, or a task in its note.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CardKey {
+    Note {
+        id: String,
+    },
+    /// The task as the note's text has it: its line and its words, so a note
+    /// that changed since the board was read isn't written to blindly.
+    Task {
+        note_id: String,
+        line: u32,
+        text: String,
+    },
+}
+
+/// A card and what it shows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BoardCard {
+    pub key: CardKey,
+    /// A note's title, or a task's words as a list shows them.
+    pub title: String,
+    /// The note it opens.
+    pub note_title: String,
+    /// A few lines of a note's text; empty for a task and for a locked note.
+    pub snippet: String,
+    /// A task's due date, `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`.
+    pub due: Option<String>,
+    /// The chip its due date reads as; `None` for a card without a date.
+    pub due_chip: Option<DueChipRow>,
+    /// Whether a task is ticked.
+    pub checked: bool,
+    /// A locked note: its title and its lock, nothing of its text.
+    pub locked: bool,
+}
+
+/// A board's column with its cards.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BoardColumn {
+    pub lane: BoardLane,
+    /// "Active", "To do".
+    pub label: String,
+    pub cards: Vec<BoardCard>,
+}
+
+/// A board: its columns, left to right.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BoardView {
+    pub kind: BoardKind,
+    pub columns: Vec<BoardColumn>,
+}
+
+/// What moving a card did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CardMoved {
+    Changed,
+    Unchanged,
+    Missing,
+}
+
+/// A due date's chip.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DueChipRow {
+    /// "Tomorrow", "Fri 25 Oct 09:00", "Overdue · Yesterday".
+    pub label: String,
+    pub tone: DueTone,
+    /// "Due Sunday, 25 October 2026 at 09:00".
+    pub tooltip: String,
+}
+
+/// A reminder to show: what the desktop's notification says, and which task
+/// it is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReminderNote {
+    /// The task's reminder key; what an answer names.
+    pub key: String,
+    pub note_id: String,
+    /// The task's line (0-based) in its note.
+    pub line: u32,
+    /// The task's words as a list shows them.
+    pub title: String,
+    /// When it is due and in which note: "Today 09:00 · Plans".
+    pub body: String,
+    /// When it falls due, in local time.
+    pub fire_at: LocalTime,
+}
+
+/// The reminders to hand the system.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReminderPlan {
+    pub show_now: Vec<ReminderNote>,
+    pub schedule: Vec<ReminderNote>,
+}
+
+/// What the person did with a reminder.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReminderAnswer {
+    Open,
+    MarkDone,
+    Dismiss,
+}
+
+/// A task to open: its note and its line (0-based).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TaskPlace {
+    pub note_id: String,
+    pub line: u32,
+}
+
 /// Something shared from inside the app (photos, the camera, a PDF), to be
 /// saved as a note in the Inbox ([`Library::capture`](crate::Library::capture)).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
