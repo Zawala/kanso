@@ -727,21 +727,26 @@
   "@fontsTextSizeSample": {
     "description": "A paragraph that shows the chosen text size."
   },
-  "textSizeSmall": "Small",
-  "@textSizeSmall": {
-    "description": "A text size."
+  "textSizePercent": "{percent}%",
+  "@textSizePercent": {
+    "description": "The note text scale as a percentage.",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
   },
-  "textSizeDefault": "Default",
-  "@textSizeDefault": {
-    "description": "The text size the app was designed at."
+  "textSizeControlLabel": "Text size",
+  "@textSizeControlLabel": {
+    "description": "The accessible name of the adjustable note text size control."
   },
-  "textSizeLarge": "Large",
-  "@textSizeLarge": {
-    "description": "A text size."
+  "textSizeDecrease": "Decrease text size",
+  "@textSizeDecrease": {
+    "description": "The accessible name of the button that reduces note text size."
   },
-  "textSizeLarger": "Larger",
-  "@textSizeLarger": {
-    "description": "The largest text size."
+  "textSizeIncrease": "Increase text size",
+  "@textSizeIncrease": {
+    "description": "The accessible name of the button that increases note text size."
   },
   "editorTitleHint": "Title",
   "@editorTitleHint": {

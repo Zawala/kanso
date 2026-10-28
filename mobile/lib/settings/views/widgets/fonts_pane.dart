@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/configs/kanso_spacing.dart';
+import '../../../core/configs/kanso_typography.dart';
 import '../../../core/models/data/kanso_font_family.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
@@ -116,6 +117,16 @@ class FontsPane extends StatelessWidget {
                         const SizedBox(height: KansoSpacing.lg),
                         TextSizeSection(
                           selected: state.textSize,
+                          sampleStyle: context.typography.editorBody.copyWith(
+                            fontSize: 18 * state.textSize,
+                            height: KansoTypography.leading(
+                              state.fonts.editorFont,
+                            ),
+                            fontFamily:
+                                state.fonts.editorGoogleFont ??
+                                state.fonts.editorFont.family ??
+                                KansoTypography.systemFamily,
+                          ),
                           onChanged: (size) =>
                               bloc.add(AppearanceEvent.textSizeChanged(size)),
                         ),
@@ -124,7 +135,16 @@ class FontsPane extends StatelessWidget {
                           title: l10n.fontsPreviewTextSizeSection,
                           footer: l10n.fontsPreviewTextSizeFooter,
                           selected: state.previewTextSize,
-                          previewStyle: true,
+                          sampleStyle: context.typography.previewBody.copyWith(
+                            fontSize: 18 * state.previewTextSize,
+                            height: KansoTypography.leading(
+                              state.fonts.previewFont,
+                            ),
+                            fontFamily:
+                                state.fonts.previewGoogleFont ??
+                                state.fonts.previewFont.family ??
+                                KansoTypography.systemFamily,
+                          ),
                           onChanged: (size) => bloc.add(
                             AppearanceEvent.previewTextSizeChanged(size),
                           ),

@@ -36,12 +36,11 @@ abstract class AppearanceState with _$AppearanceState {
     /// could not be reached.
     @Default(false) bool googleFontOffline,
 
-    /// The size of the editor's text.
-    @Default(KansoTextSize.standard) KansoTextSize textSize,
+    /// The editor's note text scale.
+    @Default(1.0) double textSize,
 
-    /// The size of the rendered preview's text. The preview applies it where
-    /// it sets its text size; the editor does not use it.
-    @Default(KansoTextSize.standard) KansoTextSize previewTextSize,
+    /// The rendered preview's note text scale. The editor does not use it.
+    @Default(1.0) double previewTextSize,
 
     /// What draws Mermaid diagrams.
     @Default(DiagramRenderer.pele) DiagramRenderer diagramRenderer,

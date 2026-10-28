@@ -12,7 +12,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:kanso/core/bridge/api/types.dart' show DiagramRenderer;
 import 'package:kanso/core/models/data/application_error.dart';
-import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/repos/abs/file_picker_repository.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/injection.dart';
@@ -171,13 +170,13 @@ void main() {
     expect(find.text('Preview text size'), findsOneWidget);
     await tester.tap(find.text('Preview text size'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Larger').last);
+    await tester.tap(find.text('+').last);
     await tester.pumpAndSettle();
-    expect(appearance.state.previewTextSize, KansoTextSize.larger);
-    expect(appearance.state.textSize, KansoTextSize.standard);
+    expect(appearance.state.previewTextSize, 1.05);
+    expect(appearance.state.textSize, 1.0);
     await tester.tap(find.bySemanticsLabel('Back').first);
     await tester.pumpAndSettle();
-    expect(find.text('Larger'), findsOneWidget);
+    expect(find.text('105%'), findsOneWidget);
 
     expect(appearance.state.diagramRenderer, DiagramRenderer.pele);
     await tester.tap(find.text('Kanso'));

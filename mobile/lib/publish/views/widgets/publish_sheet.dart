@@ -40,7 +40,7 @@ class PublishSheet extends StatelessWidget {
     final options = PreviewOptions(
       font: appearance.fonts.previewFont.family,
       mono: appearance.fonts.codeFont.family,
-      size: 16 * appearance.textSize.scale,
+      size: 16 * appearance.textSize,
       utcOffsetSecs: DateTime.now().timeZoneOffset.inSeconds,
       code: const <SyntaxStyleRow>[],
     );

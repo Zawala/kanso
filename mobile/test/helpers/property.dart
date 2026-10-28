@@ -22,7 +22,6 @@ import 'package:kanso/core/configs/kanso_icons.dart';
 import 'package:kanso/core/models/data/browse_location.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
-import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
@@ -52,8 +51,8 @@ extension KansoFontsAny on Any {
   /// Any font family, the device's own included.
   Generator<KansoFontFamily> get fontFamily => choose(KansoFontFamily.values);
 
-  /// Any text size.
-  Generator<KansoTextSize> get textSize => choose(KansoTextSize.values);
+  /// Any supported note text scale.
+  Generator<double> get textSize => intInRange(16, 37).map((step) => step / 20);
 
   /// Any combination of the three fonts.
   Generator<KansoFonts> get fonts => combine3(
@@ -186,8 +185,8 @@ extension KansoThemeSelectionAny on Any {
       (
         ThemeSelection themes,
         KansoFonts fonts,
-        KansoTextSize size,
-        KansoTextSize previewSize,
+        double size,
+        double previewSize,
         DiagramRenderer diagrams,
         SortKey sort,
       ) => (themes, fonts, size, previewSize, diagrams, sort),

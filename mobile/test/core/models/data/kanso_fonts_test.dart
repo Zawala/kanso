@@ -112,40 +112,41 @@ void main() {
     });
   });
 
-  group('KansoTextSize', () {
-    test('Default draws note text at its designed size', () {
-      expect(KansoTextSize.standard.scaled(15), 15);
-      expect(KansoTextSize.standard.withDeviceScale(1.3), 1.3);
+  group('note text scales', () {
+    test('the designed size is 100 percent', () {
+      expect(15 * normalizeTextScale(1), 15);
+      expect(1.3 * 1, 1.3);
     });
 
-    test('the sizes are in increasing order', () {
-      final scales = KansoTextSize.values.map((size) => size.scale).toList();
-      expect(scales, orderedEquals(<double>[...scales]..sort()));
+    test('scale normalization rounds to steps and enforces bounds', () {
+      expect(normalizeTextScale(1.23), 1.25);
+      expect(normalizeTextScale(0.1), minimumTextScale);
+      expect(normalizeTextScale(2), maximumTextScale);
+      expect(normalizeTextScale(double.nan), 1);
     });
 
-    Glados2<KansoTextSize, KansoTextSize>(
+    Glados2<double, double>(
       any.textSize,
       any.textSize,
       kansoExploreConfig(),
     ).test('a larger setting never draws smaller (monotonic)', (a, b) {
-      if (a.index <= b.index) {
-        expect(a.scaled(15), lessThanOrEqualTo(b.scaled(15)));
+      if (a <= b) {
+        expect(a * 15, lessThanOrEqualTo(b * 15));
       }
     });
 
-    Glados2<KansoTextSize, double>(
+    Glados2<double, double>(
       any.textSize,
       any.deviceTextScale,
       kansoExploreConfig(),
-    ).test('the device scale is applied in full, never clamped', (
-      size,
+    ).test('the device text scale is applied in full, never clamped', (
+      scale,
       device,
     ) {
-      final drawn = size.withDeviceScale(device);
-      expect(drawn, closeTo(device * size.scale, 1e-9));
+      final drawn = device * scale;
+      expect(drawn, closeTo(device * scale, 1e-9));
       expect(drawn, greaterThan(0));
-      // From Default up the setting only adds to the device's own scale.
-      if (size.index >= KansoTextSize.standard.index) {
+      if (scale >= 1) {
         expect(drawn, greaterThanOrEqualTo(device));
       }
     });
@@ -155,11 +156,11 @@ void main() {
       any.deviceTextScale,
       kansoExploreConfig(),
     ).test('a larger device scale gives larger text at every setting', (a, b) {
-      for (final size in KansoTextSize.values) {
+      for (final size in <double>[0.8, 1, 1.4, 1.8]) {
         if (a <= b) {
           expect(
-            size.withDeviceScale(a),
-            lessThanOrEqualTo(size.withDeviceScale(b)),
+            size * a,
+            lessThanOrEqualTo(size * b),
           );
         }
       }

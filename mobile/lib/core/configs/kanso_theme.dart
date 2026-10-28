@@ -6,7 +6,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../models/data/kanso_fonts.dart';
-import '../models/data/kanso_text_size.dart';
 import 'kanso_colors.dart';
 import 'kanso_palette.dart';
 import 'kanso_radii.dart';
@@ -31,8 +30,8 @@ abstract final class KansoTheme {
   static ThemeData build(
     KansoPalette palette, {
     KansoFonts fonts = const KansoFonts(),
-    KansoTextSize textSize = KansoTextSize.standard,
-    KansoTextSize? previewTextSize,
+    double textSize = 1,
+    double? previewTextSize,
   }) {
     return _build(
       brightness: palette.dark ? Brightness.dark : Brightness.light,
@@ -62,8 +61,8 @@ abstract final class KansoTheme {
     required KansoColors colors,
     required KansoSyntaxColors syntax,
     required KansoFonts fonts,
-    required KansoTextSize textSize,
-    KansoTextSize? previewTextSize,
+    required double textSize,
+    double? previewTextSize,
   }) {
     final typography = KansoTypography.fromColors(
       colors,

@@ -88,12 +88,12 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
           font.monospaced
               ? _changeFonts(emit, state.fonts.copyWith(codeFont: font))
               : Future<void>.value(),
-        AppearanceTextSizeChangedEvent(:final size) => _onTextSizeChanged(
-          size,
+        AppearanceTextSizeChangedEvent(:final scale) => _onTextSizeChanged(
+          scale,
           emit,
         ),
-        AppearancePreviewTextSizeChangedEvent(:final size) =>
-          _onPreviewTextSizeChanged(size, emit),
+        AppearancePreviewTextSizeChangedEvent(:final scale) =>
+          _onPreviewTextSizeChanged(scale, emit),
         AppearanceGoogleFontPickedEvent(:final family) => _onGoogleFontPicked(
           family,
           emit,
@@ -225,20 +225,24 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
   }
 
   Future<void> _onTextSizeChanged(
-    KansoTextSize size,
+    double scale,
     Emitter<AppearanceState> emit,
   ) async {
-    emit(state.copyWith(textSize: size));
-    await _preferences.update((current) => current.copyWith(textSize: size));
+    final normalized = normalizeTextScale(scale);
+    emit(state.copyWith(textSize: normalized));
+    await _preferences.update(
+      (current) => current.copyWith(textSize: normalized),
+    );
   }
 
   Future<void> _onPreviewTextSizeChanged(
-    KansoTextSize size,
+    double scale,
     Emitter<AppearanceState> emit,
   ) async {
-    emit(state.copyWith(previewTextSize: size));
+    final normalized = normalizeTextScale(scale);
+    emit(state.copyWith(previewTextSize: normalized));
     await _preferences.update(
-      (current) => current.copyWith(previewTextSize: size),
+      (current) => current.copyWith(previewTextSize: normalized),
     );
   }
 

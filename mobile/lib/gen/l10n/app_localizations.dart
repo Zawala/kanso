@@ -1108,29 +1108,29 @@ abstract class AppLocalizations {
   /// **'Calm software says less and remembers more. Every device keeps a full copy of your notes, and a change is merged on the others.'**
   String get fontsTextSizeSample;
 
-  /// A text size.
+  /// The note text scale as a percentage.
   ///
   /// In en, this message translates to:
-  /// **'Small'**
-  String get textSizeSmall;
+  /// **'{percent}%'**
+  String textSizePercent(int percent);
 
-  /// The text size the app was designed at.
+  /// The accessible name of the adjustable note text size control.
   ///
   /// In en, this message translates to:
-  /// **'Default'**
-  String get textSizeDefault;
+  /// **'Text size'**
+  String get textSizeControlLabel;
 
-  /// A text size.
+  /// The accessible name of the button that reduces note text size.
   ///
   /// In en, this message translates to:
-  /// **'Large'**
-  String get textSizeLarge;
+  /// **'Decrease text size'**
+  String get textSizeDecrease;
 
-  /// The largest text size.
+  /// The accessible name of the button that increases note text size.
   ///
   /// In en, this message translates to:
-  /// **'Larger'**
-  String get textSizeLarger;
+  /// **'Increase text size'**
+  String get textSizeIncrease;
 
   /// What the empty title field of a note being edited says.
   ///
