@@ -146,10 +146,15 @@ import 'note/models/repos/impl/memory_note_place_repository.dart' as _i503;
 import 'note/state/note/note_bloc.dart' as _i618;
 import 'note/state/note_discovery/note_discovery_bloc.dart' as _i779;
 import 'note/state/preview/preview_bloc.dart' as _i435;
+import 'note_links/models/repos/abs/note_links_repository.dart' as _i393;
+import 'note_links/models/repos/impl/rust_note_links_repository.dart' as _i199;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 import 'palette/models/repos/abs/palette_repository.dart' as _i704;
 import 'palette/models/repos/impl/rust_palette_repository.dart' as _i97;
 import 'palette/state/palette/palette_bloc.dart' as _i204;
+import 'publish/models/repos/abs/publish_repository.dart' as _i1047;
+import 'publish/models/repos/impl/rust_publish_repository.dart' as _i99;
+import 'publish/state/publish/publish_bloc.dart' as _i614;
 import 'push/configs/push_module.dart' as _i78;
 import 'push/models/repos/abs/push_repository.dart' as _i937;
 import 'push/models/repos/impl/plugin_push_repository.dart' as _i506;
@@ -395,6 +400,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i465.ApprovalsRepository>(
       () => _i99.RustApprovalsRepository(gh<_i283.KansoApprovals>()),
     );
+    gh.lazySingleton<_i1047.PublishRepository>(
+      () => _i99.RustPublishRepository(gh<_i455.KansoLibrary>()),
+    );
     gh.lazySingleton<_i242.ImportRepository>(
       () => _i903.RustImportRepository(gh<_i455.KansoLibrary>()),
     );
@@ -466,6 +474,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i991.NewNotebookBloc>(
       () => _i991.NewNotebookBloc(gh<_i38.LibraryRepository>()),
+    );
+    gh.lazySingleton<_i393.NoteLinksRepository>(
+      () => _i199.RustNoteLinksRepository(gh<_i455.KansoLibrary>()),
     );
     gh.factory<_i34.NoteCreationBloc>(
       () => _i34.NoteCreationBloc(
@@ -616,6 +627,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i794.SyncSettingsBloc>(
       () => _i794.SyncSettingsBloc(gh<_i601.SyncRepository>()),
+    );
+    gh.factory<_i614.PublishBloc>(
+      () => _i614.PublishBloc(gh<_i1047.PublishRepository>()),
     );
     gh.factory<_i1028.ReplaceNotesBloc>(
       () => _i1028.ReplaceNotesBloc(gh<_i608.ReplaceRepository>()),
