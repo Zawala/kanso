@@ -8,12 +8,14 @@ import 'package:flutter_test/flutter_test.dart' show addTearDown;
 import 'package:kanso/backups/models/repos/abs/backups_repository.dart';
 import 'package:kanso/backups/state/backups/backups_bloc.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
+import 'package:kanso/graph/state/graph/graph_bloc.dart';
 import 'package:kanso/history/models/repos/abs/history_repository.dart';
 import 'package:kanso/history/state/note_history/note_history_bloc.dart';
 import 'package:kanso/injection.dart';
 import 'package:kanso/library/state/new_notebook/new_notebook_bloc.dart';
 import 'package:kanso/note/models/repos/impl/memory_note_place_repository.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
+import 'package:kanso/note/state/note_discovery/note_discovery_bloc.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/push/state/push_setting/push_setting_bloc.dart';
 import 'package:kanso/replace/models/repos/abs/replace_repository.dart';
@@ -33,6 +35,7 @@ import 'package:kanso/themes/state/theme_picker/theme_picker_bloc.dart';
 
 import 'browse_blocs.dart';
 import 'fixture_about_repository.dart';
+import 'fixture_discovery_repository.dart';
 import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_licences_repository.dart';
@@ -106,7 +109,20 @@ void registerPageBlocs(
   if (getIt.isRegistered<SearchBloc>()) {
     getIt.unregister<SearchBloc>();
   }
-  getIt.registerFactory<SearchBloc>(() => SearchBloc(library));
+  getIt.registerFactory<SearchBloc>(
+    () => SearchBloc(library, FixtureDiscoveryRepository()),
+  );
+  final discovery = FixtureDiscoveryRepository();
+  if (getIt.isRegistered<NoteDiscoveryBloc>()) {
+    getIt.unregister<NoteDiscoveryBloc>();
+  }
+  getIt.registerFactory<NoteDiscoveryBloc>(
+    () => NoteDiscoveryBloc(discovery),
+  );
+  if (getIt.isRegistered<GraphBloc>()) {
+    getIt.unregister<GraphBloc>();
+  }
+  getIt.registerFactory<GraphBloc>(() => GraphBloc(discovery));
   if (getIt.isRegistered<PushSettingBloc>()) {
     getIt.unregister<PushSettingBloc>();
   }

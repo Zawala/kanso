@@ -25,6 +25,7 @@ import 'package:kanso/lock/state/unlock/unlock_bloc.dart';
 import 'package:kanso/note/models/data/note_screen_status.dart';
 import 'package:kanso/note/models/repos/impl/memory_note_place_repository.dart';
 import 'package:kanso/note/state/note/note_bloc.dart';
+import 'package:kanso/note/state/note_discovery/note_discovery_bloc.dart';
 import 'package:kanso/note_list/models/data/note_list_status.dart';
 import 'package:kanso/note_list/state/note_list/note_list_bloc.dart';
 import 'package:kanso/search/models/data/search_status.dart';
@@ -42,6 +43,7 @@ import 'package:kanso/tasks/state/tasks/tasks_bloc.dart';
 import 'close_bloc_later.dart';
 import 'fake_media_picker_repository.dart';
 import 'fixture_device_lock_repository.dart';
+import 'fixture_discovery_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_renderer_repository.dart';
 import 'fixture_session_repository.dart';
@@ -286,7 +288,7 @@ class BrowseBlocs {
     String? notebookId,
     bool wait = true,
   }) async {
-    final bloc = SearchBloc(library);
+    final bloc = SearchBloc(library, FixtureDiscoveryRepository());
     closeBlocLater(bloc);
     bloc.add(SearchEvent.started(query, scope, notebookId));
     if (wait) {
@@ -328,6 +330,12 @@ class BrowseBlocs {
         BlocProvider<UndoNoticeBloc>.value(value: undoNotice),
         BlocProvider<NoteCreationBloc>.value(value: creation),
         BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
+        if (note != null)
+          BlocProvider<NoteDiscoveryBloc>(
+            create: (_) =>
+                NoteDiscoveryBloc(FixtureDiscoveryRepository())
+                  ..add(NoteDiscoveryEvent.started(note.state.noteId)),
+          ),
         BlocProvider<CaptureInboxBloc>.value(value: captureInbox),
         if (list != null) BlocProvider<NoteListBloc>.value(value: list),
         if (note != null) BlocProvider<NoteBloc>.value(value: note),

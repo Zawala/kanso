@@ -74,6 +74,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get searchMeaningTitle => 'Found by meaning';
+
+  @override
   String noteListCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -104,6 +107,62 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noteInfo => 'Note info';
+
+  @override
+  String get noteRelatedTurnOn =>
+      'Turn on Related notes in Settings to see notes about the same things.';
+
+  @override
+  String get noteRelatedTitle => 'Related';
+
+  @override
+  String get noteRelatedEmpty => 'No related notes yet.';
+
+  @override
+  String get noteMeaning => 'What the meaning says';
+
+  @override
+  String noteMeaningTwin(String title, int percent) {
+    return 'Nearly the same as $title — $percent%';
+  }
+
+  @override
+  String get noteMeaningDismiss => 'Dismiss';
+
+  @override
+  String get noteMeaningMerge => 'Merge';
+
+  @override
+  String get noteMeaningMergeTitle => 'Merge notes?';
+
+  @override
+  String noteMeaningMergeWarning(String title) {
+    return '$title will go to the trash. Its contents are kept in this note.';
+  }
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get graphTitle => 'Graph';
+
+  @override
+  String get graphLocal => 'Local graph';
+
+  @override
+  String get graphFilterAll => 'All notes';
+
+  @override
+  String get graphFilterNotebook => 'Notebook';
+
+  @override
+  String get graphFilterTag => 'Tag';
+
+  @override
+  String get graphEmpty => 'No linked notes to show.';
+
+  @override
+  String get graphFailed => 'Couldn\'t load the graph.';
 
   @override
   String get noteMetaCreated => 'Created';
@@ -191,6 +250,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsSync => 'Sync';
+
+  @override
+  String get settingsDiscovery => 'Discovery';
+
+  @override
+  String get discoveryRelated => 'Related notes';
+
+  @override
+  String get discoveryRelatedDetail =>
+      'Lists notes about the same things as the open one, beside it. Turning this on downloads a small language model (about 30 MB) once. It runs on this device: nothing about your notes is sent anywhere.';
+
+  @override
+  String get discoveryTryAgain => 'Try Again';
+
+  @override
+  String get discoverySearchImages => 'Search text in images';
+
+  @override
+  String get discoverySearchImagesDetail =>
+      'Reads the words in pictures you attach, on this device, so search finds the notes they\'re in. The words sync with the picture.';
+
+  @override
+  String discoveryReadingImages(int count) {
+    return 'Reading images… $count to go.';
+  }
 
   @override
   String get settingsAbout => 'About';

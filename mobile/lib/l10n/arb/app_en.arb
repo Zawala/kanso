@@ -81,6 +81,10 @@
       }
     }
   },
+  "searchMeaningTitle": "Found by meaning",
+  "@searchMeaningTitle": {
+    "description": "Notes found by semantic similarity to the search words."
+  },
   "noteListCount": "{count, plural, =1{1 note} other{{count} notes}}",
   "@noteListCount": {
     "description": "How many notes a list holds.",
@@ -117,6 +121,79 @@
   "noteInfo": "Note info",
   "@noteInfo": {
     "description": "Shows the note's details."
+  },
+  "noteRelatedTurnOn": "Turn on Related notes in Settings to see notes about the same things.",
+  "@noteRelatedTurnOn": {
+    "description": "Explains how to enable related notes from a note's info sheet."
+  },
+  "noteRelatedTitle": "Related",
+  "@noteRelatedTitle": {
+    "description": "The related notes section in the note information sheet."
+  },
+  "noteRelatedEmpty": "No related notes yet.",
+  "@noteRelatedEmpty": {
+    "description": "An enabled related notes section has no suggestions."
+  },
+  "noteMeaning": "What the meaning says",
+  "@noteMeaning": {
+    "description": "Suggested tags and a nearly duplicate note for this note."
+  },
+  "noteMeaningTwin": "Nearly the same as {title} — {percent}%",
+  "@noteMeaningTwin": {
+    "description": "Names a note that is probably a duplicate.",
+    "placeholders": {
+      "title": { "type": "String" },
+      "percent": { "type": "int" }
+    }
+  },
+  "noteMeaningDismiss": "Dismiss",
+  "@noteMeaningDismiss": {
+    "description": "Dismisses the suggested duplicate note."
+  },
+  "noteMeaningMerge": "Merge",
+  "@noteMeaningMerge": {
+    "description": "Merges the suggested duplicate into the open note."
+  },
+  "noteMeaningMergeTitle": "Merge notes?",
+  "@noteMeaningMergeTitle": {
+    "description": "Asks before merging two notes."
+  },
+  "noteMeaningMergeWarning": "{title} will go to the trash. Its contents are kept in this note.",
+  "@noteMeaningMergeWarning": {
+    "description": "Explains what happens to the other note when merged.",
+    "placeholders": { "title": { "type": "String" } }
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Cancels a dialog or action."
+  },
+  "graphTitle": "Graph",
+  "@graphTitle": {
+    "description": "The linked notes graph screen and library entry."
+  },
+  "graphLocal": "Local graph",
+  "@graphLocal": {
+    "description": "Opens the graph around this note."
+  },
+  "graphFilterAll": "All notes",
+  "@graphFilterAll": {
+    "description": "Shows the whole library graph."
+  },
+  "graphFilterNotebook": "Notebook",
+  "@graphFilterNotebook": {
+    "description": "Filters the graph by notebook."
+  },
+  "graphFilterTag": "Tag",
+  "@graphFilterTag": {
+    "description": "Filters the graph by tag."
+  },
+  "graphEmpty": "No linked notes to show.",
+  "@graphEmpty": {
+    "description": "The graph contains no linked notes."
+  },
+  "graphFailed": "Couldn't load the graph.",
+  "@graphFailed": {
+    "description": "Explains that the graph could not be read."
   },
   "noteMetaCreated": "Created",
   "@noteMetaCreated": {
@@ -234,6 +311,39 @@
   "settingsSync": "Sync",
   "@settingsSync": {
     "description": "A section of settings."
+  },
+  "settingsDiscovery": "Discovery",
+  "@settingsDiscovery": {
+    "description": "The section of settings for related notes and image text recognition."
+  },
+  "discoveryRelated": "Related notes",
+  "@discoveryRelated": {
+    "description": "Enables notes about the same things as the open note."
+  },
+  "discoveryRelatedDetail": "Lists notes about the same things as the open one, beside it. Turning this on downloads a small language model (about 30 MB) once. It runs on this device: nothing about your notes is sent anywhere.",
+  "@discoveryRelatedDetail": {
+    "description": "Explains local related note suggestions and the first download."
+  },
+  "discoveryTryAgain": "Try Again",
+  "@discoveryTryAgain": {
+    "description": "Retries downloading or indexing the related notes model."
+  },
+  "discoverySearchImages": "Search text in images",
+  "@discoverySearchImages": {
+    "description": "Enables local text recognition for attached pictures."
+  },
+  "discoverySearchImagesDetail": "Reads the words in pictures you attach, on this device, so search finds the notes they're in. The words sync with the picture.",
+  "@discoverySearchImagesDetail": {
+    "description": "Explains local OCR and that its text syncs with its picture."
+  },
+  "discoveryReadingImages": "Reading images… {count} to go.",
+  "@discoveryReadingImages": {
+    "description": "Shows how many pictures remain in the on-device OCR queue.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "settingsAbout": "About",
   "@settingsAbout": {

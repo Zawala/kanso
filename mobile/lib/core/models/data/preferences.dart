@@ -57,6 +57,9 @@ abstract class Preferences with _$Preferences {
     /// The notebook new notes go in, unless they are made from a notebook's
     /// own list. Null, or one that is gone or locked, is the first notebook.
     String? defaultNotebookId,
+
+    /// Whether pictures attached to notes are read on this device for search.
+    @Default(false) bool searchImageText,
   }) = _Preferences;
 
   factory Preferences.fromJson(Map<String, dynamic> json) =>
