@@ -16,6 +16,7 @@ import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/kanso_scroll_behavior.dart';
 import '../../../core/utils/syntax_theme_id.dart';
 import '../../../core/views/widgets/kanso_feedback.dart';
+import '../../../core/views/widgets/kanso_page_route.dart';
 import '../../../dictation/views/widgets/dictation_scope.dart';
 import '../../../gen/l10n/app_localizations.dart';
 import '../../../injection.dart';
@@ -76,6 +77,10 @@ class _NoteWindowAppState extends State<NoteWindowApp> {
               onGenerateTitle: (context) => context.l10n.appName,
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
+              pageRouteBuilder: <T>(settings, builder) => KansoPageRoute<T>(
+                settings: settings,
+                builder: builder,
+              ),
               builder: (context, child) {
                 final status = context.read<AiStatusBloc>();
                 assistant ??= AssistEditorExtras(

@@ -2,7 +2,7 @@
 // Created 2026-10-26.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:injectable/injectable.dart';
 
@@ -45,6 +45,7 @@ import '../models/data/browse_location.dart';
 import '../models/data/design_gallery_access.dart';
 import '../models/data/layout_class.dart';
 import '../models/data/search_scope_kind.dart';
+import '../views/widgets/kanso_page_route.dart';
 import 'deep_links.dart';
 import 'kanso_routes.dart';
 import 'kanso_sheet_page.dart';
@@ -119,14 +120,14 @@ class KansoRouter {
         ),
         GoRoute(
           path: '${KansoRoutes.history}/:noteId',
-          pageBuilder: (context, state) => CupertinoPage<void>(
+          pageBuilder: (context, state) => kansoPage<void>(
             key: state.pageKey,
             child: HistoryPage(noteId: state.pathParameters['noteId']!),
           ),
         ),
         GoRoute(
           path: KansoRoutes.graph,
-          pageBuilder: (context, state) => CupertinoPage<void>(
+          pageBuilder: (context, state) => kansoPage<void>(
             key: state.pageKey,
             child: GraphPage(
               centerId: state.uri.queryParameters['center'],
@@ -136,14 +137,14 @@ class KansoRouter {
         ),
         GoRoute(
           path: KansoRoutes.replace,
-          pageBuilder: (context, state) => CupertinoPage<void>(
+          pageBuilder: (context, state) => kansoPage<void>(
             key: state.pageKey,
             child: const ReplacePage(),
           ),
         ),
         GoRoute(
           path: KansoRoutes.voiceNote,
-          pageBuilder: (context, state) => CupertinoPage<void>(
+          pageBuilder: (context, state) => kansoPage<void>(
             key: state.pageKey,
             child: const VoiceNotePage(),
           ),
@@ -155,7 +156,7 @@ class KansoRouter {
                   key: state.pageKey,
                   child: const AskPage(inSheet: true),
                 )
-              : CupertinoPage<void>(
+              : kansoPage<void>(
                   key: state.pageKey,
                   child: const AskPage(),
                 ),
@@ -229,46 +230,46 @@ class KansoRouter {
           navigatorKey: _settingsKey,
           pageBuilder: (context, state, child) => layoutClass.tabletDevice
               ? KansoSheetPage<void>(key: state.pageKey, child: child)
-              : CupertinoPage<void>(key: state.pageKey, child: child),
+              : kansoPage<void>(key: state.pageKey, child: child),
           routes: <RouteBase>[
             GoRoute(
               path: KansoRoutes.settings,
-              pageBuilder: (context, state) => CupertinoPage<void>(
+              pageBuilder: (context, state) => kansoPage<void>(
                 key: state.pageKey,
                 child: const SettingsPage(),
               ),
               routes: <RouteBase>[
                 GoRoute(
                   path: 'notebook',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const DefaultNotebookPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'theme',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const ThemePickerPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'icons',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const icon_picker.IconThemesPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'icon-themes',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const icon_themes.IconThemesPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'fonts',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: FontsPage(
                       atTextSize:
@@ -280,63 +281,63 @@ class KansoRouter {
                 ),
                 GoRoute(
                   path: 'ai',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const AiSettingsPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'voice',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const VoiceSettingsPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'licences',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const LicencesPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'crash-reports',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const CrashReportsPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'backups',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const BackupsPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'account',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const AccountPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'account/sign-in',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const SignInPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'account/unlock',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const UnlockPage(),
                   ),
                 ),
                 GoRoute(
                   path: 'account/recover',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: RecoverPage(
                       server: state
@@ -349,7 +350,7 @@ class KansoRouter {
                   path: 'account/recovery-key',
                   pageBuilder: (context, state) {
                     final extra = state.extra;
-                    return CupertinoPage<void>(
+                    return kansoPage<void>(
                       key: state.pageKey,
                       child: RecoveryKeyPage(
                         recoveryKey: extra is RecoveryKeyText ? extra : null,
@@ -362,7 +363,7 @@ class KansoRouter {
             GoRoute(
               path: KansoRoutes.import,
               pageBuilder: (context, state) {
-                return CupertinoPage<void>(
+                return kansoPage<void>(
                   key: state.pageKey,
                   child: ImportPage(
                     path: state
@@ -377,14 +378,14 @@ class KansoRouter {
             ),
             GoRoute(
               path: KansoRoutes.shared,
-              pageBuilder: (context, state) => CupertinoPage<void>(
+              pageBuilder: (context, state) => kansoPage<void>(
                 key: state.pageKey,
                 child: const SharedWithYouPage(),
               ),
               routes: <RouteBase>[
                 GoRoute(
                   path: 'join',
-                  pageBuilder: (context, state) => CupertinoPage<void>(
+                  pageBuilder: (context, state) => kansoPage<void>(
                     key: state.pageKey,
                     child: const JoinLinkPage(),
                   ),
@@ -396,7 +397,7 @@ class KansoRouter {
         if (_gallery.available)
           GoRoute(
             path: KansoRoutes.design,
-            pageBuilder: (context, state) => CupertinoPage<void>(
+            pageBuilder: (context, state) => kansoPage<void>(
               key: state.pageKey,
               child: const DesignGalleryPage(),
             ),
@@ -424,7 +425,7 @@ class KansoRouter {
             : BoardKind.notes;
         final currentPlace = place(state);
         return layoutClass.value == LayoutClass.single
-            ? CupertinoPage<void>(
+            ? kansoPage<void>(
                 key: state.pageKey,
                 child: BoardPage(place: currentPlace, kind: kind),
               )
@@ -455,7 +456,7 @@ class KansoRouter {
             state.uri.queryParameters[KansoRoutes.madeTitleFirstParameter] ==
             '1';
         return layoutClass.value == LayoutClass.single
-            ? CupertinoPage<void>(
+            ? kansoPage<void>(
                 key: state.pageKey,
                 child: NotePage(
                   noteId: noteId,
@@ -488,7 +489,7 @@ class KansoRouter {
   /// this page, in the note pane, says that no note is open.
   Page<void> _listPage(GoRouterState state, {required Widget single}) {
     return layoutClass.value == LayoutClass.single
-        ? CupertinoPage<void>(key: state.pageKey, child: single)
+        ? kansoPage<void>(key: state.pageKey, child: single)
         : NoTransitionPage<void>(
             key: state.pageKey,
             child: const NoNoteSelectedPane(),

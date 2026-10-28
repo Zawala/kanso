@@ -10,6 +10,8 @@ import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
 import '../../../core/views/widgets/kanso_button.dart';
+import '../../../core/views/widgets/kanso_page.dart';
+import '../../../core/views/widgets/kanso_page_route.dart';
 import '../../../core/views/widgets/kanso_pressable.dart';
 
 /// An attachment tapped in a preview: an image full screen, where it can be
@@ -18,7 +20,7 @@ import '../../../core/views/widgets/kanso_pressable.dart';
 Future<void> showAttachment(BuildContext context, AttachmentFile file) {
   if (file.contentType.startsWith('image/')) {
     return Navigator.of(context, rootNavigator: true).push<void>(
-      MaterialPageRoute<void>(
+      KansoPageRoute<void>(
         fullscreenDialog: true,
         builder: (_) => AttachmentImagePage(file: file),
       ),
@@ -127,8 +129,9 @@ class AttachmentImagePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final light = context.typography.body.copyWith(color: Colors.white);
-    return Scaffold(
+    return KansoPage(
       backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: <Widget>[
           Positioned.fill(
