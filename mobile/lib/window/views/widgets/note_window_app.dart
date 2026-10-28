@@ -2,6 +2,7 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -14,6 +15,7 @@ import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/kanso_scroll_behavior.dart';
 import '../../../core/utils/syntax_theme_id.dart';
+import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../dictation/views/widgets/dictation_scope.dart';
 import '../../../gen/l10n/app_localizations.dart';
 import '../../../injection.dart';
@@ -68,23 +70,10 @@ class _NoteWindowAppState extends State<NoteWindowApp> {
         repository: widget.windows,
         child: BlocBuilder<AppearanceBloc, AppearanceState>(
           builder: (context, state) {
-            return MaterialApp(
+            return WidgetsApp(
               debugShowCheckedModeBanner: false,
+              color: state.light.colors.button,
               onGenerateTitle: (context) => context.l10n.appName,
-              theme: KansoTheme.build(
-                state.light,
-                fonts: state.fonts,
-                textSize: state.textSize,
-                previewTextSize: state.previewTextSize,
-              ),
-              darkTheme: KansoTheme.build(
-                state.dark,
-                fonts: state.fonts,
-                textSize: state.textSize,
-                previewTextSize: state.previewTextSize,
-              ),
-              themeMode: state.themeMode,
-              scrollBehavior: const KansoScrollBehavior(),
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
               builder: (context, child) {
@@ -95,9 +84,44 @@ class _NoteWindowAppState extends State<NoteWindowApp> {
                   selectionLabel: context.l10n.assistSelectionAction,
                   keyLabel: context.l10n.assistAccessoryLabel,
                 );
-                return DictationScope(
-                  others: assistant,
-                  child: child ?? const SizedBox.shrink(),
+                final brightness = switch (state.themeMode) {
+                  ThemeMode.light => Brightness.light,
+                  ThemeMode.dark => Brightness.dark,
+                  ThemeMode.system => MediaQuery.platformBrightnessOf(context),
+                };
+                final theme = KansoTheme.build(
+                  brightness == Brightness.dark ? state.dark : state.light,
+                  fonts: state.fonts,
+                  textSize: state.textSize,
+                  previewTextSize: state.previewTextSize,
+                );
+                return ScrollConfiguration(
+                  behavior: const KansoScrollBehavior(),
+                  child: AnimatedTheme(
+                    data: theme,
+                    child: DefaultTextStyle(
+                      style: theme.textTheme.bodyMedium!,
+                      child: DefaultSelectionStyle(
+                        selectionColor:
+                            theme.textSelectionTheme.selectionColor ??
+                            theme.colorScheme.primary.withValues(alpha: 0.4),
+                        cursorColor:
+                            theme.textSelectionTheme.cursorColor ??
+                            theme.colorScheme.primary,
+                        child: CupertinoTheme(
+                          data: MaterialBasedCupertinoThemeData(
+                            materialTheme: theme,
+                          ),
+                          child: KansoFeedbackHost(
+                            child: DictationScope(
+                              others: assistant,
+                              child: child ?? const SizedBox.shrink(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 );
               },
               home: _NoteWindowHost(

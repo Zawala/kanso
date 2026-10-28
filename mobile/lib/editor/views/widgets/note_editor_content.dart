@@ -21,6 +21,7 @@ import '../../../core/models/data/application_error.dart';
 import '../../../core/models/data/browse_location.dart';
 import '../../../core/models/data/note_drag_data.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../editor_extras/models/data/editor_extras.dart';
 import '../../../editor_extras/models/data/markdown_editor_text_target.dart';
 import '../../../editor_extras/views/widgets/editor_extras_scope.dart';
@@ -272,9 +273,7 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
     handledAssistRequest = intent.request;
     bloc.add(NoteAssistIntentEvent.consumed(request: intent.request));
     if (readOnly) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(context.l10n.assistReadOnly)),
-      );
+      KansoFeedback.show(context, context.l10n.assistReadOnly);
       return;
     }
     unawaited(openAssistAction(context, textTarget, action: action));
@@ -295,9 +294,7 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
     if (readOnly) {
       handledWordGoalRequest = intent.request;
       bloc.add(WordGoalIntentEvent.consumed(request: intent.request));
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(context.l10n.assistReadOnly)),
-      );
+      KansoFeedback.show(context, context.l10n.assistReadOnly);
       return;
     }
     final state = editor.state;
@@ -660,8 +657,10 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
               before.wordGoalError != now.wordGoalError &&
               now.wordGoalError != null,
           listener: (context, state) {
-            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-              SnackBar(content: Text(state.wordGoalError!.message)),
+            KansoFeedback.show(
+              context,
+              state.wordGoalError!.message,
+              tone: KansoFeedbackTone.error,
             );
           },
         ),

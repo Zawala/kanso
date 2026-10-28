@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/settings_navigation.dart';
 import '../../../core/state/account/account_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/recover/recover_bloc.dart';
 import '../widgets/binding_question_listener.dart';
@@ -47,7 +48,7 @@ class RecoverPage extends StatelessWidget {
               router.popToSettings();
             }
           },
-          child: Scaffold(
+          child: KansoPage(
             backgroundColor: context.colors.app,
             body: BlocBuilder<RecoverBloc, RecoverState>(
               builder: (context, state) =>

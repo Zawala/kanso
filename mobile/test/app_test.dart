@@ -20,6 +20,7 @@ import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/device_approval/device_approval_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/core/views/widgets/kanso_feedback.dart';
 import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 import 'package:kanso/injection.dart';
@@ -133,15 +134,15 @@ void main() {
         const AppearanceEvent.codeFontChanged(KansoFontFamily.ibmPlexMono),
       );
       await tester.pumpAndSettle();
-      final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+      final app = tester.widget<WidgetsApp>(find.byType(WidgetsApp));
       expect(
-        app.darkTheme!.extension<KansoTypography>()!.mono.fontFamily,
+        Theme.of(
+          tester.element(find.byType(DesignGalleryPage)),
+        ).extension<KansoTypography>()!.mono.fontFamily,
         'IBM Plex Mono',
       );
-      expect(
-        app.theme!.extension<KansoTypography>()!.mono.fontFamily,
-        'IBM Plex Mono',
-      );
+      expect(app.debugShowCheckedModeBanner, isFalse);
+      expect(find.byType(KansoFeedbackHost), findsOneWidget);
     });
 
     testWidgets("does not clamp the device's text scale", (tester) async {

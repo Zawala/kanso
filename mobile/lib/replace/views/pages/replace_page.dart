@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../injection.dart';
 import '../../models/data/replace_option.dart';
@@ -46,7 +47,7 @@ class _ReplacePageState extends State<ReplacePage> {
     final l10n = context.l10n;
     return BlocProvider<ReplaceNotesBloc>(
       create: (_) => getIt<ReplaceNotesBloc>(),
-      child: Scaffold(
+      child: KansoPage(
         backgroundColor: context.colors.app,
         body: Column(
           children: <Widget>[

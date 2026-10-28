@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/kanso_routes.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../../lock/state/biometrics/biometrics_bloc.dart';
 import '../../../push/state/push_setting/push_setting_bloc.dart';
@@ -98,7 +99,7 @@ class SettingsPage extends StatelessWidget {
           child: Focus(
             autofocus: true,
             child: RemindersPermissionSync(
-              child: Scaffold(
+              child: KansoPage(
                 resizeToAvoidBottomInset: false,
                 backgroundColor: context.colors.app,
                 body: const SettingsPane(),

@@ -18,6 +18,7 @@ import '../../../core/models/data/browse_location.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../injection.dart';
 import '../../models/data/preview_action.dart';
 import '../../models/data/source_line.dart';
@@ -281,14 +282,12 @@ class _PreviewPageState extends State<PreviewPage> {
             context.read<PreviewBloc>().add(
               const PreviewEvent.noticeDismissed(),
             );
-            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-              SnackBar(
-                content: Text(
-                  notice is LockedError
-                      ? l10n.previewLinkLocked
-                      : l10n.previewLinkFailed,
-                ),
-              ),
+            KansoFeedback.show(
+              context,
+              notice is LockedError
+                  ? l10n.previewLinkLocked
+                  : l10n.previewLinkFailed,
+              tone: KansoFeedbackTone.error,
             );
           },
         ),

@@ -200,20 +200,17 @@ class _NoteDragFeedback extends StatelessWidget {
             : title,
     ];
     final summary = visibleTitles.take(2).join(', ');
-    return Material(
-      color: Colors.transparent,
-      child: Chip(
-        avatar: KansoIcon(
-          titles.every((title) => title.isEmpty)
-              ? KansoIcons.lock
-              : KansoIcons.fileText,
-          size: 16,
-          color: colors.textSecondary,
-        ),
-        label: Text('$count · $summary'),
-        backgroundColor: colors.sidebar,
-        side: BorderSide(color: colors.divider),
+    return Chip(
+      avatar: KansoIcon(
+        titles.every((title) => title.isEmpty)
+            ? KansoIcons.lock
+            : KansoIcons.fileText,
+        size: 16,
+        color: colors.textSecondary,
       ),
+      label: Text('$count · $summary'),
+      backgroundColor: colors.sidebar,
+      side: BorderSide(color: colors.divider),
     );
   }
 }

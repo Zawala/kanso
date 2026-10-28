@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/bridge/api/types.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/recovery_key/recovery_key_bloc.dart';
 import '../widgets/recovery_key_pane.dart';
@@ -34,7 +35,7 @@ class RecoveryKeyPage extends StatelessWidget {
             context.pop();
           }
         },
-        child: Scaffold(
+        child: KansoPage(
           backgroundColor: context.colors.app,
           body: const RecoveryKeyPane(),
         ),

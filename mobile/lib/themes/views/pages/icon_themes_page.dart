@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/icon_themes/icon_themes_bloc.dart';
 import '../widgets/icon_themes_pane.dart';
@@ -20,7 +21,7 @@ class IconThemesPage extends StatelessWidget {
     return BlocProvider<IconThemesBloc>(
       create: (context) =>
           getIt<IconThemesBloc>()..add(const IconThemesEvent.started()),
-      child: Scaffold(
+      child: KansoPage(
         resizeToAvoidBottomInset: false,
         backgroundColor: context.colors.app,
         body: const IconThemesPane(),

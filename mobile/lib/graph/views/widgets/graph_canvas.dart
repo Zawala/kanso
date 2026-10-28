@@ -146,9 +146,11 @@ class _GraphCanvasState extends State<GraphCanvas> {
                 Positioned(
                   top: 10,
                   right: 10,
-                  child: Material(
-                    color: colors.elevated.withValues(alpha: 0.94),
-                    borderRadius: BorderRadius.circular(14),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: colors.elevated.withValues(alpha: 0.94),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                     child: KansoIconButton(
                       icon: KansoIcons.target,
                       semanticLabel: context.l10n.graphFit,

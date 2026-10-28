@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/kanso_routes.dart';
 import '../../../core/router/settings_navigation.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../models/data/account_outcome.dart';
 import '../../models/data/sign_in_mode.dart';
@@ -51,7 +52,7 @@ class SignInPage extends StatelessWidget {
               router.popToSettings();
             }
           },
-          child: Scaffold(
+          child: KansoPage(
             backgroundColor: context.colors.app,
             body: BlocBuilder<SignInBloc, SignInState>(
               builder: (context, state) {

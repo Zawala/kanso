@@ -11,6 +11,7 @@ import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
+import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../injection.dart';
 import '../../state/publish/publish_bloc.dart';
 
@@ -216,9 +217,7 @@ class PublishSheet extends StatelessWidget {
                       onPressed: () async {
                         await Clipboard.setData(ClipboardData(text: link!.url));
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(l10n.publishCopied)),
-                          );
+                          KansoFeedback.show(context, l10n.publishCopied);
                         }
                       },
                       icon: const Icon(Icons.copy),

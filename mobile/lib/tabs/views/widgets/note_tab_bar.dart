@@ -458,31 +458,28 @@ class _Lifted extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Material(
-      type: MaterialType.transparency,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: colors.elevated,
-          borderRadius: BorderRadius.circular(KansoRadii.small),
-          border: Border.all(color: colors.accent.withValues(alpha: 0.6)),
-          boxShadow: const <BoxShadow>[
-            BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 8,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: context.typography.label.copyWith(
-            fontSize: 12.5,
-            color: colors.text,
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 200),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: colors.elevated,
+        borderRadius: BorderRadius.circular(KansoRadii.small),
+        border: Border.all(color: colors.accent.withValues(alpha: 0.6)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
+        ],
+      ),
+      child: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: context.typography.label.copyWith(
+          fontSize: 12.5,
+          color: colors.text,
         ),
       ),
     );
