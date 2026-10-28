@@ -19,6 +19,7 @@ import '../../../helpers/seeded_appearance_bloc.dart';
 Future<AppearanceBloc> _pump(
   WidgetTester tester, {
   AppearanceBloc? bloc,
+  bool settle = true,
 }) async {
   final appearance = bloc ?? SeededAppearanceBloc(const AppearanceState());
   addTearDown(appearance.close);
@@ -32,6 +33,7 @@ Future<AppearanceBloc> _pump(
       value: appearance,
       child: const SizedBox(width: 393, height: 3000, child: FontsPane()),
     ),
+    settle: settle,
   );
   return appearance;
 }
@@ -63,6 +65,36 @@ void main() {
         ),
       );
       expect(find.text('Add a font\u2026'), findsNothing);
+      expect(find.text('Google Font'), findsOneWidget);
+      expect(find.text('Download and use'), findsOneWidget);
+    });
+
+    testWidgets('shows loading and offline feedback for Google Fonts', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        bloc: SeededAppearanceBloc(
+          const AppearanceState(googleFontLoading: true),
+        ),
+        settle: false,
+      );
+      expect(find.text('Loading font…'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      final bloc = SeededAppearanceBloc(
+        const AppearanceState(
+          googleFontError: 'offline',
+          googleFontOffline: true,
+        ),
+      );
+      await _pump(tester, bloc: bloc);
+      expect(
+        find.text(
+          'You’re offline. Connect to download this font; saved fonts remain '
+          'available offline.',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('checks the font in use in each section', (tester) async {

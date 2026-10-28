@@ -481,6 +481,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fontsTitle => 'Fonts';
 
   @override
+  String get googleFontSection => 'Google Font';
+
+  @override
+  String get googleFontFooter =>
+      'Enter a Google Fonts family name. It is saved on this device and works offline after downloading.';
+
+  @override
+  String get googleFontHint => 'For example, Lora or Nunito Sans';
+
+  @override
+  String get googleFontDownload => 'Download and use';
+
+  @override
+  String get googleFontLoading => 'Loading font…';
+
+  @override
+  String get googleFontOffline =>
+      'You’re offline. Connect to download this font; saved fonts remain available offline.';
+
+  @override
+  String get googleFontFailed =>
+      'This font could not be loaded. Check the family name and try again.';
+
+  @override
+  String googleFontActive(String family) {
+    return '$family is in use for writing and reading.';
+  }
+
+  @override
   String get fontsEditorSection => 'Editor font';
 
   @override
@@ -3073,19 +3102,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String historyOrigin(String origin) {
-    String _temp0 = intl.Intl.selectLogic(
-      origin,
-      {
-        'ui': 'Edited in Kanso',
-        'api': 'Replaced through the API',
-        'sync': 'Replaced by sync',
-        'import': 'Replaced by an import',
-        'collab': 'Edited in a shared note',
-        'agent': 'Suggested by an agent, applied by you',
-        'plugin': 'Changed by a plugin',
-        'other': 'Saved version',
-      },
-    );
+    String _temp0 = intl.Intl.selectLogic(origin, {
+      'ui': 'Edited in Kanso',
+      'api': 'Replaced through the API',
+      'sync': 'Replaced by sync',
+      'import': 'Replaced by an import',
+      'collab': 'Edited in a shared note',
+      'agent': 'Suggested by an agent, applied by you',
+      'plugin': 'Changed by a plugin',
+      'other': 'Saved version',
+    });
     return '$_temp0';
   }
 

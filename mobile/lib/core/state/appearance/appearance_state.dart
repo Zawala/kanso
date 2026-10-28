@@ -26,6 +26,16 @@ abstract class AppearanceState with _$AppearanceState {
 
     @Default(KansoFonts()) KansoFonts fonts,
 
+    /// Whether the selected Google Font is downloading or loading from cache.
+    @Default(false) bool googleFontLoading,
+
+    /// A Google Fonts failure detail used by the settings feedback.
+    String? googleFontError,
+
+    /// Whether the last Google Fonts operation failed because the network
+    /// could not be reached.
+    @Default(false) bool googleFontOffline,
+
     /// The size of the editor's text.
     @Default(KansoTextSize.standard) KansoTextSize textSize,
 

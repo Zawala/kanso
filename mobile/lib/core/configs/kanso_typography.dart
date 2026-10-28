@@ -55,6 +55,7 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
     KansoColors colors, {
     KansoFonts fonts = const KansoFonts(),
     KansoTextSize textSize = KansoTextSize.standard,
+    KansoTextSize? previewTextSize,
   }) {
     TextStyle ui(
       double size,
@@ -75,17 +76,19 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
 
     TextStyle note(
       KansoFontFamily font,
+      String? googleFont,
+      KansoTextSize scale,
       double size,
       FontWeight weight,
       double height,
     ) {
       return fontStyle(
         font,
-        size: textSize.scaled(size),
+        size: scale.scaled(size),
         weight: weight,
         height: height,
         color: colors.text,
-      );
+      ).copyWith(fontFamily: googleFont);
     }
 
     final editor = fonts.editorFont;
@@ -113,15 +116,71 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
         colors.textMuted,
         letterSpacing: 0.2,
       ),
-      editorTitle: note(editor, 24, FontWeight.w700, 1.25),
-      editorHeading1: note(editor, 20, FontWeight.w700, 1.3),
-      editorHeading2: note(editor, 17, FontWeight.w600, 1.3),
-      editorBody: note(editor, 15, FontWeight.w400, leading(editor)),
-      previewTitle: note(preview, 24, FontWeight.w700, 1.25),
-      previewHeading1: note(preview, 20, FontWeight.w700, 1.3),
-      previewHeading2: note(preview, 17, FontWeight.w600, 1.3),
-      previewBody: note(preview, 15, FontWeight.w400, leading(preview)),
-      mono: note(fonts.codeFont, 13.5, FontWeight.w400, 1.5),
+      editorTitle: note(
+        editor,
+        fonts.editorGoogleFont,
+        textSize,
+        28,
+        FontWeight.w700,
+        1.25,
+      ),
+      editorHeading1: note(
+        editor,
+        fonts.editorGoogleFont,
+        textSize,
+        23,
+        FontWeight.w700,
+        1.3,
+      ),
+      editorHeading2: note(
+        editor,
+        fonts.editorGoogleFont,
+        textSize,
+        20,
+        FontWeight.w600,
+        1.3,
+      ),
+      editorBody: note(
+        editor,
+        fonts.editorGoogleFont,
+        textSize,
+        18,
+        FontWeight.w400,
+        leading(editor),
+      ),
+      previewTitle: note(
+        preview,
+        fonts.previewGoogleFont,
+        previewTextSize ?? textSize,
+        28,
+        FontWeight.w700,
+        1.25,
+      ),
+      previewHeading1: note(
+        preview,
+        fonts.previewGoogleFont,
+        previewTextSize ?? textSize,
+        23,
+        FontWeight.w700,
+        1.3,
+      ),
+      previewHeading2: note(
+        preview,
+        fonts.previewGoogleFont,
+        previewTextSize ?? textSize,
+        20,
+        FontWeight.w600,
+        1.3,
+      ),
+      previewBody: note(
+        preview,
+        fonts.previewGoogleFont,
+        previewTextSize ?? textSize,
+        18,
+        FontWeight.w400,
+        leading(preview),
+      ),
+      mono: note(fonts.codeFont, null, textSize, 13.5, FontWeight.w400, 1.5),
       // Theme previews are interface, not note text: not scaled.
       monoSmall: fontStyle(
         fonts.codeFont,

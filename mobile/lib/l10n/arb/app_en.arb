@@ -626,6 +626,43 @@
   "@fontsTitle": {
     "description": "The title of the page where the fonts of notes are chosen."
   },
+  "googleFontSection": "Google Font",
+  "@googleFontSection": {
+    "description": "The section for downloading a Google Font for notes."
+  },
+  "googleFontFooter": "Enter a Google Fonts family name. It is saved on this device and works offline after downloading.",
+  "@googleFontFooter": {
+    "description": "Explains Google Font download and offline cache behavior."
+  },
+  "googleFontHint": "For example, Lora or Nunito Sans",
+  "@googleFontHint": {
+    "description": "Example Google Fonts family name."
+  },
+  "googleFontDownload": "Download and use",
+  "@googleFontDownload": {
+    "description": "Downloads a Google Font and applies it to notes."
+  },
+  "googleFontLoading": "Loading font…",
+  "@googleFontLoading": {
+    "description": "Progress label while a Google Font is downloaded or loaded."
+  },
+  "googleFontOffline": "You’re offline. Connect to download this font; saved fonts remain available offline.",
+  "@googleFontOffline": {
+    "description": "Offline feedback for Google Font download."
+  },
+  "googleFontFailed": "This font could not be loaded. Check the family name and try again.",
+  "@googleFontFailed": {
+    "description": "Failure feedback for Google Font download."
+  },
+  "googleFontActive": "{family} is in use for writing and reading.",
+  "@googleFontActive": {
+    "description": "Names the active Google Font family.",
+    "placeholders": {
+      "family": {
+        "type": "String"
+      }
+    }
+  },
   "fontsEditorSection": "Editor font",
   "@fontsEditorSection": {
     "description": "The section of fonts to write in."

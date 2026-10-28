@@ -964,6 +964,54 @@ abstract class AppLocalizations {
   /// **'Fonts'**
   String get fontsTitle;
 
+  /// The section for downloading a Google Font for notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Google Font'**
+  String get googleFontSection;
+
+  /// Explains Google Font download and offline cache behavior.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a Google Fonts family name. It is saved on this device and works offline after downloading.'**
+  String get googleFontFooter;
+
+  /// Example Google Fonts family name.
+  ///
+  /// In en, this message translates to:
+  /// **'For example, Lora or Nunito Sans'**
+  String get googleFontHint;
+
+  /// Downloads a Google Font and applies it to notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Download and use'**
+  String get googleFontDownload;
+
+  /// Progress label while a Google Font is downloaded or loaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading font…'**
+  String get googleFontLoading;
+
+  /// Offline feedback for Google Font download.
+  ///
+  /// In en, this message translates to:
+  /// **'You’re offline. Connect to download this font; saved fonts remain available offline.'**
+  String get googleFontOffline;
+
+  /// Failure feedback for Google Font download.
+  ///
+  /// In en, this message translates to:
+  /// **'This font could not be loaded. Check the family name and try again.'**
+  String get googleFontFailed;
+
+  /// Names the active Google Font family.
+  ///
+  /// In en, this message translates to:
+  /// **'{family} is in use for writing and reading.'**
+  String googleFontActive(String family);
+
   /// The section of fonts to write in.
   ///
   /// In en, this message translates to:

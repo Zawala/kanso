@@ -7,12 +7,24 @@ part of 'preview_bloc.dart';
 @freezed
 sealed class PreviewEvent with _$PreviewEvent {
   /// Draws the note [noteId] in the built-in theme [themeId].
-  const factory PreviewEvent.started(String noteId, String themeId) =
-      PreviewStartedEvent;
+  const factory PreviewEvent.started(
+    String noteId,
+    String themeId, {
+    String? font,
+    String? mono,
+    @Default(previewBaseTextSize) double size,
+  }) = PreviewStartedEvent;
 
   /// The theme changed: the page is drawn again in [themeId].
   const factory PreviewEvent.themeChanged(String themeId) =
       PreviewThemeChangedEvent;
+
+  /// Changes note fonts or text size and redraws the page.
+  const factory PreviewEvent.styleChanged({
+    required double size,
+    String? font,
+    String? mono,
+  }) = PreviewStyleChangedEvent;
 
   /// Something in the library changed: the note, or a note one of its query
   /// views or links shows.
