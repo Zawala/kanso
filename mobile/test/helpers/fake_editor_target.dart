@@ -31,6 +31,9 @@ class FakeEditorTarget extends ChangeNotifier implements EditorTextTarget {
   /// How many edits were made, each one undo step.
   int edits = 0;
 
+  String? _lastRevision;
+  int _lastRevisionStart = 0;
+
   @override
   Listenable get changes => this;
 
@@ -51,6 +54,45 @@ class FakeEditorTarget extends ChangeNotifier implements EditorTextTarget {
     TextRange(start: value.selection.start, end: value.selection.end),
     text,
   );
+
+  @override
+  void revise(TextRange range, String text, {required bool joining}) {
+    final inserted = value.text.substring(range.start, range.end);
+    if (joining &&
+        _lastRevision != null &&
+        range.start >= _lastRevisionStart &&
+        range.end <= _lastRevisionStart + _lastRevision!.length) {
+      _lastRevision = _lastRevision!.replaceRange(
+        range.start - _lastRevisionStart,
+        range.end - _lastRevisionStart,
+        text,
+      );
+      _applyRevision(range, text);
+      return;
+    }
+    _applyRevision(range, text);
+    _lastRevision = text;
+    _lastRevisionStart = range.start;
+    if (inserted == text) {
+      _lastRevision = null;
+    }
+  }
+
+  @override
+  void commitRevision() {
+    _lastRevision = null;
+  }
+
+  void _applyRevision(TextRange range, String text) {
+    edits++;
+    revision++;
+    final next = value.text.replaceRange(range.start, range.end, text);
+    value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: range.start + text.length),
+    );
+    notifyListeners();
+  }
 
   /// The person types: not an edit of the assistant’s.
   void type(String text) {

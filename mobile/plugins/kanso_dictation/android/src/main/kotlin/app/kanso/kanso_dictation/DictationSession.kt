@@ -27,7 +27,7 @@ class DictationSession(
     private val handler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var stopping = false
-    private var heardSomething = false
+    private var restartPending = false
     private var lastLevelAt = 0L
     private var listeningReported = false
 
@@ -59,6 +59,8 @@ class DictationSession(
     fun stop() {
         if (finished || stopping) return
         stopping = true
+        restartPending = false
+        handler.removeCallbacksAndMessages(null)
         recognizer?.stopListening()
         // The recognizer may never answer a stop it was given too early.
         handler.postDelayed({ end() }, FINISH_TIMEOUT_MS)
@@ -72,6 +74,7 @@ class DictationSession(
     }
 
     private fun listen() {
+        restartPending = false
         val intent =
             Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(
@@ -124,7 +127,6 @@ class DictationSession(
     override fun onPartialResults(partialResults: Bundle?) {
         if (finished) return
         text(partialResults)?.let {
-            heardSomething = true
             emit(DictationEvent(kind = DictationEventKind.PARTIAL, text = it))
         }
     }
@@ -132,22 +134,26 @@ class DictationSession(
     override fun onResults(results: Bundle?) {
         if (finished) return
         text(results)?.let {
-            heardSomething = true
             emit(DictationEvent(kind = DictationEventKind.FINAL_RESULT, text = it))
         }
         if (stopping) {
             end()
         } else {
             // The next phrase, once the recognizer is done with this one.
-            handler.post { if (!finished && !stopping) listen() }
+            scheduleListen()
         }
     }
 
     override fun onError(error: Int) {
         if (finished) return
-        // Silence after the person spoke, or after they stopped, is the end.
-        if (stopping || (DictationMapping.isSilence(error) && heardSomething)) {
+        if (stopping) {
             end()
+            return
+        }
+        // A long silence is a phrase boundary, not the end of dictation. Keep
+        // the session open until the person presses stop.
+        if (DictationMapping.isSilence(error)) {
+            scheduleListen()
             return
         }
         DictationMapping.errorCode(error)?.let {
@@ -156,10 +162,21 @@ class DictationSession(
         end()
     }
 
+    /** Starts the next phrase after the recognizer has let go of the last. */
+    private fun scheduleListen() {
+        if (finished || stopping || restartPending) return
+        restartPending = true
+        handler.postDelayed({
+            restartPending = false
+            if (!finished && !stopping) listen()
+        }, RESTART_DELAY_MS)
+    }
+
     override fun onEvent(eventType: Int, params: Bundle?) {}
 
     private companion object {
         const val FINISH_TIMEOUT_MS = 3000L
         const val LEVEL_INTERVAL_MS = 66L
+        const val RESTART_DELAY_MS = 250L
     }
 }
