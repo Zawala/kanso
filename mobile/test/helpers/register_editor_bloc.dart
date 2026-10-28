@@ -9,9 +9,9 @@ import 'package:kanso/injection.dart';
 import 'package:kanso/journal/state/journal/journal_bloc.dart';
 
 import 'fake_editor_repository.dart';
-import 'fixture_journal_repository.dart';
 import 'fake_media_picker_repository.dart';
 import 'fake_web_link_repository.dart';
+import 'fixture_journal_repository.dart';
 
 /// Registers, for a test that builds the note page in edit mode, an
 /// `EditorBloc` that opens [document]; it is taken out when the test ends.

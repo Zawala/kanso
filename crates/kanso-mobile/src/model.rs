@@ -998,6 +998,8 @@ pub struct BoardCard {
     pub snippet: String,
     /// A task's due date, `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`.
     pub due: Option<String>,
+    /// The chip its due date reads as; `None` for a card without a date.
+    pub due_chip: Option<DueChipRow>,
     /// Whether a task is ticked.
     pub checked: bool,
     /// A locked note: its title and its lock, nothing of its text.

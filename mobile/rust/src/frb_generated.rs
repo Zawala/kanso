@@ -12775,6 +12775,7 @@ const _: fn() = || {
         let _: String = BoardCard.note_title;
         let _: String = BoardCard.snippet;
         let _: Option<String> = BoardCard.due;
+        let _: Option<crate::api::types::DueChipRow> = BoardCard.due_chip;
         let _: bool = BoardCard.checked;
         let _: bool = BoardCard.locked;
     }
@@ -14565,6 +14566,7 @@ impl SseDecode for crate::api::types::BoardCard {
         let mut var_noteTitle = <String>::sse_decode(deserializer);
         let mut var_snippet = <String>::sse_decode(deserializer);
         let mut var_due = <Option<String>>::sse_decode(deserializer);
+        let mut var_dueChip = <Option<crate::api::types::DueChipRow>>::sse_decode(deserializer);
         let mut var_checked = <bool>::sse_decode(deserializer);
         let mut var_locked = <bool>::sse_decode(deserializer);
         return crate::api::types::BoardCard {
@@ -14573,6 +14575,7 @@ impl SseDecode for crate::api::types::BoardCard {
             note_title: var_noteTitle,
             snippet: var_snippet,
             due: var_due,
+            due_chip: var_dueChip,
             checked: var_checked,
             locked: var_locked,
         };
@@ -20484,6 +20487,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::BoardCard> 
             self.0.note_title.into_into_dart().into_dart(),
             self.0.snippet.into_into_dart().into_dart(),
             self.0.due.into_into_dart().into_dart(),
+            self.0.due_chip.into_into_dart().into_dart(),
             self.0.checked.into_into_dart().into_dart(),
             self.0.locked.into_into_dart().into_dart(),
         ]
@@ -25159,6 +25163,7 @@ impl SseEncode for crate::api::types::BoardCard {
         <String>::sse_encode(self.note_title, serializer);
         <String>::sse_encode(self.snippet, serializer);
         <Option<String>>::sse_encode(self.due, serializer);
+        <Option<crate::api::types::DueChipRow>>::sse_encode(self.due_chip, serializer);
         <bool>::sse_encode(self.checked, serializer);
         <bool>::sse_encode(self.locked, serializer);
     }

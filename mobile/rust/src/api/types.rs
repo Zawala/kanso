@@ -1451,6 +1451,7 @@ pub struct _BoardCard {
     pub note_title: String,
     pub snippet: String,
     pub due: Option<String>,
+    pub due_chip: Option<DueChipRow>,
     pub checked: bool,
     pub locked: bool,
 }

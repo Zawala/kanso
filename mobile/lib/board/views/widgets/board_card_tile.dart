@@ -2,17 +2,14 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 
-import '../../../core/bridge/api/library.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_radii.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
-import '../../../core/utils/journal_time.dart';
 import '../../../core/views/widgets/kanso_checkbox.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_pressable.dart';
@@ -81,13 +78,7 @@ class _Body extends StatelessWidget {
     final isTask = card.key is CardKey_Task;
     final title = card.title.trim().isEmpty ? l10n.noteUntitled : card.title;
     final snippet = card.locked ? l10n.noteListLocked : card.snippet.trim();
-    final due = card.due == null
-        ? null
-        : KansoLibrary.dueChip(
-            due: card.due!,
-            checked: card.checked,
-            now: localTimeOf(clock.now()),
-          );
+    final due = card.dueChip;
     final move = onMove;
     return Container(
       padding: const EdgeInsetsDirectional.only(

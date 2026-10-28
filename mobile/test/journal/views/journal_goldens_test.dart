@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/models/data/layout_class.dart';
+import 'package:kanso/settings/views/widgets/settings_pane.dart';
 
 import '../../helpers/app_golden.dart';
 import '../../helpers/kanso_viewport.dart';
@@ -42,9 +43,16 @@ Future<void> _openMove(WidgetTester tester, BrowseApp app) async {
 Future<void> _scrollSettingsToEnd(WidgetTester tester, BrowseApp app) async {
   unawaited(app.router.push<void>('/settings'));
   await tester.pumpAndSettle();
+  // Three panes keep the library and the list behind the sheet, so the
+  // list to scroll is the settings pane's own.
   await tester.dragUntilVisible(
     find.text('Remind me of tasks'),
-    find.byType(ListView).first,
+    find
+        .descendant(
+          of: find.byType(SettingsPane),
+          matching: find.byType(ListView),
+        )
+        .first,
     const Offset(0, -200),
   );
   await tester.pumpAndSettle();
@@ -79,8 +87,6 @@ final List<_Screen> _screens = <_Screen>[
     at: '/notes',
     interact: (tester, app) async {
       await _tapLabel(tester, 'New');
-      await tester.tap(find.text('New from template…'));
-      await tester.pumpAndSettle();
       await tester.tap(find.text('New template'));
       await tester.pumpAndSettle();
     },

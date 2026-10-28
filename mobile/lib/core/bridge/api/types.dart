@@ -257,6 +257,7 @@ class BoardCard {
   final String noteTitle;
   final String snippet;
   final String? due;
+  final DueChipRow? dueChip;
   final bool checked;
   final bool locked;
 
@@ -266,6 +267,7 @@ class BoardCard {
     required this.noteTitle,
     required this.snippet,
     this.due,
+    this.dueChip,
     required this.checked,
     required this.locked,
   });
@@ -277,6 +279,7 @@ class BoardCard {
       noteTitle.hashCode ^
       snippet.hashCode ^
       due.hashCode ^
+      dueChip.hashCode ^
       checked.hashCode ^
       locked.hashCode;
 
@@ -290,6 +293,7 @@ class BoardCard {
           noteTitle == other.noteTitle &&
           snippet == other.snippet &&
           due == other.due &&
+          dueChip == other.dueChip &&
           checked == other.checked &&
           locked == other.locked;
 }

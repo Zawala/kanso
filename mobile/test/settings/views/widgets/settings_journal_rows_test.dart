@@ -3,16 +3,20 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/reminder_permission.dart';
+import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_switch.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
 
+import '../../../helpers/close_bloc_later.dart';
 import '../../../helpers/fixture_library_repository.dart';
 import '../../../helpers/page_fixtures.dart';
 import '../../../helpers/pump_routed.dart';
 import '../../../helpers/register_page_blocs.dart';
+import '../../../helpers/seeded_appearance_bloc.dart';
 import '../../../helpers/settings_blocs.dart';
 
 Future<SettingsBlocs> _pump(
@@ -21,13 +25,18 @@ Future<SettingsBlocs> _pump(
 }) async {
   final page = fixtures ?? PageFixtures();
   final blocs = await SettingsBlocs.start(fixtures: page);
+  final appearance = SeededAppearanceBloc(const AppearanceState());
+  closeBlocLater(appearance);
   registerPageBlocsWithFixtures(
     FixtureLibraryRepository(),
     fixtures: page,
   );
   await pumpRouted(
     tester,
-    blocs.provide(const SettingsPane()),
+    BlocProvider<AppearanceBloc>.value(
+      value: appearance,
+      child: blocs.provide(const SettingsPane()),
+    ),
     size: const Size(393, 1600),
   );
   await tester.pumpAndSettle();
@@ -93,11 +102,13 @@ void main() {
     testWidgets('a template that could not be set is said so', (tester) async {
       final fixtures = PageFixtures();
       await _pump(tester, fixtures: fixtures);
+      // The picker lists the templates when it opens; the choosing then
+      // fails. Failing the listing first would leave nothing to choose.
+      await tester.tap(find.text('Daily template'));
+      await tester.pumpAndSettle();
       fixtures.journal.failure = const ApplicationError.storage(
         message: 'Disk error.',
       );
-      await tester.tap(find.text('Daily template'));
-      await tester.pumpAndSettle();
       await tester.tap(find.text('Daily').last);
       await tester.pumpAndSettle();
       expect(find.text('Couldn’t set the daily template.'), findsOneWidget);

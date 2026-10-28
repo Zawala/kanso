@@ -72,6 +72,11 @@ class FixtureBoardRepository implements BoardRepository {
         noteTitle: 'Weekly review',
         snippet: '',
         due: '2026-10-27T09:00',
+        dueChip: DueChipRow(
+          label: 'Tomorrow 09:00',
+          tone: DueTone.plain,
+          tooltip: 'Due Tuesday, 27 October 2026 at 09:00',
+        ),
         checked: false,
         locked: false,
       ),
@@ -99,6 +104,11 @@ class FixtureBoardRepository implements BoardRepository {
         noteTitle: 'Weekly review',
         snippet: '',
         due: '2026-10-25',
+        dueChip: DueChipRow(
+          label: 'Yesterday',
+          tone: DueTone.done,
+          tooltip: 'Due Sunday, 25 October 2026',
+        ),
         checked: true,
         locked: false,
       ),
@@ -236,6 +246,7 @@ extension on BoardCard {
     noteTitle: noteTitle,
     snippet: snippet,
     due: due,
+    dueChip: dueChip,
     checked: checked,
     locked: locked,
   );

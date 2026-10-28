@@ -11549,16 +11549,17 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   BoardCard dco_decode_board_card(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return BoardCard(
       key: dco_decode_card_key(arr[0]),
       title: dco_decode_String(arr[1]),
       noteTitle: dco_decode_String(arr[2]),
       snippet: dco_decode_String(arr[3]),
       due: dco_decode_opt_String(arr[4]),
-      checked: dco_decode_bool(arr[5]),
-      locked: dco_decode_bool(arr[6]),
+      dueChip: dco_decode_opt_box_autoadd_due_chip_row(arr[5]),
+      checked: dco_decode_bool(arr[6]),
+      locked: dco_decode_bool(arr[7]),
     );
   }
 
@@ -15658,6 +15659,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     var var_noteTitle = sse_decode_String(deserializer);
     var var_snippet = sse_decode_String(deserializer);
     var var_due = sse_decode_opt_String(deserializer);
+    var var_dueChip = sse_decode_opt_box_autoadd_due_chip_row(deserializer);
     var var_checked = sse_decode_bool(deserializer);
     var var_locked = sse_decode_bool(deserializer);
     return BoardCard(
@@ -15666,6 +15668,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       noteTitle: var_noteTitle,
       snippet: var_snippet,
       due: var_due,
+      dueChip: var_dueChip,
       checked: var_checked,
       locked: var_locked,
     );
@@ -20592,6 +20595,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_String(self.noteTitle, serializer);
     sse_encode_String(self.snippet, serializer);
     sse_encode_opt_String(self.due, serializer);
+    sse_encode_opt_box_autoadd_due_chip_row(self.dueChip, serializer);
     sse_encode_bool(self.checked, serializer);
     sse_encode_bool(self.locked, serializer);
   }

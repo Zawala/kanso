@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/board/views/widgets/board_pane.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
+import 'package:kanso/note/views/pages/note_page.dart';
 import 'package:kanso/tasks/views/widgets/task_due_chip.dart';
 
 import '../../helpers/browse_blocs.dart';
@@ -32,13 +33,19 @@ Finder _inBoard(String label) =>
 void main() {
   group('the board', () {
     testWidgets('is reached from the list’s more menu', (tester) async {
-      final app = await _pump(tester, PageFixtures(), at: '/notes');
+      final fixtures = PageFixtures();
+      final app = await _pump(tester, fixtures, at: '/notes');
       await tester.tap(find.bySemanticsLabel('More'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Tasks'));
+      await tester.tap(find.text('Board'));
       await tester.pumpAndSettle();
-      expect(app.where, '/notes/board?kind=tasks');
+      expect(app.where, '/notes/board');
       expect(find.byType(BoardPane), findsOneWidget);
+      expect(fixtures.boards.boards.single.$1, BoardKind.notes);
+
+      await tester.tap(_inBoard('Tasks'));
+      await tester.pumpAndSettle();
+      expect(fixtures.boards.boards.last.$1, BoardKind.tasks);
       expect(find.text('To do'), findsOneWidget);
     });
 
@@ -145,24 +152,23 @@ void main() {
     });
 
     testWidgets('a tap opens the note, and back is the board', (tester) async {
-      final app = await _pump(tester, PageFixtures());
-      await tester.tap(find.text('Sync design notes'));
+      await _pump(tester, PageFixtures());
+      await tester.tap(find.text('Weekly review'));
       await tester.pumpAndSettle();
-      expect(app.where, '/notes/note/note%3Async');
+      expect(find.byType(NotePage), findsOneWidget);
+      expect(find.byType(BoardPane), findsNothing);
       await tester.tap(find.bySemanticsLabel('Back').first);
       await tester.pumpAndSettle();
-      expect(app.where, '/notes/board');
+      expect(find.byType(BoardPane), findsOneWidget);
     });
 
     testWidgets('a task card opens the note it is in', (tester) async {
-      final app = await _pump(
-        tester,
-        PageFixtures(),
-        at: '/notes/board?kind=tasks',
-      );
-      await tester.tap(find.text('Write the conflict copy'));
+      await _pump(tester, PageFixtures(), at: '/notes/board?kind=tasks');
+      await tester.tap(find.text('Call about the allotment'));
       await tester.pumpAndSettle();
-      expect(app.where, '/notes/note/note%3Async');
+      final page = tester.widget<NotePage>(find.byType(NotePage));
+      expect(page.noteId, MockIds.weeklyReview);
+      expect(find.byType(BoardPane), findsNothing);
     });
 
     testWidgets('says when a move failed, and when a task moved', (
@@ -225,6 +231,15 @@ void main() {
       await _pump(tester, fixtures, size: _ipad);
       expect(find.text('Drag a card to change its status.'), findsOneWidget);
 
+      // The pane is one column and a peek wide: bring On hold into view.
+      final columns = find.byWidgetPredicate(
+        (widget) =>
+            widget is ListView && widget.scrollDirection == Axis.horizontal,
+      );
+      await tester.drag(columns, const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(_inBoard('On hold'), findsOneWidget);
+
       final gesture = await tester.startGesture(
         tester.getCenter(_inBoard('Sync design notes')),
       );
@@ -240,7 +255,7 @@ void main() {
         const BoardLane.status(status: 'onHold'),
       );
 
-      await tester.tap(find.bySemanticsLabel('Move to…').first);
+      await tester.tap(find.bySemanticsLabel('Move to…').hitTestable().first);
       await tester.pumpAndSettle();
       expect(find.text('Move to'), findsOneWidget);
     });

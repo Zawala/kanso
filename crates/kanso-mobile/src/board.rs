@@ -9,24 +9,39 @@
 use std::collections::HashSet;
 
 use kanso_core::NoteStatus;
+use kanso_core::dates::DateTime;
 use kanso_core::model::TRASH_BOOK_ID;
+use kanso_core::tasks::Due;
 use kanso_engine::board::{self, Board, Card, CardId, Lane, Move, Written};
 use kanso_engine::tasks::{TaskId, display_text};
 use kanso_store::TaskQuery;
 
 use crate::boundary::guard;
+use crate::due::chip_row;
 use crate::errors::KansoError;
 use crate::library::Library;
 use crate::model::{
     BoardCard, BoardColumn, BoardKind, BoardLane, BoardView, CardKey, CardMoved, ListQuery,
 };
+use crate::tasks::local_now;
 
 impl Library {
     /// The board of the notes `query` lists, the trash left out: a column per
     /// status (a locked note is in "No status", with its title only), or a
     /// To do and a Done column of the tasks in those notes, in the notes'
-    /// order and then down each note. A locked note has no tasks here.
+    /// order and then down each note. A locked note has no tasks here. The
+    /// due chips are worded at the phone's local time now.
     pub fn board(&self, kind: BoardKind, query: ListQuery) -> Result<BoardView, KansoError> {
+        self.board_at(kind, query, local_now())
+    }
+
+    /// [`Library::board`] with the due chips worded at local time `now`.
+    pub fn board_at(
+        &self,
+        kind: BoardKind,
+        query: ListQuery,
+        now: DateTime,
+    ) -> Result<BoardView, KansoError> {
         guard(|| {
             let store = &self.inner.store;
             let (mut notes, _, _) = self.listed(&query)?;
@@ -66,7 +81,7 @@ impl Library {
                     lane: lane_of(lane),
                     cards: indices
                         .into_iter()
-                        .map(|ix| card_of(&engine.cards[ix]))
+                        .map(|ix| card_of(&engine.cards[ix], now))
                         .collect(),
                 })
                 .collect();
@@ -162,8 +177,8 @@ fn engine_lane(lane: &BoardLane) -> Result<Lane, KansoError> {
     })
 }
 
-/// A card as the app draws it.
-fn card_of(card: &Card) -> BoardCard {
+/// A card as the app draws it, its due chip worded at local time `now`.
+fn card_of(card: &Card, now: DateTime) -> BoardCard {
     match card {
         Card::Note(note) => BoardCard {
             key: CardKey::Note {
@@ -173,21 +188,26 @@ fn card_of(card: &Card) -> BoardCard {
             note_title: note.title.clone(),
             snippet: note.snippet.clone(),
             due: None,
+            due_chip: None,
             checked: false,
             locked: note.locked,
         },
-        Card::Task(task) => BoardCard {
-            key: CardKey::Task {
-                note_id: task.note_id.clone(),
-                line: task.line,
-                text: task.text.clone(),
-            },
-            title: display_text(&task.text),
-            note_title: task.note_title.clone(),
-            snippet: String::new(),
-            due: task.due.clone(),
-            checked: task.checked,
-            locked: false,
-        },
+        Card::Task(task) => {
+            let due = task.due.as_deref().and_then(Due::parse);
+            BoardCard {
+                key: CardKey::Task {
+                    note_id: task.note_id.clone(),
+                    line: task.line,
+                    text: task.text.clone(),
+                },
+                title: display_text(&task.text),
+                note_title: task.note_title.clone(),
+                snippet: String::new(),
+                due: task.due.clone(),
+                due_chip: due.map(|due| chip_row(due, task.checked, now)),
+                checked: task.checked,
+                locked: false,
+            }
+        }
     }
 }
