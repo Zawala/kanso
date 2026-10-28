@@ -97,6 +97,7 @@ fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
             kanso_core::reminders::ACK_FIELD,
             kanso_core::model::LOCK_FIELD,
             kanso_core::model::SHARE_FIELD,
+            kanso_core::model::KANSO_FILES_FIELD,
         ],
         // A notebook's lock, and a published notebook's link and key.
         DocType::Book => &[
@@ -104,7 +105,13 @@ fn app_only_fields(doc_type: DocType) -> &'static [&'static str] {
             kanso_core::model::PUBLISH_FIELD,
         ],
         // The words the app read in an image: a write of the file keeps them.
-        DocType::File => &[kanso_core::model::OCR_FIELD],
+        // And a sealed file's marker: only the app seals a file, so a
+        // client's write of the document keeps the marker it has.
+        DocType::File => &[
+            kanso_core::model::OCR_FIELD,
+            kanso_core::model::FILE_LOCK_FIELD,
+            kanso_core::model::UNSEALED_FIELD,
+        ],
         _ => &[],
     }
 }

@@ -41,6 +41,57 @@ pub const BOOK_COLOR_FIELD: &str = "kansoColor";
 /// note in a locked notebook, and in the notebooks inside it, is locked.
 pub const LOCK_FIELD: &str = "kansoLock";
 
+/// The file field (in `extra`) marking a sealed attachment: the bytes in
+/// `blobs` are a sealed container (`kanso_sync::lock`), opened only with the
+/// note's lock password. A sealed file's document carries it beside the
+/// ordinary fields, and the stored container's digest and length describe
+/// the sealed bytes, so sync keeps working unchanged. Only the app sets it.
+pub const FILE_LOCK_FIELD: &str = "kansoFileLock";
+
+/// The file field a deliberate unseal leaves for sync: `{"seal": "<b64 16>"}`.
+/// It distinguishes an app unseal from an older device replaying plaintext.
+pub const UNSEALED_FIELD: &str = "kansoUnsealed";
+
+/// App-only note field recording the sealed attachments owned by that note.
+/// An empty list means ownership was checked and the note owns no files;
+/// absence means an older writer may not have recorded ownership.
+pub const KANSO_FILES_FIELD: &str = "kansoFiles";
+
+/// A sealed attachment key wrapped by its owning note's lock key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteFile {
+    /// The full `file:…` document ID.
+    pub file: String,
+    /// Ownership record version, currently 1.
+    pub v: u8,
+    /// Base64url encoded 16-byte seal ID.
+    pub seal: String,
+    /// Base64 wrapped attachment key.
+    pub key: String,
+    /// Future app fields round-trip without being interpreted.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+/// Read the checked attachment ownership list; `None` means legacy/unknown.
+pub fn note_files_from_extra(extra: &Map<String, Value>) -> Option<Vec<NoteFile>> {
+    extra
+        .get(KANSO_FILES_FIELD)
+        .and_then(|value| serde_json::from_value::<Vec<NoteFile>>(value.clone()).ok())
+}
+
+/// Store or clear the attachment ownership list in app-only extra fields.
+pub fn store_note_files(files: Option<&[NoteFile]>, extra: &mut Map<String, Value>) {
+    if let Some(files) = files {
+        if let Ok(value) = serde_json::to_value(files) {
+            extra.insert(KANSO_FILES_FIELD.to_owned(), value);
+        }
+    } else {
+        extra.remove(KANSO_FILES_FIELD);
+    }
+}
+
 /// The note field (in `extra`) marking a shared note (docs/ACCOUNTS.md ›
 /// Collaboration): `{"shareId", "role", "owner", "ownerName"}`. Its text
 /// is the shared note's CRDT's, written back by `kanso-collab`; private sync
@@ -296,6 +347,60 @@ pub struct FileMeta {
     pub extra: Map<String, Value>,
 }
 
+impl FileMeta {
+    /// Whether the file's bytes are a sealed container: its document carries
+    /// `kansoFileLock` ([`FILE_LOCK_FIELD`]).
+    pub fn is_sealed(&self) -> bool {
+        self.extra.contains_key(FILE_LOCK_FIELD)
+    }
+}
+
+/// A sealed attachment's document marker, kept in the file's `extra` as
+/// `kansoFileLock` ([`FILE_LOCK_FIELD`]): `{"v": 1, "kind": "file",
+/// "seal": "<b64 16>", "meta": false}`. `seal` names this seal generation,
+/// base64url of the container's 16-byte seal ID; `meta` says whether the
+/// container carries the sealed metadata segment (a later step). Only the
+/// app sets it; the local API and imports ignore it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileLock {
+    /// The format of the marker: 1.
+    pub v: u8,
+    /// Always `"file"`; a note's `kansoLock` is a different field.
+    pub kind: String,
+    /// The seal generation: base64url of 16 random bytes.
+    pub seal: String,
+    /// Whether the container has the sealed metadata segment.
+    pub meta: bool,
+}
+
+impl FileLock {
+    /// A content-only marker for seal generation `seal` (base64url of the
+    /// 16-byte seal ID): no sealed metadata segment yet.
+    pub fn sealed(seal: String) -> FileLock {
+        FileLock {
+            v: 1,
+            kind: "file".to_owned(),
+            seal,
+            meta: false,
+        }
+    }
+
+    /// The file's marker, if its `kansoFileLock` parses as one.
+    pub fn from_extra(extra: &Map<String, Value>) -> Option<FileLock> {
+        let value = extra.get(FILE_LOCK_FIELD)?;
+        serde_json::from_value::<FileLock>(value.clone()).ok()
+    }
+
+    /// Keeps `lock` in a file's fields, or takes the marker out.
+    pub fn store(lock: Option<&FileLock>, extra: &mut Map<String, Value>) {
+        match lock.and_then(|l| serde_json::to_value(l).ok()) {
+            Some(value) => extra.insert(FILE_LOCK_FIELD.to_owned(), value),
+            None => extra.remove(FILE_LOCK_FIELD),
+        };
+    }
+}
+
 /// Image types the API accepts as attachments.
 pub const SUPPORTED_IMAGE_TYPES: [&str; 7] = [
     "image/png",
@@ -326,6 +431,13 @@ pub const SUPPORTED_DOCUMENT_TYPES: [&str; 1] = ["application/pdf"];
 /// Largest attachment the API accepts, in bytes.
 pub const MAX_ATTACHMENT_SIZE: usize = 10 * 1024 * 1024;
 
+/// Largest sealed attachment the write path accepts, in bytes: the 10 MiB
+/// plaintext limit plus the sealed container's overhead and room for future
+/// framing (4 KiB, covering a content segment, a metadata segment and a
+/// little spare). The user-facing plaintext limit stays
+/// [`MAX_ATTACHMENT_SIZE`]; this caps the stored container only.
+pub const MAX_SEALED_ATTACHMENT: usize = MAX_ATTACHMENT_SIZE + 4_096;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,5 +463,56 @@ mod tests {
         assert_eq!(NoteStatus::parse("onhold"), Some(NoteStatus::OnHold));
         assert_eq!(NoteStatus::parse("Completed"), Some(NoteStatus::Completed));
         assert_eq!(NoteStatus::parse("later"), None);
+    }
+
+    #[test]
+    fn file_lock_round_trips_through_a_files_extra_fields() {
+        let raw = json!({
+            "_id": "file:abc", "name": "shot.png", "contentType": "image/png",
+            "contentLength": 12, "publicIn": [], "md5digest": "d", "createdAt": 0,
+            "kansoFileLock": {"v": 1, "kind": "file", "seal": "c2VhbGlkMTIzNDU2Nzg", "meta": false}
+        });
+        let file: FileMeta = serde_json::from_value(raw.clone()).unwrap();
+        assert!(file.is_sealed());
+        assert_eq!(
+            FileLock::from_extra(&file.extra),
+            Some(FileLock {
+                v: 1,
+                kind: "file".to_owned(),
+                seal: "c2VhbGlkMTIzNDU2Nzg".to_owned(),
+                meta: false,
+            })
+        );
+        assert_eq!(serde_json::to_value(&file).unwrap(), raw);
+
+        let mut extra = Map::new();
+        assert!(FileLock::from_extra(&extra).is_none());
+        FileLock::store(Some(&FileLock::sealed("c2VhbA".into())), &mut extra);
+        assert!(FileLock::from_extra(&extra).is_some());
+        FileLock::store(None, &mut extra);
+        assert!(FileLock::from_extra(&extra).is_none());
+    }
+
+    #[test]
+    fn note_file_lists_distinguish_legacy_from_checked_empty_and_keep_unknowns() {
+        let mut extra = Map::new();
+        assert!(note_files_from_extra(&extra).is_none());
+        store_note_files(Some(&[]), &mut extra);
+        assert_eq!(note_files_from_extra(&extra), Some(Vec::new()));
+
+        extra.insert(
+            KANSO_FILES_FIELD.into(),
+            json!([{"file":"file:a", "v":1, "seal":"AAAAAAAAAAAAAAAAAAAAAA", "key":"wrapped", "future":true}]),
+        );
+        let parsed = note_files_from_extra(&extra).unwrap();
+        assert_eq!(parsed[0].extra["future"], true);
+        let mut rewritten = Map::new();
+        store_note_files(Some(&parsed), &mut rewritten);
+        assert_eq!(rewritten[KANSO_FILES_FIELD][0]["future"], true);
+    }
+
+    #[test]
+    fn max_sealed_attachment_is_the_plain_limit_plus_the_overhead_budget() {
+        assert_eq!(MAX_SEALED_ATTACHMENT, MAX_ATTACHMENT_SIZE + 4_096);
     }
 }

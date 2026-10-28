@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use kanso_core::excerpt::{HEAD_CHARS, excerpt_around};
-use kanso_core::model::TRASH_BOOK_ID;
+use kanso_core::model::{FILE_LOCK_FIELD, TRASH_BOOK_ID};
 use kanso_core::query::{Clause, Field};
 use kanso_core::{Book, DocType, FileMeta, Note, NoteStatus, Query, Tag};
 use rusqlite::types::Value as SqlValue;
@@ -39,6 +39,20 @@ impl Sort {
             Sort::Title => "d.title COLLATE NOCASE",
         }
     }
+}
+/// What a file's bytes are: the plain bytes, a sealed container, or nothing
+/// at all (never made, or deleted). The app and the API read it before
+/// touching an attachment.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AttachmentState {
+    /// The bytes in `blobs` are the attachment's plaintext.
+    #[default]
+    Plain,
+    /// The bytes in `blobs` are a sealed container, opened only with the
+    /// note's lock password; the file document carries `kansoFileLock`.
+    Sealed,
+    /// There is no live file document with this ID.
+    Missing,
 }
 
 #[derive(Clone, Debug)]
@@ -290,6 +304,35 @@ fn search_sql(
 }
 
 impl Store {
+    /// Attachment IDs owned by a live note, including ownership retained
+    /// while the note is in the trash. A deleted note has no ownership.
+    pub fn files_of_note(&self, note_id: &str) -> Result<Vec<String>> {
+        self.read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT nf.file_id FROM note_files nf JOIN docs d ON d.id = nf.note_id
+                 WHERE nf.note_id = ?1 AND d.type = 'note' AND d.deleted = 0
+                 ORDER BY nf.file_id",
+            )?;
+            Ok(stmt
+                .query_map([note_id], |row| row.get(0))?
+                .collect::<rusqlite::Result<_>>()?)
+        })
+    }
+
+    /// Live note IDs that own `file_id`, including notes in the trash.
+    pub fn file_owners(&self, file_id: &str) -> Result<Vec<String>> {
+        self.read(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT nf.note_id FROM note_files nf JOIN docs d ON d.id = nf.note_id
+                 WHERE nf.file_id = ?1 AND d.type = 'note' AND d.deleted = 0
+                 ORDER BY nf.note_id",
+            )?;
+            Ok(stmt
+                .query_map([file_id], |row| row.get(0))?
+                .collect::<rusqlite::Result<_>>()?)
+        })
+    }
+
     /// The live document with `id`.
     pub fn get(&self, id: &str) -> Result<Option<Doc>> {
         self.read(|conn| live_doc(conn, id))
@@ -598,12 +641,50 @@ impl Store {
             .collect()
     }
 
-    /// An attachment's content type and bytes.
+    /// Whether a file's document is live and plain, live and sealed, or
+    /// gone (`Missing` covers a file that was never made and one deleted).
+    /// The API and the app's readers check this before touching bytes: a
+    /// sealed file's stored bytes are a container, never the plaintext.
+    pub fn attachment_state(&self, id: &str) -> Result<AttachmentState> {
+        self.read(|conn| {
+            let Some(doc) = live_doc(conn, id)?.filter(|d| d.doc_type == DocType::File) else {
+                return Ok(AttachmentState::Missing);
+            };
+            Ok(if doc.fields.contains_key(FILE_LOCK_FIELD) {
+                AttachmentState::Sealed
+            } else {
+                AttachmentState::Plain
+            })
+        })
+    }
+
+    /// The attachment's bytes as stored in `blobs`: for a sealed file, the
+    /// raw container (with its digest), never the plaintext. Sync's upload
+    /// reads this, so the sealed bytes travel as they are; the app's
+    /// unsealing path is the only reader that decrypts.
+    pub fn stored_attachment(&self, id: &str) -> Result<Option<Attachment>> {
+        self.read(|conn| {
+            if live_doc(conn, id)?
+                .filter(|d| d.doc_type == DocType::File)
+                .is_none()
+            {
+                return Ok(None);
+            }
+            load_blob(conn, id)
+        })
+    }
+
+    /// An attachment's content type and bytes. A sealed file returns `None`:
+    /// its stored bytes are a container, and only the app's lock-aware helper
+    /// may open them. Sync uses [`Store::stored_attachment`] for the raw bytes.
     pub fn attachment(&self, id: &str) -> Result<Option<(String, Attachment)>> {
         self.read(|conn| {
             let Some(doc) = live_doc(conn, id)?.filter(|d| d.doc_type == DocType::File) else {
                 return Ok(None);
             };
+            if doc.fields.contains_key(FILE_LOCK_FIELD) {
+                return Ok(None);
+            }
             let content_type = doc.str_field("contentType").unwrap_or_default().to_owned();
             Ok(load_blob(conn, id)?.map(|blob| (content_type, blob)))
         })
