@@ -53,12 +53,9 @@ class GoogleFontHttpSource implements GoogleFontSource {
         'display': 'swap',
       });
       final cssRequest = await client.getUrl(cssUri);
-      cssRequest.headers.set(
-        HttpHeaders.userAgentHeader,
-        // Google Fonts serves TrueType to this Android WebView generation.
-        'Mozilla/5.0 (Linux; Android 4.4.4) AppleWebKit/537.36 '
-        '(KHTML, like Gecko) Chrome/36.0.1985.135 Mobile Safari/537.36',
-      );
+      // Do not impersonate a browser: Google Fonts serves WOFF or EOT to
+      // browser user agents, while its fallback for an unknown client is the
+      // TrueType file Flutter's FontLoader accepts.
       final cssResponse = await cssRequest.close();
       if (cssResponse.statusCode != HttpStatus.ok) {
         throw HttpException('Google Fonts returned ${cssResponse.statusCode}.');
@@ -80,12 +77,34 @@ class GoogleFontHttpSource implements GoogleFontSource {
           'Google Fonts returned ${fontResponse.statusCode}.',
         );
       }
-      return await fontResponse.fold<List<int>>(
+      final bytes = await fontResponse.fold<List<int>>(
         <int>[],
         (bytes, chunk) => bytes..addAll(chunk),
       );
+      if (!isFlutterFontFile(bytes)) {
+        throw const FormatException(
+          'Google Fonts returned a format Flutter cannot load.',
+        );
+      }
+      return bytes;
     } finally {
       client.close(force: true);
     }
   }
+}
+
+/// Whether [bytes] are a font format Flutter's font loader can register.
+///
+/// Google Fonts can serve WOFF, WOFF2 or EOT depending on the request's user
+/// agent. Those are web formats; Flutter needs a TrueType or OpenType file.
+bool isFlutterFontFile(List<int> bytes) {
+  if (bytes.length < 12) {
+    return false;
+  }
+  final signature = String.fromCharCodes(bytes.take(4));
+  return signature == '\x00\x01\x00\x00' ||
+      signature == 'OTTO' ||
+      signature == 'true' ||
+      signature == 'typ1' ||
+      signature == 'ttcf';
 }
