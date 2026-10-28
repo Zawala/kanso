@@ -186,6 +186,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get graphFailed => 'Couldn\'t load the graph.';
 
   @override
+  String get graphFit => 'Fit graph to view';
+
+  @override
   String get noteMetaCreated => 'Created';
 
   @override

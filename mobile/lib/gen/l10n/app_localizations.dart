@@ -406,6 +406,12 @@ abstract class AppLocalizations {
   /// **'Couldn\'t load the graph.'**
   String get graphFailed;
 
+  /// Accessible label for the graph fit-to-content control.
+  ///
+  /// In en, this message translates to:
+  /// **'Fit graph to view'**
+  String get graphFit;
+
   /// The label of when a note was made.
   ///
   /// In en, this message translates to:

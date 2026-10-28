@@ -228,6 +228,10 @@
     "description": "The graph contains no linked notes."
   },
   "graphFailed": "Couldn't load the graph.",
+  "graphFit": "Fit graph to view",
+  "@graphFit": {
+    "description": "Accessible label for the graph fit-to-content control."
+  },
   "@graphFailed": {
     "description": "Explains that the graph could not be read."
   },
