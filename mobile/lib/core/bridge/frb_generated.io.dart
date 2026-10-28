@@ -16,6 +16,7 @@ import 'api/linking_types.dart';
 import 'api/locks.dart';
 import 'api/renderer.dart';
 import 'api/shared.dart';
+import 'api/shortcuts.dart';
 import 'api/sync.dart';
 import 'api/types.dart';
 import 'dart:async';
@@ -822,6 +823,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<ShareLinkRow> dco_decode_list_share_link_row(dynamic raw);
 
   @protected
+  List<ShortcutEntry> dco_decode_list_shortcut_entry(dynamic raw);
+
+  @protected
   List<SpanRow> dco_decode_list_span_row(dynamic raw);
 
   @protected
@@ -1149,6 +1153,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   SharedEvent dco_decode_shared_event(dynamic raw);
+
+  @protected
+  ShortcutEntry dco_decode_shortcut_entry(dynamic raw);
+
+  @protected
+  ShortcutPlace dco_decode_shortcut_place(dynamic raw);
+
+  @protected
+  ShortcutSection dco_decode_shortcut_section(dynamic raw);
 
   @protected
   SignOutReasonKind dco_decode_sign_out_reason_kind(dynamic raw);
@@ -2085,6 +2098,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  List<ShortcutEntry> sse_decode_list_shortcut_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<SpanRow> sse_decode_list_span_row(SseDeserializer deserializer);
 
   @protected
@@ -2462,6 +2480,15 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   SharedEvent sse_decode_shared_event(SseDeserializer deserializer);
+
+  @protected
+  ShortcutEntry sse_decode_shortcut_entry(SseDeserializer deserializer);
+
+  @protected
+  ShortcutPlace sse_decode_shortcut_place(SseDeserializer deserializer);
+
+  @protected
+  ShortcutSection sse_decode_shortcut_section(SseDeserializer deserializer);
 
   @protected
   SignOutReasonKind sse_decode_sign_out_reason_kind(
@@ -3641,6 +3668,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_list_shortcut_entry(
+    List<ShortcutEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_span_row(List<SpanRow> self, SseSerializer serializer);
 
   @protected
@@ -4101,6 +4134,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_shared_event(SharedEvent self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shortcut_entry(ShortcutEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shortcut_place(ShortcutPlace self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shortcut_section(
+    ShortcutSection self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_sign_out_reason_kind(

@@ -16,6 +16,7 @@ import 'api/linking_types.dart';
 import 'api/locks.dart';
 import 'api/renderer.dart';
 import 'api/shared.dart';
+import 'api/shortcuts.dart';
 import 'api/sync.dart';
 import 'api/types.dart';
 import 'dart:async';
@@ -83,7 +84,7 @@ class KansoCore
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 711810380;
+  int get rustContentHash => -1864473663;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -1209,6 +1210,8 @@ abstract class KansoCoreApi extends BaseApi {
   });
 
   Future<void> crateApiDiagnosticsSecretsProbe();
+
+  List<ShortcutEntry> crateApiShortcutsShortcutCatalog();
 
   Future<bool> crateApiDiagnosticsTlsReady();
 
@@ -10044,6 +10047,35 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  List<ShortcutEntry> crateApiShortcutsShortcutCatalog() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 233,
+          )!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_shortcut_entry,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiShortcutsShortcutCatalogConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiShortcutsShortcutCatalogConstMeta =>
+      const TaskConstMeta(
+        debugName: "shortcut_catalog",
+        argNames: [],
+      );
+
+  @override
   Future<bool> crateApiDiagnosticsTlsReady() {
     return handler.executeNormal(
       NormalTask(
@@ -10052,7 +10084,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 233,
+            funcId: 234,
             port: port_,
           );
         },
@@ -10082,7 +10114,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 234,
+            funcId: 235,
             port: port_,
           );
         },
@@ -12144,6 +12176,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<ShortcutEntry> dco_decode_list_shortcut_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_shortcut_entry).toList();
+  }
+
+  @protected
   List<SpanRow> dco_decode_list_span_row(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_span_row).toList();
@@ -13402,6 +13440,34 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       commentNotes: dco_decode_list_String(arr[2]),
       liveNotes: dco_decode_list_String(arr[3]),
     );
+  }
+
+  @protected
+  ShortcutEntry dco_decode_shortcut_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return ShortcutEntry(
+      id: dco_decode_String(arr[0]),
+      mac: dco_decode_String(arr[1]),
+      other: dco_decode_String(arr[2]),
+      place: dco_decode_shortcut_place(arr[3]),
+      label: dco_decode_String(arr[4]),
+      section: dco_decode_shortcut_section(arr[5]),
+    );
+  }
+
+  @protected
+  ShortcutPlace dco_decode_shortcut_place(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ShortcutPlace.values[raw as int];
+  }
+
+  @protected
+  ShortcutSection dco_decode_shortcut_section(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ShortcutSection.values[raw as int];
   }
 
   @protected
@@ -16299,6 +16365,20 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<ShortcutEntry> sse_decode_list_shortcut_entry(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <ShortcutEntry>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_shortcut_entry(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<SpanRow> sse_decode_list_span_row(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -17880,6 +17960,39 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       commentNotes: var_commentNotes,
       liveNotes: var_liveNotes,
     );
+  }
+
+  @protected
+  ShortcutEntry sse_decode_shortcut_entry(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_mac = sse_decode_String(deserializer);
+    var var_other = sse_decode_String(deserializer);
+    var var_place = sse_decode_shortcut_place(deserializer);
+    var var_label = sse_decode_String(deserializer);
+    var var_section = sse_decode_shortcut_section(deserializer);
+    return ShortcutEntry(
+      id: var_id,
+      mac: var_mac,
+      other: var_other,
+      place: var_place,
+      label: var_label,
+      section: var_section,
+    );
+  }
+
+  @protected
+  ShortcutPlace sse_decode_shortcut_place(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return ShortcutPlace.values[inner];
+  }
+
+  @protected
+  ShortcutSection sse_decode_shortcut_section(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return ShortcutSection.values[inner];
   }
 
   @protected
@@ -20671,6 +20784,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_list_shortcut_entry(
+    List<ShortcutEntry> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_shortcut_entry(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_span_row(List<SpanRow> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
@@ -21965,6 +22090,32 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_u_32(self.invitations, serializer);
     sse_encode_list_String(self.commentNotes, serializer);
     sse_encode_list_String(self.liveNotes, serializer);
+  }
+
+  @protected
+  void sse_encode_shortcut_entry(ShortcutEntry self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.mac, serializer);
+    sse_encode_String(self.other, serializer);
+    sse_encode_shortcut_place(self.place, serializer);
+    sse_encode_String(self.label, serializer);
+    sse_encode_shortcut_section(self.section, serializer);
+  }
+
+  @protected
+  void sse_encode_shortcut_place(ShortcutPlace self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_shortcut_section(
+    ShortcutSection self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
   }
 
   @protected

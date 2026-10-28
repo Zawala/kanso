@@ -1276,6 +1276,13 @@ fn format_of(format: FormatKind) -> markdown::Format {
         FormatKind::Image => markdown::Format::Image,
         FormatKind::Table => markdown::Format::Table,
         FormatKind::Rule => markdown::Format::Rule,
+        FormatKind::Heading1 => markdown::Format::Heading(1),
+        FormatKind::Heading2 => markdown::Format::Heading(2),
+        FormatKind::Heading3 => markdown::Format::Heading(3),
+        FormatKind::Heading4 => markdown::Format::Heading(4),
+        FormatKind::Heading5 => markdown::Format::Heading(5),
+        FormatKind::Heading6 => markdown::Format::Heading(6),
+        FormatKind::CodeBlock => markdown::Format::CodeBlock,
     }
 }
 

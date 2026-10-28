@@ -143,6 +143,8 @@ mod settings_voice;
 mod settings_window_tests;
 mod share_sheet;
 mod shared_inbox;
+#[cfg(test)]
+mod shortcuts_parity_tests;
 mod sidebar;
 mod smart_paste;
 #[cfg(test)]
