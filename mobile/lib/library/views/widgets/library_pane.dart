@@ -13,6 +13,7 @@ import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/browse_location.dart';
 import '../../../core/models/data/library_index_status.dart';
+import '../../../core/models/data/note_drag_data.dart';
 import '../../../core/models/repos/abs/library_repository.dart';
 import '../../../core/router/kanso_routes.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
@@ -36,6 +37,7 @@ import '../../../core/views/widgets/kanso_status_glyph.dart';
 import '../../../core/views/widgets/kanso_themed_icon.dart';
 import '../../../injection.dart';
 import '../../../lock/utils/notebook_lock_rule.dart';
+import '../../../note_list/state/note_list/note_list_bloc.dart';
 import '../../../sharing/views/widgets/shared_with_you_row.dart';
 import 'library_actions.dart';
 import 'library_header.dart';
@@ -322,6 +324,11 @@ class _LibraryPaneState extends State<LibraryPane> {
           : null,
       chevron: !shown.parent,
       selected: selected,
+      onDropNotes: (ids) => _changeDraggedNotes(
+        context,
+        ids,
+        NoteChange.move(notebookId: notebook.id),
+      ),
       locked:
           notebookLockRule(notebook, index.notebooks) != NotebookLockRule.lock,
       onLongPress: () => NotebookActionsSheet.show(context, notebook),
@@ -355,6 +362,17 @@ class _LibraryPaneState extends State<LibraryPane> {
       action: getIt<LibraryRepository>().emptyTrash,
     );
   }
+}
+
+void _changeDraggedNotes(
+  BuildContext context,
+  List<String> ids,
+  NoteChange change,
+) {
+  if (ids.isEmpty) {
+    return;
+  }
+  context.read<NoteListBloc>().add(NoteListEvent.changeRequested(change, ids));
 }
 
 /// A quiet line where a section has no rows.
@@ -467,6 +485,11 @@ class _TagSection extends StatelessWidget {
                 _TagChip(
                   tag: tag,
                   selected: current == ListPlace.tag(id: tag.id),
+                  onDropNotes: (ids) => _changeDraggedNotes(
+                    context,
+                    ids,
+                    NoteChange.addTag(tagId: tag.id),
+                  ),
                   onTap: () => onLeave(
                     () => context.go(
                       BrowseLocation.place(ListPlace.tag(id: tag.id)).location,
@@ -514,6 +537,13 @@ class _TagSection extends StatelessWidget {
                 (row.tagId == null
                     ? ListPlace.tagPath(path: row.path)
                     : ListPlace.tag(id: row.tagId!)),
+            onDropNotes: row.tagId == null
+                ? null
+                : (ids) => _changeDraggedNotes(
+                    context,
+                    ids,
+                    NoteChange.addTag(tagId: row.tagId!),
+                  ),
             onLongPress: () {
               final tag = row.tagId == null ? null : index.tag(row.tagId!);
               if (tag != null) {
@@ -546,17 +576,19 @@ class _TagChip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onLongPress,
+    required this.onDropNotes,
   });
 
   final TagRow tag;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final ValueChanged<List<String>> onDropNotes;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Semantics(
+    Widget chip({required bool hovering}) => Semantics(
       selected: selected,
       label: '#${tag.name}',
       child: KansoPressable(
@@ -566,7 +598,14 @@ class _TagChip extends StatelessWidget {
           height: KansoSizes.chip + 4,
           padding: const EdgeInsets.symmetric(horizontal: KansoSpacing.xs),
           decoration: BoxDecoration(
-            color: selected ? colors.sidebarActive : null,
+            color: selected
+                ? colors.sidebarActive
+                : hovering
+                ? Color.alphaBlend(
+                    colors.accent.withValues(alpha: 0.16),
+                    colors.sidebar,
+                  )
+                : null,
             border: Border.all(
               color: selected ? colors.sidebarActive : colors.divider,
             ),
@@ -602,6 +641,12 @@ class _TagChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+    return DragTarget<NoteDragData>(
+      onWillAcceptWithDetails: (_) => true,
+      onAcceptWithDetails: (details) => onDropNotes(details.data.noteIds),
+      builder: (context, hovering, rejected) =>
+          chip(hovering: hovering.isNotEmpty),
     );
   }
 }

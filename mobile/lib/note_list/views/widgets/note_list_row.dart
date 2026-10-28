@@ -8,10 +8,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/models/data/kanso_swipe_action.dart';
+import '../../../core/models/data/note_drag_data.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/status_label.dart';
 import '../../../core/utils/tag_row_color.dart';
+import '../../../core/views/widgets/kanso_icon.dart';
 import '../../../core/views/widgets/kanso_menu.dart';
 import '../../../core/views/widgets/kanso_note_row.dart';
 import '../../../core/views/widgets/kanso_swipe_actions.dart';
@@ -130,7 +132,7 @@ class NoteListRow extends StatelessWidget {
         selected: open,
         checked: checked,
         onTap: onTap,
-        onLongPress: onLongPress,
+        onLongPress: (checked ?? false) ? null : onLongPress,
         tags: <KansoTagChip>[
           for (final id in row.tags)
             if (index.tag(id) case final tag?)
@@ -138,23 +140,80 @@ class NoteListRow extends StatelessWidget {
         ],
       ),
     );
-    if (newTab == null) {
-      return swipeable;
+    Widget rowContent = swipeable;
+    if (newTab != null) {
+      rowContent = GestureDetector(
+        onSecondaryTapUp: (details) async {
+          final chosen = await showKansoMenu<bool>(
+            context,
+            details.globalPosition,
+            <PopupMenuEntry<bool>>[
+              kansoMenuItem<bool>(context, true, l10n.tabOpenInNewTab),
+            ],
+          );
+          if (chosen ?? false) {
+            newTab();
+          }
+        },
+        child: swipeable,
+      );
     }
-    return GestureDetector(
-      onSecondaryTapUp: (details) async {
-        final chosen = await showKansoMenu<bool>(
-          context,
-          details.globalPosition,
-          <PopupMenuEntry<bool>>[
-            kansoMenuItem<bool>(context, true, l10n.tabOpenInNewTab),
-          ],
-        );
-        if (chosen ?? false) {
-          newTab();
-        }
-      },
-      child: swipeable,
+    if (checked != true) {
+      return rowContent;
+    }
+    final selectedRows = bloc.state.selectedRows;
+    final data = NoteDragData(
+      noteIds: <String>[for (final selected in selectedRows) selected.id],
+      titles: <String>[
+        for (final selected in selectedRows)
+          selected.locked ? '' : selected.title,
+      ],
+    );
+    return LongPressDraggable<NoteDragData>(
+      data: data,
+      feedback: _NoteDragFeedback(
+        titles: data.titles,
+        count: data.noteIds.length,
+      ),
+      childWhenDragging: Opacity(opacity: 0.55, child: rowContent),
+      child: rowContent,
+    );
+  }
+}
+
+class _NoteDragFeedback extends StatelessWidget {
+  const _NoteDragFeedback({required this.titles, required this.count});
+
+  final List<String> titles;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final l10n = context.l10n;
+    final visibleTitles = <String>[
+      for (final title in titles)
+        title.isEmpty
+            ? l10n.noteListLocked
+            : title.trim().isEmpty
+            ? l10n.noteUntitled
+            : title,
+    ];
+    final summary = visibleTitles.take(2).join(', ');
+    return Material(
+      color: Colors.transparent,
+      child: Chip(
+        avatar: KansoIcon(
+          titles.every((title) => title.isEmpty)
+              ? KansoIcons.lock
+              : KansoIcons.fileText,
+          size: 16,
+          color: colors.textSecondary,
+        ),
+        label: Text('$count · $summary'),
+        backgroundColor: colors.sidebar,
+        side: BorderSide(color: colors.divider),
+      ),
     );
   }
 }
