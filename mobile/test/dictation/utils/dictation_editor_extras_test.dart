@@ -65,23 +65,34 @@ void main() {
     expect(active.value, isFalse);
   });
 
-  test('words being spoken show in the preview and not in the note', () async {
+  test('words being spoken appear in the note as they change', () async {
     await start();
+    await hear(const DictationSignal.partial('buy'));
+    expect(note.text, 'Notes: buy');
     await hear(const DictationSignal.partial('buy milk'));
+    expect(note.text, 'Notes: buy milk');
     expect(extras.preview.value, ' buy milk');
-    expect(note.text, 'Notes:');
-    expect(note.undoSteps, 0);
+    expect(note.undoSteps, 1);
   });
 
-  test('each finished phrase is one undo step in the note', () async {
+  test('partial revisions collapse into one undo step per phrase', () async {
     await start();
+    await hear(const DictationSignal.partial('buy'));
     await hear(const DictationSignal.partial('buy milk'));
-    await hear(const DictationSignal.finalText('Buy milk.'));
-    expect(note.text, 'Notes: Buy milk.');
-    await hear(const DictationSignal.partial('and eggs'));
-    expect(note.text, 'Notes: Buy milk.');
-    await hear(const DictationSignal.finalText('And eggs.'));
-    expect(note.text, 'Notes: Buy milk. And eggs.');
+    await hear(const DictationSignal.partial('buy milk and'));
+    expect(note.text, 'Notes: buy milk and');
+    expect(note.undoSteps, 1);
+
+    await hear(const DictationSignal.finalText('Buy milk and eggs.'));
+    expect(note.text, 'Notes: Buy milk and eggs.');
+    expect(note.undoSteps, 1);
+
+    await hear(const DictationSignal.partial('call'));
+    await hear(const DictationSignal.partial('call Ana'));
+    expect(note.text, 'Notes: Buy milk and eggs. call Ana');
+    expect(note.undoSteps, 2);
+    await hear(const DictationSignal.finalText('Call Ana.'));
+    expect(note.text, 'Notes: Buy milk and eggs. Call Ana.');
     expect(note.undoSteps, 2);
   });
 
@@ -91,9 +102,7 @@ void main() {
       extras.toggle(note);
       await extras.handle(
         note,
-        const DictationState(
-          segments: <String>['Buy milk.', 'And eggs.'],
-        ),
+        const DictationState(segments: <String>['Buy milk.', 'And eggs.']),
         extras.generation,
       );
       expect(note.text, 'Notes: Buy milk. And eggs.');
@@ -109,6 +118,7 @@ void main() {
     verify(spoken.repository.stop).called(1);
     await hear(const DictationSignal.ended());
     expect(note.text, 'Notes: last words');
+    expect(note.undoSteps, 1);
     expect(extras.preview.value, isEmpty);
   });
 
