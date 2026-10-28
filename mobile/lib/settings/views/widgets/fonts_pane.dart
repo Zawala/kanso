@@ -14,6 +14,7 @@ import '../../../core/views/widgets/kanso_scroll_host.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../shell/views/widgets/shell_back_button.dart';
 import 'font_choice_row.dart';
+import 'google_font_section.dart';
 import 'text_size_section.dart';
 
 /// Settings › Fonts: the editor font, the preview font and the code font,
@@ -59,6 +60,8 @@ class FontsPane extends StatelessWidget {
                         bottom + KansoSpacing.lg,
                       ),
                       children: <Widget>[
+                        const GoogleFontSection(),
+                        const SizedBox(height: KansoSpacing.lg),
                         KansoGroupedSection(
                           title: l10n.fontsEditorSection,
                           footer: l10n.fontsEditorFooter,
@@ -67,7 +70,9 @@ class FontsPane extends StatelessWidget {
                               FontChoiceRow(
                                 font: font,
                                 sample: l10n.fontsSampleText,
-                                selected: font == state.fonts.editorFont,
+                                selected:
+                                    state.fonts.editorGoogleFont == null &&
+                                    font == state.fonts.editorFont,
                                 onTap: () => bloc.add(
                                   AppearanceEvent.editorFontChanged(font),
                                 ),
@@ -83,7 +88,9 @@ class FontsPane extends StatelessWidget {
                               FontChoiceRow(
                                 font: font,
                                 sample: l10n.fontsSampleText,
-                                selected: font == state.fonts.previewFont,
+                                selected:
+                                    state.fonts.previewGoogleFont == null &&
+                                    font == state.fonts.previewFont,
                                 onTap: () => bloc.add(
                                   AppearanceEvent.previewFontChanged(font),
                                 ),
@@ -117,6 +124,7 @@ class FontsPane extends StatelessWidget {
                           title: l10n.fontsPreviewTextSizeSection,
                           footer: l10n.fontsPreviewTextSizeFooter,
                           selected: state.previewTextSize,
+                          previewStyle: true,
                           onChanged: (size) => bloc.add(
                             AppearanceEvent.previewTextSizeChanged(size),
                           ),

@@ -13,6 +13,13 @@ import '../../../helpers/property.dart';
 
 void main() {
   group('KansoFonts', () {
+    test('persists and restores downloaded font family names', () {
+      const fonts = KansoFonts(
+        editorGoogleFont: 'Lora',
+        previewGoogleFont: 'Nunito Sans',
+      );
+      expect(KansoFonts.fromJson(fonts.toJson()), fonts);
+    });
     test("defaults to Kanso's own sans for text and mono for code", () {
       const fonts = KansoFonts();
       expect(fonts.editorFont, KansoFontFamily.instrumentSans);

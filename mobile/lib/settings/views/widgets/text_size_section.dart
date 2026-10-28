@@ -23,11 +23,13 @@ class TextSizeSection extends StatelessWidget {
     required this.onChanged,
     this.title,
     this.footer,
+    this.previewStyle = false,
     super.key,
   });
 
   final String? title;
   final String? footer;
+  final bool previewStyle;
 
   final KansoTextSize selected;
   final ValueChanged<KansoTextSize> onChanged;
@@ -64,7 +66,9 @@ class TextSizeSection extends StatelessWidget {
           ),
           child: Text(
             l10n.fontsTextSizeSample,
-            style: context.typography.previewBody,
+            style: previewStyle
+                ? context.typography.previewBody
+                : context.typography.editorBody,
           ),
         ),
       ],

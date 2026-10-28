@@ -53,6 +53,10 @@ sealed class AppearanceEvent with _$AppearanceEvent {
   const factory AppearanceEvent.previewTextSizeChanged(KansoTextSize size) =
       AppearancePreviewTextSizeChangedEvent;
 
+  /// Downloads [family] from Google Fonts and applies it to editor and preview.
+  const factory AppearanceEvent.googleFontPicked(String family) =
+      AppearanceGoogleFontPickedEvent;
+
   /// The person picked [renderer] for Mermaid diagrams.
   const factory AppearanceEvent.diagramRendererChanged(
     DiagramRenderer renderer,

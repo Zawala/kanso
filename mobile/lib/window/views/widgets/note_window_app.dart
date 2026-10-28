@@ -75,11 +75,13 @@ class _NoteWindowAppState extends State<NoteWindowApp> {
                 state.light,
                 fonts: state.fonts,
                 textSize: state.textSize,
+                previewTextSize: state.previewTextSize,
               ),
               darkTheme: KansoTheme.build(
                 state.dark,
                 fonts: state.fonts,
                 textSize: state.textSize,
+                previewTextSize: state.previewTextSize,
               ),
               themeMode: state.themeMode,
               scrollBehavior: const KansoScrollBehavior(),

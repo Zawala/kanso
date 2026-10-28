@@ -13,6 +13,15 @@ abstract class PreviewState with _$PreviewState {
     /// The built-in theme it is drawn in.
     @Default('') String themeId,
 
+    /// The proportional font family used by the rendered note.
+    String? font,
+
+    /// The monospaced font family used by code in the rendered note.
+    String? mono,
+
+    /// The rendered note's body size in logical pixels.
+    @Default(previewBaseTextSize) double size,
+
     /// The page, once it is drawn; the last one stays while it is drawn
     /// again.
     String? html,

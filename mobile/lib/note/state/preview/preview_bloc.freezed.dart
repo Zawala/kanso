@@ -55,12 +55,13 @@ extension PreviewEventPatterns on PreviewEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PreviewStartedEvent value)?  started,TResult Function( PreviewThemeChangedEvent value)?  themeChanged,TResult Function( PreviewChangesReceivedEvent value)?  changesReceived,TResult Function( PreviewLinkTappedEvent value)?  linkTapped,TResult Function( PreviewActionHandledEvent value)?  actionHandled,TResult Function( PreviewNoticeDismissedEvent value)?  noticeDismissed,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PreviewStartedEvent value)?  started,TResult Function( PreviewThemeChangedEvent value)?  themeChanged,TResult Function( PreviewStyleChangedEvent value)?  styleChanged,TResult Function( PreviewChangesReceivedEvent value)?  changesReceived,TResult Function( PreviewLinkTappedEvent value)?  linkTapped,TResult Function( PreviewActionHandledEvent value)?  actionHandled,TResult Function( PreviewNoticeDismissedEvent value)?  noticeDismissed,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case PreviewStartedEvent() when started != null:
 return started(_that);case PreviewThemeChangedEvent() when themeChanged != null:
-return themeChanged(_that);case PreviewChangesReceivedEvent() when changesReceived != null:
+return themeChanged(_that);case PreviewStyleChangedEvent() when styleChanged != null:
+return styleChanged(_that);case PreviewChangesReceivedEvent() when changesReceived != null:
 return changesReceived(_that);case PreviewLinkTappedEvent() when linkTapped != null:
 return linkTapped(_that);case PreviewActionHandledEvent() when actionHandled != null:
 return actionHandled(_that);case PreviewNoticeDismissedEvent() when noticeDismissed != null:
@@ -82,12 +83,13 @@ return noticeDismissed(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PreviewStartedEvent value)  started,required TResult Function( PreviewThemeChangedEvent value)  themeChanged,required TResult Function( PreviewChangesReceivedEvent value)  changesReceived,required TResult Function( PreviewLinkTappedEvent value)  linkTapped,required TResult Function( PreviewActionHandledEvent value)  actionHandled,required TResult Function( PreviewNoticeDismissedEvent value)  noticeDismissed,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PreviewStartedEvent value)  started,required TResult Function( PreviewThemeChangedEvent value)  themeChanged,required TResult Function( PreviewStyleChangedEvent value)  styleChanged,required TResult Function( PreviewChangesReceivedEvent value)  changesReceived,required TResult Function( PreviewLinkTappedEvent value)  linkTapped,required TResult Function( PreviewActionHandledEvent value)  actionHandled,required TResult Function( PreviewNoticeDismissedEvent value)  noticeDismissed,}){
 final _that = this;
 switch (_that) {
 case PreviewStartedEvent():
 return started(_that);case PreviewThemeChangedEvent():
-return themeChanged(_that);case PreviewChangesReceivedEvent():
+return themeChanged(_that);case PreviewStyleChangedEvent():
+return styleChanged(_that);case PreviewChangesReceivedEvent():
 return changesReceived(_that);case PreviewLinkTappedEvent():
 return linkTapped(_that);case PreviewActionHandledEvent():
 return actionHandled(_that);case PreviewNoticeDismissedEvent():
@@ -105,12 +107,13 @@ return noticeDismissed(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PreviewStartedEvent value)?  started,TResult? Function( PreviewThemeChangedEvent value)?  themeChanged,TResult? Function( PreviewChangesReceivedEvent value)?  changesReceived,TResult? Function( PreviewLinkTappedEvent value)?  linkTapped,TResult? Function( PreviewActionHandledEvent value)?  actionHandled,TResult? Function( PreviewNoticeDismissedEvent value)?  noticeDismissed,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PreviewStartedEvent value)?  started,TResult? Function( PreviewThemeChangedEvent value)?  themeChanged,TResult? Function( PreviewStyleChangedEvent value)?  styleChanged,TResult? Function( PreviewChangesReceivedEvent value)?  changesReceived,TResult? Function( PreviewLinkTappedEvent value)?  linkTapped,TResult? Function( PreviewActionHandledEvent value)?  actionHandled,TResult? Function( PreviewNoticeDismissedEvent value)?  noticeDismissed,}){
 final _that = this;
 switch (_that) {
 case PreviewStartedEvent() when started != null:
 return started(_that);case PreviewThemeChangedEvent() when themeChanged != null:
-return themeChanged(_that);case PreviewChangesReceivedEvent() when changesReceived != null:
+return themeChanged(_that);case PreviewStyleChangedEvent() when styleChanged != null:
+return styleChanged(_that);case PreviewChangesReceivedEvent() when changesReceived != null:
 return changesReceived(_that);case PreviewLinkTappedEvent() when linkTapped != null:
 return linkTapped(_that);case PreviewActionHandledEvent() when actionHandled != null:
 return actionHandled(_that);case PreviewNoticeDismissedEvent() when noticeDismissed != null:
@@ -131,11 +134,12 @@ return noticeDismissed(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String noteId,  String themeId)?  started,TResult Function( String themeId)?  themeChanged,TResult Function()?  changesReceived,TResult Function( String url)?  linkTapped,TResult Function()?  actionHandled,TResult Function()?  noticeDismissed,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String noteId,  String themeId,  String? font,  String? mono,  double size)?  started,TResult Function( String themeId)?  themeChanged,TResult Function( double size,  String? font,  String? mono)?  styleChanged,TResult Function()?  changesReceived,TResult Function( String url)?  linkTapped,TResult Function()?  actionHandled,TResult Function()?  noticeDismissed,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case PreviewStartedEvent() when started != null:
-return started(_that.noteId,_that.themeId);case PreviewThemeChangedEvent() when themeChanged != null:
-return themeChanged(_that.themeId);case PreviewChangesReceivedEvent() when changesReceived != null:
+return started(_that.noteId,_that.themeId,_that.font,_that.mono,_that.size);case PreviewThemeChangedEvent() when themeChanged != null:
+return themeChanged(_that.themeId);case PreviewStyleChangedEvent() when styleChanged != null:
+return styleChanged(_that.size,_that.font,_that.mono);case PreviewChangesReceivedEvent() when changesReceived != null:
 return changesReceived();case PreviewLinkTappedEvent() when linkTapped != null:
 return linkTapped(_that.url);case PreviewActionHandledEvent() when actionHandled != null:
 return actionHandled();case PreviewNoticeDismissedEvent() when noticeDismissed != null:
@@ -157,11 +161,12 @@ return noticeDismissed();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String noteId,  String themeId)  started,required TResult Function( String themeId)  themeChanged,required TResult Function()  changesReceived,required TResult Function( String url)  linkTapped,required TResult Function()  actionHandled,required TResult Function()  noticeDismissed,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String noteId,  String themeId,  String? font,  String? mono,  double size)  started,required TResult Function( String themeId)  themeChanged,required TResult Function( double size,  String? font,  String? mono)  styleChanged,required TResult Function()  changesReceived,required TResult Function( String url)  linkTapped,required TResult Function()  actionHandled,required TResult Function()  noticeDismissed,}) {final _that = this;
 switch (_that) {
 case PreviewStartedEvent():
-return started(_that.noteId,_that.themeId);case PreviewThemeChangedEvent():
-return themeChanged(_that.themeId);case PreviewChangesReceivedEvent():
+return started(_that.noteId,_that.themeId,_that.font,_that.mono,_that.size);case PreviewThemeChangedEvent():
+return themeChanged(_that.themeId);case PreviewStyleChangedEvent():
+return styleChanged(_that.size,_that.font,_that.mono);case PreviewChangesReceivedEvent():
 return changesReceived();case PreviewLinkTappedEvent():
 return linkTapped(_that.url);case PreviewActionHandledEvent():
 return actionHandled();case PreviewNoticeDismissedEvent():
@@ -179,11 +184,12 @@ return noticeDismissed();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String noteId,  String themeId)?  started,TResult? Function( String themeId)?  themeChanged,TResult? Function()?  changesReceived,TResult? Function( String url)?  linkTapped,TResult? Function()?  actionHandled,TResult? Function()?  noticeDismissed,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String noteId,  String themeId,  String? font,  String? mono,  double size)?  started,TResult? Function( String themeId)?  themeChanged,TResult? Function( double size,  String? font,  String? mono)?  styleChanged,TResult? Function()?  changesReceived,TResult? Function( String url)?  linkTapped,TResult? Function()?  actionHandled,TResult? Function()?  noticeDismissed,}) {final _that = this;
 switch (_that) {
 case PreviewStartedEvent() when started != null:
-return started(_that.noteId,_that.themeId);case PreviewThemeChangedEvent() when themeChanged != null:
-return themeChanged(_that.themeId);case PreviewChangesReceivedEvent() when changesReceived != null:
+return started(_that.noteId,_that.themeId,_that.font,_that.mono,_that.size);case PreviewThemeChangedEvent() when themeChanged != null:
+return themeChanged(_that.themeId);case PreviewStyleChangedEvent() when styleChanged != null:
+return styleChanged(_that.size,_that.font,_that.mono);case PreviewChangesReceivedEvent() when changesReceived != null:
 return changesReceived();case PreviewLinkTappedEvent() when linkTapped != null:
 return linkTapped(_that.url);case PreviewActionHandledEvent() when actionHandled != null:
 return actionHandled();case PreviewNoticeDismissedEvent() when noticeDismissed != null:
@@ -199,11 +205,14 @@ return noticeDismissed();case _:
 
 
 class PreviewStartedEvent implements PreviewEvent {
-  const PreviewStartedEvent(this.noteId, this.themeId);
-  
+  const PreviewStartedEvent(this.noteId, this.themeId, {this.font, this.mono, this.size = previewBaseTextSize});
+
 
  final  String noteId;
  final  String themeId;
+ final  String? font;
+ final  String? mono;
+@JsonKey() final  double size;
 
 /// Create a copy of PreviewEvent
 /// with the given fields replaced by the non-null parameter values.
@@ -215,16 +224,16 @@ $PreviewStartedEventCopyWith<PreviewStartedEvent> get copyWith => _$PreviewStart
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewStartedEvent&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.themeId, themeId) || other.themeId == themeId));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewStartedEvent&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.themeId, themeId) || other.themeId == themeId)&&(identical(other.font, font) || other.font == font)&&(identical(other.mono, mono) || other.mono == mono)&&(identical(other.size, size) || other.size == size));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,noteId,themeId);
+int get hashCode => Object.hash(runtimeType,noteId,themeId,font,mono,size);
 
 @override
 String toString() {
-  return 'PreviewEvent.started(noteId: $noteId, themeId: $themeId)';
+  return 'PreviewEvent.started(noteId: $noteId, themeId: $themeId, font: $font, mono: $mono, size: $size)';
 }
 
 
@@ -235,7 +244,7 @@ abstract mixin class $PreviewStartedEventCopyWith<$Res> implements $PreviewEvent
   factory $PreviewStartedEventCopyWith(PreviewStartedEvent value, $Res Function(PreviewStartedEvent) _then) = _$PreviewStartedEventCopyWithImpl;
 @useResult
 $Res call({
- String noteId, String themeId
+ String noteId, String themeId, String? font, String? mono, double size
 });
 
 
@@ -252,11 +261,14 @@ class _$PreviewStartedEventCopyWithImpl<$Res>
 
 /// Create a copy of PreviewEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? noteId = null,Object? themeId = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? noteId = null,Object? themeId = null,Object? font = freezed,Object? mono = freezed,Object? size = null,}) {
   return _then(PreviewStartedEvent(
 null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
 as String,null == themeId ? _self.themeId : themeId // ignore: cast_nullable_to_non_nullable
-as String,
+as String,font: freezed == font ? _self.font : font // ignore: cast_nullable_to_non_nullable
+as String?,mono: freezed == mono ? _self.mono : mono // ignore: cast_nullable_to_non_nullable
+as String?,size: null == size ? _self.size : size // ignore: cast_nullable_to_non_nullable
+as double,
   ));
 }
 
@@ -268,7 +280,7 @@ as String,
 
 class PreviewThemeChangedEvent implements PreviewEvent {
   const PreviewThemeChangedEvent(this.themeId);
-  
+
 
  final  String themeId;
 
@@ -332,9 +344,79 @@ as String,
 /// @nodoc
 
 
+class PreviewStyleChangedEvent implements PreviewEvent {
+  const PreviewStyleChangedEvent({required this.size, this.font, this.mono});
+
+
+ final  double size;
+ final  String? font;
+ final  String? mono;
+
+/// Create a copy of PreviewEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewStyleChangedEventCopyWith<PreviewStyleChangedEvent> get copyWith => _$PreviewStyleChangedEventCopyWithImpl<PreviewStyleChangedEvent>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewStyleChangedEvent&&(identical(other.size, size) || other.size == size)&&(identical(other.font, font) || other.font == font)&&(identical(other.mono, mono) || other.mono == mono));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,size,font,mono);
+
+@override
+String toString() {
+  return 'PreviewEvent.styleChanged(size: $size, font: $font, mono: $mono)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewStyleChangedEventCopyWith<$Res> implements $PreviewEventCopyWith<$Res> {
+  factory $PreviewStyleChangedEventCopyWith(PreviewStyleChangedEvent value, $Res Function(PreviewStyleChangedEvent) _then) = _$PreviewStyleChangedEventCopyWithImpl;
+@useResult
+$Res call({
+ double size, String? font, String? mono
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewStyleChangedEventCopyWithImpl<$Res>
+    implements $PreviewStyleChangedEventCopyWith<$Res> {
+  _$PreviewStyleChangedEventCopyWithImpl(this._self, this._then);
+
+  final PreviewStyleChangedEvent _self;
+  final $Res Function(PreviewStyleChangedEvent) _then;
+
+/// Create a copy of PreviewEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? size = null,Object? font = freezed,Object? mono = freezed,}) {
+  return _then(PreviewStyleChangedEvent(
+size: null == size ? _self.size : size // ignore: cast_nullable_to_non_nullable
+as double,font: freezed == font ? _self.font : font // ignore: cast_nullable_to_non_nullable
+as String?,mono: freezed == mono ? _self.mono : mono // ignore: cast_nullable_to_non_nullable
+as String?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
 class PreviewChangesReceivedEvent implements PreviewEvent {
   const PreviewChangesReceivedEvent();
-  
+
 
 
 
@@ -366,7 +448,7 @@ String toString() {
 
 class PreviewLinkTappedEvent implements PreviewEvent {
   const PreviewLinkTappedEvent(this.url);
-  
+
 
  final  String url;
 
@@ -432,7 +514,7 @@ as String,
 
 class PreviewActionHandledEvent implements PreviewEvent {
   const PreviewActionHandledEvent();
-  
+
 
 
 
@@ -464,7 +546,7 @@ String toString() {
 
 class PreviewNoticeDismissedEvent implements PreviewEvent {
   const PreviewNoticeDismissedEvent();
-  
+
 
 
 
@@ -496,7 +578,10 @@ mixin _$PreviewState {
 
 /// The note drawn.
  String get noteId;/// The built-in theme it is drawn in.
- String get themeId;/// The page, once it is drawn; the last one stays while it is drawn
+ String get themeId;/// The proportional font family used by the rendered note.
+ String? get font;/// The monospaced font family used by code in the rendered note.
+ String? get mono;/// The rendered note's body size in logical pixels.
+ double get size;/// The page, once it is drawn; the last one stays while it is drawn
 /// again.
  String? get html;/// The revision of the note the page was drawn from: a tick is made
 /// against it.
@@ -514,16 +599,16 @@ $PreviewStateCopyWith<PreviewState> get copyWith => _$PreviewStateCopyWithImpl<P
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.themeId, themeId) || other.themeId == themeId)&&(identical(other.html, html) || other.html == html)&&(identical(other.rev, rev) || other.rev == rev)&&(identical(other.error, error) || other.error == error)&&(identical(other.action, action) || other.action == action)&&(identical(other.notice, notice) || other.notice == notice));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.themeId, themeId) || other.themeId == themeId)&&(identical(other.font, font) || other.font == font)&&(identical(other.mono, mono) || other.mono == mono)&&(identical(other.size, size) || other.size == size)&&(identical(other.html, html) || other.html == html)&&(identical(other.rev, rev) || other.rev == rev)&&(identical(other.error, error) || other.error == error)&&(identical(other.action, action) || other.action == action)&&(identical(other.notice, notice) || other.notice == notice));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,noteId,themeId,html,rev,error,action,notice);
+int get hashCode => Object.hash(runtimeType,noteId,themeId,font,mono,size,html,rev,error,action,notice);
 
 @override
 String toString() {
-  return 'PreviewState(noteId: $noteId, themeId: $themeId, html: $html, rev: $rev, error: $error, action: $action, notice: $notice)';
+  return 'PreviewState(noteId: $noteId, themeId: $themeId, font: $font, mono: $mono, size: $size, html: $html, rev: $rev, error: $error, action: $action, notice: $notice)';
 }
 
 
@@ -534,7 +619,7 @@ abstract mixin class $PreviewStateCopyWith<$Res>  {
   factory $PreviewStateCopyWith(PreviewState value, $Res Function(PreviewState) _then) = _$PreviewStateCopyWithImpl;
 @useResult
 $Res call({
- String noteId, String themeId, String? html, String rev, ApplicationError? error, PreviewAction? action, ApplicationError? notice
+ String noteId, String themeId, String? font, String? mono, double size, String? html, String rev, ApplicationError? error, PreviewAction? action, ApplicationError? notice
 });
 
 
@@ -551,11 +636,14 @@ class _$PreviewStateCopyWithImpl<$Res>
 
 /// Create a copy of PreviewState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? noteId = null,Object? themeId = null,Object? html = freezed,Object? rev = null,Object? error = freezed,Object? action = freezed,Object? notice = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? noteId = null,Object? themeId = null,Object? font = freezed,Object? mono = freezed,Object? size = null,Object? html = freezed,Object? rev = null,Object? error = freezed,Object? action = freezed,Object? notice = freezed,}) {
   return _then(_self.copyWith(
 noteId: null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
 as String,themeId: null == themeId ? _self.themeId : themeId // ignore: cast_nullable_to_non_nullable
-as String,html: freezed == html ? _self.html : html // ignore: cast_nullable_to_non_nullable
+as String,font: freezed == font ? _self.font : font // ignore: cast_nullable_to_non_nullable
+as String?,mono: freezed == mono ? _self.mono : mono // ignore: cast_nullable_to_non_nullable
+as String?,size: null == size ? _self.size : size // ignore: cast_nullable_to_non_nullable
+as double,html: freezed == html ? _self.html : html // ignore: cast_nullable_to_non_nullable
 as String?,rev: null == rev ? _self.rev : rev // ignore: cast_nullable_to_non_nullable
 as String,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
 as ApplicationError?,action: freezed == action ? _self.action : action // ignore: cast_nullable_to_non_nullable
@@ -681,10 +769,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String noteId,  String themeId,  String? html,  String rev,  ApplicationError? error,  PreviewAction? action,  ApplicationError? notice)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String noteId,  String themeId,  String? font,  String? mono,  double size,  String? html,  String rev,  ApplicationError? error,  PreviewAction? action,  ApplicationError? notice)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _PreviewState() when $default != null:
-return $default(_that.noteId,_that.themeId,_that.html,_that.rev,_that.error,_that.action,_that.notice);case _:
+return $default(_that.noteId,_that.themeId,_that.font,_that.mono,_that.size,_that.html,_that.rev,_that.error,_that.action,_that.notice);case _:
   return orElse();
 
 }
@@ -702,10 +790,10 @@ return $default(_that.noteId,_that.themeId,_that.html,_that.rev,_that.error,_tha
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String noteId,  String themeId,  String? html,  String rev,  ApplicationError? error,  PreviewAction? action,  ApplicationError? notice)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String noteId,  String themeId,  String? font,  String? mono,  double size,  String? html,  String rev,  ApplicationError? error,  PreviewAction? action,  ApplicationError? notice)  $default,) {final _that = this;
 switch (_that) {
 case _PreviewState():
-return $default(_that.noteId,_that.themeId,_that.html,_that.rev,_that.error,_that.action,_that.notice);case _:
+return $default(_that.noteId,_that.themeId,_that.font,_that.mono,_that.size,_that.html,_that.rev,_that.error,_that.action,_that.notice);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -722,10 +810,10 @@ return $default(_that.noteId,_that.themeId,_that.html,_that.rev,_that.error,_tha
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String noteId,  String themeId,  String? html,  String rev,  ApplicationError? error,  PreviewAction? action,  ApplicationError? notice)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String noteId,  String themeId,  String? font,  String? mono,  double size,  String? html,  String rev,  ApplicationError? error,  PreviewAction? action,  ApplicationError? notice)?  $default,) {final _that = this;
 switch (_that) {
 case _PreviewState() when $default != null:
-return $default(_that.noteId,_that.themeId,_that.html,_that.rev,_that.error,_that.action,_that.notice);case _:
+return $default(_that.noteId,_that.themeId,_that.font,_that.mono,_that.size,_that.html,_that.rev,_that.error,_that.action,_that.notice);case _:
   return null;
 
 }
@@ -737,13 +825,19 @@ return $default(_that.noteId,_that.themeId,_that.html,_that.rev,_that.error,_tha
 
 
 class _PreviewState implements PreviewState {
-  const _PreviewState({this.noteId = '', this.themeId = '', this.html, this.rev = '', this.error, this.action, this.notice});
-  
+  const _PreviewState({this.noteId = '', this.themeId = '', this.font, this.mono, this.size = previewBaseTextSize, this.html, this.rev = '', this.error, this.action, this.notice});
+
 
 /// The note drawn.
 @override@JsonKey() final  String noteId;
 /// The built-in theme it is drawn in.
 @override@JsonKey() final  String themeId;
+/// The proportional font family used by the rendered note.
+@override final  String? font;
+/// The monospaced font family used by code in the rendered note.
+@override final  String? mono;
+/// The rendered note's body size in logical pixels.
+@override@JsonKey() final  double size;
 /// The page, once it is drawn; the last one stays while it is drawn
 /// again.
 @override final  String? html;
@@ -767,16 +861,16 @@ _$PreviewStateCopyWith<_PreviewState> get copyWith => __$PreviewStateCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PreviewState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.themeId, themeId) || other.themeId == themeId)&&(identical(other.html, html) || other.html == html)&&(identical(other.rev, rev) || other.rev == rev)&&(identical(other.error, error) || other.error == error)&&(identical(other.action, action) || other.action == action)&&(identical(other.notice, notice) || other.notice == notice));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PreviewState&&(identical(other.noteId, noteId) || other.noteId == noteId)&&(identical(other.themeId, themeId) || other.themeId == themeId)&&(identical(other.font, font) || other.font == font)&&(identical(other.mono, mono) || other.mono == mono)&&(identical(other.size, size) || other.size == size)&&(identical(other.html, html) || other.html == html)&&(identical(other.rev, rev) || other.rev == rev)&&(identical(other.error, error) || other.error == error)&&(identical(other.action, action) || other.action == action)&&(identical(other.notice, notice) || other.notice == notice));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,noteId,themeId,html,rev,error,action,notice);
+int get hashCode => Object.hash(runtimeType,noteId,themeId,font,mono,size,html,rev,error,action,notice);
 
 @override
 String toString() {
-  return 'PreviewState(noteId: $noteId, themeId: $themeId, html: $html, rev: $rev, error: $error, action: $action, notice: $notice)';
+  return 'PreviewState(noteId: $noteId, themeId: $themeId, font: $font, mono: $mono, size: $size, html: $html, rev: $rev, error: $error, action: $action, notice: $notice)';
 }
 
 
@@ -787,7 +881,7 @@ abstract mixin class _$PreviewStateCopyWith<$Res> implements $PreviewStateCopyWi
   factory _$PreviewStateCopyWith(_PreviewState value, $Res Function(_PreviewState) _then) = __$PreviewStateCopyWithImpl;
 @override @useResult
 $Res call({
- String noteId, String themeId, String? html, String rev, ApplicationError? error, PreviewAction? action, ApplicationError? notice
+ String noteId, String themeId, String? font, String? mono, double size, String? html, String rev, ApplicationError? error, PreviewAction? action, ApplicationError? notice
 });
 
 
@@ -804,11 +898,14 @@ class __$PreviewStateCopyWithImpl<$Res>
 
 /// Create a copy of PreviewState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? noteId = null,Object? themeId = null,Object? html = freezed,Object? rev = null,Object? error = freezed,Object? action = freezed,Object? notice = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? noteId = null,Object? themeId = null,Object? font = freezed,Object? mono = freezed,Object? size = null,Object? html = freezed,Object? rev = null,Object? error = freezed,Object? action = freezed,Object? notice = freezed,}) {
   return _then(_PreviewState(
 noteId: null == noteId ? _self.noteId : noteId // ignore: cast_nullable_to_non_nullable
 as String,themeId: null == themeId ? _self.themeId : themeId // ignore: cast_nullable_to_non_nullable
-as String,html: freezed == html ? _self.html : html // ignore: cast_nullable_to_non_nullable
+as String,font: freezed == font ? _self.font : font // ignore: cast_nullable_to_non_nullable
+as String?,mono: freezed == mono ? _self.mono : mono // ignore: cast_nullable_to_non_nullable
+as String?,size: null == size ? _self.size : size // ignore: cast_nullable_to_non_nullable
+as double,html: freezed == html ? _self.html : html // ignore: cast_nullable_to_non_nullable
 as String?,rev: null == rev ? _self.rev : rev // ignore: cast_nullable_to_non_nullable
 as String,error: freezed == error ? _self.error : error // ignore: cast_nullable_to_non_nullable
 as ApplicationError?,action: freezed == action ? _self.action : action // ignore: cast_nullable_to_non_nullable

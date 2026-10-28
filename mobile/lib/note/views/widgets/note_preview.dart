@@ -15,6 +15,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/models/data/application_error.dart';
 import '../../../core/models/data/browse_location.dart';
+import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../injection.dart';
@@ -84,14 +85,39 @@ class NotePreview extends StatelessWidget {
             PreviewEvent.started(
               note.id,
               context.read<NoteBloc>().state.themeId,
+              font:
+                  context
+                      .read<AppearanceBloc>()
+                      .state
+                      .fonts
+                      .previewGoogleFont ??
+                  context.read<AppearanceBloc>().state.fonts.previewFont.family,
+              mono: context.read<AppearanceBloc>().state.fonts.codeFont.family,
+              size:
+                  previewBaseTextSize *
+                  context.read<AppearanceBloc>().state.previewTextSize.scale,
             ),
           ),
-        child: BlocListener<NoteBloc, NoteState>(
-          listenWhen: (before, now) => before.themeId != now.themeId,
+        child: BlocListener<AppearanceBloc, AppearanceState>(
+          listenWhen: (before, now) =>
+              before.fonts != now.fonts ||
+              before.previewTextSize != now.previewTextSize,
           listener: (context, state) => context.read<PreviewBloc>().add(
-            PreviewEvent.themeChanged(state.themeId),
+            PreviewEvent.styleChanged(
+              font:
+                  state.fonts.previewGoogleFont ??
+                  state.fonts.previewFont.family,
+              mono: state.fonts.codeFont.family,
+              size: previewBaseTextSize * state.previewTextSize.scale,
+            ),
           ),
-          child: PreviewPage(onEdit: () => onEditAt?.call(0)),
+          child: BlocListener<NoteBloc, NoteState>(
+            listenWhen: (before, now) => before.themeId != now.themeId,
+            listener: (context, state) => context.read<PreviewBloc>().add(
+              PreviewEvent.themeChanged(state.themeId),
+            ),
+            child: PreviewPage(onEdit: () => onEditAt?.call(0)),
+          ),
         ),
       ),
     );

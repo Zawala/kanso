@@ -12,6 +12,7 @@ Future<void> pumpKanso(
   WidgetTester tester,
   Widget child, {
   Brightness brightness = Brightness.light,
+  bool settle = true,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -25,5 +26,7 @@ Future<void> pumpKanso(
       home: Scaffold(body: Center(child: child)),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  }
 }

@@ -10,6 +10,7 @@ import 'package:kanso/app.dart';
 import 'package:kanso/core/configs/kanso_typography.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
+import 'package:kanso/core/models/data/kanso_fonts.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/layout_class.dart';
 import 'package:kanso/core/router/kanso_router.dart';
@@ -33,8 +34,11 @@ import 'helpers/fixture_sync_repository.dart';
 import 'helpers/seeded_appearance_bloc.dart';
 import 'helpers/sync_settings_blocs.dart';
 
-Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
-  final bloc = SeededAppearanceBloc(const AppearanceState());
+Future<AppearanceBloc> pumpApp(
+  WidgetTester tester, {
+  AppearanceState state = const AppearanceState(),
+}) async {
+  final bloc = SeededAppearanceBloc(state);
   addTearDown(bloc.close);
   tester.view
     ..physicalSize = const Size(393, 2400)
@@ -77,13 +81,30 @@ void main() {
   }
 
   group('App', () {
+    testWidgets('applies downloaded Google Font families to the note theme', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        state: const AppearanceState(
+          fonts: KansoFonts(
+            editorGoogleFont: 'Lora',
+            previewGoogleFont: 'Nunito Sans',
+          ),
+        ),
+      );
+      final styles = await typography(tester);
+      expect(styles.editorBody.fontFamily, 'Lora');
+      expect(styles.previewBody.fontFamily, 'Nunito Sans');
+    });
+
     testWidgets('builds its themes from the fonts and text size chosen', (
       tester,
     ) async {
       final bloc = await pumpApp(tester);
       var styles = await typography(tester);
       expect(styles.previewBody.fontFamily, 'Instrument Sans');
-      expect(styles.previewBody.fontSize, 15);
+      expect(styles.previewBody.fontSize, 18);
 
       bloc
         ..add(
@@ -94,7 +115,13 @@ void main() {
         ..add(const AppearanceEvent.textSizeChanged(KansoTextSize.large));
       styles = await typography(tester);
       expect(styles.previewBody.fontFamily, 'Source Serif 4');
-      expect(styles.previewBody.fontSize, closeTo(15 * 1.15, 1e-9));
+      expect(styles.previewBody.fontSize, 18);
+      expect(styles.editorBody.fontSize, closeTo(18 * 1.15, 1e-9));
+      bloc.add(
+        const AppearanceEvent.previewTextSizeChanged(KansoTextSize.larger),
+      );
+      styles = await typography(tester);
+      expect(styles.previewBody.fontSize, closeTo(18 * 1.3, 1e-9));
       // The interface is Kanso's own, whatever the notes are set in.
       expect(styles.body.fontFamily, 'Instrument Sans');
       expect(styles.body.fontSize, 15);

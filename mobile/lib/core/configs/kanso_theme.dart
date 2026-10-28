@@ -32,6 +32,7 @@ abstract final class KansoTheme {
     KansoPalette palette, {
     KansoFonts fonts = const KansoFonts(),
     KansoTextSize textSize = KansoTextSize.standard,
+    KansoTextSize? previewTextSize,
   }) {
     return _build(
       brightness: palette.dark ? Brightness.dark : Brightness.light,
@@ -39,6 +40,7 @@ abstract final class KansoTheme {
       syntax: palette.syntax,
       fonts: fonts,
       textSize: textSize,
+      previewTextSize: previewTextSize,
     );
   }
 
@@ -61,11 +63,13 @@ abstract final class KansoTheme {
     required KansoSyntaxColors syntax,
     required KansoFonts fonts,
     required KansoTextSize textSize,
+    KansoTextSize? previewTextSize,
   }) {
     final typography = KansoTypography.fromColors(
       colors,
       fonts: fonts,
       textSize: textSize,
+      previewTextSize: previewTextSize,
     );
     final textTheme = typography.toTextTheme();
     final scheme = ColorScheme(

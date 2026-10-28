@@ -21,6 +21,7 @@ import 'package:kanso/core/models/data/kanso_icon_set.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
+import 'package:kanso/core/models/repos/abs/google_font_repository.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/utils/palette_from_tokens.dart';
 import 'package:mocktail/mocktail.dart';
@@ -32,6 +33,8 @@ import '../../../helpers/theme_tokens.dart';
 
 final KansoPalette _nord = fakePalette('nord', dark: true);
 final KansoPalette _github = fakePalette('github-light');
+
+class MockGoogleFontRepository extends Mock implements GoogleFontRepository {}
 
 const IconThemeRow _phosphorRow = IconThemeRow(
   id: 'phosphor',
@@ -94,6 +97,7 @@ void main() {
   late MockRendererRepository renderer;
   late MockGalleryRepository gallery;
   late FixtureThemesRepository themes;
+  late MockGoogleFontRepository googleFonts;
   late Preferences saved;
 
   setUpAll(() {
@@ -105,6 +109,10 @@ void main() {
     preferences = MockPreferencesRepository();
     renderer = MockRendererRepository();
     gallery = MockGalleryRepository();
+    googleFonts = MockGoogleFontRepository();
+    when(() => googleFonts.load(any())).thenAnswer(
+      (_) async => const Right<ApplicationError, String>('Lora'),
+    );
     themes = FixtureThemesRepository(
       themes: <InstalledTheme>[
         ...defaultFixtureThemes(),
@@ -152,8 +160,13 @@ void main() {
     );
   });
 
-  AppearanceBloc build() =>
-      AppearanceBloc(preferences, renderer, gallery, themes);
+  AppearanceBloc build() => AppearanceBloc(
+    preferences,
+    renderer,
+    gallery,
+    themes,
+    googleFonts: googleFonts,
+  );
 
   group('AppearanceBloc', () {
     test('starts loading, in the Kanso themes, following the system', () {
@@ -502,6 +515,100 @@ void main() {
         saved.fonts,
         const KansoFonts(editorFont: KansoFontFamily.literata),
       ),
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'Google Font download applies the family and persists its selection',
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.googleFontPicked('Lora')),
+      expect: () => const <AppearanceState>[
+        AppearanceState(googleFontLoading: true),
+        AppearanceState(
+          fonts: KansoFonts(
+            editorGoogleFont: 'Lora',
+            previewGoogleFont: 'Lora',
+          ),
+        ),
+      ],
+      verify: (_) {
+        expect(saved.fonts.editorGoogleFont, 'Lora');
+        expect(saved.fonts.previewGoogleFont, 'Lora');
+        verify(() => googleFonts.load('Lora')).called(1);
+      },
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'a failed Google Font download leaves bundled choices active',
+      setUp: () {
+        when(() => googleFonts.load(any())).thenAnswer(
+          (_) async => const Left<ApplicationError, String>(
+            ApplicationError.network(message: 'offline'),
+          ),
+        );
+      },
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.googleFontPicked('Lora')),
+      expect: () => const <AppearanceState>[
+        AppearanceState(googleFontLoading: true),
+        AppearanceState(
+          googleFontError: 'offline',
+          googleFontOffline: true,
+        ),
+      ],
+      verify: (_) {
+        expect(saved.fonts, const KansoFonts());
+        verifyNever(() => preferences.update(any()));
+      },
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'startup restores a cached Google Font selection',
+      setUp: () {
+        saved = const Preferences(
+          fonts: KansoFonts(
+            editorGoogleFont: 'Lora',
+            previewGoogleFont: 'Lora',
+          ),
+        );
+      },
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.started()),
+      expect: () => const <AppearanceState>[
+        AppearanceState(
+          fonts: KansoFonts(
+            editorGoogleFont: 'Lora',
+            previewGoogleFont: 'Lora',
+          ),
+          status: AppearanceStatus.ready,
+        ),
+      ],
+      verify: (_) => verify(() => googleFonts.load('Lora')).called(1),
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'startup falls back to bundled fonts if the cached file is gone',
+      setUp: () {
+        saved = const Preferences(
+          fonts: KansoFonts(
+            editorGoogleFont: 'Lora',
+            previewGoogleFont: 'Lora',
+          ),
+        );
+        when(() => googleFonts.load(any())).thenAnswer(
+          (_) async => const Left<ApplicationError, String>(
+            ApplicationError.storage(message: 'missing cache'),
+          ),
+        );
+      },
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.started()),
+      expect: () => const <AppearanceState>[
+        AppearanceState(
+          googleFontError: 'cache',
+          status: AppearanceStatus.ready,
+        ),
+      ],
+      verify: (_) => expect(saved.fonts, const KansoFonts()),
     );
 
     blocTest<AppearanceBloc, AppearanceState>(
@@ -928,6 +1035,18 @@ void main() {
     });
 
     group('the preview text size and the diagrams', () {
+      blocTest<AppearanceBloc, AppearanceState>(
+        'textSizeChanged changes only the editor text size',
+        build: build,
+        act: (bloc) => bloc.add(
+          const AppearanceEvent.textSizeChanged(KansoTextSize.larger),
+        ),
+        verify: (bloc) {
+          expect(bloc.state.textSize, KansoTextSize.larger);
+          expect(bloc.state.previewTextSize, KansoTextSize.standard);
+        },
+      );
+
       blocTest<AppearanceBloc, AppearanceState>(
         'previewTextSizeChanged changes only the preview text size and saves '
         'it',
