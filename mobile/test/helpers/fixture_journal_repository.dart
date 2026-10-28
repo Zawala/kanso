@@ -10,6 +10,9 @@ import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/repos/abs/journal_repository.dart';
 import 'package:kanso/core/models/repos/abs/templates_repository.dart';
 
+import 'fixture_library_repository.dart';
+import 'library_fixtures.dart';
+
 /// The journal and the templates, in memory, for widget and golden tests:
 /// a month is laid out here as the library lays it out, the days with a
 /// note are a field, and every call is recorded.
@@ -31,6 +34,10 @@ class FixtureJournalRepository
   ];
 
   String? daily;
+
+  /// Where the notes these calls make are put, so that opening one finds it.
+  /// `registerPageBlocs` points this at the test's library.
+  FixtureLibraryRepository? library;
 
   /// When set, every call that can fail fails with it.
   ApplicationError? failure;
@@ -57,7 +64,27 @@ class FixtureJournalRepository
 
   MadeNote _made(DayDate day) {
     days.add((day.year, day.month, day.day));
-    return MadeNote(id: noteIdOf(day), titleFirst: false);
+    final id = noteIdOf(day);
+    _putNote(id);
+    return MadeNote(id: id, titleFirst: false);
+  }
+
+  /// Makes the note the library would have made, so that the route that
+  /// opens it finds it.
+  void _putNote(String id, {String notebookId = MockIds.journal}) {
+    library?.notes[id] = NoteView(
+      id: id,
+      rev: '1-$id',
+      title: '',
+      body: '',
+      lock: const LockState.plain(),
+      notebookId: notebookId,
+      tags: const <String>[],
+      status: 'active',
+      pinned: false,
+      createdMs: 1700000000000,
+      updatedMs: 1700000000000,
+    );
   }
 
   @override
@@ -212,19 +239,31 @@ class FixtureJournalRepository
     return error != null
         ? Left<ApplicationError, MadeNote>(error)
         : Right<ApplicationError, MadeNote>(
-            MadeNote(id: 'note:from-$templateId', titleFirst: true),
+            _madeFromTemplate(templateId: templateId, bookId: bookId),
           );
+  }
+
+  MadeNote _madeFromTemplate({
+    required String templateId,
+    required String? bookId,
+  }) {
+    final id = 'note:from-$templateId';
+    _putNote(id, notebookId: bookId ?? MockIds.inbox);
+    return MadeNote(id: id, titleFirst: true);
   }
 
   @override
   Future<Either<ApplicationError, MadeNote>> newTemplate() async {
     calls.add('newTemplate');
     final error = failure;
-    return error != null
-        ? Left<ApplicationError, MadeNote>(error)
-        : const Right<ApplicationError, MadeNote>(
-            MadeNote(id: 'note:new-template', titleFirst: true),
-          );
+    if (error != null) {
+      return Left<ApplicationError, MadeNote>(error);
+    }
+    const id = 'note:new-template';
+    _putNote(id, notebookId: MockIds.templates);
+    return const Right<ApplicationError, MadeNote>(
+      MadeNote(id: id, titleFirst: true),
+    );
   }
 
   @override

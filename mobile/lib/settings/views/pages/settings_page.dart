@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../injection.dart';
 import '../../../lock/state/biometrics/biometrics_bloc.dart';
+import '../../../push/state/push_setting/push_setting_bloc.dart';
 import '../../../reminders/state/reminders_settings/reminders_settings_bloc.dart';
 import '../../../reminders/views/widgets/reminders_permission_sync.dart';
 import '../../../templates/state/daily_template/daily_template_bloc.dart';
@@ -38,6 +39,10 @@ class SettingsPage extends StatelessWidget {
           create: (_) =>
               getIt<RemindersSettingsBloc>()
                 ..add(const RemindersSettingsEvent.started()),
+        ),
+        BlocProvider<PushSettingBloc>(
+          create: (context) =>
+              getIt<PushSettingBloc>()..add(const PushSettingEvent.started()),
         ),
       ],
       child: RemindersPermissionSync(

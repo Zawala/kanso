@@ -20,17 +20,19 @@ void main() {
 
   JournalBloc build() => JournalBloc(fixture, fixture);
 
-  Future<T> atNoon<T>(Future<T> Function() body) =>
-      withClock(Clock.fixed(DateTime(2026, 10, 26, 12)), body);
+  /// The bloc handles events on the subscription zone its constructor made,
+  /// so the clock has to be pinned where it is built, not in `act`.
+  JournalBloc buildAtNoon() =>
+      withClock(Clock.fixed(DateTime(2026, 10, 26, 12)), build);
 
   group('JournalBloc', () {
     blocTest<JournalBloc, JournalState>(
       'today opens the note the library makes for today',
-      build: build,
-      act: (bloc) => atNoon(() async {
+      build: buildAtNoon,
+      act: (bloc) async {
         bloc.add(const JournalEvent.todayRequested());
         await bloc.stream.firstWhere((state) => state.opened != null);
-      }),
+      },
       expect: () => <Matcher>[
         isA<JournalState>().having((s) => s.working, 'working', true),
         isA<JournalState>().having(
@@ -59,13 +61,13 @@ void main() {
 
     blocTest<JournalBloc, JournalState>(
       'stepping with no note open counts from today',
-      build: build,
-      act: (bloc) => atNoon(() async {
+      build: buildAtNoon,
+      act: (bloc) async {
         bloc.add(
           const JournalEvent.stepRequested(openNote: null, forward: true),
         );
         await bloc.stream.firstWhere((state) => state.opened != null);
-      }),
+      },
       verify: (bloc) => expect(bloc.state.opened?.id, 'note:daily-2026-10-27'),
     );
 

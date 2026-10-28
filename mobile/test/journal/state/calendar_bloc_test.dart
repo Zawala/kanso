@@ -20,9 +20,15 @@ CalendarEvent _started({String? openNote, int weekStart = 0}) =>
       weekStart: weekStart,
     );
 
-Future<void> _ready(CalendarBloc bloc) => bloc.stream.firstWhere(
-  (state) => state.status == LoadStatus.ready && state.grid != null,
-);
+/// The bloc's stream is broadcast: a state emitted before the listener
+/// attached would be missed, so the current state is read first.
+Future<void> _ready(CalendarBloc bloc) {
+  bool ready(CalendarState state) =>
+      state.status == LoadStatus.ready && state.grid != null;
+  return ready(bloc.state)
+      ? Future<void>.value()
+      : bloc.stream.firstWhere(ready);
+}
 
 void main() {
   late FixtureJournalRepository fixture;

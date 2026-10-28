@@ -111,7 +111,11 @@ class RemindersCoordinator {
   Future<void> dispose() async {
     await _changes?.cancel();
     await _responses?.cancel();
-    await _opened.close();
+    // A tap that launched the app is kept until the app's host listens, so
+    // the stream may never have had one. A single-subscription controller's
+    // done future only completes once its stream is listened to and drained,
+    // so closing is not awaited: it would never return.
+    unawaited(_opened.close());
   }
 
   Future<void> _serialised(Future<void> Function() action) {

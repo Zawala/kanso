@@ -27,9 +27,14 @@ class JournalOpener extends StatelessWidget {
         listenWhen: (before, after) =>
             after.opened != null && after.opened != before.opened,
         listener: (context, state) => openMadeNote(context, state.opened!),
+        // The child is not positioned: a Stack sizes itself to its
+        // non-positioned children, and the notice below is a `SizedBox` of
+        // nothing most of the time, so a `Positioned.fill` child would be
+        // laid out against a zero-size Stack.
         child: Stack(
+          fit: StackFit.passthrough,
           children: <Widget>[
-            Positioned.fill(child: child),
+            child,
             BlocBuilder<JournalBloc, JournalState>(
               buildWhen: (before, after) => before.error != after.error,
               builder: (context, state) {

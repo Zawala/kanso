@@ -23,15 +23,15 @@ pub use kanso_mobile::{
     MentionSpan, MonthGrid, NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole,
     NotebookRow, OpenedDocuments, OpenedFile, PaletteDto, PasskeyFailure, PasskeyRequest,
     PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow, PreviewLink, PreviewOptions,
-    PromptState, Property, PropertyKind, ProviderEvent, ProviderKind, QuotaLimit, Range16,
-    RecoveryKeyText, ReminderAnswer, ReminderNote, ReminderPlan, Replacement, RunBatch, SaveState,
-    Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo, ShareLinkRow,
-    ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow, StatusChoice,
-    StatusCount, StyledRun, SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table,
-    TableRow, TagPlaces, TagRow, TagTreeRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery,
-    TaskPlace, TaskSection, TemplateRow, TextChange, ThemeTokens, ThemedIcon, Ticked,
-    VisibleNotebook,
+    PromptState, Property, PropertyKind, ProviderEvent, ProviderKind, PushEnvironmentKind,
+    PushPlatformKind, QuotaLimit, Range16, RecoveryKeyText, ReminderAnswer, ReminderNote,
+    ReminderPlan, Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo, ServerMethods,
+    Share, ShareFile, ShareInfo, ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp,
+    SortKey, SpanRow, StatusChoice, StatusCount, StyledRun, SvgRow, SyncAccount,
+    SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus,
+    SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagPlaces, TagRow, TagTreeRow,
+    TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskPlace, TaskSection, TemplateRow,
+    TextChange, ThemeTokens, ThemedIcon, Ticked, VisibleNotebook,
 };
 
 #[frb(mirror(KansoError))]
@@ -413,6 +413,18 @@ pub enum _SyncPhase {
     Syncing,
     Synced,
     Failed,
+}
+
+#[frb(mirror(PushPlatformKind))]
+pub enum _PushPlatformKind {
+    Apns,
+    Fcm,
+}
+
+#[frb(mirror(PushEnvironmentKind))]
+pub enum _PushEnvironmentKind {
+    Production,
+    Development,
 }
 
 #[frb(mirror(SyncProblemKind))]

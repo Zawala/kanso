@@ -104,10 +104,13 @@ void main() {
   });
 
   group('the calendar', () {
-    Future<void> open(WidgetTester tester) async {
-      await tester.tap(find.bySemanticsLabel('Calendar'));
-      await tester.pumpAndSettle();
-    }
+    Future<void> open(WidgetTester tester) => withClock(
+      Clock.fixed(mockNow),
+      () async {
+        await tester.tap(find.bySemanticsLabel('Calendar'));
+        await tester.pumpAndSettle();
+      },
+    );
 
     testWidgets('shows the month of the open note, with its hint', (
       tester,
@@ -244,6 +247,9 @@ void main() {
       await tester.tap(find.text('Today’s note'));
       await tester.pumpAndSettle();
       expect(app.where, contains('note%3Adaily-2026-10-26'));
+      // The menu belongs to the list, not the note page: go back to it.
+      app.router.go('/notes');
+      await tester.pumpAndSettle();
       await openMenu(tester);
       await tester.tap(find.text('Calendar'));
       await tester.pumpAndSettle();

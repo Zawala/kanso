@@ -19,6 +19,8 @@ import 'package:kanso/core/state/list_navigation/list_navigation_bloc.dart';
 import 'package:kanso/core/state/navigation_history/navigation_history_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
+import 'package:kanso/injection.dart';
+import 'package:kanso/journal/state/journal/journal_bloc.dart';
 import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'package:kanso/lock/state/unlock/unlock_bloc.dart';
@@ -42,6 +44,7 @@ import 'package:kanso/tasks/state/tasks/tasks_bloc.dart';
 import 'close_bloc_later.dart';
 import 'fake_media_picker_repository.dart';
 import 'fixture_device_lock_repository.dart';
+import 'fixture_journal_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_renderer_repository.dart';
 import 'fixture_session_repository.dart';
@@ -196,6 +199,19 @@ class BrowseBlocs {
     closeBlocLater(defaultNotebook);
     final captureInbox = CaptureInboxBloc(MockCaptureRepository());
     closeBlocLater(captureInbox);
+    // A note pane or a list pane carries a JournalOpener, which makes its
+    // JournalBloc through GetIt. Direct widget tests do not go through the
+    // app's page registration, so give them one here.
+    final journal = FixtureJournalRepository();
+    if (getIt.isRegistered<JournalBloc>()) {
+      getIt.unregister<JournalBloc>();
+    }
+    getIt.registerFactory<JournalBloc>(() => JournalBloc(journal, journal));
+    addTearDown(() {
+      if (getIt.isRegistered<JournalBloc>()) {
+        getIt.unregister<JournalBloc>();
+      }
+    });
     return BrowseBlocs._(
       fixture,
       index,
