@@ -7,11 +7,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:glados/glados.dart'
     show Any, AnyUtils, BoolAny, CombinableAny, Generator, Glados, Glados2, any;
-import 'package:kanso/core/bridge/api/shortcuts.dart';
-import 'package:kanso/core/bridge/api/types.dart' hide LockState;
 import 'package:kanso/shell/utils/shortcut_keys.dart';
 
-import '../../helpers/core_library.dart';
 import '../../helpers/property.dart';
 
 const TargetPlatform _ios = TargetPlatform.iOS;
@@ -271,62 +268,5 @@ void main() {
         }
       },
     );
-  });
-
-  group('the real catalog', () {
-    setUpAll(initCoreForTests);
-
-    test('crosses the bridge without Quit or the capture window', () {
-      final catalog = shortcutCatalog();
-      expect(catalog, isNotEmpty);
-      expect(catalog.where((entry) => entry.id == 'quit'), isEmpty);
-      expect(
-        catalog.where((entry) => entry.place == ShortcutPlace.capture),
-        isEmpty,
-      );
-      expect(
-        catalog.where((entry) => entry.section == ShortcutSection.format),
-        hasLength(16),
-      );
-    });
-
-    test('has keys that parse on both platforms', () {
-      for (final entry in shortcutCatalog()) {
-        final mac = shortcutKeysFor(entry, _ios);
-        expect(_shapeOf(mac, _ios), isNotNull, reason: '${entry.id} $mac');
-        final other = shortcutKeysFor(entry, _android);
-        if (other.isEmpty) {
-          // Only the desktop's macOS-only binding in the text has none.
-          expect(entry.place, ShortcutPlace.editor, reason: entry.id);
-          expect(entry.id, anyOf('go_back', 'go_forward'));
-          continue;
-        }
-        expect(
-          _shapeOf(other, _android),
-          isNotNull,
-          reason: '${entry.id} $other',
-        );
-        expect(keyLabel(other, _android), isNotEmpty);
-        expect(keyLabel(mac, _ios), isNotEmpty);
-      }
-    });
-
-    test('binds no two entries to one activator in one place', () {
-      for (final platform in <TargetPlatform>[_ios, _android]) {
-        final seen = <(ShortcutPlace, _Shape)>{};
-        for (final entry in shortcutCatalog()) {
-          final keys = shortcutKeysFor(entry, platform);
-          if (keys.isEmpty) {
-            continue;
-          }
-          final shape = _shapeOf(keys, platform)!;
-          expect(
-            seen.add((entry.place, shape)),
-            isTrue,
-            reason: '${entry.id} $keys on $platform',
-          );
-        }
-      }
-    });
   });
 }

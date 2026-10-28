@@ -39,6 +39,7 @@ import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/shell/state/note_creation/note_creation_bloc.dart';
+import 'package:kanso/tabs/state/tabs/tabs_bloc.dart';
 
 import 'account_blocs.dart';
 import 'browse_blocs.dart';
@@ -181,6 +182,8 @@ Future<BrowseApp> pumpBrowseApp(
       child: MultiBlocProvider(
         providers: <BlocProvider<dynamic>>[
           BlocProvider<AppearanceBloc>.value(value: bloc),
+          BlocProvider<TabsBloc>.value(value: blocs.tabs),
+          BlocProvider<TabsBloc>.value(value: blocs.tabs),
           BlocProvider<NavigationHistoryBloc>.value(value: blocs.history),
           BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
           BlocProvider<InvitationsBloc>.value(value: blocs.invitations),

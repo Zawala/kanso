@@ -43,6 +43,7 @@ import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/shell/state/note_creation/note_creation_bloc.dart';
 import 'package:kanso/shell/views/widgets/library_navigation.dart';
+import 'package:kanso/tabs/state/tabs/tabs_bloc.dart';
 
 import '../../../helpers/account_blocs.dart';
 import '../../../helpers/browse_blocs.dart';
@@ -85,6 +86,7 @@ Future<GoRouter> _pump(
     MultiBlocProvider(
       providers: <BlocProvider<dynamic>>[
         BlocProvider<AppearanceBloc>.value(value: bloc),
+        BlocProvider<TabsBloc>.value(value: blocs.tabs),
         BlocProvider<NavigationHistoryBloc>.value(value: blocs.history),
         BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
         BlocProvider<InvitationsBloc>.value(value: blocs.invitations),

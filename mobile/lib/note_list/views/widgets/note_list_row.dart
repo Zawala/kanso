@@ -12,6 +12,7 @@ import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/status_label.dart';
 import '../../../core/utils/tag_row_color.dart';
+import '../../../core/views/widgets/kanso_menu.dart';
 import '../../../core/views/widgets/kanso_note_row.dart';
 import '../../../core/views/widgets/kanso_swipe_actions.dart';
 import '../../../core/views/widgets/kanso_tag_chip.dart';
@@ -28,7 +29,8 @@ import 'move_sheet.dart';
 /// A swipe towards the end pins or unpins it (all the way, at once); a swipe
 /// the other way shows Move and Trash (all the way trashes it). In the
 /// trash the only action is Move, which restores it. A long press starts
-/// choosing several notes, and while that goes on there are no swipes.
+/// choosing several notes, and while that goes on there are no swipes. Where
+/// there are tabs a right click (a secondary tap) offers Open in New Tab.
 class NoteListRow extends StatelessWidget {
   const NoteListRow({
     required this.row,
@@ -38,6 +40,7 @@ class NoteListRow extends StatelessWidget {
     this.checked,
     this.onTap,
     this.onLongPress,
+    this.onOpenInNewTab,
     super.key,
   });
 
@@ -56,6 +59,10 @@ class NoteListRow extends StatelessWidget {
   final bool? checked;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// Opens the note in a new tab: offered in a menu on a right click (a
+  /// secondary tap), only where there are tabs.
+  final VoidCallback? onOpenInNewTab;
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +83,8 @@ class NoteListRow extends StatelessWidget {
     void trash() => bloc.add(
       NoteListEvent.changeRequested(const NoteChange.trash(), <String>[row.id]),
     );
-    return KansoSwipeActions(
+    final newTab = onOpenInNewTab;
+    final swipeable = KansoSwipeActions(
       id: row.id,
       enabled: checked == null,
       startActions: inTrash
@@ -129,6 +137,24 @@ class NoteListRow extends StatelessWidget {
               KansoTagChip(name: tag.name, color: tag.tint),
         ],
       ),
+    );
+    if (newTab == null) {
+      return swipeable;
+    }
+    return GestureDetector(
+      onSecondaryTapUp: (details) async {
+        final chosen = await showKansoMenu<bool>(
+          context,
+          details.globalPosition,
+          <PopupMenuEntry<bool>>[
+            kansoMenuItem<bool>(context, true, l10n.tabOpenInNewTab),
+          ],
+        );
+        if (chosen ?? false) {
+          newTab();
+        }
+      },
+      child: swipeable,
     );
   }
 }

@@ -36,6 +36,7 @@ import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/sharing/state/shared_note_status/shared_note_status_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
 import 'package:kanso/shell/state/note_creation/note_creation_bloc.dart';
+import 'package:kanso/tabs/state/tabs/tabs_bloc.dart';
 import 'package:kanso/tasks/models/data/tasks_status.dart';
 import 'package:kanso/tasks/state/tasks/tasks_bloc.dart';
 
@@ -90,6 +91,7 @@ class BrowseBlocs {
     this.creation,
     this.defaultNotebook,
     this.captureInbox,
+    this.tabs,
   );
 
   /// The mock library (see [FixtureLibraryRepository]).
@@ -104,6 +106,9 @@ class BrowseBlocs {
 
   /// Saves what other apps shared; the lists read its problems.
   final CaptureInboxBloc captureInbox;
+
+  /// The tabs, off until a test turns them on (`TabsEvent.enabledChanged`).
+  final TabsBloc tabs;
   final FixtureSyncRepository syncRepository;
 
   /// The lock session, with nothing locked by default, and the
@@ -144,9 +149,11 @@ class BrowseBlocs {
     addTearDown(() => unawaited(fixture.close()));
     final index = LibraryIndexBloc(fixture)
       ..add(const LibraryIndexEvent.started());
-    final history = NavigationHistoryBloc(fixture);
+    final tabs = TabsBloc(fixture, ForgetfulPreferencesRepository());
+    final history = NavigationHistoryBloc(fixture, tabs);
     closeBlocLater(index);
     closeBlocLater(history);
+    closeBlocLater(tabs);
     final account = syncRepository ?? FixtureSyncRepository();
     final sync = SyncStatusBloc(account)..add(const SyncStatusEvent.started());
     closeBlocLater(sync);
@@ -214,6 +221,7 @@ class BrowseBlocs {
       creation,
       defaultNotebook,
       captureInbox,
+      tabs,
     );
   }
 
@@ -317,6 +325,7 @@ class BrowseBlocs {
         BlocProvider<PrivacyCoverBloc>.value(value: cover),
         BlocProvider<UnlockBloc>.value(value: unlock ?? unlockOf()),
         BlocProvider<LibraryIndexBloc>.value(value: index),
+        BlocProvider<TabsBloc>.value(value: tabs),
         BlocProvider<NavigationHistoryBloc>.value(value: history),
         BlocProvider<SyncStatusBloc>.value(value: sync),
         BlocProvider<SyncSettingsBloc>.value(

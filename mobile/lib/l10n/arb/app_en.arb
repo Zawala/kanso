@@ -4134,5 +4134,44 @@
   "libraryTagsFewer": "Fewer",
   "@libraryTagsFewer": {
     "description": "Shows only the most used tags as chips."
+  },
+  "tabsBarLabel": "Tabs",
+  "@tabsBarLabel": {
+    "description": "The accessibility label of the row of tabs above a note on a tablet."
+  },
+  "tabClose": "Close",
+  "@tabClose": {
+    "description": "The menu item that closes a tab (the desktop calls it this too)."
+  },
+  "tabCloseOthers": "Close Others",
+  "@tabCloseOthers": {
+    "description": "The menu item that closes every tab but this one."
+  },
+  "tabCloseRight": "Close Tabs to the Right",
+  "@tabCloseRight": {
+    "description": "The menu item that closes the tabs after this one."
+  },
+  "tabOpenInNewWindow": "Open in New Window",
+  "@tabOpenInNewWindow": {
+    "description": "The menu item that opens a tab's note in a window of its own."
+  },
+  "tabOpenInNewTab": "Open in New Tab",
+  "@tabOpenInNewTab": {
+    "description": "The menu item and the drop hint that open a note in a new tab."
+  },
+  "tabCloseTooltip": "Close tab",
+  "@tabCloseTooltip": {
+    "description": "The accessibility label and tooltip of the close button of a tab."
+  },
+  "tabsAll": "All tabs",
+  "@tabsAll": {
+    "description": "The accessibility label and tooltip of the button that lists every open tab."
+  },
+  "tabLocked": "{title}, locked",
+  "@tabLocked": {
+    "description": "A tab's accessibility label for a locked note.",
+    "placeholders": {
+      "title": {"type": "String"}
+    }
   }
 }

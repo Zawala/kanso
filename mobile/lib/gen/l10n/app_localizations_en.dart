@@ -3279,4 +3279,33 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get libraryTagsFewer => 'Fewer';
+
+  @override
+  String get tabsBarLabel => 'Tabs';
+
+  @override
+  String get tabClose => 'Close';
+
+  @override
+  String get tabCloseOthers => 'Close Others';
+
+  @override
+  String get tabCloseRight => 'Close Tabs to the Right';
+
+  @override
+  String get tabOpenInNewWindow => 'Open in New Window';
+
+  @override
+  String get tabOpenInNewTab => 'Open in New Tab';
+
+  @override
+  String get tabCloseTooltip => 'Close tab';
+
+  @override
+  String get tabsAll => 'All tabs';
+
+  @override
+  String tabLocked(String title) {
+    return '$title, locked';
+  }
 }
