@@ -51,10 +51,7 @@ class KansoBottomSheetRoute<T> extends PopupRoute<T> {
     Animation<double> animation,
     Animation<double> secondaryAnimation,
   ) {
-    return Material(
-      type: MaterialType.transparency,
-      child: KansoBottomSheet(child: builder(context)),
-    );
+    return KansoBottomSheet(child: builder(context));
   }
 
   @override

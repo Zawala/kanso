@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_dialog.dart';
 import '../../../core/views/widgets/kanso_icon.dart';
 import '../../state/backups/backups_bloc.dart';
 
@@ -45,30 +46,19 @@ class BackupRow extends StatelessWidget {
               onPressed: deleting
                   ? null
                   : () async {
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Text(l10n.backupsDeleteTitle),
-                          content: Text(
-                            l10n.backupsDeleteMessage(
-                              MaterialLocalizations.of(
-                                context,
-                              ).formatMediumDate(when),
-                            ),
-                          ),
-                          actions: <Widget>[
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: Text(l10n.backupsDeleteCancel),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: Text(l10n.backupsDeleteConfirm),
-                            ),
-                          ],
+                      final confirmed = await showKansoConfirm(
+                        context,
+                        title: l10n.backupsDeleteTitle,
+                        body: l10n.backupsDeleteMessage(
+                          MaterialLocalizations.of(
+                            context,
+                          ).formatMediumDate(when),
                         ),
+                        cancelLabel: l10n.backupsDeleteCancel,
+                        confirmLabel: l10n.backupsDeleteConfirm,
+                        danger: true,
                       );
-                      if ((confirmed ?? false) && context.mounted) {
+                      if (confirmed && context.mounted) {
                         context.read<BackupsBloc>().add(
                           BackupsEvent.delete(backup.path),
                         );
