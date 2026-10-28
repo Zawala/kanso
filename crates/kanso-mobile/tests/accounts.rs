@@ -920,8 +920,11 @@ fn a_locked_phone_opens_with_the_accounts_password() {
         .unwrap_err();
     assert!(matches!(err, KansoError::Auth { .. }), "{err:?}");
     assert!(matches!(acct.state().unwrap(), AccountState::Locked(_)));
+    // A short password is not rejected locally: it reaches the server, which
+    // answers it like any other wrong password.
     let err = acct.unlock_with_password("short".into()).unwrap_err();
-    assert!(matches!(err, KansoError::Invalid { .. }), "{err:?}");
+    assert!(matches!(err, KansoError::Auth { .. }), "{err:?}");
+    assert!(matches!(acct.state().unwrap(), AccountState::Locked(_)));
 
     assert!(signed_in(
         &acct.unlock_with_password(PASSWORD.into()).unwrap()

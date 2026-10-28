@@ -19,8 +19,6 @@ import '../../../helpers/fixture_account_repository.dart';
 import '../../../helpers/pump_routed.dart';
 import '../../../helpers/seeded_account_blocs.dart';
 
-const String _password = 'correct horse battery';
-
 Future<(FixtureAccountRepository, GoRouter)> _pump(
   WidgetTester tester, {
   bool hasPassword = true,
@@ -91,20 +89,11 @@ void main() {
       expect(find.text('Approve from another device'), findsOneWidget);
     });
 
-    testWidgets('a password unlocks, a short one is told at once', (
+    testWidgets('a short password is sent to the server and can unlock', (
       tester,
     ) async {
       final (account, _) = await _pump(tester);
       await tester.enterText(find.byType(EditableText), 'short');
-      await tester.tap(find.text('Unlock'));
-      await tester.pumpAndSettle();
-      expect(
-        find.text('That username and password don’t match.'),
-        findsOneWidget,
-      );
-      expect(account.calls, isNot(contains('unlockWithPassword')));
-
-      await tester.enterText(find.byType(EditableText), _password);
       await tester.tap(find.text('Unlock'));
       await tester.pumpAndSettle();
       expect(account.calls, contains('unlockWithPassword'));

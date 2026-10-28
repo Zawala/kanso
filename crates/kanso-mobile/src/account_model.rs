@@ -27,6 +27,28 @@ pub struct ServerMethods {
     pub providers: Vec<ProviderKind>,
 }
 
+/// How a new password stands against the rules, while it is typed
+/// ([`crate::check_new_password`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NewPasswordCheck {
+    /// Its length as the rules count it: Unicode scalar values after NFC.
+    pub chars: u32,
+    /// The fewest characters a password has.
+    pub min_chars: u32,
+    /// The most characters a password has.
+    pub max_chars: u32,
+    /// The first rule it breaks; none when it may be used.
+    pub problem: Option<NewPasswordProblem>,
+}
+
+/// The rule a new password breaks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NewPasswordProblem {
+    TooShort,
+    TooLong,
+    SameAsUsername,
+}
+
 /// Where this phone's account stands.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum AccountState {
