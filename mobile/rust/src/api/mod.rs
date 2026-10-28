@@ -31,3 +31,4 @@ pub mod sync;
 pub mod themes;
 pub mod types;
 pub mod voice;
+pub mod word_goal;

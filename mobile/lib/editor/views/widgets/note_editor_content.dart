@@ -13,6 +13,7 @@ import '../../../assist/utils/open_assist_action.dart';
 import '../../../capture/models/data/capture_first_row.dart';
 import '../../../capture/views/widgets/capture_sheet.dart';
 import '../../../core/bridge/api/types.dart' hide EditorEvent;
+import '../../../core/bridge/api/word_goal.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
@@ -26,6 +27,7 @@ import '../../../editor_extras/views/widgets/editor_extras_scope.dart';
 import '../../../note/models/data/note_mode.dart';
 import '../../../note/state/note/note_bloc.dart';
 import '../../../note/state/note_assist_intent/note_assist_intent_bloc.dart';
+import '../../../note/state/word_goal_intent/word_goal_intent_bloc.dart';
 import '../../../note_list/views/widgets/note_list_notice.dart';
 import '../../../sharing/state/comments/comments_bloc.dart';
 import '../../../sharing/state/shared_note_status/shared_note_status_bloc.dart';
@@ -34,6 +36,7 @@ import '../../../shell/state/note_creation/note_creation_bloc.dart';
 import '../../models/data/editor_destination.dart';
 import '../../models/data/flush_reason.dart';
 import '../../models/data/outside_side.dart';
+import '../../models/data/word_goal_choice.dart';
 import '../../models/repos/abs/editor_repository.dart';
 import '../../state/editor/editor_bloc.dart';
 import '../controllers/kanso_markdown_controller.dart';
@@ -43,12 +46,14 @@ import 'editor_destination_scope.dart';
 import 'editor_failure_strip.dart';
 import 'editor_shortcuts.dart';
 import 'editor_title_field.dart';
+import 'editor_word_goal_footer.dart';
 import 'keyboard_accessory_bar.dart';
 import 'link_context_menu.dart';
 import 'markdown_editor.dart';
 import 'outside_text.dart';
 import 'properties_section.dart';
 import 'remote_carets.dart';
+import 'word_goal_picker_sheet.dart';
 
 /// The open note's editor: the strips for a change made elsewhere or a
 /// failed save, the title, the properties, and the text, in one page that
@@ -108,6 +113,8 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
   final GlobalKey<EditableTextState> editableKey =
       GlobalKey<EditableTextState>();
   late final AppLifecycleListener lifecycle;
+  late final ValueNotifier<int> wordCount;
+  Timer? wordCountTimer;
   EditorContext? lastContext;
 
   /// The note's comments, where the page has them.
@@ -122,8 +129,14 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
   /// A palette or other app-level assistant request for this note.
   NoteAssistIntentBloc? assistIntents;
 
+  /// A palette request to open this note's word-goal picker.
+  WordGoalIntentBloc? wordGoalIntents;
+
   /// The server request last taken, so a rebuild cannot run it again.
   int? handledAssistRequest;
+
+  /// The word-goal request last taken, so a rebuild cannot run it again.
+  int? handledWordGoalRequest;
 
   /// Whether the note is shared with this account to view or comment on
   /// only: its title, properties and text are for reading.
@@ -158,6 +171,11 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
     } on ProviderNotFoundException {
       assistIntents = null;
     }
+    try {
+      wordGoalIntents = context.read<WordGoalIntentBloc>();
+    } on ProviderNotFoundException {
+      wordGoalIntents = null;
+    }
     readOnly = status?.state.readOnly ?? false;
     final caret = widget.caret;
     int? start;
@@ -188,6 +206,10 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
       noteId: note.state.noteId,
     );
     controller.addListener(keepPlace);
+    wordCount = ValueNotifier<int>(
+      wordGoalWordCount(text: widget.snapshot.text),
+    );
+    controller.addListener(scheduleWordCount);
     title = TextEditingController(text: widget.snapshot.title);
     textFocus = FocusNode(debugLabel: 'Note text');
     titleFocus = FocusNode(debugLabel: 'Note title');
@@ -206,6 +228,7 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
       // The command can arrive while the note is in Preview, before this
       // editor exists. Take that initial request once the field is mounted.
       _takeAssistIntent();
+      _takeWordGoalIntent();
       (widget.focusTitle ? titleFocus : textFocus).requestFocus();
     });
     if (status != null) {
@@ -255,6 +278,36 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
       return;
     }
     unawaited(openAssistAction(context, textTarget, action: action));
+  }
+
+  /// Runs the pending word-goal request for this note, if there is one.
+  void _takeWordGoalIntent() {
+    final bloc = wordGoalIntents;
+    if (bloc == null) {
+      return;
+    }
+    final intent = bloc.state;
+    if (!intent.pending ||
+        intent.noteId != note.state.noteId ||
+        intent.request == handledWordGoalRequest) {
+      return;
+    }
+    if (readOnly) {
+      handledWordGoalRequest = intent.request;
+      bloc.add(WordGoalIntentEvent.consumed(request: intent.request));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(context.l10n.assistReadOnly)),
+      );
+      return;
+    }
+    final state = editor.state;
+    // The editor is still opening; keep the request for its ready state.
+    if (state.wordGoalSetting == null) {
+      return;
+    }
+    handledWordGoalRequest = intent.request;
+    bloc.add(WordGoalIntentEvent.consumed(request: intent.request));
+    unawaited(chooseWordGoal(state));
   }
 
   /// Asks the Rust core where the open comments' words are now, to tint.
@@ -363,6 +416,9 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
       );
     }
     scroll.dispose();
+    wordCountTimer?.cancel();
+    controller.removeListener(scheduleWordCount);
+    wordCount.dispose();
     titleFocus.dispose();
     textFocus.dispose();
     title.dispose();
@@ -373,6 +429,42 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
   void onTitleChanged(String text) {
     widget.document.setTitle(text);
     editor.add(const EditorEvent.edited());
+  }
+
+  /// Debounces Markdown counting while a long note is being typed in.
+  void scheduleWordCount() {
+    wordCountTimer?.cancel();
+    wordCountTimer = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) {
+        wordCount.value = wordGoalWordCount(text: controller.text);
+      }
+    });
+  }
+
+  Future<void> chooseWordGoal(EditorState state) async {
+    final setting = state.wordGoalSetting;
+    if (setting == null) {
+      return;
+    }
+    final current = switch (setting) {
+      GoalSetting_Default() => const WordGoalDefault(),
+      GoalSetting_Off() => const WordGoalOff(),
+      GoalSetting_Words(:final field0) => WordGoalWords(field0),
+    };
+    final picked = await WordGoalPickerSheet.show(
+      context,
+      setting: current,
+      defaultGoal: state.defaultWordGoal,
+    );
+    if (!mounted || picked == null) {
+      return;
+    }
+    final selected = switch (picked) {
+      WordGoalDefault() => const GoalSetting.default_(),
+      WordGoalOff() => const GoalSetting.off(),
+      WordGoalWords(:final words) => GoalSetting.words(words),
+    };
+    editor.add(EditorEvent.wordGoalChanged(selected));
   }
 
   void focusText() {
@@ -525,6 +617,23 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
             listener: (context, state) => _takeAssistIntent(),
           ),
         ],
+        if (wordGoalIntents
+            case final intents?) ...<BlocListener<dynamic, dynamic>>[
+          BlocListener<EditorBloc, EditorState>(
+            listenWhen: (before, now) =>
+                before.wordGoalSetting != now.wordGoalSetting &&
+                now.wordGoalSetting != null,
+            listener: (context, state) => _takeWordGoalIntent(),
+          ),
+          BlocListener<WordGoalIntentBloc, WordGoalIntentState>(
+            bloc: intents,
+            listenWhen: (before, now) =>
+                now.pending &&
+                now.noteId == note.state.noteId &&
+                now.request != before.request,
+            listener: (context, state) => _takeWordGoalIntent(),
+          ),
+        ],
         if (status case final status?) ...<BlocListener<dynamic, dynamic>>[
           BlocListener<SharedNoteStatusBloc, SharedNoteStatusState>(
             bloc: status,
@@ -544,6 +653,16 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
             controller
               ..themeId = state.themeId
               ..requestRuns();
+          },
+        ),
+        BlocListener<EditorBloc, EditorState>(
+          listenWhen: (before, now) =>
+              before.wordGoalError != now.wordGoalError &&
+              now.wordGoalError != null,
+          listener: (context, state) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+              SnackBar(content: Text(state.wordGoalError!.message)),
+            );
           },
         ),
       ],
@@ -826,6 +945,20 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                       ),
                     ),
                   ],
+                ),
+              ),
+            ),
+            BlocBuilder<EditorBloc, EditorState>(
+              buildWhen: (before, now) =>
+                  before.wordGoalSetting != now.wordGoalSetting ||
+                  before.defaultWordGoal != now.defaultWordGoal ||
+                  before.effectiveWordGoal != now.effectiveWordGoal,
+              builder: (context, state) => ValueListenableBuilder<int>(
+                valueListenable: wordCount,
+                builder: (context, count, _) => EditorWordGoalFooter(
+                  words: count,
+                  goal: state.effectiveWordGoal,
+                  onTap: readOnly ? null : () => chooseWordGoal(state),
                 ),
               ),
             ),

@@ -24,6 +24,7 @@ import 'package:kanso/reminders/state/reminders_settings/reminders_settings_bloc
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
 import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
+import 'package:kanso/settings/state/word_goal_settings/word_goal_settings_bloc.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
 import 'package:kanso/templates/state/daily_template/daily_template_bloc.dart';
 import 'package:mocktail/mocktail.dart';
@@ -89,6 +90,7 @@ Future<GoRouter> _pump(WidgetTester tester, {int? patch}) async {
         BlocProvider<AboutBloc>.value(value: aboutBloc),
         BlocProvider<LibraryIndexBloc>.value(value: index),
         BlocProvider<DefaultNotebookBloc>.value(value: defaultNotebook),
+        BlocProvider<WordGoalSettingsBloc>.value(value: settings.wordGoal),
         BlocProvider<AccountBloc>.value(value: account),
         BlocProvider<LockStatusBloc>.value(value: lock),
         BlocProvider<BiometricsBloc>.value(value: biometrics),
@@ -99,7 +101,7 @@ Future<GoRouter> _pump(WidgetTester tester, {int? patch}) async {
       ],
       child: const SettingsPane(),
     ),
-    size: const Size(393, 1400),
+    size: const Size(393, 1700),
   );
   await tester.pump();
   await tester.pump();
@@ -135,6 +137,11 @@ void main() {
       expect(
         find.text('Kanso sends a crash report only when you choose to.'),
         findsOneWidget,
+      );
+      await tester.scrollUntilVisible(
+        find.text('Crash reports'),
+        240,
+        scrollable: find.byType(Scrollable).last,
       );
       await tester.tap(find.text('Crash reports'));
       await tester.pumpAndSettle();

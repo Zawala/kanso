@@ -87,6 +87,9 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<String?> dailyTemplate();
 
+  /// The default word goal for notes without their own choice.
+  Future<int?> defaultWordGoal();
+
   /// Deletes a backup made with `back_up_now`; refuses any other.
   Future<void> deleteBackup({required String path});
 
@@ -184,6 +187,9 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   /// The wiki-link to note `id` to paste elsewhere, and what to say.
   Future<CopiedLink> noteLink({required String id, required bool kanso});
+
+  /// The note's own word-goal choice.
+  Future<GoalSetting> noteWordGoal({required String id});
 
   /// The notebook colours the desktop offers.
   static List<ColorChoice> notebookColors() =>
@@ -290,6 +296,15 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<void> setDailyTemplate({String? templateId});
 
+  /// Sets the library's default word goal.
+  Future<int?> setDefaultWordGoal({int? goal});
+
+  /// Sets a note's goal, using its open editor session when there is one.
+  Future<void> setNoteWordGoal({
+    required String id,
+    required GoalSetting setting,
+  });
+
   /// Sets notebook `id`'s colour to `color` (`#RRGGBB`), or takes its own
   /// colour away with null.
   Future<void> setNotebookColor({required String id, String? color});
@@ -373,4 +388,8 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   /// Voice dictation settings saved beside the library database.
   Future<VoiceSettings> voiceSettings();
+
+  /// The word-goal presets offered by the desktop app.
+  static Future<Uint32List> wordGoalPresets() =>
+      KansoCore.instance.api.crateApiLibraryKansoLibraryWordGoalPresets();
 }

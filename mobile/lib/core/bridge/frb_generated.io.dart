@@ -24,6 +24,7 @@ import 'api/sync.dart';
 import 'api/themes.dart';
 import 'api/types.dart';
 import 'api/voice.dart';
+import 'api/word_goal.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
@@ -614,6 +615,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   GalleryColors dco_decode_box_autoadd_gallery_colors(dynamic raw);
 
   @protected
+  GoalSetting dco_decode_box_autoadd_goal_setting(dynamic raw);
+
+  @protected
   GraphFilter dco_decode_box_autoadd_graph_filter(dynamic raw);
 
   @protected
@@ -872,6 +876,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   GalleryKind dco_decode_gallery_kind(dynamic raw);
 
   @protected
+  GoalSetting dco_decode_goal_setting(dynamic raw);
+
+  @protected
   GraphEdgeRow dco_decode_graph_edge_row(dynamic raw);
 
   @protected
@@ -1091,6 +1098,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<PlannedNote> dco_decode_list_planned_note(dynamic raw);
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
@@ -2228,6 +2238,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  GoalSetting sse_decode_box_autoadd_goal_setting(SseDeserializer deserializer);
+
+  @protected
   GraphFilter sse_decode_box_autoadd_graph_filter(SseDeserializer deserializer);
 
   @protected
@@ -2518,6 +2531,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   GalleryKind sse_decode_gallery_kind(SseDeserializer deserializer);
 
   @protected
+  GoalSetting sse_decode_goal_setting(SseDeserializer deserializer);
+
+  @protected
   GraphEdgeRow sse_decode_graph_edge_row(SseDeserializer deserializer);
 
   @protected
@@ -2773,6 +2789,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<PlannedNote> sse_decode_list_planned_note(SseDeserializer deserializer);
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -4107,6 +4126,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_goal_setting(
+    GoalSetting self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_graph_filter(
     GraphFilter self,
     SseSerializer serializer,
@@ -4497,6 +4522,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_gallery_kind(GalleryKind self, SseSerializer serializer);
 
   @protected
+  void sse_encode_goal_setting(GoalSetting self, SseSerializer serializer);
+
+  @protected
   void sse_encode_graph_edge_row(GraphEdgeRow self, SseSerializer serializer);
 
   @protected
@@ -4832,6 +4860,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_list_planned_note(
     List<PlannedNote> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
     SseSerializer serializer,
   );
 
