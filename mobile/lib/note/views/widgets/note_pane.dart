@@ -28,6 +28,7 @@ import '../../../sharing/views/widgets/shared_note_status_strip.dart';
 import '../../models/data/note_mode.dart';
 import '../../models/data/note_screen_status.dart';
 import '../../state/note/note_bloc.dart';
+import '../../state/note_discovery/note_discovery_bloc.dart';
 import 'locked_note_pane.dart';
 import 'note_body.dart';
 import 'note_bottom_bar.dart';
@@ -126,10 +127,16 @@ class NotePane extends StatelessWidget {
                             semanticLabel: l10n.noteInfo,
                             onPressed: () => showKansoBottomSheet<void>(
                               context,
-                              builder: (_) => NoteInfoSheet(
-                                note: note,
-                                index: context.read<LibraryIndexBloc>().state,
-                              ),
+                              builder: (_) =>
+                                  BlocProvider<NoteDiscoveryBloc>.value(
+                                    value: context.read<NoteDiscoveryBloc>(),
+                                    child: NoteInfoSheet(
+                                      note: note,
+                                      index: context
+                                          .read<LibraryIndexBloc>()
+                                          .state,
+                                    ),
+                                  ),
                             ),
                           ),
                         ],

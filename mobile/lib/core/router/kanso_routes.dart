@@ -98,6 +98,15 @@ abstract final class KansoRoutes {
   /// Replace text across the library.
   static const String replace = '/replace';
 
+  /// The linked-note graph, optionally centered on a note.
+  static const String graph = '/graph';
+
+  /// Opens the graph around [noteId].
+  static String graphLocal(String noteId) => Uri(
+    path: graph,
+    queryParameters: <String, String>{'center': noteId, 'hops': '2'},
+  ).toString();
+
   /// Settings › Account: the signed-in account's page.
   static const String settingsAccount = '/settings/account';
 

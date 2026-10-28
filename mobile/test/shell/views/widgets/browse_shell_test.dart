@@ -12,6 +12,7 @@ import 'package:kanso/app.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/configs/kanso_layout.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
+import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
@@ -37,6 +38,7 @@ import 'package:kanso/note_list/views/pages/note_list_page.dart';
 import 'package:kanso/search/views/pages/search_page.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/discovery/discovery_settings_bloc.dart';
 import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/settings/views/pages/settings_page.dart';
 import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
@@ -47,6 +49,7 @@ import 'package:kanso/shell/views/widgets/library_navigation.dart';
 import '../../../helpers/account_blocs.dart';
 import '../../../helpers/browse_blocs.dart';
 import '../../../helpers/crash_samples.dart';
+import '../../../helpers/fixture_discovery_repository.dart';
 import '../../../helpers/register_page_blocs.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 import '../../../helpers/sync_settings_blocs.dart';
@@ -97,6 +100,13 @@ Future<GoRouter> _pump(
         BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
         BlocProvider<NoteCreationBloc>.value(value: blocs.creation),
         BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
+        BlocProvider<DiscoverySettingsBloc>(
+          lazy: false,
+          create: (_) => DiscoverySettingsBloc(
+            FixtureDiscoveryRepository(),
+            SeededPreferencesRepository(const Preferences()),
+          )..add(const DiscoverySettingsEvent.started()),
+        ),
         BlocProvider<CaptureInboxBloc>.value(value: blocs.captureInbox),
         BlocProvider<BackupNoticeBloc>.value(value: hiddenBackupNoticeBloc()),
         BlocProvider<AccountBloc>.value(value: accounts.account),
