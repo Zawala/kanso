@@ -32,6 +32,7 @@ import 'settings/state/sync_settings/sync_settings_bloc.dart';
 import 'sharing/state/invitations/invitations_bloc.dart';
 import 'shell/state/library_pane/library_pane_bloc.dart';
 import 'shell/state/note_creation/note_creation_bloc.dart';
+import 'tabs/state/tabs/tabs_bloc.dart';
 
 /// The BLoCs the whole app shares, above the [child].
 ///
@@ -123,8 +124,14 @@ class AppProviders extends StatelessWidget {
         BlocProvider<NoteCreationBloc>(
           create: (_) => getIt<NoteCreationBloc>(),
         ),
+        BlocProvider<TabsBloc>(
+          create: (_) => getIt<TabsBloc>()..add(const TabsEvent.started()),
+        ),
+        // The history is the showing tab's while the window has tabs.
         BlocProvider<NavigationHistoryBloc>(
-          create: (_) => getIt<NavigationHistoryBloc>(),
+          create: (context) => getIt<NavigationHistoryBloc>(
+            param1: context.read<TabsBloc>(),
+          ),
         ),
         BlocProvider<CaptureInboxBloc>(
           create: (_) =>

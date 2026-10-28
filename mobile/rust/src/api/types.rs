@@ -28,12 +28,13 @@ pub use kanso_mobile::{
     PushEnvironmentKind, PushPlatformKind, QuotaLimit, Range16, RecoveryKeyText, RelatedRow,
     RelatedState, RelatedStatus, ReminderAnswer, ReminderNote, ReminderPlan, Replacement, RunBatch,
     SaveState, Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo,
-    ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp, SortKey, SpanRow,
-    StatusChoice, StatusCount, StyledRun, SuggestedTag, SvgRow, SyncAccount, SyncIntervalOption,
-    SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine,
-    SyncTone, SyntaxStyleRow, Table, TableRow, TagPlaces, TagRow, TagTreeRow, TaskBoard,
-    TaskGroupKind, TaskItem, TaskListQuery, TaskPlace, TaskSection, TemplateRow, TextChange,
-    ThemeTokens, ThemedIcon, Ticked, TwinRow, VisibleNotebook,
+    ShareLinkRow, ShareRole, SharedEvent, ShortcutEntry, ShortcutPlace, ShortcutSection,
+    SignOutReasonKind, SignedUp, SortKey, SpanRow, StatusChoice, StatusCount, StyledRun,
+    SuggestedTag, SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind,
+    SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table,
+    TableRow, TagPlaces, TagRow, TagTreeRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery,
+    TaskPlace, TaskSection, TemplateRow, TextChange, ThemeTokens, ThemedIcon, Ticked, TwinRow,
+    VisibleNotebook,
 };
 
 #[frb(mirror(KansoError))]
@@ -1222,6 +1223,13 @@ pub enum _FormatKind {
     Image,
     Table,
     Rule,
+    Heading1,
+    Heading2,
+    Heading3,
+    Heading4,
+    Heading5,
+    Heading6,
+    CodeBlock,
 }
 
 #[frb(mirror(EditCommand))]
@@ -1533,6 +1541,54 @@ pub struct _ShareFile {
 pub struct _CaptureOutcome {
     pub note_id: String,
     pub problems: Vec<String>,
+}
+
+#[frb(mirror(ShortcutPlace))]
+pub enum _ShortcutPlace {
+    Global,
+    NoteList,
+    Editor,
+    FocusMode,
+    NoteWindow,
+    Palette,
+    TasksView,
+    BoardView,
+    CalendarView,
+    GraphView,
+    Settings,
+    SettingsNav,
+    Capture,
+}
+
+#[frb(mirror(ShortcutSection))]
+pub enum _ShortcutSection {
+    App,
+    File,
+    Edit,
+    Format,
+    View,
+    Go,
+    Note,
+    Window,
+    Tabs,
+    List,
+    Palette,
+    Calendar,
+    Tasks,
+    Board,
+    Graph,
+    Settings,
+    Capture,
+}
+
+#[frb(mirror(ShortcutEntry))]
+pub struct _ShortcutEntry {
+    pub id: String,
+    pub mac: String,
+    pub other: String,
+    pub place: ShortcutPlace,
+    pub label: String,
+    pub section: ShortcutSection,
 }
 
 #[frb(mirror(RelatedStatus))]

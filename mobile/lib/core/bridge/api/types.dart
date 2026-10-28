@@ -1245,6 +1245,13 @@ enum FormatKind {
   image,
   table,
   rule,
+  heading1,
+  heading2,
+  heading3,
+  heading4,
+  heading5,
+  heading6,
+  codeBlock,
 }
 
 class GalleryColors {
@@ -3810,6 +3817,81 @@ class SharedEvent {
           invitations == other.invitations &&
           commentNotes == other.commentNotes &&
           liveNotes == other.liveNotes;
+}
+
+class ShortcutEntry {
+  final String id;
+  final String mac;
+  final String other;
+  final ShortcutPlace place;
+  final String label;
+  final ShortcutSection section;
+
+  const ShortcutEntry({
+    required this.id,
+    required this.mac,
+    required this.other,
+    required this.place,
+    required this.label,
+    required this.section,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      mac.hashCode ^
+      other.hashCode ^
+      place.hashCode ^
+      label.hashCode ^
+      section.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ShortcutEntry &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          mac == other.mac &&
+          other == other.other &&
+          place == other.place &&
+          label == other.label &&
+          section == other.section;
+}
+
+enum ShortcutPlace {
+  global,
+  noteList,
+  editor,
+  focusMode,
+  noteWindow,
+  palette,
+  tasksView,
+  boardView,
+  calendarView,
+  graphView,
+  settings,
+  settingsNav,
+  capture,
+}
+
+enum ShortcutSection {
+  app,
+  file,
+  edit,
+  format,
+  view,
+  go,
+  note,
+  window,
+  tabs,
+  list,
+  palette,
+  calendar,
+  tasks,
+  board,
+  graph,
+  settings,
+  capture,
 }
 
 enum SignOutReasonKind {

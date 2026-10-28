@@ -1188,6 +1188,15 @@ pub enum FormatKind {
     Image,
     Table,
     Rule,
+    /// A heading of level 1 to 6. The accessory bar has no key for these;
+    /// the hardware keyboard's shortcuts do.
+    Heading1,
+    Heading2,
+    Heading3,
+    Heading4,
+    Heading5,
+    Heading6,
+    CodeBlock,
 }
 
 /// A change the editor decides on, from a key or a button.
@@ -1492,6 +1501,64 @@ pub struct TagPlaces {
     /// The tree's rows that show, top to bottom.
     pub tree: Vec<TagTreeRow>,
 }
+
+/// Where a keyboard shortcut acts: the desktop's key contexts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShortcutPlace {
+    Global,
+    NoteList,
+    Editor,
+    FocusMode,
+    NoteWindow,
+    Palette,
+    TasksView,
+    BoardView,
+    CalendarView,
+    GraphView,
+    Settings,
+    SettingsNav,
+    Capture,
+}
+
+/// The menu a keyboard shortcut is listed under in the overlay.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShortcutSection {
+    App,
+    File,
+    Edit,
+    Format,
+    View,
+    Go,
+    Note,
+    Window,
+    Tabs,
+    List,
+    Palette,
+    Calendar,
+    Tasks,
+    Board,
+    Graph,
+    Settings,
+    Capture,
+}
+
+/// One key of the desktop's shortcut catalog, for a phone or tablet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShortcutEntry {
+    /// The desktop action's name in snake case. An action with two keys, or
+    /// in two places, has an entry for each.
+    pub id: String,
+    /// The keys on macOS and iPadOS, in GPUI's keystroke syntax
+    /// (`secondary-shift-t`).
+    pub mac: String,
+    /// The keys on Windows, Linux and Android; empty when none are bound.
+    pub other: String,
+    pub place: ShortcutPlace,
+    /// What the desktop's menu calls the action.
+    pub label: String,
+    pub section: ShortcutSection,
+}
+
 // MARK: Discovery
 
 /// Where related notes stand (`kanso_engine::discovery::related::Status`).

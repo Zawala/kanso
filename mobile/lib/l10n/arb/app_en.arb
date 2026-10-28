@@ -118,6 +118,38 @@
   "@noteInfo": {
     "description": "Shows the note's details."
   },
+  "noteMenu": "More",
+  "@noteMenu": {
+    "description": "Opens the menu of what can be done with the open note."
+  },
+  "noteOpenInNewWindow": "Open in New Window",
+  "@noteOpenInNewWindow": {
+    "description": "Shows the open note in a window of its own, beside the app. The desktop's label."
+  },
+  "noteWindowLockedTitle": "Locked note",
+  "@noteWindowLockedTitle": {
+    "description": "What the window list and the app switcher call the window of a locked note, whose title is kept out of them."
+  },
+  "noteWindowInTrash": "This note is in the trash.",
+  "@noteWindowInTrash": {
+    "description": "The banner of a note window whose note was moved to the trash."
+  },
+  "noteWindowNewNote": "New Note",
+  "@noteWindowNewNote": {
+    "description": "Makes a new note, from a note's own window: it is made in the main window."
+  },
+  "noteWindowSearch": "Search All Notes",
+  "@noteWindowSearch": {
+    "description": "Searches all notes, from a note's own window: the search opens in the main window."
+  },
+  "noteWindowClose": "Close Window",
+  "@noteWindowClose": {
+    "description": "Closes a note's own window; the note is saved and the app goes on."
+  },
+  "noteWindowRestore": "Restore",
+  "@noteWindowRestore": {
+    "description": "Takes the note out of the trash, from the banner."
+  },
   "noteRelatedTurnOn": "Turn on Related notes in Settings to see notes about the same things.",
   "@noteRelatedTurnOn": {
     "description": "Explains how to enable related notes from a note's info sheet."
@@ -4548,5 +4580,44 @@
   "libraryTagsFewer": "Fewer",
   "@libraryTagsFewer": {
     "description": "Shows only the most used tags as chips."
+  },
+  "tabsBarLabel": "Tabs",
+  "@tabsBarLabel": {
+    "description": "The accessibility label of the row of tabs above a note on a tablet."
+  },
+  "tabClose": "Close",
+  "@tabClose": {
+    "description": "The menu item that closes a tab (the desktop calls it this too)."
+  },
+  "tabCloseOthers": "Close Others",
+  "@tabCloseOthers": {
+    "description": "The menu item that closes every tab but this one."
+  },
+  "tabCloseRight": "Close Tabs to the Right",
+  "@tabCloseRight": {
+    "description": "The menu item that closes the tabs after this one."
+  },
+  "tabOpenInNewWindow": "Open in New Window",
+  "@tabOpenInNewWindow": {
+    "description": "The menu item that opens a tab's note in a window of its own."
+  },
+  "tabOpenInNewTab": "Open in New Tab",
+  "@tabOpenInNewTab": {
+    "description": "The menu item and the drop hint that open a note in a new tab."
+  },
+  "tabCloseTooltip": "Close tab",
+  "@tabCloseTooltip": {
+    "description": "The accessibility label and tooltip of the close button of a tab."
+  },
+  "tabsAll": "All tabs",
+  "@tabsAll": {
+    "description": "The accessibility label and tooltip of the button that lists every open tab."
+  },
+  "tabLocked": "{title}, locked",
+  "@tabLocked": {
+    "description": "A tab's accessibility label for a locked note.",
+    "placeholders": {
+      "title": {"type": "String"}
+    }
   }
 }

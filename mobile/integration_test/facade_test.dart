@@ -28,6 +28,7 @@ import '../test/core/bridge/suites/locks_suite.dart';
 import '../test/core/bridge/suites/reminders_suite.dart';
 import '../test/core/bridge/suites/renderer_suite.dart';
 import '../test/core/bridge/suites/shared_suite.dart';
+import '../test/core/bridge/suites/shortcuts_suite.dart';
 import '../test/core/bridge/suites/sync_suite.dart';
 import '../test/core/bridge/suites/templates_suite.dart';
 import '../test/helpers/biometric_answer.dart';
@@ -71,6 +72,7 @@ void main() {
   sharedSuite(openDeviceLibrary);
   gallerySuite(openDeviceLibrary);
   editorSuite(openDeviceLibrary);
+  shortcutsSuite(openDeviceLibrary);
   discoverySuite(openDeviceLibrary);
   journalSuite(openDeviceLibrary);
   templatesSuite(openDeviceLibrary);

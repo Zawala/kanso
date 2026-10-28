@@ -8,8 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/reminder_permission.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
-import 'package:kanso/core/views/widgets/kanso_switch.dart';
 import 'package:kanso/core/views/widgets/kanso_settings_row.dart';
+import 'package:kanso/core/views/widgets/kanso_switch.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
 
 import '../../../helpers/close_bloc_later.dart';

@@ -58,6 +58,14 @@ abstract class Preferences with _$Preferences {
     /// own list. Null, or one that is gone or locked, is the first notebook.
     String? defaultNotebookId,
 
+    /// The notes open as tabs on a tablet, left to right (the desktop keeps
+    /// them in its settings too). Notes that are gone by the next start are
+    /// dropped then. Empty on a phone, which has no tabs.
+    @Default(<String>[]) List<String> openTabs,
+
+    /// The index in [openTabs] of the tab that was showing.
+    @Default(0) int activeTab,
+
     /// Whether pictures attached to notes are read on this device for search.
     @Default(false) bool searchImageText,
 

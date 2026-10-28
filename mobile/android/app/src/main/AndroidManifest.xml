@@ -19,6 +19,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:resizeableActivity="true"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
@@ -104,6 +105,24 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/kanso_widget_info" />
         </receiver>
+        <!-- A note in a window of its own: a task per note, beside the app
+             (split screen, freeform), each with an engine of its own
+             (NoteWindows.kt). Android 10 and later show them always. -->
+        <activity
+            android:name=".NoteWindowActivity"
+            android:exported="false"
+            android:documentLaunchMode="always"
+            android:taskAffinity="app.kanso.kanso.note"
+            android:resizeableActivity="true"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+        </activity>
         <receiver
             android:name=".KansoReminderReceiver"
             android:enabled="true"

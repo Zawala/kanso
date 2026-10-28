@@ -89,6 +89,7 @@ pub mod palette;
 pub mod publish;
 pub mod replace;
 pub mod saving;
+pub mod shortcuts;
 pub mod sidebar;
 #[cfg(any(test, feature = "test-support"))]
 pub mod strategies;

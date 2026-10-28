@@ -256,6 +256,54 @@ abstract class AppLocalizations {
   /// **'Note info'**
   String get noteInfo;
 
+  /// Opens the menu of what can be done with the open note.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get noteMenu;
+
+  /// Shows the open note in a window of its own, beside the app. The desktop's label.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in New Window'**
+  String get noteOpenInNewWindow;
+
+  /// What the window list and the app switcher call the window of a locked note, whose title is kept out of them.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked note'**
+  String get noteWindowLockedTitle;
+
+  /// The banner of a note window whose note was moved to the trash.
+  ///
+  /// In en, this message translates to:
+  /// **'This note is in the trash.'**
+  String get noteWindowInTrash;
+
+  /// Makes a new note, from a note's own window: it is made in the main window.
+  ///
+  /// In en, this message translates to:
+  /// **'New Note'**
+  String get noteWindowNewNote;
+
+  /// Searches all notes, from a note's own window: the search opens in the main window.
+  ///
+  /// In en, this message translates to:
+  /// **'Search All Notes'**
+  String get noteWindowSearch;
+
+  /// Closes a note's own window; the note is saved and the app goes on.
+  ///
+  /// In en, this message translates to:
+  /// **'Close Window'**
+  String get noteWindowClose;
+
+  /// Takes the note out of the trash, from the banner.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get noteWindowRestore;
+
   /// Explains how to enable related notes from a note's info sheet.
   ///
   /// In en, this message translates to:
@@ -6111,6 +6159,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Fewer'**
   String get libraryTagsFewer;
+
+  /// The accessibility label of the row of tabs above a note on a tablet.
+  ///
+  /// In en, this message translates to:
+  /// **'Tabs'**
+  String get tabsBarLabel;
+
+  /// The menu item that closes a tab (the desktop calls it this too).
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get tabClose;
+
+  /// The menu item that closes every tab but this one.
+  ///
+  /// In en, this message translates to:
+  /// **'Close Others'**
+  String get tabCloseOthers;
+
+  /// The menu item that closes the tabs after this one.
+  ///
+  /// In en, this message translates to:
+  /// **'Close Tabs to the Right'**
+  String get tabCloseRight;
+
+  /// The menu item that opens a tab's note in a window of its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in New Window'**
+  String get tabOpenInNewWindow;
+
+  /// The menu item and the drop hint that open a note in a new tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in New Tab'**
+  String get tabOpenInNewTab;
+
+  /// The accessibility label and tooltip of the close button of a tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Close tab'**
+  String get tabCloseTooltip;
+
+  /// The accessibility label and tooltip of the button that lists every open tab.
+  ///
+  /// In en, this message translates to:
+  /// **'All tabs'**
+  String get tabsAll;
+
+  /// A tab's accessibility label for a locked note.
+  ///
+  /// In en, this message translates to:
+  /// **'{title}, locked'**
+  String tabLocked(String title);
 }
 
 class _AppLocalizationsDelegate

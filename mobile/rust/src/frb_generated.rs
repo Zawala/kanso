@@ -51,7 +51,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1431274339;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -383077083;
 
 // Section: executor
 
@@ -13528,6 +13528,35 @@ fn wire__crate__api__diagnostics__secrets_probe_impl(
         },
     )
 }
+fn wire__crate__api__shortcuts__shortcut_catalog_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "shortcut_catalog",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::shortcuts::shortcut_catalog())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__diagnostics__tls_ready_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -14763,6 +14792,15 @@ const _: fn() = || {
         let _: u32 = SharedEvent.invitations;
         let _: Vec<String> = SharedEvent.comment_notes;
         let _: Vec<String> = SharedEvent.live_notes;
+    }
+    {
+        let ShortcutEntry = None::<crate::api::types::ShortcutEntry>.unwrap();
+        let _: String = ShortcutEntry.id;
+        let _: String = ShortcutEntry.mac;
+        let _: String = ShortcutEntry.other;
+        let _: crate::api::types::ShortcutPlace = ShortcutEntry.place;
+        let _: String = ShortcutEntry.label;
+        let _: crate::api::types::ShortcutSection = ShortcutEntry.section;
     }
     {
         let SignedUp = None::<crate::api::types::SignedUp>.unwrap();
@@ -16357,6 +16395,13 @@ impl SseDecode for crate::api::types::FormatKind {
             9 => crate::api::types::FormatKind::Image,
             10 => crate::api::types::FormatKind::Table,
             11 => crate::api::types::FormatKind::Rule,
+            12 => crate::api::types::FormatKind::Heading1,
+            13 => crate::api::types::FormatKind::Heading2,
+            14 => crate::api::types::FormatKind::Heading3,
+            15 => crate::api::types::FormatKind::Heading4,
+            16 => crate::api::types::FormatKind::Heading5,
+            17 => crate::api::types::FormatKind::Heading6,
+            18 => crate::api::types::FormatKind::CodeBlock,
             _ => unreachable!("Invalid variant for FormatKind: {}", inner),
         };
     }
@@ -17612,6 +17657,18 @@ impl SseDecode for Vec<crate::api::types::ShareLinkRow> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::types::ShareLinkRow>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::ShortcutEntry> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::ShortcutEntry>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -19693,6 +19750,76 @@ impl SseDecode for crate::api::types::SharedEvent {
     }
 }
 
+impl SseDecode for crate::api::types::ShortcutEntry {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_mac = <String>::sse_decode(deserializer);
+        let mut var_other = <String>::sse_decode(deserializer);
+        let mut var_place = <crate::api::types::ShortcutPlace>::sse_decode(deserializer);
+        let mut var_label = <String>::sse_decode(deserializer);
+        let mut var_section = <crate::api::types::ShortcutSection>::sse_decode(deserializer);
+        return crate::api::types::ShortcutEntry {
+            id: var_id,
+            mac: var_mac,
+            other: var_other,
+            place: var_place,
+            label: var_label,
+            section: var_section,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::ShortcutPlace {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::types::ShortcutPlace::Global,
+            1 => crate::api::types::ShortcutPlace::NoteList,
+            2 => crate::api::types::ShortcutPlace::Editor,
+            3 => crate::api::types::ShortcutPlace::FocusMode,
+            4 => crate::api::types::ShortcutPlace::NoteWindow,
+            5 => crate::api::types::ShortcutPlace::Palette,
+            6 => crate::api::types::ShortcutPlace::TasksView,
+            7 => crate::api::types::ShortcutPlace::BoardView,
+            8 => crate::api::types::ShortcutPlace::CalendarView,
+            9 => crate::api::types::ShortcutPlace::GraphView,
+            10 => crate::api::types::ShortcutPlace::Settings,
+            11 => crate::api::types::ShortcutPlace::SettingsNav,
+            12 => crate::api::types::ShortcutPlace::Capture,
+            _ => unreachable!("Invalid variant for ShortcutPlace: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::ShortcutSection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::types::ShortcutSection::App,
+            1 => crate::api::types::ShortcutSection::File,
+            2 => crate::api::types::ShortcutSection::Edit,
+            3 => crate::api::types::ShortcutSection::Format,
+            4 => crate::api::types::ShortcutSection::View,
+            5 => crate::api::types::ShortcutSection::Go,
+            6 => crate::api::types::ShortcutSection::Note,
+            7 => crate::api::types::ShortcutSection::Window,
+            8 => crate::api::types::ShortcutSection::Tabs,
+            9 => crate::api::types::ShortcutSection::List,
+            10 => crate::api::types::ShortcutSection::Palette,
+            11 => crate::api::types::ShortcutSection::Calendar,
+            12 => crate::api::types::ShortcutSection::Tasks,
+            13 => crate::api::types::ShortcutSection::Board,
+            14 => crate::api::types::ShortcutSection::Graph,
+            15 => crate::api::types::ShortcutSection::Settings,
+            16 => crate::api::types::ShortcutSection::Capture,
+            _ => unreachable!("Invalid variant for ShortcutSection: {}", inner),
+        };
+    }
+}
+
 impl SseDecode for crate::api::types::SignOutReasonKind {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -21454,8 +21581,8 @@ fn pde_ffi_dispatcher_primary_impl(
         }
         266 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
         268 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
-        269 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
-        270 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
+        270 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
+        271 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -21529,6 +21656,7 @@ fn pde_ffi_dispatcher_sync_impl(
         264 => wire__crate__api__discovery__meaning_min_chars_impl(ptr, rust_vec_len, data_len),
         265 => wire__crate__api__discovery__meaning_query_impl(ptr, rust_vec_len, data_len),
         267 => wire__crate__api__library__replace_apply_label_impl(ptr, rust_vec_len, data_len),
+        269 => wire__crate__api__shortcuts__shortcut_catalog_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -22961,6 +23089,13 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::FormatKind>
             crate::api::types::FormatKind::Image => 9.into_dart(),
             crate::api::types::FormatKind::Table => 10.into_dart(),
             crate::api::types::FormatKind::Rule => 11.into_dart(),
+            crate::api::types::FormatKind::Heading1 => 12.into_dart(),
+            crate::api::types::FormatKind::Heading2 => 13.into_dart(),
+            crate::api::types::FormatKind::Heading3 => 14.into_dart(),
+            crate::api::types::FormatKind::Heading4 => 15.into_dart(),
+            crate::api::types::FormatKind::Heading5 => 16.into_dart(),
+            crate::api::types::FormatKind::Heading6 => 17.into_dart(),
+            crate::api::types::FormatKind::CodeBlock => 18.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -25652,6 +25787,99 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::SharedEvent
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::ShortcutEntry> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.id.into_into_dart().into_dart(),
+            self.0.mac.into_into_dart().into_dart(),
+            self.0.other.into_into_dart().into_dart(),
+            self.0.place.into_into_dart().into_dart(),
+            self.0.label.into_into_dart().into_dart(),
+            self.0.section.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::ShortcutEntry>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::ShortcutEntry>>
+    for crate::api::types::ShortcutEntry
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::ShortcutEntry> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::ShortcutPlace> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::types::ShortcutPlace::Global => 0.into_dart(),
+            crate::api::types::ShortcutPlace::NoteList => 1.into_dart(),
+            crate::api::types::ShortcutPlace::Editor => 2.into_dart(),
+            crate::api::types::ShortcutPlace::FocusMode => 3.into_dart(),
+            crate::api::types::ShortcutPlace::NoteWindow => 4.into_dart(),
+            crate::api::types::ShortcutPlace::Palette => 5.into_dart(),
+            crate::api::types::ShortcutPlace::TasksView => 6.into_dart(),
+            crate::api::types::ShortcutPlace::BoardView => 7.into_dart(),
+            crate::api::types::ShortcutPlace::CalendarView => 8.into_dart(),
+            crate::api::types::ShortcutPlace::GraphView => 9.into_dart(),
+            crate::api::types::ShortcutPlace::Settings => 10.into_dart(),
+            crate::api::types::ShortcutPlace::SettingsNav => 11.into_dart(),
+            crate::api::types::ShortcutPlace::Capture => 12.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::ShortcutPlace>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::ShortcutPlace>>
+    for crate::api::types::ShortcutPlace
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::ShortcutPlace> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::ShortcutSection> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::types::ShortcutSection::App => 0.into_dart(),
+            crate::api::types::ShortcutSection::File => 1.into_dart(),
+            crate::api::types::ShortcutSection::Edit => 2.into_dart(),
+            crate::api::types::ShortcutSection::Format => 3.into_dart(),
+            crate::api::types::ShortcutSection::View => 4.into_dart(),
+            crate::api::types::ShortcutSection::Go => 5.into_dart(),
+            crate::api::types::ShortcutSection::Note => 6.into_dart(),
+            crate::api::types::ShortcutSection::Window => 7.into_dart(),
+            crate::api::types::ShortcutSection::Tabs => 8.into_dart(),
+            crate::api::types::ShortcutSection::List => 9.into_dart(),
+            crate::api::types::ShortcutSection::Palette => 10.into_dart(),
+            crate::api::types::ShortcutSection::Calendar => 11.into_dart(),
+            crate::api::types::ShortcutSection::Tasks => 12.into_dart(),
+            crate::api::types::ShortcutSection::Board => 13.into_dart(),
+            crate::api::types::ShortcutSection::Graph => 14.into_dart(),
+            crate::api::types::ShortcutSection::Settings => 15.into_dart(),
+            crate::api::types::ShortcutSection::Capture => 16.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::ShortcutSection>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::ShortcutSection>>
+    for crate::api::types::ShortcutSection
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::ShortcutSection> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::SignOutReasonKind> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
@@ -27615,6 +27843,13 @@ impl SseEncode for crate::api::types::FormatKind {
                 crate::api::types::FormatKind::Image => 9,
                 crate::api::types::FormatKind::Table => 10,
                 crate::api::types::FormatKind::Rule => 11,
+                crate::api::types::FormatKind::Heading1 => 12,
+                crate::api::types::FormatKind::Heading2 => 13,
+                crate::api::types::FormatKind::Heading3 => 14,
+                crate::api::types::FormatKind::Heading4 => 15,
+                crate::api::types::FormatKind::Heading5 => 16,
+                crate::api::types::FormatKind::Heading6 => 17,
+                crate::api::types::FormatKind::CodeBlock => 18,
                 _ => {
                     unimplemented!("");
                 }
@@ -28591,6 +28826,16 @@ impl SseEncode for Vec<crate::api::types::ShareLinkRow> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::types::ShareLinkRow>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::ShortcutEntry> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::ShortcutEntry>::sse_encode(item, serializer);
         }
     }
 }
@@ -30253,6 +30498,76 @@ impl SseEncode for crate::api::types::SharedEvent {
         <u32>::sse_encode(self.invitations, serializer);
         <Vec<String>>::sse_encode(self.comment_notes, serializer);
         <Vec<String>>::sse_encode(self.live_notes, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::ShortcutEntry {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.mac, serializer);
+        <String>::sse_encode(self.other, serializer);
+        <crate::api::types::ShortcutPlace>::sse_encode(self.place, serializer);
+        <String>::sse_encode(self.label, serializer);
+        <crate::api::types::ShortcutSection>::sse_encode(self.section, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::ShortcutPlace {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::types::ShortcutPlace::Global => 0,
+                crate::api::types::ShortcutPlace::NoteList => 1,
+                crate::api::types::ShortcutPlace::Editor => 2,
+                crate::api::types::ShortcutPlace::FocusMode => 3,
+                crate::api::types::ShortcutPlace::NoteWindow => 4,
+                crate::api::types::ShortcutPlace::Palette => 5,
+                crate::api::types::ShortcutPlace::TasksView => 6,
+                crate::api::types::ShortcutPlace::BoardView => 7,
+                crate::api::types::ShortcutPlace::CalendarView => 8,
+                crate::api::types::ShortcutPlace::GraphView => 9,
+                crate::api::types::ShortcutPlace::Settings => 10,
+                crate::api::types::ShortcutPlace::SettingsNav => 11,
+                crate::api::types::ShortcutPlace::Capture => 12,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::types::ShortcutSection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::types::ShortcutSection::App => 0,
+                crate::api::types::ShortcutSection::File => 1,
+                crate::api::types::ShortcutSection::Edit => 2,
+                crate::api::types::ShortcutSection::Format => 3,
+                crate::api::types::ShortcutSection::View => 4,
+                crate::api::types::ShortcutSection::Go => 5,
+                crate::api::types::ShortcutSection::Note => 6,
+                crate::api::types::ShortcutSection::Window => 7,
+                crate::api::types::ShortcutSection::Tabs => 8,
+                crate::api::types::ShortcutSection::List => 9,
+                crate::api::types::ShortcutSection::Palette => 10,
+                crate::api::types::ShortcutSection::Calendar => 11,
+                crate::api::types::ShortcutSection::Tasks => 12,
+                crate::api::types::ShortcutSection::Board => 13,
+                crate::api::types::ShortcutSection::Graph => 14,
+                crate::api::types::ShortcutSection::Settings => 15,
+                crate::api::types::ShortcutSection::Capture => 16,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
     }
 }
 

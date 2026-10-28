@@ -10,6 +10,9 @@ import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/models/data/browse_location.dart';
 import '../../../core/models/data/layout_class.dart';
 import '../../../core/views/widgets/kanso_plain_text.dart';
+import '../../../tabs/views/widgets/tab_actions.dart';
+import '../../../tabs/views/widgets/tabbed_note.dart';
+import '../../../tabs/views/widgets/tabs_sync.dart';
 import '../../state/library_pane/library_pane_bloc.dart';
 import 'kanso_shortcuts.dart';
 import 'library_drawer_host.dart';
@@ -100,7 +103,7 @@ class BrowseShellState extends State<BrowseShell> {
                   );
                 }
 
-                return switch (layoutClass) {
+                final panes = switch (layoutClass) {
                   LayoutClass.single => drawerAround(
                     LayoutClass.single,
                     child!,
@@ -110,7 +113,7 @@ class BrowseShellState extends State<BrowseShell> {
                     LayoutClass.double,
                     ListNoteLayout(
                       list: ListSlot(key: listKey, location: location),
-                      note: child!,
+                      note: TabbedNote(child: child!),
                     ),
                     KansoSizes.libraryPane,
                   ),
@@ -124,7 +127,7 @@ class BrowseShellState extends State<BrowseShell> {
                             LayoutClass.triple,
                             ListNoteLayout(
                               list: ListSlot(key: listKey, location: location),
-                              note: child!,
+                              note: TabbedNote(child: child!),
                             ),
                             KansoSizes.libraryPane,
                           );
@@ -138,12 +141,18 @@ class BrowseShellState extends State<BrowseShell> {
                               designGallery: designGallery,
                             ),
                             list: ListSlot(key: listKey, location: location),
-                            note: child!,
+                            note: TabbedNote(child: child!),
                           ),
                         );
                       },
                     ),
                 };
+                // Tabs are for the layouts with a pane for the note.
+                return TabsSync(
+                  enabled: layoutClass != LayoutClass.single,
+                  location: location,
+                  child: TabActions(child: panes),
+                );
               },
             ),
           ),

@@ -174,11 +174,15 @@ import 'sharing/state/shared_note_live/shared_note_live_bloc.dart' as _i361;
 import 'sharing/state/shared_note_status/shared_note_status_bloc.dart' as _i109;
 import 'shell/state/library_pane/library_pane_bloc.dart' as _i612;
 import 'shell/state/note_creation/note_creation_bloc.dart' as _i34;
+import 'tabs/state/tabs/tabs_bloc.dart' as _i380;
 import 'tasks/state/tasks/tasks_bloc.dart' as _i470;
 import 'templates/state/daily_template/daily_template_bloc.dart' as _i615;
 import 'templates/state/template_picker/template_picker_bloc.dart' as _i828;
 import 'themes/state/theme_gallery/theme_gallery_bloc.dart' as _i569;
 import 'themes/state/theme_picker/theme_picker_bloc.dart' as _i149;
+import 'window/models/repos/abs/note_window_repository.dart' as _i612;
+import 'window/models/repos/impl/platform_note_window_repository.dart' as _i271;
+import 'window/state/note_window/note_window_bloc.dart' as _i973;
 
 const String _development = 'development';
 const String _production = 'production';
@@ -195,6 +199,7 @@ extension GetItInjectableX on _i174.GetIt {
     final pushModule = _$PushModule();
     final crashModule = _$CrashModule();
     final appModule = _$AppModule();
+    final windowModule = _$WindowModule();
     gh.factory<_i612.LibraryPaneBloc>(() => _i612.LibraryPaneBloc());
     gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
     gh.lazySingleton<_i183.ImagePicker>(() => coreModule.imagePicker());
@@ -313,6 +318,10 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i609.LayoutClassNotifier>(),
       ),
     );
+    await gh.singletonAsync<_i612.NoteWindowRepository>(
+      () => windowModule.noteWindows(gh<_i72.LibraryFolder>()),
+      preResolve: true,
+    );
     await gh.singletonAsync<_i455.KansoLibrary>(
       () => coreModule.library(gh<_i72.LibraryFolder>()),
       preResolve: true,
@@ -383,6 +392,12 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i242.ImportRepository>(
       () => _i903.RustImportRepository(gh<_i455.KansoLibrary>()),
     );
+    gh.factory<_i380.TabsBloc>(
+      () => _i380.TabsBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i384.PreferencesRepository>(),
+      ),
+    );
     gh.lazySingleton<_i23.CaptureRepository>(
       () => _i824.RustCaptureRepository(
         gh<_i455.KansoLibrary>(),
@@ -442,9 +457,6 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i907.ListNavigationBloc>(
       () => _i907.ListNavigationBloc(gh<_i38.LibraryRepository>()),
-    );
-    gh.factory<_i272.NavigationHistoryBloc>(
-      () => _i272.NavigationHistoryBloc(gh<_i38.LibraryRepository>()),
     );
     gh.factory<_i991.NewNotebookBloc>(
       () => _i991.NewNotebookBloc(gh<_i38.LibraryRepository>()),
@@ -511,6 +523,10 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i272.WebLinkRepository>(),
         gh<_i900.MediaPickerRepository>(),
       ),
+    );
+    gh.factoryParam<_i272.NavigationHistoryBloc, _i380.TabsBloc?, dynamic>(
+      (_tabs, _) =>
+          _i272.NavigationHistoryBloc(gh<_i38.LibraryRepository>(), _tabs),
     );
     gh.lazySingleton<_i1035.AccountRepository>(
       () =>
@@ -613,6 +629,12 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i601.SyncRepository>(),
       ),
     );
+    gh.factory<_i973.NoteWindowBloc>(
+      () => _i973.NoteWindowBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i333.SessionRepository>(),
+      ),
+    );
     gh.factory<_i149.ThemePickerBloc>(
       () => _i149.ThemePickerBloc(
         gh<_i732.RendererRepository>(),
@@ -693,3 +715,5 @@ class _$PushModule extends _i78.PushModule {}
 class _$CrashModule extends _i1016.CrashModule {}
 
 class _$AppModule extends _i216.AppModule {}
+
+class _$WindowModule extends _i271.WindowModule {}

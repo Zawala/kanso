@@ -24,5 +24,6 @@ pub mod locks;
 pub mod reminders;
 pub mod renderer;
 pub mod shared;
+pub mod shortcuts;
 pub mod sync;
 pub mod types;
