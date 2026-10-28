@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_dialog.dart';
 import '../../state/note_discovery/note_discovery_bloc.dart';
 
 /// A note that is nearly the same as the one currently open.
@@ -40,26 +41,14 @@ class NoteTwinCard extends StatelessWidget {
               ),
               TextButton(
                 onPressed: () async {
-                  final merge = await showDialog<bool>(
-                    context: context,
-                    builder: (dialogContext) => AlertDialog(
-                      title: Text(l10n.noteMeaningMergeTitle),
-                      content: Text(l10n.noteMeaningMergeWarning(twin.title)),
-                      actions: <Widget>[
-                        TextButton(
-                          onPressed: () =>
-                              Navigator.of(dialogContext).pop(false),
-                          child: Text(l10n.cancel),
-                        ),
-                        TextButton(
-                          onPressed: () =>
-                              Navigator.of(dialogContext).pop(true),
-                          child: Text(l10n.noteMeaningMerge),
-                        ),
-                      ],
-                    ),
+                  final merge = await showKansoConfirm(
+                    context,
+                    title: l10n.noteMeaningMergeTitle,
+                    body: l10n.noteMeaningMergeWarning(twin.title),
+                    cancelLabel: l10n.cancel,
+                    confirmLabel: l10n.noteMeaningMerge,
                   );
-                  if ((merge ?? false) && context.mounted) {
+                  if (merge && context.mounted) {
                     context.read<NoteDiscoveryBloc>().add(
                       NoteDiscoveryEvent.notesMerged(twin.id),
                     );
