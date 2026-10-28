@@ -4469,7 +4469,6 @@ dependencies = [
  "kanso-webauthn",
  "lsp-types",
  "markdown",
- "model2vec-rs",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
@@ -4489,7 +4488,6 @@ dependencies = [
  "similar",
  "tar",
  "tempfile",
- "tokenizers",
  "toml 0.8.23",
  "tree-sitter-c-sharp",
  "tree-sitter-swift",
@@ -4549,6 +4547,7 @@ name = "kanso-engine"
 version = "0.8.4"
 dependencies = [
  "anyhow",
+ "async-channel",
  "base64 0.22.1",
  "chrono",
  "fastrand",
@@ -4559,6 +4558,8 @@ dependencies = [
  "kanso-render",
  "kanso-store",
  "kanso-sync",
+ "kanso-tls",
+ "model2vec-rs",
  "proptest",
  "rusqlite",
  "serde",
@@ -4566,6 +4567,7 @@ dependencies = [
  "sha2 0.11.1",
  "similar",
  "tempfile",
+ "tokenizers",
  "tree-sitter",
  "tree-sitter-bash",
  "tree-sitter-c",
@@ -4592,6 +4594,7 @@ dependencies = [
  "tree-sitter-yaml",
  "unicode-segmentation",
  "unicode-width",
+ "ureq",
 ]
 
 [[package]]

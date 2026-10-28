@@ -7,6 +7,7 @@ import '../frb_generated.dart';
 import 'account.dart';
 import 'account_settings.dart';
 import 'approvals.dart';
+import 'discovery.dart';
 import 'editor.dart';
 import 'gallery.dart';
 import 'linking.dart';
@@ -46,6 +47,8 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// The backups, newest first.
   Future<List<BackupFile>> backups();
 
+  Future<BoardView> board({required BoardKind kind, required ListQuery query});
+
   /// Saves something shared from inside the app as a note in the Inbox.
   Future<CaptureOutcome> capture({required Share share});
 
@@ -69,6 +72,13 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// Names a tag `name`, making it; returns the tag.
   Future<TagRow> createTag({required String name});
 
+  static DayDate? dailyDateOf({required String noteId}) => KansoCore
+      .instance
+      .api
+      .crateApiLibraryKansoLibraryDailyDateOf(noteId: noteId);
+
+  Future<String?> dailyTemplate();
+
   /// Deletes a backup made with `back_up_now`; refuses any other.
   Future<void> deleteBackup({required String path});
 
@@ -78,6 +88,18 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   /// Deletes tag `id`, and takes it off the notes that had it.
   Future<void> deleteTag({required String id});
+
+  KansoDiscovery discovery();
+
+  static DueChipRow? dueChip({
+    required String due,
+    required bool checked,
+    required LocalTime now,
+  }) => KansoCore.instance.api.crateApiLibraryKansoLibraryDueChip(
+    due: due,
+    checked: checked,
+    now: now,
+  );
 
   /// Copies note `id` as the desktop does; returns the copy.
   Future<Saved> duplicate({required String id});
@@ -105,11 +127,50 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// once; the work runs on a thread of its own.
   Stream<ImportEvent> importPlan({required String kind, required String path});
 
+  Future<MonthGrid> journalMonth({
+    required int year,
+    required int month,
+    required int weekStart,
+    required DayDate today,
+  });
+
+  Future<MadeNote> journalOpenDay({
+    required DayDate day,
+    required LocalTime now,
+  });
+
+  Future<MadeNote?> journalStep({
+    String? openNote,
+    required LocalTime now,
+    required bool forward,
+  });
+
+  Future<MadeNote> journalToday({required LocalTime now});
+
+  static int journalWeekStart({required int firstWeekday}) => KansoCore
+      .instance
+      .api
+      .crateApiLibraryKansoLibraryJournalWeekStart(firstWeekday: firstWeekday);
+
   KansoLinking linking();
 
   Future<NoteList> list({required ListQuery query});
 
   KansoLocks locks();
+
+  Future<CardMoved> moveCard({
+    required CardKey card,
+    required BoardLane to,
+    required int nowMs,
+  });
+
+  Future<MadeNote> newFromTemplate({
+    required String templateId,
+    String? bookId,
+    required LocalTime now,
+  });
+
+  Future<MadeNote> newTemplate();
 
   Future<NoteView> note({required String id});
 
@@ -154,6 +215,25 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   Future<Table> queryView({required String source, String? selfId});
 
+  Future<TaskPlace?> reminderAnswer({
+    required String key,
+    required ReminderAnswer answer,
+    required int nowUtcMs,
+  });
+
+  Future<void> remindersForget({
+    required List<String> keys,
+    required int nowUtcMs,
+  });
+
+  Future<void> remindersForgetFuture({required int nowUtcMs});
+
+  Future<ReminderPlan> remindersPlan({
+    required int nowUtcMs,
+    required int offsetMs,
+    required bool canNotify,
+  });
+
   /// Renames notebook `id`; names needn't be unique.
   Future<void> renameNotebook({required String id, required String name});
 
@@ -196,6 +276,8 @@ abstract class KansoLibrary implements RustOpaqueInterface {
     required SearchScope scope,
     required int limit,
   });
+
+  Future<void> setDailyTemplate({String? templateId});
 
   /// Sets notebook `id`'s colour to `color` (`#RRGGBB`), or takes its own
   /// colour away with null.
@@ -240,6 +322,8 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   /// The Tasks place: open tasks across the notes, in groups; locked
   /// notes are left out.
   Future<TaskBoard> tasks({required TaskListQuery query});
+
+  Future<List<TemplateRow>> templates();
 
   /// The ID of today's daily note at the phone's local time `now`, made
   /// if it isn't there.

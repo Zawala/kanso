@@ -390,7 +390,8 @@ void main() {
         all: 150,
         pinned: 3,
         recent: 11,
-        trash: 4, byStatus: <StatusCount>[],
+        trash: 4,
+        byStatus: <StatusCount>[],
       );
       library.changeStream.add(<String>['note:new']);
       await tester.pump(const Duration(milliseconds: 150));

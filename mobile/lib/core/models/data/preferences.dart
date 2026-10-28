@@ -65,6 +65,13 @@ abstract class Preferences with _$Preferences {
 
     /// The index in [openTabs] of the tab that was showing.
     @Default(0) int activeTab,
+
+    /// Whether pictures attached to notes are read on this device for search.
+    @Default(false) bool searchImageText,
+
+    /// Whether this phone may show reminders for tasks with a due time.
+    /// Notification permission is asked separately by the operating system.
+    @Default(true) bool remindersEnabled,
   }) = _Preferences;
 
   factory Preferences.fromJson(Map<String, dynamic> json) =>

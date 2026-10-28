@@ -28,10 +28,14 @@ import 'package:kanso/lock/state/biometrics/biometrics_bloc.dart';
 import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/push/state/push_setting/push_setting_bloc.dart';
 import 'package:kanso/push/views/widgets/push_setting_notice.dart';
+import 'package:kanso/reminders/state/reminders_settings/reminders_settings_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/discovery/discovery_settings_bloc.dart';
 import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
+import 'package:kanso/settings/views/widgets/discovery_setting_switch_row.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
+import 'package:kanso/templates/state/daily_template/daily_template_bloc.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../../helpers/close_bloc_later.dart';
@@ -74,6 +78,14 @@ Finder _switchOf(String label) => find.descendant(
     matching: find.byWidgetPredicate(
       (widget) => widget is KansoSettingsRow || widget is KansoDetailRow,
     ),
+  ),
+  matching: find.byType(KansoSwitch),
+);
+
+Finder _discoverySwitchOf(String label) => find.descendant(
+  of: find.ancestor(
+    of: find.text(label),
+    matching: find.byType(DiscoverySettingSwitchRow),
   ),
   matching: find.byType(KansoSwitch),
 );
@@ -140,8 +152,13 @@ Future<_Settings> _pump(
         BlocProvider<LockStatusBloc>.value(value: lockBloc),
         BlocProvider<BiometricsBloc>.value(value: biometricsBloc),
         BlocProvider<PushSettingBloc>.value(value: pushBloc),
+        BlocProvider<DiscoverySettingsBloc>.value(
+          value: blocs.discoverySettings,
+        ),
         BlocProvider<LibraryIndexBloc>.value(value: blocs.index),
         BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
+        BlocProvider<DailyTemplateBloc>.value(value: blocs.dailyTemplate),
+        BlocProvider<RemindersSettingsBloc>.value(value: blocs.reminders),
       ],
       child: const SettingsPane(),
     ),
@@ -204,6 +221,28 @@ void main() {
         expect(find.text(label), findsNothing, reason: label);
       }
       expect(find.textContaining('Wake this device'), findsNothing);
+    });
+
+    testWidgets('Discovery switches update the live and persisted choices', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      await tester.ensureVisible(find.text('Related notes'));
+      await tester.pumpAndSettle();
+      await tester.tap(_discoverySwitchOf('Related notes'));
+      await tester.pumpAndSettle();
+      final discovery = tester
+          .element(find.byType(SettingsPane))
+          .read<DiscoverySettingsBloc>();
+      expect(discovery.state.relatedEnabled, isTrue);
+
+      await tester.ensureVisible(find.text('Search text in images'));
+      await tester.pumpAndSettle();
+      await tester.tap(_discoverySwitchOf('Search text in images'));
+      await tester.pumpAndSettle();
+      expect(discovery.state.ocrEnabled, isTrue);
+      expect(find.text('Reading images… 0 to go.'), findsOneWidget);
     });
 
     testWidgets('the Default notebook row says the first notebook until one '
@@ -529,6 +568,8 @@ void main() {
 
     testWidgets('the Website row opens the website', (tester) async {
       final screen = await _pump(tester);
+      await tester.ensureVisible(find.text('Website'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Website'));
       await tester.pump();
       verify(screen.about.openWebsite).called(1);
@@ -538,6 +579,8 @@ void main() {
       tester,
     ) async {
       final screen = await _pump(tester);
+      await tester.ensureVisible(find.text('Release notes'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Release notes'));
       await tester.pump();
       verify(screen.about.openReleaseNotes).called(1);
@@ -546,6 +589,8 @@ void main() {
 
     testWidgets('the Help row opens the help page', (tester) async {
       final screen = await _pump(tester);
+      await tester.ensureVisible(find.text('Help'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Help'));
       await tester.pump();
       verify(screen.about.openHelp).called(1);
@@ -556,25 +601,35 @@ void main() {
       tester,
     ) async {
       final screen = await _pump(tester);
+      await tester.ensureVisible(find.text('Theme'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Theme'));
       await tester.pumpAndSettle();
       expect(topOf(screen.router), '/settings/theme');
       screen.router.pop();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Icons'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Icons'));
       await tester.pumpAndSettle();
       expect(topOf(screen.router), '/settings/icons');
       screen.router.pop();
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Fonts'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Fonts'));
       await tester.pumpAndSettle();
       expect(topOf(screen.router), '/settings/fonts');
       screen.router.pop();
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Text size'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Text size'));
       await tester.pumpAndSettle();
       expect(topOf(screen.router), '/settings/fonts');
       screen.router.pop();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Licences'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Licences'));
       await tester.pumpAndSettle();

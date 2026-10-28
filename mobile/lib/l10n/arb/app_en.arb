@@ -32,10 +32,6 @@
   "@libraryTrash": {
     "description": "The library row for deleted notes."
   },
-  "libraryStatuses": "Status",
-  "@libraryStatuses": {
-    "description": "The label above the notes' statuses, and what a status is called when it has no notes."
-  },
   "openSettings": "Settings",
   "@openSettings": {
     "description": "What the settings button does."
@@ -80,6 +76,10 @@
         "type": "int"
       }
     }
+  },
+  "searchMeaningTitle": "Found by meaning",
+  "@searchMeaningTitle": {
+    "description": "Notes found by semantic similarity to the search words."
   },
   "noteListCount": "{count, plural, =1{1 note} other{{count} notes}}",
   "@noteListCount": {
@@ -149,6 +149,79 @@
   "noteWindowRestore": "Restore",
   "@noteWindowRestore": {
     "description": "Takes the note out of the trash, from the banner."
+  },
+  "noteRelatedTurnOn": "Turn on Related notes in Settings to see notes about the same things.",
+  "@noteRelatedTurnOn": {
+    "description": "Explains how to enable related notes from a note's info sheet."
+  },
+  "noteRelatedTitle": "Related",
+  "@noteRelatedTitle": {
+    "description": "The related notes section in the note information sheet."
+  },
+  "noteRelatedEmpty": "No related notes yet.",
+  "@noteRelatedEmpty": {
+    "description": "An enabled related notes section has no suggestions."
+  },
+  "noteMeaning": "What the meaning says",
+  "@noteMeaning": {
+    "description": "Suggested tags and a nearly duplicate note for this note."
+  },
+  "noteMeaningTwin": "Nearly the same as {title} — {percent}%",
+  "@noteMeaningTwin": {
+    "description": "Names a note that is probably a duplicate.",
+    "placeholders": {
+      "title": { "type": "String" },
+      "percent": { "type": "int" }
+    }
+  },
+  "noteMeaningDismiss": "Dismiss",
+  "@noteMeaningDismiss": {
+    "description": "Dismisses the suggested duplicate note."
+  },
+  "noteMeaningMerge": "Merge",
+  "@noteMeaningMerge": {
+    "description": "Merges the suggested duplicate into the open note."
+  },
+  "noteMeaningMergeTitle": "Merge notes?",
+  "@noteMeaningMergeTitle": {
+    "description": "Asks before merging two notes."
+  },
+  "noteMeaningMergeWarning": "{title} will go to the trash. Its contents are kept in this note.",
+  "@noteMeaningMergeWarning": {
+    "description": "Explains what happens to the other note when merged.",
+    "placeholders": { "title": { "type": "String" } }
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Cancels a dialog or action."
+  },
+  "graphTitle": "Graph",
+  "@graphTitle": {
+    "description": "The linked notes graph screen and library entry."
+  },
+  "graphLocal": "Local graph",
+  "@graphLocal": {
+    "description": "Opens the graph around this note."
+  },
+  "graphFilterAll": "All notes",
+  "@graphFilterAll": {
+    "description": "Shows the whole library graph."
+  },
+  "graphFilterNotebook": "Notebook",
+  "@graphFilterNotebook": {
+    "description": "Filters the graph by notebook."
+  },
+  "graphFilterTag": "Tag",
+  "@graphFilterTag": {
+    "description": "Filters the graph by tag."
+  },
+  "graphEmpty": "No linked notes to show.",
+  "@graphEmpty": {
+    "description": "The graph contains no linked notes."
+  },
+  "graphFailed": "Couldn't load the graph.",
+  "@graphFailed": {
+    "description": "Explains that the graph could not be read."
   },
   "noteMetaCreated": "Created",
   "@noteMetaCreated": {
@@ -266,6 +339,39 @@
   "settingsSync": "Sync",
   "@settingsSync": {
     "description": "A section of settings."
+  },
+  "settingsDiscovery": "Discovery",
+  "@settingsDiscovery": {
+    "description": "The section of settings for related notes and image text recognition."
+  },
+  "discoveryRelated": "Related notes",
+  "@discoveryRelated": {
+    "description": "Enables notes about the same things as the open note."
+  },
+  "discoveryRelatedDetail": "Lists notes about the same things as the open one, beside it. Turning this on downloads a small language model (about 30 MB) once. It runs on this device: nothing about your notes is sent anywhere.",
+  "@discoveryRelatedDetail": {
+    "description": "Explains local related note suggestions and the first download."
+  },
+  "discoveryTryAgain": "Try Again",
+  "@discoveryTryAgain": {
+    "description": "Retries downloading or indexing the related notes model."
+  },
+  "discoverySearchImages": "Search text in images",
+  "@discoverySearchImages": {
+    "description": "Enables local text recognition for attached pictures."
+  },
+  "discoverySearchImagesDetail": "Reads the words in pictures you attach, on this device, so search finds the notes they're in. The words sync with the picture.",
+  "@discoverySearchImagesDetail": {
+    "description": "Explains local OCR and that its text syncs with its picture."
+  },
+  "discoveryReadingImages": "Reading images… {count} to go.",
+  "@discoveryReadingImages": {
+    "description": "Shows how many pictures remain in the on-device OCR queue.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "settingsAbout": "About",
   "@settingsAbout": {
@@ -718,19 +824,6 @@
   "emptyTagMessage": "Notes with this tag will appear in this list.",
   "@emptyTagMessage": {
     "description": "What the empty list of a tag's notes says."
-  },
-  "emptyStatusTitle": "No notes marked {status}",
-  "@emptyStatusTitle": {
-    "description": "The title shown when no note has the status.",
-    "placeholders": {
-      "status": {
-        "type": "String"
-      }
-    }
-  },
-  "emptyStatusMessage": "Notes with this status will appear in this list.",
-  "@emptyStatusMessage": {
-    "description": "What the empty list of a status's notes says."
   },
   "emptyNarrowedTitle": "No notes match",
   "@emptyNarrowedTitle": {
@@ -3261,18 +3354,6 @@
   "@lockMoreTitle": {
     "description": "The title of the note's menu."
   },
-  "noteExportPdf": "Export as PDF",
-  "@noteExportPdf": {
-    "description": "The note's menu row that writes it as a PDF to share."
-  },
-  "noteExportPreparing": "Preparing the PDF",
-  "@noteExportPreparing": {
-    "description": "What is shown while a note is being written as a PDF."
-  },
-  "noteExportFailed": "The note could not be exported.",
-  "@noteExportFailed": {
-    "description": "Said when a note could not be written as a PDF."
-  },
   "lockNotebookMenuTitle": "Notebook actions",
   "@lockNotebookMenuTitle": {
     "description": "The title of the notebook's menu."
@@ -3978,6 +4059,339 @@
   "replaceProblemSearch": "The notes couldn’t be searched.",
   "@replaceProblemSearch": {
     "description": "Says the preview could not be made."
+  },
+  "journalPreviousDay": "Previous day",
+  "@journalPreviousDay": {
+    "description": "What the button that opens the day before a daily note does."
+  },
+  "journalNextDay": "Next day",
+  "@journalNextDay": {
+    "description": "What the button that opens the day after a daily note does."
+  },
+  "journalCalendar": "Calendar",
+  "@journalCalendar": {
+    "description": "The button, and the sheet's menu row, that open the journal's calendar."
+  },
+  "journalTodaysNote": "Today’s note",
+  "@journalTodaysNote": {
+    "description": "The menu row that opens today's daily note."
+  },
+  "journalCalendarTitle": "Journal",
+  "@journalCalendarTitle": {
+    "description": "The title of the calendar sheet."
+  },
+  "journalFailed": "Couldn’t make that note. Try again.",
+  "@journalFailed": {
+    "description": "The line shown when a daily note, or a note from a template, could not be made."
+  },
+  "calendarPreviousMonth": "Previous month",
+  "@calendarPreviousMonth": {
+    "description": "What the calendar's back button does."
+  },
+  "calendarNextMonth": "Next month",
+  "@calendarNextMonth": {
+    "description": "What the calendar's forward button does."
+  },
+  "calendarToday": "Today",
+  "@calendarToday": {
+    "description": "The calendar button that shows today's month."
+  },
+  "calendarHint": "A dot marks a day with a note. Tap a day to open it, or to start it from the daily template.",
+  "@calendarHint": {
+    "description": "The note under the calendar."
+  },
+  "calendarFailed": "The calendar couldn’t be read.",
+  "@calendarFailed": {
+    "description": "The line shown when the calendar's month could not be read."
+  },
+  "calendarDayLabel": "{date}",
+  "@calendarDayLabel": {
+    "description": "What a screen reader says for a day of the calendar.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "calendarDayWithNote": "{date}, has a note",
+  "@calendarDayWithNote": {
+    "description": "What a screen reader says for a day of the calendar that has a note.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "calendarDayToday": "{date}, today",
+  "@calendarDayToday": {
+    "description": "What a screen reader says for today in the calendar.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "calendarDayTodayWithNote": "{date}, today, has a note",
+  "@calendarDayTodayWithNote": {
+    "description": "What a screen reader says for today in the calendar when it has a note.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "newMenuTitle": "New",
+  "@newMenuTitle": {
+    "description": "The title of the sheet opened by the new button of a list."
+  },
+  "newMenuLabel": "New",
+  "@newMenuLabel": {
+    "description": "What the new button of a list does."
+  },
+  "newFromTemplate": "New from template…",
+  "@newFromTemplate": {
+    "description": "The menu row that makes a note from a template."
+  },
+  "newTemplate": "New template",
+  "@newTemplate": {
+    "description": "The menu row that makes a template."
+  },
+  "templatePickerTitle": "New from template",
+  "@templatePickerTitle": {
+    "description": "The title of the sheet that lists the templates."
+  },
+  "templatesEmptyTitle": "No templates yet",
+  "@templatesEmptyTitle": {
+    "description": "The title shown when the Templates notebook has no notes."
+  },
+  "templatesEmptyMessage": "Notes in the Templates notebook show here. New template makes one.",
+  "@templatesEmptyMessage": {
+    "description": "Says what the template list will hold."
+  },
+  "templatesFailed": "The templates couldn’t be read.",
+  "@templatesFailed": {
+    "description": "The line shown when the templates could not be read."
+  },
+  "settingsDailyNotes": "Daily notes",
+  "@settingsDailyNotes": {
+    "description": "A section of settings."
+  },
+  "settingsDailyTemplate": "Daily template",
+  "@settingsDailyTemplate": {
+    "description": "The settings row that chooses the template new daily notes start from."
+  },
+  "dailyTemplateNone": "None",
+  "@dailyTemplateNone": {
+    "description": "The daily template choice that starts daily notes empty."
+  },
+  "dailyTemplateDetail": "New daily notes start from this template, with {date}, {time} and {cursor} filled in.",
+  "@dailyTemplateDetail": {
+    "description": "The note under the daily template row when there are templates.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      },
+      "cursor": {
+        "type": "String"
+      }
+    }
+  },
+  "dailyTemplateDetailEmpty": "New daily notes start empty. Notes in the Templates notebook can be chosen here; New template makes one.",
+  "@dailyTemplateDetailEmpty": {
+    "description": "The note under the daily template row when there are no templates."
+  },
+  "dailyTemplateFailed": "Couldn’t set the daily template.",
+  "@dailyTemplateFailed": {
+    "description": "The line shown when the daily template could not be set."
+  },
+  "settingsReminders": "Reminders",
+  "@settingsReminders": {
+    "description": "A section of settings."
+  },
+  "settingsRemindMe": "Remind me of tasks",
+  "@settingsRemindMe": {
+    "description": "The settings row that turns task reminders on and off."
+  },
+  "settingsRemindersDetail": "A notification when a task with a time comes due, like “- [ ] Call Sam @2026-10-25T09:00”.",
+  "@settingsRemindersDetail": {
+    "description": "The note under the reminders row."
+  },
+  "settingsRemindersDenied": "Notifications are turned off for Kanso. Allow them in your device’s settings to get reminders.",
+  "@settingsRemindersDenied": {
+    "description": "The note under the reminders row when the system does not let Kanso show notifications."
+  },
+  "settingsRemindersFailed": "Couldn’t save that setting.",
+  "@settingsRemindersFailed": {
+    "description": "The line shown when the reminders switch could not be saved."
+  },
+  "listOptionsBoard": "Board",
+  "@listOptionsBoard": {
+    "description": "The row of the list menu that shows the list as a board."
+  },
+  "boardTitle": "Board",
+  "@boardTitle": {
+    "description": "The title of the board page."
+  },
+  "boardNotes": "Notes",
+  "@boardNotes": {
+    "description": "The board choice that lays notes out by status."
+  },
+  "boardTasks": "Tasks",
+  "@boardTasks": {
+    "description": "The board choice that lays tasks out as To do and Done."
+  },
+  "boardKindLabel": "Board",
+  "@boardKindLabel": {
+    "description": "Names the control that switches between the notes and the tasks board."
+  },
+  "boardClose": "Close board",
+  "@boardClose": {
+    "description": "What the board's close button does."
+  },
+  "boardLaneNoStatus": "No status",
+  "@boardLaneNoStatus": {
+    "description": "The board column of notes with no status."
+  },
+  "boardLaneTodo": "To do",
+  "@boardLaneTodo": {
+    "description": "The board column of tasks not yet done."
+  },
+  "boardLaneDone": "Done",
+  "@boardLaneDone": {
+    "description": "The board column of tasks that are done."
+  },
+  "boardEmptyNotesTitle": "No notes here",
+  "@boardEmptyNotesTitle": {
+    "description": "The title of a notes board with no notes."
+  },
+  "boardEmptyNotesMessage": "Notes in this list show here, a column for each status.",
+  "@boardEmptyNotesMessage": {
+    "description": "Says what the notes board will hold."
+  },
+  "boardEmptyTasksTitle": "No tasks in these notes",
+  "@boardEmptyTasksTitle": {
+    "description": "The title of a tasks board with no tasks."
+  },
+  "boardEmptyTasksMessage": "Write “- [ ] Call Sam” in a note, and it shows here.",
+  "@boardEmptyTasksMessage": {
+    "description": "Says what the tasks board will hold."
+  },
+  "boardHintNotes": "Touch and hold a card to move it to another status.",
+  "@boardHintNotes": {
+    "description": "The hint under a notes board on a phone."
+  },
+  "boardHintTasks": "Tick a task to do it, or touch and hold it to move it.",
+  "@boardHintTasks": {
+    "description": "The hint under a tasks board on a phone."
+  },
+  "boardHintNotesDrag": "Drag a card to change its status.",
+  "@boardHintNotesDrag": {
+    "description": "The hint under a notes board on a tablet."
+  },
+  "boardHintTasksDrag": "Drag a task to Done to tick it off.",
+  "@boardHintTasksDrag": {
+    "description": "The hint under a tasks board on a tablet."
+  },
+  "boardMoveTo": "Move to…",
+  "@boardMoveTo": {
+    "description": "The action that moves a board card to another column."
+  },
+  "boardMoveSheetTitle": "Move to",
+  "@boardMoveSheetTitle": {
+    "description": "The title of the sheet that lists the columns to move a card to."
+  },
+  "boardMoveFailed": "Couldn’t move the card.",
+  "@boardMoveFailed": {
+    "description": "The line shown when moving a board card failed."
+  },
+  "boardChangedInNote": "That task changed in its note. The board is up to date now.",
+  "@boardChangedInNote": {
+    "description": "The line shown when a task moved in its note while it was being moved on the board."
+  },
+  "boardFailedTitle": "The board didn’t load",
+  "@boardFailedTitle": {
+    "description": "The title of the card shown when the board could not be read."
+  },
+  "boardFailedMessage": "Something went wrong reading the notes on this device. Try again.",
+  "@boardFailedMessage": {
+    "description": "The message of the card shown when the board could not be read."
+  },
+  "boardTaskCount": "{done}/{total} tasks",
+  "@boardTaskCount": {
+    "description": "A note card's count of the tasks it has done.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "boardColumnLabel": "{lane}, {count, plural, =1{1 card} other{{count} cards}}",
+  "@boardColumnLabel": {
+    "description": "What a screen reader says for a board column.",
+    "placeholders": {
+      "lane": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "boardTickTask": "Mark done",
+  "@boardTickTask": {
+    "description": "What the checkbox of a task card does when the task is not done."
+  },
+  "boardUntickTask": "Mark not done",
+  "@boardUntickTask": {
+    "description": "What the checkbox of a task card does when the task is done."
+  },
+  "boardTaskDue": "Due {when}",
+  "@boardTaskDue": {
+    "description": "What a screen reader says for a task card's due time.",
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "boardNoticeDismiss": "OK",
+  "@boardNoticeDismiss": {
+    "description": "Closes a notice on the board."
+  },
+  "libraryStatuses": "Status",
+  "@libraryStatuses": {
+    "description": "The label above the notes' statuses, and what a status is called when it has no notes."
+  },
+  "emptyStatusTitle": "No notes marked {status}",
+  "@emptyStatusTitle": {
+    "description": "The title shown when no note has the status.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "emptyStatusMessage": "Notes with this status will appear in this list.",
+  "@emptyStatusMessage": {
+    "description": "What the empty list of a status's notes says."
+  },
+  "noteExportPdf": "Export as PDF",
+  "@noteExportPdf": {
+    "description": "The note's menu row that writes it as a PDF to share."
+  },
+  "noteExportPreparing": "Preparing the PDF",
+  "@noteExportPreparing": {
+    "description": "What is shown while a note is being written as a PDF."
+  },
+  "noteExportFailed": "The note could not be exported.",
+  "@noteExportFailed": {
+    "description": "Said when a note could not be written as a PDF."
   },
   "libraryNewSubNotebook": "New Sub-notebook",
   "@libraryNewSubNotebook": {
