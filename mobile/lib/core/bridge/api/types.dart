@@ -896,6 +896,45 @@ class DiffLine {
           changed == other.changed;
 }
 
+class DiscoveryMeasure {
+  final int modelBytes;
+  final int loadMs;
+  final int? residentBefore;
+  final int? residentAfter;
+  final int notes;
+  final double notesPerSecond;
+
+  const DiscoveryMeasure({
+    required this.modelBytes,
+    required this.loadMs,
+    this.residentBefore,
+    this.residentAfter,
+    required this.notes,
+    required this.notesPerSecond,
+  });
+
+  @override
+  int get hashCode =>
+      modelBytes.hashCode ^
+      loadMs.hashCode ^
+      residentBefore.hashCode ^
+      residentAfter.hashCode ^
+      notes.hashCode ^
+      notesPerSecond.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DiscoveryMeasure &&
+          runtimeType == other.runtimeType &&
+          modelBytes == other.modelBytes &&
+          loadMs == other.loadMs &&
+          residentBefore == other.residentBefore &&
+          residentAfter == other.residentAfter &&
+          notes == other.notes &&
+          notesPerSecond == other.notesPerSecond;
+}
+
 class DropsSaved {
   final List<String> notes;
   final List<String> problems;
@@ -1339,6 +1378,132 @@ enum GalleryKind {
   iconTheme,
 }
 
+class GraphEdgeRow {
+  final int from;
+  final int to;
+
+  const GraphEdgeRow({
+    required this.from,
+    required this.to,
+  });
+
+  @override
+  int get hashCode => from.hashCode ^ to.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GraphEdgeRow &&
+          runtimeType == other.runtimeType &&
+          from == other.from &&
+          to == other.to;
+}
+
+@freezed
+sealed class GraphFilter with _$GraphFilter {
+  const GraphFilter._();
+
+  const factory GraphFilter.all() = GraphFilter_All;
+  const factory GraphFilter.book({
+    required String id,
+  }) = GraphFilter_Book;
+  const factory GraphFilter.tag({
+    required String id,
+  }) = GraphFilter_Tag;
+}
+
+class GraphLayout {
+  final List<GraphNodeRow> nodes;
+  final List<GraphEdgeRow> edges;
+  final int linkCount;
+
+  const GraphLayout({
+    required this.nodes,
+    required this.edges,
+    required this.linkCount,
+  });
+
+  @override
+  int get hashCode => nodes.hashCode ^ edges.hashCode ^ linkCount.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GraphLayout &&
+          runtimeType == other.runtimeType &&
+          nodes == other.nodes &&
+          edges == other.edges &&
+          linkCount == other.linkCount;
+}
+
+class GraphNodeRow {
+  final String id;
+  final String title;
+  final String notebookId;
+  final int degree;
+  final double x;
+  final double y;
+  final double radius;
+  final int colorLight;
+  final int colorDark;
+  final bool isCenter;
+
+  const GraphNodeRow({
+    required this.id,
+    required this.title,
+    required this.notebookId,
+    required this.degree,
+    required this.x,
+    required this.y,
+    required this.radius,
+    required this.colorLight,
+    required this.colorDark,
+    required this.isCenter,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      title.hashCode ^
+      notebookId.hashCode ^
+      degree.hashCode ^
+      x.hashCode ^
+      y.hashCode ^
+      radius.hashCode ^
+      colorLight.hashCode ^
+      colorDark.hashCode ^
+      isCenter.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GraphNodeRow &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          title == other.title &&
+          notebookId == other.notebookId &&
+          degree == other.degree &&
+          x == other.x &&
+          y == other.y &&
+          radius == other.radius &&
+          colorLight == other.colorLight &&
+          colorDark == other.colorDark &&
+          isCenter == other.isCenter;
+}
+
+@freezed
+sealed class GraphRequest with _$GraphRequest {
+  const GraphRequest._();
+
+  const factory GraphRequest.library_({
+    required GraphFilter filter,
+  }) = GraphRequest_Library;
+  const factory GraphRequest.local({
+    required String center,
+    required int hops,
+  }) = GraphRequest_Local;
+}
+
 class HistoryState {
   final bool canUndo;
   final bool canRedo;
@@ -1447,6 +1612,30 @@ class IconThemeRow {
           source == other.source &&
           description == other.description &&
           preview == other.preview;
+}
+
+class ImageToRead {
+  final String id;
+  final String md5;
+  final Uint8List bytes;
+
+  const ImageToRead({
+    required this.id,
+    required this.md5,
+    required this.bytes,
+  });
+
+  @override
+  int get hashCode => id.hashCode ^ md5.hashCode ^ bytes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ImageToRead &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          md5 == other.md5 &&
+          bytes == other.bytes;
 }
 
 @freezed
@@ -2045,6 +2234,17 @@ class MadeNote {
           titleFirst == other.titleFirst;
 }
 
+@freezed
+sealed class MeaningResult with _$MeaningResult {
+  const MeaningResult._();
+
+  const factory MeaningResult.off() = MeaningResult_Off;
+  const factory MeaningResult.noModel() = MeaningResult_NoModel;
+  const factory MeaningResult.found({
+    required List<RelatedRow> rows,
+  }) = MeaningResult_Found;
+}
+
 class MemberRow {
   final String accountId;
   final String username;
@@ -2267,6 +2467,27 @@ class NoteList {
           runtimeType == other.runtimeType &&
           rows == other.rows &&
           shape == other.shape;
+}
+
+class NoteMeaning {
+  final List<SuggestedTag> tags;
+  final TwinRow? twin;
+
+  const NoteMeaning({
+    required this.tags,
+    this.twin,
+  });
+
+  @override
+  int get hashCode => tags.hashCode ^ twin.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NoteMeaning &&
+          runtimeType == other.runtimeType &&
+          tags == other.tags &&
+          twin == other.twin;
 }
 
 class NoteRow {
@@ -2958,6 +3179,80 @@ class RecoveryKeyText {
           key == other.key;
 }
 
+class RelatedRow {
+  final String id;
+  final String title;
+  final double score;
+  final String label;
+
+  const RelatedRow({
+    required this.id,
+    required this.title,
+    required this.score,
+    required this.label,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^ title.hashCode ^ score.hashCode ^ label.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RelatedRow &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          title == other.title &&
+          score == other.score &&
+          label == other.label;
+}
+
+class RelatedState {
+  final RelatedStatus status;
+  final String? title;
+  final String? detail;
+
+  const RelatedState({
+    required this.status,
+    this.title,
+    this.detail,
+  });
+
+  @override
+  int get hashCode => status.hashCode ^ title.hashCode ^ detail.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RelatedState &&
+          runtimeType == other.runtimeType &&
+          status == other.status &&
+          title == other.title &&
+          detail == other.detail;
+}
+
+@freezed
+sealed class RelatedStatus with _$RelatedStatus {
+  const RelatedStatus._();
+
+  const factory RelatedStatus.off() = RelatedStatus_Off;
+  const factory RelatedStatus.downloading({
+    required int done,
+    required int total,
+  }) = RelatedStatus_Downloading;
+  const factory RelatedStatus.loading() = RelatedStatus_Loading;
+  const factory RelatedStatus.indexing({
+    required int done,
+    required int total,
+  }) = RelatedStatus_Indexing;
+  const factory RelatedStatus.ready({
+    required int notes,
+  }) = RelatedStatus_Ready;
+  const factory RelatedStatus.failed({
+    required String message,
+  }) = RelatedStatus_Failed;
+}
+
 enum ReminderAnswer {
   open,
   markDone,
@@ -3643,6 +3938,30 @@ class StyledRun {
           range == other.range &&
           color == other.color &&
           italic == other.italic &&
+          weight == other.weight;
+}
+
+class SuggestedTag {
+  final String tagId;
+  final String name;
+  final double weight;
+
+  const SuggestedTag({
+    required this.tagId,
+    required this.name,
+    required this.weight,
+  });
+
+  @override
+  int get hashCode => tagId.hashCode ^ name.hashCode ^ weight.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SuggestedTag &&
+          runtimeType == other.runtimeType &&
+          tagId == other.tagId &&
+          name == other.name &&
           weight == other.weight;
 }
 
@@ -4343,6 +4662,30 @@ sealed class Ticked with _$Ticked {
   }) = Ticked_Changed;
   const factory Ticked.unchanged() = Ticked_Unchanged;
   const factory Ticked.missing() = Ticked_Missing;
+}
+
+class TwinRow {
+  final String id;
+  final String title;
+  final int percent;
+
+  const TwinRow({
+    required this.id,
+    required this.title,
+    required this.percent,
+  });
+
+  @override
+  int get hashCode => id.hashCode ^ title.hashCode ^ percent.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TwinRow &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          title == other.title &&
+          percent == other.percent;
 }
 
 class VisibleNotebook {

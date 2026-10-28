@@ -17,6 +17,7 @@ import '../../capture/views/pages/daily_note_page.dart';
 import '../../capture/views/pages/new_note_page.dart';
 import '../../crash/views/pages/crash_reports_page.dart';
 import '../../design/views/pages/design_gallery_page.dart';
+import '../../graph/views/pages/graph_page.dart';
 import '../../history/views/pages/history_page.dart';
 import '../../import/views/pages/import_page.dart';
 import '../../note/views/pages/note_page.dart';
@@ -115,6 +116,16 @@ class KansoRouter {
           pageBuilder: (context, state) => CupertinoPage<void>(
             key: state.pageKey,
             child: HistoryPage(noteId: state.pathParameters['noteId']!),
+          ),
+        ),
+        GoRoute(
+          path: KansoRoutes.graph,
+          pageBuilder: (context, state) => CupertinoPage<void>(
+            key: state.pageKey,
+            child: GraphPage(
+              centerId: state.uri.queryParameters['center'],
+              hops: int.tryParse(state.uri.queryParameters['hops'] ?? '') ?? 2,
+            ),
           ),
         ),
         GoRoute(

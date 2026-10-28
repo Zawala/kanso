@@ -58,6 +58,9 @@ abstract class Preferences with _$Preferences {
     /// own list. Null, or one that is gone or locked, is the first notebook.
     String? defaultNotebookId,
 
+    /// Whether pictures attached to notes are read on this device for search.
+    @Default(false) bool searchImageText,
+
     /// Whether this phone may show reminders for tasks with a due time.
     /// Notification permission is asked separately by the operating system.
     @Default(true) bool remindersEnabled,

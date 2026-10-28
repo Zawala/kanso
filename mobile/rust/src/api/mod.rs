@@ -12,6 +12,7 @@ pub mod account_settings;
 pub mod approvals;
 pub mod board;
 pub mod diagnostics;
+pub mod discovery;
 pub mod editor;
 pub mod gallery;
 pub mod import;

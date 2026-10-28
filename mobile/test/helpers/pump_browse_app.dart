@@ -13,6 +13,7 @@ import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/configs/kanso_layout.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
+import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/account/account_bloc.dart';
@@ -35,6 +36,7 @@ import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/discovery/discovery_settings_bloc.dart';
 import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
@@ -44,6 +46,7 @@ import 'account_blocs.dart';
 import 'browse_blocs.dart';
 import 'crash_samples.dart';
 import 'fixture_device_lock_repository.dart';
+import 'fixture_discovery_repository.dart';
 import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_parity_repositories.dart';
@@ -199,6 +202,13 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
           BlocProvider<NoteCreationBloc>.value(value: blocs.creation),
           BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
+          BlocProvider<DiscoverySettingsBloc>(
+            lazy: false,
+            create: (_) => DiscoverySettingsBloc(
+              FixtureDiscoveryRepository(),
+              SeededPreferencesRepository(const Preferences()),
+            )..add(const DiscoverySettingsEvent.started()),
+          ),
           BlocProvider<CaptureInboxBloc>.value(value: blocs.captureInbox),
           BlocProvider<BackupNoticeBloc>.value(
             value: backupNotice ?? hiddenBackupNoticeBloc(),

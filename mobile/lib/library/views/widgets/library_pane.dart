@@ -51,7 +51,7 @@ import 'tag_actions_sheet.dart';
 /// Recent and Tasks (with the overdue ones counted), Shared with you (with
 /// how many invitations wait), the notebooks with their counts, folded by
 /// their arrows, the notes' Statuses, the tags as chips and a nested tree,
-/// and Trash.
+/// Trash, Graph and Replace.
 ///
 /// A drawer on a phone, the first pane on a tablet. The place [location]
 /// is listing is selected. Its rows come from the `LibraryIndexBloc`
@@ -268,6 +268,12 @@ class _LibraryPaneState extends State<LibraryPane> {
                           onTap: () =>
                               leave(() => context.push(KansoRoutes.design)),
                         ),
+                      KansoSidebarRow(
+                        icon: KansoIcons.share,
+                        label: l10n.graphTitle,
+                        onTap: () =>
+                            leave(() => context.push(KansoRoutes.graph)),
+                      ),
                     ],
                   ),
                 };

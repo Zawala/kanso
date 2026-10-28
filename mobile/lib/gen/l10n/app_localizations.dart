@@ -202,6 +202,12 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 result} other{{count} results}}'**
   String searchResultCount(int count);
 
+  /// Notes found by semantic similarity to the search words.
+  ///
+  /// In en, this message translates to:
+  /// **'Found by meaning'**
+  String get searchMeaningTitle;
+
   /// How many notes a list holds.
   ///
   /// In en, this message translates to:
@@ -249,6 +255,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Note info'**
   String get noteInfo;
+
+  /// Explains how to enable related notes from a note's info sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on Related notes in Settings to see notes about the same things.'**
+  String get noteRelatedTurnOn;
+
+  /// The related notes section in the note information sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Related'**
+  String get noteRelatedTitle;
+
+  /// An enabled related notes section has no suggestions.
+  ///
+  /// In en, this message translates to:
+  /// **'No related notes yet.'**
+  String get noteRelatedEmpty;
+
+  /// Suggested tags and a nearly duplicate note for this note.
+  ///
+  /// In en, this message translates to:
+  /// **'What the meaning says'**
+  String get noteMeaning;
+
+  /// Names a note that is probably a duplicate.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearly the same as {title} — {percent}%'**
+  String noteMeaningTwin(String title, int percent);
+
+  /// Dismisses the suggested duplicate note.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get noteMeaningDismiss;
+
+  /// Merges the suggested duplicate into the open note.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge'**
+  String get noteMeaningMerge;
+
+  /// Asks before merging two notes.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge notes?'**
+  String get noteMeaningMergeTitle;
+
+  /// Explains what happens to the other note when merged.
+  ///
+  /// In en, this message translates to:
+  /// **'{title} will go to the trash. Its contents are kept in this note.'**
+  String noteMeaningMergeWarning(String title);
+
+  /// Cancels a dialog or action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancel;
+
+  /// The linked notes graph screen and library entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Graph'**
+  String get graphTitle;
+
+  /// Opens the graph around this note.
+  ///
+  /// In en, this message translates to:
+  /// **'Local graph'**
+  String get graphLocal;
+
+  /// Shows the whole library graph.
+  ///
+  /// In en, this message translates to:
+  /// **'All notes'**
+  String get graphFilterAll;
+
+  /// Filters the graph by notebook.
+  ///
+  /// In en, this message translates to:
+  /// **'Notebook'**
+  String get graphFilterNotebook;
+
+  /// Filters the graph by tag.
+  ///
+  /// In en, this message translates to:
+  /// **'Tag'**
+  String get graphFilterTag;
+
+  /// The graph contains no linked notes.
+  ///
+  /// In en, this message translates to:
+  /// **'No linked notes to show.'**
+  String get graphEmpty;
+
+  /// Explains that the graph could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the graph.'**
+  String get graphFailed;
 
   /// The label of when a note was made.
   ///
@@ -417,6 +525,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sync'**
   String get settingsSync;
+
+  /// The section of settings for related notes and image text recognition.
+  ///
+  /// In en, this message translates to:
+  /// **'Discovery'**
+  String get settingsDiscovery;
+
+  /// Enables notes about the same things as the open note.
+  ///
+  /// In en, this message translates to:
+  /// **'Related notes'**
+  String get discoveryRelated;
+
+  /// Explains local related note suggestions and the first download.
+  ///
+  /// In en, this message translates to:
+  /// **'Lists notes about the same things as the open one, beside it. Turning this on downloads a small language model (about 30 MB) once. It runs on this device: nothing about your notes is sent anywhere.'**
+  String get discoveryRelatedDetail;
+
+  /// Retries downloading or indexing the related notes model.
+  ///
+  /// In en, this message translates to:
+  /// **'Try Again'**
+  String get discoveryTryAgain;
+
+  /// Enables local text recognition for attached pictures.
+  ///
+  /// In en, this message translates to:
+  /// **'Search text in images'**
+  String get discoverySearchImages;
+
+  /// Explains local OCR and that its text syncs with its picture.
+  ///
+  /// In en, this message translates to:
+  /// **'Reads the words in pictures you attach, on this device, so search finds the notes they\'re in. The words sync with the picture.'**
+  String get discoverySearchImagesDetail;
+
+  /// Shows how many pictures remain in the on-device OCR queue.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading images… {count} to go.'**
+  String discoveryReadingImages(int count);
 
   /// A section of settings.
   ///

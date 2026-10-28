@@ -9,6 +9,7 @@ import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/reminder_permission.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_switch.dart';
+import 'package:kanso/core/views/widgets/kanso_settings_row.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
 
 import '../../../helpers/close_bloc_later.dart';
@@ -116,8 +117,17 @@ void main() {
   });
 
   group('Reminders', () {
+    // The pane has other switches now (the discovery ones): the reminders
+    // switch is the one in the "Remind me of tasks" row.
+    final remindersSwitch = find.descendant(
+      of: find.ancestor(
+        of: find.text('Remind me of tasks'),
+        matching: find.byType(KansoSettingsRow),
+      ),
+      matching: find.byType(KansoSwitch),
+    );
     bool switchIsOn(WidgetTester tester) =>
-        tester.widget<KansoSwitch>(find.byType(KansoSwitch)).value;
+        tester.widget<KansoSwitch>(remindersSwitch).value;
 
     testWidgets('are on to begin with, with the desktop’s words', (
       tester,
@@ -140,7 +150,7 @@ void main() {
     ) async {
       final fixtures = PageFixtures();
       await _pump(tester, fixtures: fixtures);
-      await tester.tap(find.byType(KansoSwitch));
+      await tester.tap(remindersSwitch);
       await tester.pumpAndSettle();
       expect(switchIsOn(tester), isFalse);
       expect(fixtures.notifier.requests, 0);
@@ -156,9 +166,9 @@ void main() {
       final fixtures = PageFixtures();
       fixtures.notifier.allow = false;
       await _pump(tester, fixtures: fixtures);
-      await tester.tap(find.byType(KansoSwitch));
+      await tester.tap(remindersSwitch);
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(KansoSwitch));
+      await tester.tap(remindersSwitch);
       await tester.pumpAndSettle();
       expect(
         find.text(

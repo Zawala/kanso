@@ -24,6 +24,9 @@ import '../../../reminders/views/widgets/reminders_section.dart';
 import '../../../templates/views/widgets/daily_template_section.dart';
 import '../../state/about/about_bloc.dart';
 import '../../state/default_notebook/default_notebook_bloc.dart';
+import '../../state/discovery/discovery_settings_bloc.dart';
+import 'discovery_setting_switch_row.dart';
+import 'discovery_status_row.dart';
 import 'locked_notes_section.dart';
 import 'settings_sync_section.dart';
 
@@ -169,6 +172,63 @@ class SettingsPane extends StatelessWidget {
                     const DailyTemplateSection(dividerIndent: iconInset),
                     const SizedBox(height: KansoSpacing.lg),
                     const RemindersSection(dividerIndent: iconInset),
+                    const SizedBox(height: KansoSpacing.lg),
+                    BlocBuilder<DiscoverySettingsBloc, DiscoverySettingsState>(
+                      builder: (context, discovery) => KansoGroupedSection(
+                        title: l10n.settingsDiscovery,
+                        dividerIndent: iconInset,
+                        children: <Widget>[
+                          DiscoverySettingSwitchRow(
+                            title: l10n.discoveryRelated,
+                            detail: l10n.discoveryRelatedDetail,
+                            value: discovery.relatedEnabled,
+                            onChanged: discovery.relatedBusy
+                                ? null
+                                : (enabled) =>
+                                      context.read<DiscoverySettingsBloc>().add(
+                                        DiscoverySettingsEvent.relatedChanged(
+                                          enabled: enabled,
+                                        ),
+                                      ),
+                          ),
+                          if (discovery.relatedEnabled)
+                            DiscoveryStatusRow(
+                              status: discovery.related,
+                              onRetry: () {
+                                context.read<DiscoverySettingsBloc>().add(
+                                  const RelatedRetryRequestedEvent(),
+                                );
+                              },
+                            ),
+                          DiscoverySettingSwitchRow(
+                            title: l10n.discoverySearchImages,
+                            detail: l10n.discoverySearchImagesDetail,
+                            value: discovery.ocrEnabled,
+                            onChanged: (enabled) =>
+                                context.read<DiscoverySettingsBloc>().add(
+                                  DiscoverySettingsEvent.ocrChanged(
+                                    enabled: enabled,
+                                  ),
+                                ),
+                          ),
+                          if (discovery.ocrEnabled)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                KansoSpacing.md,
+                                0,
+                                KansoSpacing.md,
+                                KansoSpacing.sm,
+                              ),
+                              child: Text(
+                                l10n.discoveryReadingImages(
+                                  discovery.ocrWaiting,
+                                ),
+                                style: context.typography.secondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: KansoSpacing.lg),
                     KansoGroupedSection(
                       title: l10n.settingsPrivacy,

@@ -111,12 +111,15 @@ import 'crash/models/repos/abs/crash_report_repository.dart' as _i288;
 import 'crash/models/repos/impl/platform_crash_context_repository.dart'
     as _i756;
 import 'crash/state/crash_reports/crash_reports_bloc.dart' as _i815;
+import 'discovery/models/repos/abs/discovery_repository.dart' as _i673;
+import 'discovery/models/repos/impl/rust_discovery_repository.dart' as _i913;
 import 'editor/models/repos/abs/editor_repository.dart' as _i979;
 import 'editor/models/repos/abs/web_link_repository.dart' as _i272;
 import 'editor/models/repos/impl/rust_editor_repository.dart' as _i606;
 import 'editor/models/repos/impl/url_launcher_web_link_repository.dart'
     as _i635;
 import 'editor/state/editor/editor_bloc.dart' as _i964;
+import 'graph/state/graph/graph_bloc.dart' as _i365;
 import 'history/models/repos/abs/history_repository.dart' as _i974;
 import 'history/models/repos/impl/rust_history_repository.dart' as _i1065;
 import 'history/state/note_history/note_history_bloc.dart' as _i403;
@@ -141,6 +144,7 @@ import 'lock/state/unlock/unlock_bloc.dart' as _i797;
 import 'note/models/repos/abs/note_place_repository.dart' as _i930;
 import 'note/models/repos/impl/memory_note_place_repository.dart' as _i503;
 import 'note/state/note/note_bloc.dart' as _i618;
+import 'note/state/note_discovery/note_discovery_bloc.dart' as _i779;
 import 'note/state/preview/preview_bloc.dart' as _i435;
 import 'note_list/state/note_list/note_list_bloc.dart' as _i351;
 import 'push/configs/push_module.dart' as _i78;
@@ -158,6 +162,7 @@ import 'search/state/search/search_bloc.dart' as _i696;
 import 'settings/state/about/about_bloc.dart' as _i380;
 import 'settings/state/backup_notice/backup_notice_bloc.dart' as _i897;
 import 'settings/state/default_notebook/default_notebook_bloc.dart' as _i925;
+import 'settings/state/discovery/discovery_settings_bloc.dart' as _i904;
 import 'settings/state/icon_themes/icon_themes_bloc.dart' as _i636;
 import 'settings/state/licences/licences_bloc.dart' as _i570;
 import 'settings/state/sync_settings/sync_settings_bloc.dart' as _i794;
@@ -324,6 +329,9 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i1056.HapticsRepository>(),
       ),
     );
+    gh.lazySingleton<_i673.DiscoveryRepository>(
+      () => _i913.RustDiscoveryRepository(gh<_i455.KansoLibrary>()),
+    );
     gh.factory<_i815.CrashReportsBloc>(
       () => _i815.CrashReportsBloc(gh<_i288.CrashReportRepository>()),
     );
@@ -354,6 +362,12 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i732.RendererRepository>(
       () => _i820.RustRendererRepository(gh<_i832.KansoRenderer>()),
     );
+    gh.factory<_i696.SearchBloc>(
+      () => _i696.SearchBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i673.DiscoveryRepository>(),
+      ),
+    );
     gh.lazySingleton<_i937.PushRepository>(
       () => _i506.PluginPushRepository(
         gh<_i901.KansoPushHostApi>(),
@@ -381,6 +395,12 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i974.HistoryRepository>(
       () => _i1065.RustHistoryRepository(gh<_i455.KansoLibrary>()),
+    );
+    gh.factory<_i904.DiscoverySettingsBloc>(
+      () => _i904.DiscoverySettingsBloc(
+        gh<_i673.DiscoveryRepository>(),
+        gh<_i384.PreferencesRepository>(),
+      ),
     );
     gh.lazySingleton<_i235.BoardRepository>(
       () => _i418.RustBoardRepository(gh<_i455.KansoLibrary>()),
@@ -429,9 +449,6 @@ extension GetItInjectableX on _i174.GetIt {
     gh.factory<_i991.NewNotebookBloc>(
       () => _i991.NewNotebookBloc(gh<_i38.LibraryRepository>()),
     );
-    gh.factory<_i696.SearchBloc>(
-      () => _i696.SearchBloc(gh<_i38.LibraryRepository>()),
-    );
     gh.factory<_i34.NoteCreationBloc>(
       () => _i34.NoteCreationBloc(
         gh<_i38.LibraryRepository>(),
@@ -475,6 +492,12 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i169.JournalRepository>(),
         gh<_i460.TemplatesRepository>(),
       ),
+    );
+    gh.factory<_i365.GraphBloc>(
+      () => _i365.GraphBloc(gh<_i673.DiscoveryRepository>()),
+    );
+    gh.factory<_i779.NoteDiscoveryBloc>(
+      () => _i779.NoteDiscoveryBloc(gh<_i673.DiscoveryRepository>()),
     );
     gh.factory<_i1060.DailyNoteBloc>(
       () => _i1060.DailyNoteBloc(gh<_i23.CaptureRepository>()),

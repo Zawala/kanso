@@ -18,6 +18,7 @@ import '../test/core/bridge/suites/account_suite.dart';
 import '../test/core/bridge/suites/approvals_suite.dart';
 import '../test/core/bridge/suites/boards_suite.dart';
 import '../test/core/bridge/suites/diagnostics_suite.dart';
+import '../test/core/bridge/suites/discovery_suite.dart';
 import '../test/core/bridge/suites/editor_suite.dart';
 import '../test/core/bridge/suites/gallery_suite.dart';
 import '../test/core/bridge/suites/journal_suite.dart';
@@ -70,6 +71,7 @@ void main() {
   sharedSuite(openDeviceLibrary);
   gallerySuite(openDeviceLibrary);
   editorSuite(openDeviceLibrary);
+  discoverySuite(openDeviceLibrary);
   journalSuite(openDeviceLibrary);
   templatesSuite(openDeviceLibrary);
   boardsSuite(openDeviceLibrary);

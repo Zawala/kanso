@@ -32,6 +32,7 @@ _Preferences _$PreferencesFromJson(Map<String, dynamic> json) => _Preferences(
   backupNoticeSeen: json['backupNoticeSeen'] as bool? ?? false,
   biometricOfferSeen: json['biometricOfferSeen'] as bool? ?? false,
   defaultNotebookId: json['defaultNotebookId'] as String?,
+  searchImageText: json['searchImageText'] as bool? ?? false,
   remindersEnabled: json['remindersEnabled'] as bool? ?? true,
 );
 
@@ -46,6 +47,7 @@ Map<String, dynamic> _$PreferencesToJson(_Preferences instance) =>
       'backupNoticeSeen': instance.backupNoticeSeen,
       'biometricOfferSeen': instance.biometricOfferSeen,
       'defaultNotebookId': ?instance.defaultNotebookId,
+      'searchImageText': instance.searchImageText,
       'remindersEnabled': instance.remindersEnabled,
     };
 
