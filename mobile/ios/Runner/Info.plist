@@ -75,8 +75,10 @@
 	<string>Kanso uses Face ID to unlock your locked notes.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
+		<!-- A note in a window of its own is a second scene (NoteWindows.swift):
+		     iPads show them side by side; iPhones keep to one. -->
 		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
+		<true/>
 		<key>UISceneConfigurations</key>
 		<dict>
 			<key>UIWindowSceneSessionRoleApplication</key>
@@ -91,11 +93,23 @@
 					<key>UISceneStoryboardFile</key>
 					<string>Main</string>
 				</dict>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>NoteWindow</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).NoteSceneDelegate</string>
+				</dict>
 			</array>
 		</dict>
 	</dict>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>app.kanso.Kanso.note</string>
+	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

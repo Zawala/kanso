@@ -256,6 +256,54 @@ abstract class AppLocalizations {
   /// **'Note info'**
   String get noteInfo;
 
+  /// Opens the menu of what can be done with the open note.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get noteMenu;
+
+  /// Shows the open note in a window of its own, beside the app. The desktop's label.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in New Window'**
+  String get noteOpenInNewWindow;
+
+  /// What the window list and the app switcher call the window of a locked note, whose title is kept out of them.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked note'**
+  String get noteWindowLockedTitle;
+
+  /// The banner of a note window whose note was moved to the trash.
+  ///
+  /// In en, this message translates to:
+  /// **'This note is in the trash.'**
+  String get noteWindowInTrash;
+
+  /// Makes a new note, from a note's own window: it is made in the main window.
+  ///
+  /// In en, this message translates to:
+  /// **'New Note'**
+  String get noteWindowNewNote;
+
+  /// Searches all notes, from a note's own window: the search opens in the main window.
+  ///
+  /// In en, this message translates to:
+  /// **'Search All Notes'**
+  String get noteWindowSearch;
+
+  /// Closes a note's own window; the note is saved and the app goes on.
+  ///
+  /// In en, this message translates to:
+  /// **'Close Window'**
+  String get noteWindowClose;
+
+  /// Takes the note out of the trash, from the banner.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get noteWindowRestore;
+
   /// The label of when a note was made.
   ///
   /// In en, this message translates to:

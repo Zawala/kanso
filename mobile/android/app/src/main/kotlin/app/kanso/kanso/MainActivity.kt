@@ -44,6 +44,9 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                 }
             }
+        // `app.kanso.kanso/note_windows`: a note in a window of its own
+        // (NoteWindows.kt), launched beside this one.
+        NoteWindows.registerMain(flutterEngine, this)
     }
 
     override fun onNewIntent(intent: Intent) {

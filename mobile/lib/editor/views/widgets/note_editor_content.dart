@@ -33,6 +33,7 @@ import '../../state/editor/editor_bloc.dart';
 import '../controllers/kanso_markdown_controller.dart';
 import 'completion_host.dart';
 import 'editor_conflict_strip.dart';
+import 'editor_destination_scope.dart';
 import 'editor_failure_strip.dart';
 import 'editor_shortcuts.dart';
 import 'editor_title_field.dart';
@@ -399,6 +400,11 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
           listener: (context, state) {
             final destination = state.destination;
             editor.add(const EditorEvent.destinationHandled());
+            final scope = EditorDestinationScope.maybeOf(context);
+            if (scope != null && destination != null) {
+              scope.onDestination(context, destination);
+              return;
+            }
             switch (destination) {
               case NoteDestination(:final noteId):
                 context.go(

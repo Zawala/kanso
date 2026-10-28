@@ -157,6 +157,9 @@ import 'tabs/state/tabs/tabs_bloc.dart' as _i380;
 import 'tasks/state/tasks/tasks_bloc.dart' as _i470;
 import 'themes/state/theme_gallery/theme_gallery_bloc.dart' as _i569;
 import 'themes/state/theme_picker/theme_picker_bloc.dart' as _i149;
+import 'window/models/repos/abs/note_window_repository.dart' as _i612;
+import 'window/models/repos/impl/platform_note_window_repository.dart' as _i271;
+import 'window/state/note_window/note_window_bloc.dart' as _i973;
 
 const String _development = 'development';
 const String _production = 'production';
@@ -173,6 +176,7 @@ extension GetItInjectableX on _i174.GetIt {
     final pushModule = _$PushModule();
     final crashModule = _$CrashModule();
     final appModule = _$AppModule();
+    final windowModule = _$WindowModule();
     gh.factory<_i612.LibraryPaneBloc>(() => _i612.LibraryPaneBloc());
     gh.singleton<_i609.LayoutClassNotifier>(() => _i609.LayoutClassNotifier());
     gh.lazySingleton<_i183.ImagePicker>(() => coreModule.imagePicker());
@@ -287,6 +291,10 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i289.DesignGalleryAccess>(),
         gh<_i609.LayoutClassNotifier>(),
       ),
+    );
+    await gh.singletonAsync<_i612.NoteWindowRepository>(
+      () => windowModule.noteWindows(gh<_i72.LibraryFolder>()),
+      preResolve: true,
     );
     await gh.singletonAsync<_i455.KansoLibrary>(
       () => coreModule.library(gh<_i72.LibraryFolder>()),
@@ -536,6 +544,12 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i601.SyncRepository>(),
       ),
     );
+    gh.factory<_i973.NoteWindowBloc>(
+      () => _i973.NoteWindowBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i333.SessionRepository>(),
+      ),
+    );
     gh.factory<_i149.ThemePickerBloc>(
       () => _i149.ThemePickerBloc(
         gh<_i732.RendererRepository>(),
@@ -609,3 +623,5 @@ class _$PushModule extends _i78.PushModule {}
 class _$CrashModule extends _i1016.CrashModule {}
 
 class _$AppModule extends _i216.AppModule {}
+
+class _$WindowModule extends _i271.WindowModule {}

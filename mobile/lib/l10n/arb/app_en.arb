@@ -118,6 +118,38 @@
   "@noteInfo": {
     "description": "Shows the note's details."
   },
+  "noteMenu": "More",
+  "@noteMenu": {
+    "description": "Opens the menu of what can be done with the open note."
+  },
+  "noteOpenInNewWindow": "Open in New Window",
+  "@noteOpenInNewWindow": {
+    "description": "Shows the open note in a window of its own, beside the app. The desktop's label."
+  },
+  "noteWindowLockedTitle": "Locked note",
+  "@noteWindowLockedTitle": {
+    "description": "What the window list and the app switcher call the window of a locked note, whose title is kept out of them."
+  },
+  "noteWindowInTrash": "This note is in the trash.",
+  "@noteWindowInTrash": {
+    "description": "The banner of a note window whose note was moved to the trash."
+  },
+  "noteWindowNewNote": "New Note",
+  "@noteWindowNewNote": {
+    "description": "Makes a new note, from a note's own window: it is made in the main window."
+  },
+  "noteWindowSearch": "Search All Notes",
+  "@noteWindowSearch": {
+    "description": "Searches all notes, from a note's own window: the search opens in the main window."
+  },
+  "noteWindowClose": "Close Window",
+  "@noteWindowClose": {
+    "description": "Closes a note's own window; the note is saved and the app goes on."
+  },
+  "noteWindowRestore": "Restore",
+  "@noteWindowRestore": {
+    "description": "Takes the note out of the trash, from the banner."
+  },
   "noteMetaCreated": "Created",
   "@noteMetaCreated": {
     "description": "The label of when a note was made."

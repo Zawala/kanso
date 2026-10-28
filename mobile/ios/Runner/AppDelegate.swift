@@ -45,6 +45,10 @@ import kanso_push
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "KansoFiles") {
       KansoFiles.shared.register(with: registrar.messenger())
     }
+    // `app.kanso/windows`: a note in a window of its own (NoteWindows.swift).
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "KansoNoteWindows") {
+      NoteWindows.shared.registerMain(messenger: registrar.messenger())
+    }
   }
 
   /// `app.kanso.kanso/widgets`: the app asks for the home-screen widgets to
@@ -61,5 +65,18 @@ import kanso_push
       WidgetCenter.shared.reloadAllTimelines()
       result(nil)
     }
+  }
+
+  /// A note's own window is a scene with its own configuration; every other
+  /// scene is the main window's.
+  override func application(
+    _ application: UIApplication,
+    configurationForConnecting connectingSceneSession: UISceneSession,
+    options: UIScene.ConnectionOptions
+  ) -> UISceneConfiguration {
+    let name =
+      NoteWindows.isNoteScene(session: connectingSceneSession, options: options)
+      ? NoteWindows.configurationName : "flutter"
+    return UISceneConfiguration(name: name, sessionRole: connectingSceneSession.role)
   }
 }

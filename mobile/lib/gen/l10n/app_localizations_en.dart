@@ -106,6 +106,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noteInfo => 'Note info';
 
   @override
+  String get noteMenu => 'More';
+
+  @override
+  String get noteOpenInNewWindow => 'Open in New Window';
+
+  @override
+  String get noteWindowLockedTitle => 'Locked note';
+
+  @override
+  String get noteWindowInTrash => 'This note is in the trash.';
+
+  @override
+  String get noteWindowNewNote => 'New Note';
+
+  @override
+  String get noteWindowSearch => 'Search All Notes';
+
+  @override
+  String get noteWindowClose => 'Close Window';
+
+  @override
+  String get noteWindowRestore => 'Restore';
+
+  @override
   String get noteMetaCreated => 'Created';
 
   @override
