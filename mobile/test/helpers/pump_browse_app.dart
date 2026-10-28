@@ -13,6 +13,7 @@ import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/configs/kanso_layout.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
+import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/layout_class_notifier.dart';
 import 'package:kanso/core/state/account/account_bloc.dart';
@@ -35,6 +36,7 @@ import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/lock/state/privacy_cover/privacy_cover_bloc.dart';
 import 'package:kanso/settings/state/backup_notice/backup_notice_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
+import 'package:kanso/settings/state/discovery/discovery_settings_bloc.dart';
 import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/sharing/state/invitations/invitations_bloc.dart';
 import 'package:kanso/shell/state/library_pane/library_pane_bloc.dart';
@@ -45,6 +47,7 @@ import 'account_blocs.dart';
 import 'browse_blocs.dart';
 import 'crash_samples.dart';
 import 'fixture_device_lock_repository.dart';
+import 'fixture_discovery_repository.dart';
 import 'fixture_gallery_repository.dart';
 import 'fixture_library_repository.dart';
 import 'fixture_parity_repositories.dart';
@@ -52,6 +55,7 @@ import 'fixture_renderer_repository.dart';
 import 'fixture_session_repository.dart';
 import 'fixture_shared_notes_repository.dart';
 import 'fixture_sync_repository.dart';
+import 'page_fixtures.dart';
 import 'register_page_blocs.dart';
 import 'seeded_appearance_bloc.dart';
 import 'sync_settings_blocs.dart';
@@ -97,7 +101,8 @@ class BrowseApp {
 /// BLoCs; by default the phone has no account. [sync] is the sync the
 /// status and the sync settings read. [shared] and [gallery] are
 /// the shared notes and the theme gallery the app reads, if a test has made
-/// them. [session] and [device] are the lock session and the phone's
+/// them. [fixtures] supplies the journal, board and reminder fixtures.
+/// [session] and [device] are the lock session and the phone's
 /// biometrics; by default nothing is locked. The app is inside a repaint
 /// boundary, [appBoundaryKey], to take a picture of.
 Future<BrowseApp> pumpBrowseApp(
@@ -121,6 +126,7 @@ Future<BrowseApp> pumpBrowseApp(
   FixtureHistoryRepository? history,
   FixtureReplaceRepository? replace,
   FixtureBackupsRepository? backups,
+  PageFixtures? fixtures,
 }) async {
   final bloc = SeededAppearanceBloc(appearance);
   addTearDown(bloc.close);
@@ -141,6 +147,7 @@ Future<BrowseApp> pumpBrowseApp(
     history,
     replace,
     backups,
+    fixtures,
   );
   final accountBlocs = (accounts ?? AccountBlocs())..register();
   final opened =
@@ -198,6 +205,13 @@ Future<BrowseApp> pumpBrowseApp(
           BlocProvider<UndoNoticeBloc>.value(value: blocs.undoNotice),
           BlocProvider<NoteCreationBloc>.value(value: blocs.creation),
           BlocProvider<DefaultNotebookBloc>.value(value: blocs.defaultNotebook),
+          BlocProvider<DiscoverySettingsBloc>(
+            lazy: false,
+            create: (_) => DiscoverySettingsBloc(
+              FixtureDiscoveryRepository(),
+              SeededPreferencesRepository(const Preferences()),
+            )..add(const DiscoverySettingsEvent.started()),
+          ),
           BlocProvider<CaptureInboxBloc>.value(value: blocs.captureInbox),
           BlocProvider<BackupNoticeBloc>.value(
             value: backupNotice ?? hiddenBackupNoticeBloc(),

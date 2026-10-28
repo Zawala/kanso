@@ -27,6 +27,7 @@ import 'push/state/push_registration/push_registration_bloc.dart';
 import 'push/views/widgets/push_lifecycle_host.dart';
 import 'settings/state/backup_notice/backup_notice_bloc.dart';
 import 'settings/state/default_notebook/default_notebook_bloc.dart';
+import 'settings/state/discovery/discovery_settings_bloc.dart';
 import 'settings/state/sync_settings/sync_settings_bloc.dart';
 import 'sharing/state/invitations/invitations_bloc.dart';
 import 'shell/state/library_pane/library_pane_bloc.dart';
@@ -91,6 +92,12 @@ class AppProviders extends StatelessWidget {
               getIt<DefaultNotebookBloc>()
                 ..add(const DefaultNotebookEvent.started()),
         ),
+        BlocProvider<DiscoverySettingsBloc>(
+          lazy: false,
+          create: (_) =>
+              getIt<DiscoverySettingsBloc>()
+                ..add(const DiscoverySettingsEvent.started()),
+        ),
         BlocProvider<SyncSettingsBloc>(
           create: (_) =>
               getIt<SyncSettingsBloc>()..add(const SyncSettingsEvent.started()),
@@ -106,8 +113,9 @@ class AppProviders extends StatelessWidget {
         ),
         BlocProvider<PushRegistrationBloc>(
           lazy: false,
-          create: (_) => getIt<PushRegistrationBloc>()
-            ..add(const PushRegistrationEvent.started()),
+          create: (_) =>
+              getIt<PushRegistrationBloc>()
+                ..add(const PushRegistrationEvent.started()),
         ),
         BlocProvider<ListNavigationBloc>(
           create: (_) => getIt<ListNavigationBloc>(),

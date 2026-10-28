@@ -20,6 +20,7 @@ use kanso_mobile::{
 use super::account::KansoAccount;
 use super::account_settings::KansoAccountSettings;
 use super::approvals::KansoApprovals;
+use super::discovery::KansoDiscovery;
 use super::editor::KansoEditor;
 use super::gallery::KansoGallery;
 use super::linking::KansoLinking;
@@ -30,7 +31,7 @@ use super::sync::KansoSync;
 
 /// An open library. Cheap to clone on the Rust side; Dart holds one.
 #[frb(opaque)]
-pub struct KansoLibrary(Library);
+pub struct KansoLibrary(pub(super) Library);
 
 impl KansoLibrary {
     /// Opens (creating if needed) the library whose database file is `path`.
@@ -385,6 +386,11 @@ impl KansoLibrary {
     #[frb(sync)]
     pub fn linking(&self) -> KansoLinking {
         KansoLinking::new(self.0.linking())
+    }
+
+    #[frb(sync)]
+    pub fn discovery(&self) -> KansoDiscovery {
+        KansoDiscovery::new(self.0.discovery())
     }
 
     #[frb(sync)]

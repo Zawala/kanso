@@ -31,6 +31,18 @@ abstract final class KansoRoutes {
   /// `/note/:noteId`.
   static const String note = 'note';
 
+  /// The board of a place's notes is that address plus `/board?kind=`.
+  static const String board = 'board';
+
+  /// The zero-based source line to focus when opening a task reminder.
+  static const String taskLineParameter = 'line';
+
+  /// The UTF-16 body caret for a note opened from a template.
+  static const String madeCursorParameter = 'cursor';
+
+  /// Whether a newly made note should focus its title.
+  static const String madeTitleFirstParameter = 'titleFirst';
+
   /// A note by its id alone: redirects to the note in All Notes.
   static const String noteById = '/note';
 
@@ -97,6 +109,15 @@ abstract final class KansoRoutes {
 
   /// Replace text across the library.
   static const String replace = '/replace';
+
+  /// The linked-note graph, optionally centered on a note.
+  static const String graph = '/graph';
+
+  /// Opens the graph around [noteId].
+  static String graphLocal(String noteId) => Uri(
+    path: graph,
+    queryParameters: <String, String>{'center': noteId, 'hops': '2'},
+  ).toString();
 
   /// Settings › Account: the signed-in account's page.
   static const String settingsAccount = '/settings/account';

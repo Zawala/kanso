@@ -15,7 +15,9 @@
 //! resolve, what `[[` and `#` autocomplete offer, which link a note copies
 //! and when a rename offers to update links; [`fuzzy`] ranks what was typed
 //! against candidates; [`daily`] makes daily notes and notes from templates;
-//! [`tasks`] reads due dates and decides reminders; [`edit`] turns the
+//! [`calendar`] lays out the Journal's month; [`board`] lays out notes by
+//! status and tasks by box and writes a card's move; [`tasks`] reads due
+//! dates and decides reminders; [`edit`] turns the
 //! formatting toolbar, auto-pairing and Tab and Enter in lists and tables
 //! into one change to the text; [`saving`] decides when typing is written
 //! and when another writer's version is no conflict; [`text`] converts
@@ -62,9 +64,13 @@ pub mod account;
 pub mod attach;
 pub mod backup;
 pub mod batch;
+pub mod board;
+pub mod calendar;
 pub mod capture;
 pub mod catalogue;
 pub mod daily;
+#[cfg(feature = "discovery")]
+pub mod discovery;
 pub mod edit;
 pub mod editor_settings;
 pub mod export;

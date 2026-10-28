@@ -19,10 +19,12 @@ import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
 import 'package:kanso/lock/state/biometrics/biometrics_bloc.dart';
 import 'package:kanso/lock/state/lock_status/lock_status_bloc.dart';
 import 'package:kanso/push/state/push_setting/push_setting_bloc.dart';
+import 'package:kanso/reminders/state/reminders_settings/reminders_settings_bloc.dart';
 import 'package:kanso/settings/state/about/about_bloc.dart';
 import 'package:kanso/settings/state/default_notebook/default_notebook_bloc.dart';
 import 'package:kanso/settings/state/sync_settings/sync_settings_bloc.dart';
 import 'package:kanso/settings/views/widgets/settings_pane.dart';
+import 'package:kanso/templates/state/daily_template/daily_template_bloc.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../helpers/close_bloc_later.dart';
@@ -35,6 +37,7 @@ import '../../helpers/mock_repositories.dart';
 import '../../helpers/pump_routed.dart';
 import '../../helpers/seeded_account_blocs.dart';
 import '../../helpers/seeded_appearance_bloc.dart';
+import '../../helpers/settings_blocs.dart';
 import '../../helpers/sync_settings_blocs.dart';
 
 Future<GoRouter> _pump(WidgetTester tester, {int? patch}) async {
@@ -74,6 +77,7 @@ Future<GoRouter> _pump(WidgetTester tester, {int? patch}) async {
   final push = PushSettingBloc(FixturePushRepository())
     ..add(const PushSettingEvent.started());
   closeBlocLater(push);
+  final settings = await SettingsBlocs.start();
   final router = await pumpRouted(
     tester,
     MultiBlocProvider(
@@ -88,6 +92,8 @@ Future<GoRouter> _pump(WidgetTester tester, {int? patch}) async {
         BlocProvider<LockStatusBloc>.value(value: lock),
         BlocProvider<BiometricsBloc>.value(value: biometrics),
         BlocProvider<PushSettingBloc>.value(value: push),
+        BlocProvider<DailyTemplateBloc>.value(value: settings.dailyTemplate),
+        BlocProvider<RemindersSettingsBloc>.value(value: settings.reminders),
       ],
       child: const SettingsPane(),
     ),

@@ -18,6 +18,8 @@ import 'crash/views/widgets/crash_notice_host.dart';
 import 'gen/l10n/app_localizations.dart';
 import 'import/views/widgets/opened_documents_host.dart';
 import 'lock/views/widgets/lock_lifecycle_host.dart';
+import 'reminders/utils/reminders_coordinator.dart';
+import 'reminders/views/widgets/reminders_host.dart';
 import 'settings/views/widgets/backup_notice_host.dart';
 
 /// The Kanso app: the themes chosen (drawn from the theme files' tokens),
@@ -25,10 +27,13 @@ import 'settings/views/widgets/backup_notice_host.dart';
 /// let another device in and the notices about crashes and device backups
 /// over them.
 class App extends StatelessWidget {
-  const App({required this.router, super.key});
+  const App({required this.router, this.reminders, super.key});
 
   /// The routes of the app, and how many panes there is room for.
   final KansoRouter router;
+
+  /// Runs the local reminder plan in production; omitted in app shell tests.
+  final RemindersCoordinator? reminders;
 
   @override
   Widget build(BuildContext context) {
@@ -52,24 +57,34 @@ class App extends StatelessWidget {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           routerConfig: router.config,
-          builder: (context, child) => KansoIconSetScope(
-            iconSet: state.iconSet,
-            child: LayoutClassReporter(
-              notifier: router.layoutClass,
-              child: ForegroundReporter(
-                child: CrashNoticeHost(
-                  child: LockLifecycleHost(
-                    child: BackupNoticeHost(
-                      child: OpenedDocumentsHost(
-                        router: router.config,
-                        child: DeviceApprovalHost(child: child!),
+          builder: (context, child) {
+            final content = KansoIconSetScope(
+              iconSet: state.iconSet,
+              child: LayoutClassReporter(
+                notifier: router.layoutClass,
+                child: ForegroundReporter(
+                  child: CrashNoticeHost(
+                    child: LockLifecycleHost(
+                      child: BackupNoticeHost(
+                        child: OpenedDocumentsHost(
+                          router: router.config,
+                          child: DeviceApprovalHost(child: child!),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ),
+            );
+            final coordinator = reminders;
+            return coordinator == null
+                ? content
+                : RemindersHost(
+                    coordinator: coordinator,
+                    router: router.config,
+                    child: content,
+                  );
+          },
         );
       },
     );

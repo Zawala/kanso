@@ -15,6 +15,7 @@ import 'crash/models/repos/abs/crash_report_repository.dart';
 import 'crash/utils/crash_capture.dart';
 import 'injection.dart';
 import 'providers.dart';
+import 'reminders/utils/reminders_coordinator.dart';
 import 'window/models/repos/abs/note_window_repository.dart';
 import 'window/views/widgets/note_window_request_host.dart';
 import 'window/views/widgets/note_window_scope.dart';
@@ -56,7 +57,10 @@ Future<void> bootstrap(
         child: NoteWindowRequestHost(
           windows: windows,
           router: router.config,
-          child: App(router: router),
+          child: App(
+            router: router,
+            reminders: getIt<RemindersCoordinator>(),
+          ),
         ),
       ),
     ),

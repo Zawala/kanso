@@ -23,7 +23,6 @@ mod ask_panel;
 #[cfg(test)]
 mod ask_tests;
 mod assets;
-mod board;
 mod board_view;
 mod book_colors;
 mod book_icons;
