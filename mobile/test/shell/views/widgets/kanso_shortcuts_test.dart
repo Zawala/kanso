@@ -3,14 +3,18 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show EditableText;
+import 'package:flutter/material.dart' show EditableText, MaterialApp, Text;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
+import 'package:kanso/core/models/data/layout_class.dart';
 import 'package:kanso/core/views/widgets/kanso_drawer_scope.dart';
 import 'package:kanso/note_list/views/pages/note_list_page.dart';
+import 'package:kanso/shell/views/widgets/kanso_shortcuts.dart';
 import 'package:kanso/shell/views/widgets/library_navigation.dart';
+import 'package:kanso/tabs/views/widgets/tab_actions.dart';
 
+import '../../../helpers/core_library.dart';
 import '../../../helpers/fixture_library_repository.dart';
 import '../../../helpers/library_fixtures.dart';
 import '../../../helpers/pump_browse_app.dart';
@@ -26,11 +30,14 @@ Future<void> _shortcut(
   LogicalKeyboardKey key, {
   bool shift = false,
   bool alt = false,
+  bool secondary = true,
 }) async {
-  final secondary = defaultTargetPlatform == TargetPlatform.iOS
+  final modifier = defaultTargetPlatform == TargetPlatform.iOS
       ? LogicalKeyboardKey.metaLeft
       : LogicalKeyboardKey.controlLeft;
-  await tester.sendKeyDownEvent(secondary);
+  if (secondary) {
+    await tester.sendKeyDownEvent(modifier);
+  }
   if (shift) {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
   }
@@ -44,7 +51,9 @@ Future<void> _shortcut(
   if (shift) {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
   }
-  await tester.sendKeyUpEvent(secondary);
+  if (secondary) {
+    await tester.sendKeyUpEvent(modifier);
+  }
   // The blocs behind the shortcut take a few turns of the event loop.
   for (var i = 0; i < 5; i++) {
     await tester.pump();
@@ -55,11 +64,40 @@ Future<void> _shortcut(
 String _noteIn(String address) => Uri.decodeComponent(address.split('/').last);
 
 void main() {
+  setUpAll(initCoreForTests);
   group('KansoShortcuts', () {
     testWidgets('secondary + comma opens settings', (tester) async {
       final app = await pumpBrowseApp(tester, _landscape);
       await _shortcut(tester, LogicalKeyboardKey.comma);
       expect(topOf(app.router), '/settings');
+    });
+
+    testWidgets('Escape pops settings', (tester) async {
+      final app = await pumpBrowseApp(tester, _landscape);
+      await _shortcut(tester, LogicalKeyboardKey.comma);
+      expect(topOf(app.router), '/settings');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(topOf(app.router), '/notes');
+    });
+
+    testWidgets('tab shortcut is safe without a TabsBloc', (tester) async {
+      await initCoreForTests();
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: KansoShortcuts(
+            layout: LayoutClass.single,
+            location: null,
+            child: TabActions(child: Text('ready')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+      expect(find.text('ready'), findsOneWidget);
     });
 
     testWidgets('secondary + shift + F searches all notes', (tester) async {
@@ -107,7 +145,7 @@ void main() {
       expect(_noteIn(app.where), first);
     });
 
-    testWidgets('secondary + [ and ] go back and forward through the notes '
+    testWidgets('catalog keys go back and forward through the notes '
         'opened', (tester) async {
       final library = FixtureLibraryRepository()
         ..notes.addAll(readableMockNotes());
@@ -118,9 +156,22 @@ void main() {
       await _shortcut(tester, LogicalKeyboardKey.arrowDown, alt: true);
       expect(_noteIn(app.where), second);
 
-      await _shortcut(tester, LogicalKeyboardKey.bracketLeft);
+      final apple =
+          defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS;
+      await _shortcut(
+        tester,
+        apple ? LogicalKeyboardKey.bracketLeft : LogicalKeyboardKey.arrowLeft,
+        alt: !apple,
+        secondary: apple,
+      );
       expect(_noteIn(app.where), first);
-      await _shortcut(tester, LogicalKeyboardKey.bracketRight);
+      await _shortcut(
+        tester,
+        apple ? LogicalKeyboardKey.bracketRight : LogicalKeyboardKey.arrowRight,
+        alt: !apple,
+        secondary: apple,
+      );
       expect(_noteIn(app.where), second);
     });
 
