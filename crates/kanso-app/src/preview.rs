@@ -109,6 +109,7 @@ pub struct Preview {
     generation: u64,
     store: Arc<Store>,
     images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>>,
+    opened_files: Arc<Mutex<HashMap<String, (String, Vec<u8>)>>>,
     links: LinkSender,
     /// Where a ticked task box goes.
     edits: ResizeSender,
@@ -133,7 +134,12 @@ impl Preview {
         cx: &mut Context<Self>,
     ) -> Self {
         let images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>> = Arc::default();
-        let resolver: ImageResolver = Arc::new(image_resolver(store.clone(), images.clone()));
+        let opened_files = Arc::new(Mutex::new(HashMap::new()));
+        let resolver: ImageResolver = Arc::new(image_resolver(
+            store.clone(),
+            images.clone(),
+            opened_files.clone(),
+        ));
         let (wake, woken) = async_channel::unbounded();
         let note = Arc::new(Mutex::new(None));
         let rich = Arc::new(Rich {
@@ -162,6 +168,7 @@ impl Preview {
             generation: 0,
             store,
             images,
+            opened_files,
             links,
             edits,
             readable: false,
@@ -174,6 +181,7 @@ impl Preview {
 
     /// The note the preview shows, so a query view can leave it out.
     pub fn set_note(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+        let changed_id = id.clone();
         let changed = self.note.lock().map(|mut note| {
             if *note == id {
                 false
@@ -183,7 +191,31 @@ impl Preview {
             }
         });
         if changed.unwrap_or(false) {
+            if let Ok(mut images) = self.images.lock() {
+                images.clear();
+            }
+            if let Ok(mut files) = self.opened_files.lock() {
+                files.clear();
+                if let Some(note_id) = changed_id.clone() {
+                    fill_opened_files(&self.store, note_id.as_str(), &mut files, cx);
+                }
+            }
             cx.notify();
+        }
+        // Lock Notes Now forgets the keys without changing the note, so the
+        // decrypted bytes go with them. Unlocking the same note again has no
+        // new ID either; fill the cache back when a held key opens it.
+        if let Some(note_id) = changed_id.as_deref()
+            && self.store.note_is_locked(note_id).unwrap_or(false)
+            && let Ok(mut files) = self.opened_files.lock()
+        {
+            if crate::locked::LockKeys::is_unlocked(cx) {
+                if files.is_empty() {
+                    fill_opened_files(&self.store, note_id, &mut files, cx);
+                }
+            } else {
+                files.clear();
+            }
         }
     }
 
@@ -391,7 +423,11 @@ impl Preview {
     /// Resolves attachment links ([`FILE_LINK_PREFIX`]`<id>`) from the store,
     /// caching decoded images.
     fn image_resolver(&self) -> impl Fn(&SharedUri) -> ImageSource + Send + Sync + 'static {
-        image_resolver(self.store.clone(), self.images.clone())
+        image_resolver(
+            self.store.clone(),
+            self.images.clone(),
+            self.opened_files.clone(),
+        )
     }
 }
 
@@ -399,9 +435,28 @@ impl Preview {
 /// and cached; anything else as the URI says.
 type ImageResolver = Arc<dyn Fn(&SharedUri) -> ImageSource + Send + Sync>;
 
+/// Decrypts the attachments of a locked note whose keys this session holds,
+/// so the preview can draw them. Only called from `set_note`.
+fn fill_opened_files(
+    store: &Store,
+    note_id: &str,
+    files: &mut HashMap<String, (String, Vec<u8>)>,
+    cx: &App,
+) {
+    let (Ok(Some(note)), Ok(file_ids)) = (store.note(note_id), store.files_of_note(note_id)) else {
+        return;
+    };
+    for file_id in file_ids {
+        if let Some((metadata, bytes)) = crate::locked::opened_file(&note, &file_id, cx) {
+            files.insert(file_id, (metadata.content_type, bytes));
+        }
+    }
+}
+
 fn image_resolver(
     store: Arc<Store>,
     images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>>,
+    opened_files: Arc<Mutex<HashMap<String, (String, Vec<u8>)>>>,
 ) -> impl Fn(&SharedUri) -> ImageSource + Send + Sync + 'static {
     move |uri| {
         let Some(suffix) = uri.strip_prefix(FILE_LINK_PREFIX) else {
@@ -410,9 +465,16 @@ fn image_resolver(
         let id = format!("file:{suffix}");
         let mut cache = images.lock().expect("image cache poisoned");
         let image = cache.entry(id.clone()).or_insert_with(|| {
-            let (content_type, attachment) = store.attachment(&id).ok()??;
+            let opened = opened_files.lock().ok()?.get(&id).cloned();
+            let (content_type, bytes) = match opened {
+                Some(opened) => opened,
+                None => {
+                    let (content_type, attachment) = store.attachment(&id).ok()??;
+                    (content_type, attachment.data)
+                }
+            };
             let format = ImageFormat::from_mime_type(&content_type)?;
-            Some(Arc::new(Image::from_bytes(format, attachment.data)))
+            Some(Arc::new(Image::from_bytes(format, bytes)))
         });
         match image {
             Some(image) => ImageSource::Image(image.clone()),
