@@ -65,6 +65,8 @@ pub mod batch;
 pub mod capture;
 pub mod catalogue;
 pub mod daily;
+#[cfg(feature = "discovery")]
+pub mod discovery;
 pub mod edit;
 pub mod editor_settings;
 pub mod export;

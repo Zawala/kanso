@@ -13,23 +13,25 @@ pub use kanso_mobile::{
     AttachmentFile, BindingAnswer, BindingQuestion, BuiltinTheme, CaptureOutcome, Changed,
     ColorChoice, ColorRow, CommentPlacement, CommentRow, Completion, CompletionItem,
     CompletionKind, CopiedLink, CursorMark, DateField, DeviceRow, DiagramKind, DiagramRenderer,
-    DropsSaved, DueTone, EditCommand, EditOutcome, EditorContext, EditorEvent, EditorRun,
-    EditorSnapshot, ExportedPage, FoldState, FormatKind, GalleryColors, GalleryItem, GalleryKind,
-    HistoryState, Hit, IconChoice, IconThemeRow, ImportEvent, ImportFound, ImportPhase,
+    DiscoveryMeasure, DropsSaved, DueTone, EditCommand, EditOutcome, EditorContext, EditorEvent,
+    EditorRun, EditorSnapshot, ExportedPage, FoldState, FormatKind, GalleryColors, GalleryItem,
+    GalleryKind, GraphEdgeRow, GraphFilter, GraphLayout, GraphNodeRow, GraphRequest, HistoryState,
+    Hit, IconChoice, IconThemeRow, ImageToRead, ImportEvent, ImportFound, ImportPhase,
     ImportProgress, ImportSource, ImportSummary, InvitationRow, JoinRow, KansoError,
     LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveStatus,
-    LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MemberRow, MentionSpan,
-    NewNote, NoteChange, NoteList, NoteRow, NoteView, NotebookRole, NotebookRow, OpenedDocuments,
-    OpenedFile, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind, PasskeyRow,
-    PersonLookup, PersonRow, PreviewLink, PreviewOptions, PromptState, Property, PropertyKind,
-    ProviderEvent, ProviderKind, PushEnvironmentKind, PushPlatformKind, QuotaLimit, Range16,
-    RecoveryKeyText, Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo,
-    ServerMethods, Share, ShareFile, ShareInfo, ShareLinkRow, ShareRole, SharedEvent,
-    SignOutReasonKind, SignedUp, SortKey, SpanRow, StatusChoice, StatusCount, StyledRun, SvgRow,
-    SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow,
-    SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagPlaces, TagRow,
-    TagTreeRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange,
-    ThemeTokens, ThemedIcon, Ticked, VisibleNotebook,
+    LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MeaningResult, MemberRow,
+    MentionSpan, NewNote, NoteChange, NoteList, NoteMeaning, NoteRow, NoteView, NotebookRole,
+    NotebookRow, OpenedDocuments, OpenedFile, PaletteDto, PasskeyFailure, PasskeyRequest,
+    PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow, PreviewLink, PreviewOptions,
+    PromptState, Property, PropertyKind, ProviderEvent, ProviderKind, PushEnvironmentKind,
+    PushPlatformKind, QuotaLimit, Range16, RecoveryKeyText, RelatedRow, RelatedState,
+    RelatedStatus, Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo, ServerMethods,
+    Share, ShareFile, ShareInfo, ShareLinkRow, ShareRole, SharedEvent, SignOutReasonKind, SignedUp,
+    SortKey, SpanRow, StatusChoice, StatusCount, StyledRun, SuggestedTag, SvgRow, SyncAccount,
+    SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus,
+    SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagPlaces, TagRow, TagTreeRow,
+    TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskSection, TextChange, ThemeTokens,
+    ThemedIcon, Ticked, TwinRow, VisibleNotebook,
 };
 
 #[frb(mirror(KansoError))]
@@ -1399,4 +1401,113 @@ pub struct _ShareFile {
 pub struct _CaptureOutcome {
     pub note_id: String,
     pub problems: Vec<String>,
+}
+
+#[frb(mirror(RelatedStatus))]
+pub enum _RelatedStatus {
+    Off,
+    Downloading { done: u64, total: u64 },
+    Loading,
+    Indexing { done: u32, total: u32 },
+    Ready { notes: u32 },
+    Failed { message: String },
+}
+
+#[frb(mirror(RelatedState))]
+pub struct _RelatedState {
+    pub status: RelatedStatus,
+    pub title: Option<String>,
+    pub detail: Option<String>,
+}
+
+#[frb(mirror(RelatedRow))]
+pub struct _RelatedRow {
+    pub id: String,
+    pub title: String,
+    pub score: f32,
+    pub label: String,
+}
+
+#[frb(mirror(SuggestedTag))]
+pub struct _SuggestedTag {
+    pub tag_id: String,
+    pub name: String,
+    pub weight: f32,
+}
+
+#[frb(mirror(TwinRow))]
+pub struct _TwinRow {
+    pub id: String,
+    pub title: String,
+    pub percent: u32,
+}
+
+#[frb(mirror(NoteMeaning))]
+pub struct _NoteMeaning {
+    pub tags: Vec<SuggestedTag>,
+    pub twin: Option<TwinRow>,
+}
+
+#[frb(mirror(MeaningResult))]
+pub enum _MeaningResult {
+    Off,
+    NoModel,
+    Found { rows: Vec<RelatedRow> },
+}
+
+#[frb(mirror(GraphFilter))]
+pub enum _GraphFilter {
+    All,
+    Book { id: String },
+    Tag { id: String },
+}
+
+#[frb(mirror(GraphRequest))]
+pub enum _GraphRequest {
+    Library { filter: GraphFilter },
+    Local { center: String, hops: u8 },
+}
+
+#[frb(mirror(GraphNodeRow))]
+pub struct _GraphNodeRow {
+    pub id: String,
+    pub title: String,
+    pub notebook_id: String,
+    pub degree: u32,
+    pub x: f32,
+    pub y: f32,
+    pub radius: f32,
+    pub color_light: u32,
+    pub color_dark: u32,
+    pub is_center: bool,
+}
+
+#[frb(mirror(GraphEdgeRow))]
+pub struct _GraphEdgeRow {
+    pub from: u32,
+    pub to: u32,
+}
+
+#[frb(mirror(GraphLayout))]
+pub struct _GraphLayout {
+    pub nodes: Vec<GraphNodeRow>,
+    pub edges: Vec<GraphEdgeRow>,
+    pub link_count: u32,
+}
+
+#[frb(mirror(ImageToRead))]
+pub struct _ImageToRead {
+    pub id: String,
+    pub md5: String,
+    pub bytes: Vec<u8>,
+}
+
+#[frb(mirror(DiscoveryMeasure))]
+pub struct _DiscoveryMeasure {
+    pub model_bytes: u64,
+    pub load_ms: u64,
+    pub resident_before: Option<u64>,
+    pub resident_after: Option<u64>,
+    pub notes: u32,
+    pub notes_per_second: f64,
 }

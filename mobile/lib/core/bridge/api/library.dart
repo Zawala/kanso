@@ -7,6 +7,7 @@ import '../frb_generated.dart';
 import 'account.dart';
 import 'account_settings.dart';
 import 'approvals.dart';
+import 'discovery.dart';
 import 'editor.dart';
 import 'gallery.dart';
 import 'linking.dart';
@@ -78,6 +79,8 @@ abstract class KansoLibrary implements RustOpaqueInterface {
 
   /// Deletes tag `id`, and takes it off the notes that had it.
   Future<void> deleteTag({required String id});
+
+  KansoDiscovery discovery();
 
   /// Copies note `id` as the desktop does; returns the copy.
   Future<Saved> duplicate({required String id});
