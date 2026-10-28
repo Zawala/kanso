@@ -29,15 +29,23 @@ abstract class Preferences with _$Preferences {
     /// The fonts of notes.
     @Default(KansoFonts()) KansoFonts fonts,
 
-    /// The size of the text of notes in the editor.
-    @JsonKey(unknownEnumValue: KansoTextSize.standard)
-    @Default(KansoTextSize.standard)
-    KansoTextSize textSize,
+    /// The size of the text of notes in the editor, from 0.8 to 1.8.
+    @JsonKey(
+      fromJson: textScaleFromJson,
+      toJson: textScaleToJson,
+      defaultValue: 1.0,
+    )
+    @Default(1.0)
+    double textSize,
 
-    /// The size of the rendered preview's text.
-    @JsonKey(unknownEnumValue: KansoTextSize.standard)
-    @Default(KansoTextSize.standard)
-    KansoTextSize previewTextSize,
+    /// The size of the rendered preview's text, from 0.8 to 1.8.
+    @JsonKey(
+      fromJson: textScaleFromJson,
+      toJson: textScaleToJson,
+      defaultValue: 1.0,
+    )
+    @Default(1.0)
+    double previewTextSize,
 
     /// The icon theme the app is drawn in, by its ID. A theme this version
     /// does not know is Kanso's own icons.

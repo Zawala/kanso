@@ -96,7 +96,7 @@ class NotePreview extends StatelessWidget {
               mono: context.read<AppearanceBloc>().state.fonts.codeFont.family,
               size:
                   previewBaseTextSize *
-                  context.read<AppearanceBloc>().state.previewTextSize.scale,
+                  context.read<AppearanceBloc>().state.previewTextSize,
             ),
           ),
         child: BlocListener<AppearanceBloc, AppearanceState>(
@@ -109,7 +109,7 @@ class NotePreview extends StatelessWidget {
                   state.fonts.previewGoogleFont ??
                   state.fonts.previewFont.family,
               mono: state.fonts.codeFont.family,
-              size: previewBaseTextSize * state.previewTextSize.scale,
+              size: previewBaseTextSize * state.previewTextSize,
             ),
           ),
           child: BlocListener<NoteBloc, NoteState>(

@@ -564,16 +564,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'Calm software says less and remembers more. Every device keeps a full copy of your notes, and a change is merged on the others.';
 
   @override
-  String get textSizeSmall => 'Small';
+  String textSizePercent(int percent) {
+    return '$percent%';
+  }
 
   @override
-  String get textSizeDefault => 'Default';
+  String get textSizeControlLabel => 'Text size';
 
   @override
-  String get textSizeLarge => 'Large';
+  String get textSizeDecrease => 'Decrease text size';
 
   @override
-  String get textSizeLarger => 'Larger';
+  String get textSizeIncrease => 'Increase text size';
 
   @override
   String get editorTitleHint => 'Title';
@@ -3105,16 +3107,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String historyOrigin(String origin) {
-    String _temp0 = intl.Intl.selectLogic(origin, {
-      'ui': 'Edited in Kanso',
-      'api': 'Replaced through the API',
-      'sync': 'Replaced by sync',
-      'import': 'Replaced by an import',
-      'collab': 'Edited in a shared note',
-      'agent': 'Suggested by an agent, applied by you',
-      'plugin': 'Changed by a plugin',
-      'other': 'Saved version',
-    });
+    String _temp0 = intl.Intl.selectLogic(
+      origin,
+      {
+        'ui': 'Edited in Kanso',
+        'api': 'Replaced through the API',
+        'sync': 'Replaced by sync',
+        'import': 'Replaced by an import',
+        'collab': 'Edited in a shared note',
+        'agent': 'Suggested by an agent, applied by you',
+        'plugin': 'Changed by a plugin',
+        'other': 'Saved version',
+      },
+    );
     return '$_temp0';
   }
 

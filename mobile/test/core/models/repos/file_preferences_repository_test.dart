@@ -8,7 +8,6 @@ import 'dart:io';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
-import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/library_folder.dart';
 import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
@@ -41,11 +40,11 @@ void main() {
     test('saves in preferences.json beside the library, as JSON', () async {
       final repository = FilePreferencesRepository(folder);
       await repository.update(
-        (current) => current.copyWith(textSize: KansoTextSize.large),
+        (current) => current.copyWith(textSize: 1.15),
       );
       expect(folder.preferencesPath, endsWith('kanso/preferences.json'));
       final json = jsonDecode(file().readAsStringSync());
-      expect(json, containsPair('textSize', 'large'));
+      expect(json, containsPair('textSize', 1.15));
       expect(json, containsPair('version', preferencesFileVersion));
     });
 
@@ -83,7 +82,7 @@ void main() {
       final results = await Future.wait(<Future<Object>>[
         repository.update((c) => c.copyWith(sort: SortKey.created)),
         repository.update((c) => c.copyWith(descending: false)),
-        repository.update((c) => c.copyWith(textSize: KansoTextSize.larger)),
+        repository.update((c) => c.copyWith(textSize: 1.3)),
       ]);
       expect(results, hasLength(3));
       final saved = Preferences.fromJson(
@@ -94,7 +93,7 @@ void main() {
         const Preferences(
           sort: SortKey.created,
           descending: false,
-          textSize: KansoTextSize.larger,
+          textSize: 1.3,
         ),
       );
     });

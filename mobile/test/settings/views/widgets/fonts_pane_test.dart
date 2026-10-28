@@ -7,9 +7,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_icons.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
-import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_icon.dart';
+import 'package:kanso/settings/views/widgets/continuous_text_size_control.dart';
 import 'package:kanso/settings/views/widgets/font_choice_row.dart';
 import 'package:kanso/settings/views/widgets/fonts_pane.dart';
 
@@ -150,6 +150,15 @@ void main() {
       await tester.pump();
       expect(bloc.state.fonts.previewFont, KansoFontFamily.sourceSerif4);
       expect(bloc.state.fonts.editorFont, KansoFontFamily.instrumentSans);
+      final samples = find.textContaining('Calm software says less');
+      expect(
+        tester.widget<Text>(samples.first).style!.fontFamily,
+        'Instrument Sans',
+      );
+      expect(
+        tester.widget<Text>(samples.last).style!.fontFamily,
+        'Source Serif 4',
+      );
       await tester.tap(_row(KansoFontFamily.ibmPlexMono, index: 1));
       await tester.pump();
       expect(bloc.state.fonts.codeFont, KansoFontFamily.ibmPlexMono);
@@ -175,30 +184,56 @@ void main() {
       );
     });
 
-    testWidgets('the text size control sets the size', (tester) async {
+    testWidgets('the text size controls step down and up', (tester) async {
       final bloc = await _pump(tester);
-      // The text size control comes first, the preview's after it.
-      await tester.tap(find.text('Larger').first);
+      expect(bloc.state.textSize, 1.0);
+      await tester.tap(find.text('+').first);
       await tester.pump();
-      expect(bloc.state.textSize, KansoTextSize.larger);
-      await tester.tap(find.text('Small').first);
+      expect(bloc.state.textSize, 1.05);
+      final sample = tester.widget<Text>(
+        find.textContaining('Calm software says less').first,
+      );
+      expect(sample.style!.fontSize, closeTo(18.9, 1e-9));
+      await tester.tap(find.text('\u2212').first);
       await tester.pump();
-      expect(bloc.state.textSize, KansoTextSize.small);
-      expect(bloc.state.previewTextSize, KansoTextSize.standard);
+      expect(bloc.state.textSize, 1.0);
+      expect(bloc.state.previewTextSize, 1.0);
     });
 
-    testWidgets('the preview text size control sets the preview’s size '
-        'apart from the editor’s', (tester) async {
+    testWidgets('dragging the editor track updates its scale independently', (
+      tester,
+    ) async {
+      final bloc = await _pump(tester);
+      final track = find.descendant(
+        of: find.byType(ContinuousTextSizeControl).first,
+        matching: find.byType(CustomPaint),
+      );
+      final rect = tester.getRect(track);
+      await tester.dragFrom(
+        Offset(rect.center.dx, rect.center.dy),
+        Offset(rect.width * 0.25, 0),
+      );
+      await tester.pump();
+      expect(bloc.state.textSize, 1.55);
+      expect(bloc.state.previewTextSize, 1.0);
+      expect(find.text('155%'), findsOneWidget);
+    });
+
+    testWidgets('the preview has its own accessible scale control', (
+      tester,
+    ) async {
       final bloc = await _pump(tester);
       expect(find.text('Preview text size'), findsOneWidget);
       expect(
         find.text('The preview’s text, in Split and Preview.'),
         findsOneWidget,
       );
-      await tester.tap(find.text('Large').last);
+      await tester.tap(find.text('+').last);
       await tester.pump();
-      expect(bloc.state.previewTextSize, KansoTextSize.large);
-      expect(bloc.state.textSize, KansoTextSize.standard);
+      expect(bloc.state.previewTextSize, 1.05);
+      expect(bloc.state.textSize, 1.0);
+      expect(find.bySemanticsLabel('Increase text size'), findsNWidgets(2));
+      expect(find.bySemanticsLabel('Text size'), findsNWidgets(2));
     });
   });
 }

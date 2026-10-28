@@ -175,7 +175,9 @@ class SettingsPane extends StatelessWidget {
                                 KansoSettingsRow(
                                   icon: KansoIcons.textSize,
                                   label: l10n.settingsTextSize,
-                                  value: l10n.textSizeName(appearance.textSize),
+                                  value: l10n.textScaleName(
+                                    appearance.textSize,
+                                  ),
                                   chevron: true,
                                   onTap: () => context.push(
                                     KansoRoutes.fonts(atSize: true),
@@ -192,7 +194,7 @@ class SettingsPane extends StatelessWidget {
                                 KansoSettingsRow(
                                   icon: KansoIcons.textSize,
                                   label: l10n.fontsPreviewTextSizeSection,
-                                  value: l10n.textSizeName(
+                                  value: l10n.textScaleName(
                                     appearance.previewTextSize,
                                   ),
                                   chevron: true,

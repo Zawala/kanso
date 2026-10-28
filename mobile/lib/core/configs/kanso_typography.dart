@@ -8,14 +8,13 @@ import 'package:flutter/material.dart';
 import '../models/data/kanso_font_category.dart';
 import '../models/data/kanso_font_family.dart';
 import '../models/data/kanso_fonts.dart';
-import '../models/data/kanso_text_size.dart';
 import 'kanso_colors.dart';
 
 /// Kanso's type scale.
 ///
 /// The interface is always in Instrument Sans. The text of notes follows
 /// the person's choices: the editor, preview and code fonts of
-/// [KansoFonts] and the [KansoTextSize], which scales note text only.
+/// [KansoFonts] and continuous text scales, which change note text only.
 ///
 /// The sizes are tuned for a phone, at the density of a compact notes app.
 /// Nothing clamps the text scale: dynamic type is respected everywhere.
@@ -54,8 +53,8 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
   factory KansoTypography.fromColors(
     KansoColors colors, {
     KansoFonts fonts = const KansoFonts(),
-    KansoTextSize textSize = KansoTextSize.standard,
-    KansoTextSize? previewTextSize,
+    double textSize = 1,
+    double? previewTextSize,
   }) {
     TextStyle ui(
       double size,
@@ -77,14 +76,14 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
     TextStyle note(
       KansoFontFamily font,
       String? googleFont,
-      KansoTextSize scale,
+      double scale,
       double size,
       FontWeight weight,
       double height,
     ) {
       return fontStyle(
         font,
-        size: scale.scaled(size),
+        size: size * scale,
         weight: weight,
         height: height,
         color: colors.text,

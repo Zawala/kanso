@@ -11,7 +11,6 @@ import 'package:kanso/core/configs/kanso_typography.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
-import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/layout_class.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
@@ -113,13 +112,13 @@ void main() {
             KansoFontFamily.sourceSerif4,
           ),
         )
-        ..add(const AppearanceEvent.textSizeChanged(KansoTextSize.large));
+        ..add(const AppearanceEvent.textSizeChanged(1.15));
       styles = await typography(tester);
       expect(styles.previewBody.fontFamily, 'Source Serif 4');
       expect(styles.previewBody.fontSize, 18);
       expect(styles.editorBody.fontSize, closeTo(18 * 1.15, 1e-9));
       bloc.add(
-        const AppearanceEvent.previewTextSizeChanged(KansoTextSize.larger),
+        const AppearanceEvent.previewTextSizeChanged(1.3),
       );
       styles = await typography(tester);
       expect(styles.previewBody.fontSize, closeTo(18 * 1.3, 1e-9));
