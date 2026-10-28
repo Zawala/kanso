@@ -62,7 +62,11 @@ class TabbedNote extends StatelessWidget {
         final window = windows != null && windows.supported ? windows : null;
         // The note is in the same place of the tree whether or not there is
         // a bar, so showing the second tab does not rebuild the note.
+        // The pane's slot may give the height loosely (a Row centres a child
+        // it does not stretch), so the stack takes all of it: the bar and the
+        // note fill the pane they are drawn in.
         return Stack(
+          fit: StackFit.expand,
           children: <Widget>[
             Positioned.fill(
               child: Column(
