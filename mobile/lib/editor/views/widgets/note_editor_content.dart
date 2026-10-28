@@ -17,6 +17,7 @@ import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/application_error.dart';
 import '../../../core/models/data/browse_location.dart';
+import '../../../core/models/data/note_drag_data.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../note/models/data/note_mode.dart';
 import '../../../note/state/note/note_bloc.dart';
@@ -620,26 +621,71 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                             reservedBottom: KansoSizes.touchTarget + 1,
                             child: Stack(
                               children: <Widget>[
-                                MarkdownEditor(
-                                  controller: controller,
-                                  focusNode: textFocus,
-                                  editableKey: editableKey,
-                                  readOnly: readOnly,
-                                  // The platform checks what the field holds: a
-                                  // window of a long note, never the whole.
-                                  spellCheckService: DefaultSpellCheckService(),
-                                  menuBuilder: (context, state) =>
-                                      LinkContextMenu(
-                                        state: state,
-                                        document: widget.document,
-                                        windowStart: controller.windowStart,
-                                        onOpen: (target) => editor.add(
-                                          EditorEvent.linkOpenRequested(target),
+                                DragTarget<NoteDragData>(
+                                  onWillAcceptWithDetails: (_) => !readOnly,
+                                  onAcceptWithDetails: (details) {
+                                    final links = <String>[
+                                      for (final title in details.data.titles)
+                                        if (title.isNotEmpty) '[[$title]]',
+                                    ];
+                                    if (links.isEmpty) {
+                                      return;
+                                    }
+                                    final selection = controller.noteSelection;
+                                    final start = selection.isValid
+                                        ? selection.start
+                                        : controller.noteLength;
+                                    final end = selection.isValid
+                                        ? selection.end
+                                        : controller.noteLength;
+                                    controller.run(
+                                      EditCommand.insert(
+                                        range: Range16(start: start, end: end),
+                                        text: links.join(' '),
+                                      ),
+                                    );
+                                    textFocus.requestFocus();
+                                  },
+                                  builder: (context, hovering, rejected) =>
+                                      DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          border: hovering.isEmpty
+                                              ? null
+                                              : Border.all(
+                                                  color: context.colors.accent,
+                                                  width: 2,
+                                                ),
                                         ),
-                                        onComment:
-                                            comments?.state.mayComment ?? false
-                                            ? commentOnSelection
-                                            : null,
+                                        child: MarkdownEditor(
+                                          controller: controller,
+                                          focusNode: textFocus,
+                                          editableKey: editableKey,
+                                          readOnly: readOnly,
+                                          // The platform checks what the field
+                                          // holds: a window of a long note,
+                                          // never the whole.
+                                          spellCheckService:
+                                              DefaultSpellCheckService(),
+                                          menuBuilder: (context, state) =>
+                                              LinkContextMenu(
+                                                state: state,
+                                                document: widget.document,
+                                                windowStart:
+                                                    controller.windowStart,
+                                                onOpen: (target) => editor.add(
+                                                  EditorEvent.linkOpenRequested(
+                                                    target,
+                                                  ),
+                                                ),
+                                                onComment:
+                                                    comments
+                                                            ?.state
+                                                            .mayComment ??
+                                                        false
+                                                    ? commentOnSelection
+                                                    : null,
+                                              ),
+                                        ),
                                       ),
                                 ),
                                 // Where the others in a shared note are.
