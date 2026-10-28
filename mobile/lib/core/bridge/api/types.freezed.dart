@@ -2224,6 +2224,639 @@ as String,
 }
 
 /// @nodoc
+mixin _$GraphFilter {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is GraphFilter);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'GraphFilter()';
+}
+
+
+}
+
+/// @nodoc
+class $GraphFilterCopyWith<$Res>  {
+$GraphFilterCopyWith(GraphFilter _, $Res Function(GraphFilter) __);
+}
+
+
+/// Adds pattern-matching-related methods to [GraphFilter].
+extension GraphFilterPatterns on GraphFilter {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( GraphFilter_All value)?  all,TResult Function( GraphFilter_Book value)?  book,TResult Function( GraphFilter_Tag value)?  tag,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case GraphFilter_All() when all != null:
+return all(_that);case GraphFilter_Book() when book != null:
+return book(_that);case GraphFilter_Tag() when tag != null:
+return tag(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( GraphFilter_All value)  all,required TResult Function( GraphFilter_Book value)  book,required TResult Function( GraphFilter_Tag value)  tag,}){
+final _that = this;
+switch (_that) {
+case GraphFilter_All():
+return all(_that);case GraphFilter_Book():
+return book(_that);case GraphFilter_Tag():
+return tag(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( GraphFilter_All value)?  all,TResult? Function( GraphFilter_Book value)?  book,TResult? Function( GraphFilter_Tag value)?  tag,}){
+final _that = this;
+switch (_that) {
+case GraphFilter_All() when all != null:
+return all(_that);case GraphFilter_Book() when book != null:
+return book(_that);case GraphFilter_Tag() when tag != null:
+return tag(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  all,TResult Function( String id)?  book,TResult Function( String id)?  tag,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case GraphFilter_All() when all != null:
+return all();case GraphFilter_Book() when book != null:
+return book(_that.id);case GraphFilter_Tag() when tag != null:
+return tag(_that.id);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  all,required TResult Function( String id)  book,required TResult Function( String id)  tag,}) {final _that = this;
+switch (_that) {
+case GraphFilter_All():
+return all();case GraphFilter_Book():
+return book(_that.id);case GraphFilter_Tag():
+return tag(_that.id);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  all,TResult? Function( String id)?  book,TResult? Function( String id)?  tag,}) {final _that = this;
+switch (_that) {
+case GraphFilter_All() when all != null:
+return all();case GraphFilter_Book() when book != null:
+return book(_that.id);case GraphFilter_Tag() when tag != null:
+return tag(_that.id);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class GraphFilter_All extends GraphFilter {
+  const GraphFilter_All(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is GraphFilter_All);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'GraphFilter.all()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class GraphFilter_Book extends GraphFilter {
+  const GraphFilter_Book({required this.id}): super._();
+  
+
+ final  String id;
+
+/// Create a copy of GraphFilter
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$GraphFilter_BookCopyWith<GraphFilter_Book> get copyWith => _$GraphFilter_BookCopyWithImpl<GraphFilter_Book>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is GraphFilter_Book&&(identical(other.id, id) || other.id == id));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,id);
+
+@override
+String toString() {
+  return 'GraphFilter.book(id: $id)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $GraphFilter_BookCopyWith<$Res> implements $GraphFilterCopyWith<$Res> {
+  factory $GraphFilter_BookCopyWith(GraphFilter_Book value, $Res Function(GraphFilter_Book) _then) = _$GraphFilter_BookCopyWithImpl;
+@useResult
+$Res call({
+ String id
+});
+
+
+
+
+}
+/// @nodoc
+class _$GraphFilter_BookCopyWithImpl<$Res>
+    implements $GraphFilter_BookCopyWith<$Res> {
+  _$GraphFilter_BookCopyWithImpl(this._self, this._then);
+
+  final GraphFilter_Book _self;
+  final $Res Function(GraphFilter_Book) _then;
+
+/// Create a copy of GraphFilter
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
+  return _then(GraphFilter_Book(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class GraphFilter_Tag extends GraphFilter {
+  const GraphFilter_Tag({required this.id}): super._();
+  
+
+ final  String id;
+
+/// Create a copy of GraphFilter
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$GraphFilter_TagCopyWith<GraphFilter_Tag> get copyWith => _$GraphFilter_TagCopyWithImpl<GraphFilter_Tag>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is GraphFilter_Tag&&(identical(other.id, id) || other.id == id));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,id);
+
+@override
+String toString() {
+  return 'GraphFilter.tag(id: $id)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $GraphFilter_TagCopyWith<$Res> implements $GraphFilterCopyWith<$Res> {
+  factory $GraphFilter_TagCopyWith(GraphFilter_Tag value, $Res Function(GraphFilter_Tag) _then) = _$GraphFilter_TagCopyWithImpl;
+@useResult
+$Res call({
+ String id
+});
+
+
+
+
+}
+/// @nodoc
+class _$GraphFilter_TagCopyWithImpl<$Res>
+    implements $GraphFilter_TagCopyWith<$Res> {
+  _$GraphFilter_TagCopyWithImpl(this._self, this._then);
+
+  final GraphFilter_Tag _self;
+  final $Res Function(GraphFilter_Tag) _then;
+
+/// Create a copy of GraphFilter
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? id = null,}) {
+  return _then(GraphFilter_Tag(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+mixin _$GraphRequest {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is GraphRequest);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'GraphRequest()';
+}
+
+
+}
+
+/// @nodoc
+class $GraphRequestCopyWith<$Res>  {
+$GraphRequestCopyWith(GraphRequest _, $Res Function(GraphRequest) __);
+}
+
+
+/// Adds pattern-matching-related methods to [GraphRequest].
+extension GraphRequestPatterns on GraphRequest {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( GraphRequest_Library value)?  library_,TResult Function( GraphRequest_Local value)?  local,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case GraphRequest_Library() when library_ != null:
+return library_(_that);case GraphRequest_Local() when local != null:
+return local(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( GraphRequest_Library value)  library_,required TResult Function( GraphRequest_Local value)  local,}){
+final _that = this;
+switch (_that) {
+case GraphRequest_Library():
+return library_(_that);case GraphRequest_Local():
+return local(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( GraphRequest_Library value)?  library_,TResult? Function( GraphRequest_Local value)?  local,}){
+final _that = this;
+switch (_that) {
+case GraphRequest_Library() when library_ != null:
+return library_(_that);case GraphRequest_Local() when local != null:
+return local(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( GraphFilter filter)?  library_,TResult Function( String center,  int hops)?  local,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case GraphRequest_Library() when library_ != null:
+return library_(_that.filter);case GraphRequest_Local() when local != null:
+return local(_that.center,_that.hops);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( GraphFilter filter)  library_,required TResult Function( String center,  int hops)  local,}) {final _that = this;
+switch (_that) {
+case GraphRequest_Library():
+return library_(_that.filter);case GraphRequest_Local():
+return local(_that.center,_that.hops);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( GraphFilter filter)?  library_,TResult? Function( String center,  int hops)?  local,}) {final _that = this;
+switch (_that) {
+case GraphRequest_Library() when library_ != null:
+return library_(_that.filter);case GraphRequest_Local() when local != null:
+return local(_that.center,_that.hops);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class GraphRequest_Library extends GraphRequest {
+  const GraphRequest_Library({required this.filter}): super._();
+  
+
+ final  GraphFilter filter;
+
+/// Create a copy of GraphRequest
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$GraphRequest_LibraryCopyWith<GraphRequest_Library> get copyWith => _$GraphRequest_LibraryCopyWithImpl<GraphRequest_Library>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is GraphRequest_Library&&(identical(other.filter, filter) || other.filter == filter));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,filter);
+
+@override
+String toString() {
+  return 'GraphRequest.library_(filter: $filter)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $GraphRequest_LibraryCopyWith<$Res> implements $GraphRequestCopyWith<$Res> {
+  factory $GraphRequest_LibraryCopyWith(GraphRequest_Library value, $Res Function(GraphRequest_Library) _then) = _$GraphRequest_LibraryCopyWithImpl;
+@useResult
+$Res call({
+ GraphFilter filter
+});
+
+
+$GraphFilterCopyWith<$Res> get filter;
+
+}
+/// @nodoc
+class _$GraphRequest_LibraryCopyWithImpl<$Res>
+    implements $GraphRequest_LibraryCopyWith<$Res> {
+  _$GraphRequest_LibraryCopyWithImpl(this._self, this._then);
+
+  final GraphRequest_Library _self;
+  final $Res Function(GraphRequest_Library) _then;
+
+/// Create a copy of GraphRequest
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? filter = null,}) {
+  return _then(GraphRequest_Library(
+filter: null == filter ? _self.filter : filter // ignore: cast_nullable_to_non_nullable
+as GraphFilter,
+  ));
+}
+
+/// Create a copy of GraphRequest
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$GraphFilterCopyWith<$Res> get filter {
+  
+  return $GraphFilterCopyWith<$Res>(_self.filter, (value) {
+    return _then(_self.copyWith(filter: value));
+  });
+}
+}
+
+/// @nodoc
+
+
+class GraphRequest_Local extends GraphRequest {
+  const GraphRequest_Local({required this.center, required this.hops}): super._();
+  
+
+ final  String center;
+ final  int hops;
+
+/// Create a copy of GraphRequest
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$GraphRequest_LocalCopyWith<GraphRequest_Local> get copyWith => _$GraphRequest_LocalCopyWithImpl<GraphRequest_Local>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is GraphRequest_Local&&(identical(other.center, center) || other.center == center)&&(identical(other.hops, hops) || other.hops == hops));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,center,hops);
+
+@override
+String toString() {
+  return 'GraphRequest.local(center: $center, hops: $hops)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $GraphRequest_LocalCopyWith<$Res> implements $GraphRequestCopyWith<$Res> {
+  factory $GraphRequest_LocalCopyWith(GraphRequest_Local value, $Res Function(GraphRequest_Local) _then) = _$GraphRequest_LocalCopyWithImpl;
+@useResult
+$Res call({
+ String center, int hops
+});
+
+
+
+
+}
+/// @nodoc
+class _$GraphRequest_LocalCopyWithImpl<$Res>
+    implements $GraphRequest_LocalCopyWith<$Res> {
+  _$GraphRequest_LocalCopyWithImpl(this._self, this._then);
+
+  final GraphRequest_Local _self;
+  final $Res Function(GraphRequest_Local) _then;
+
+/// Create a copy of GraphRequest
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? center = null,Object? hops = null,}) {
+  return _then(GraphRequest_Local(
+center: null == center ? _self.center : center // ignore: cast_nullable_to_non_nullable
+as String,hops: null == hops ? _self.hops : hops // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$ImportEvent {
 
  Object get field0;
@@ -4788,6 +5421,308 @@ as String?,
 }
 
 /// @nodoc
+mixin _$MeaningResult {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MeaningResult);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'MeaningResult()';
+}
+
+
+}
+
+/// @nodoc
+class $MeaningResultCopyWith<$Res>  {
+$MeaningResultCopyWith(MeaningResult _, $Res Function(MeaningResult) __);
+}
+
+
+/// Adds pattern-matching-related methods to [MeaningResult].
+extension MeaningResultPatterns on MeaningResult {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( MeaningResult_Off value)?  off,TResult Function( MeaningResult_NoModel value)?  noModel,TResult Function( MeaningResult_Found value)?  found,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case MeaningResult_Off() when off != null:
+return off(_that);case MeaningResult_NoModel() when noModel != null:
+return noModel(_that);case MeaningResult_Found() when found != null:
+return found(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( MeaningResult_Off value)  off,required TResult Function( MeaningResult_NoModel value)  noModel,required TResult Function( MeaningResult_Found value)  found,}){
+final _that = this;
+switch (_that) {
+case MeaningResult_Off():
+return off(_that);case MeaningResult_NoModel():
+return noModel(_that);case MeaningResult_Found():
+return found(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( MeaningResult_Off value)?  off,TResult? Function( MeaningResult_NoModel value)?  noModel,TResult? Function( MeaningResult_Found value)?  found,}){
+final _that = this;
+switch (_that) {
+case MeaningResult_Off() when off != null:
+return off(_that);case MeaningResult_NoModel() when noModel != null:
+return noModel(_that);case MeaningResult_Found() when found != null:
+return found(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  off,TResult Function()?  noModel,TResult Function( List<RelatedRow> rows)?  found,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case MeaningResult_Off() when off != null:
+return off();case MeaningResult_NoModel() when noModel != null:
+return noModel();case MeaningResult_Found() when found != null:
+return found(_that.rows);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  off,required TResult Function()  noModel,required TResult Function( List<RelatedRow> rows)  found,}) {final _that = this;
+switch (_that) {
+case MeaningResult_Off():
+return off();case MeaningResult_NoModel():
+return noModel();case MeaningResult_Found():
+return found(_that.rows);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  off,TResult? Function()?  noModel,TResult? Function( List<RelatedRow> rows)?  found,}) {final _that = this;
+switch (_that) {
+case MeaningResult_Off() when off != null:
+return off();case MeaningResult_NoModel() when noModel != null:
+return noModel();case MeaningResult_Found() when found != null:
+return found(_that.rows);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class MeaningResult_Off extends MeaningResult {
+  const MeaningResult_Off(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MeaningResult_Off);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'MeaningResult.off()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class MeaningResult_NoModel extends MeaningResult {
+  const MeaningResult_NoModel(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MeaningResult_NoModel);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'MeaningResult.noModel()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class MeaningResult_Found extends MeaningResult {
+  const MeaningResult_Found({required final  List<RelatedRow> rows}): _rows = rows,super._();
+  
+
+ final  List<RelatedRow> _rows;
+ List<RelatedRow> get rows {
+  if (_rows is EqualUnmodifiableListView) return _rows;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_rows);
+}
+
+
+/// Create a copy of MeaningResult
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$MeaningResult_FoundCopyWith<MeaningResult_Found> get copyWith => _$MeaningResult_FoundCopyWithImpl<MeaningResult_Found>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MeaningResult_Found&&const DeepCollectionEquality().equals(other._rows, _rows));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_rows));
+
+@override
+String toString() {
+  return 'MeaningResult.found(rows: $rows)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $MeaningResult_FoundCopyWith<$Res> implements $MeaningResultCopyWith<$Res> {
+  factory $MeaningResult_FoundCopyWith(MeaningResult_Found value, $Res Function(MeaningResult_Found) _then) = _$MeaningResult_FoundCopyWithImpl;
+@useResult
+$Res call({
+ List<RelatedRow> rows
+});
+
+
+
+
+}
+/// @nodoc
+class _$MeaningResult_FoundCopyWithImpl<$Res>
+    implements $MeaningResult_FoundCopyWith<$Res> {
+  _$MeaningResult_FoundCopyWithImpl(this._self, this._then);
+
+  final MeaningResult_Found _self;
+  final $Res Function(MeaningResult_Found) _then;
+
+/// Create a copy of MeaningResult
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? rows = null,}) {
+  return _then(MeaningResult_Found(
+rows: null == rows ? _self._rows : rows // ignore: cast_nullable_to_non_nullable
+as List<RelatedRow>,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$NoteChange {
 
 
@@ -7075,6 +8010,522 @@ String toString() {
 
 
 
+
+/// @nodoc
+mixin _$RelatedStatus {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RelatedStatus);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'RelatedStatus()';
+}
+
+
+}
+
+/// @nodoc
+class $RelatedStatusCopyWith<$Res>  {
+$RelatedStatusCopyWith(RelatedStatus _, $Res Function(RelatedStatus) __);
+}
+
+
+/// Adds pattern-matching-related methods to [RelatedStatus].
+extension RelatedStatusPatterns on RelatedStatus {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( RelatedStatus_Off value)?  off,TResult Function( RelatedStatus_Downloading value)?  downloading,TResult Function( RelatedStatus_Loading value)?  loading,TResult Function( RelatedStatus_Indexing value)?  indexing,TResult Function( RelatedStatus_Ready value)?  ready,TResult Function( RelatedStatus_Failed value)?  failed,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case RelatedStatus_Off() when off != null:
+return off(_that);case RelatedStatus_Downloading() when downloading != null:
+return downloading(_that);case RelatedStatus_Loading() when loading != null:
+return loading(_that);case RelatedStatus_Indexing() when indexing != null:
+return indexing(_that);case RelatedStatus_Ready() when ready != null:
+return ready(_that);case RelatedStatus_Failed() when failed != null:
+return failed(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( RelatedStatus_Off value)  off,required TResult Function( RelatedStatus_Downloading value)  downloading,required TResult Function( RelatedStatus_Loading value)  loading,required TResult Function( RelatedStatus_Indexing value)  indexing,required TResult Function( RelatedStatus_Ready value)  ready,required TResult Function( RelatedStatus_Failed value)  failed,}){
+final _that = this;
+switch (_that) {
+case RelatedStatus_Off():
+return off(_that);case RelatedStatus_Downloading():
+return downloading(_that);case RelatedStatus_Loading():
+return loading(_that);case RelatedStatus_Indexing():
+return indexing(_that);case RelatedStatus_Ready():
+return ready(_that);case RelatedStatus_Failed():
+return failed(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( RelatedStatus_Off value)?  off,TResult? Function( RelatedStatus_Downloading value)?  downloading,TResult? Function( RelatedStatus_Loading value)?  loading,TResult? Function( RelatedStatus_Indexing value)?  indexing,TResult? Function( RelatedStatus_Ready value)?  ready,TResult? Function( RelatedStatus_Failed value)?  failed,}){
+final _that = this;
+switch (_that) {
+case RelatedStatus_Off() when off != null:
+return off(_that);case RelatedStatus_Downloading() when downloading != null:
+return downloading(_that);case RelatedStatus_Loading() when loading != null:
+return loading(_that);case RelatedStatus_Indexing() when indexing != null:
+return indexing(_that);case RelatedStatus_Ready() when ready != null:
+return ready(_that);case RelatedStatus_Failed() when failed != null:
+return failed(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  off,TResult Function( int done,  int total)?  downloading,TResult Function()?  loading,TResult Function( int done,  int total)?  indexing,TResult Function( int notes)?  ready,TResult Function( String message)?  failed,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case RelatedStatus_Off() when off != null:
+return off();case RelatedStatus_Downloading() when downloading != null:
+return downloading(_that.done,_that.total);case RelatedStatus_Loading() when loading != null:
+return loading();case RelatedStatus_Indexing() when indexing != null:
+return indexing(_that.done,_that.total);case RelatedStatus_Ready() when ready != null:
+return ready(_that.notes);case RelatedStatus_Failed() when failed != null:
+return failed(_that.message);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  off,required TResult Function( int done,  int total)  downloading,required TResult Function()  loading,required TResult Function( int done,  int total)  indexing,required TResult Function( int notes)  ready,required TResult Function( String message)  failed,}) {final _that = this;
+switch (_that) {
+case RelatedStatus_Off():
+return off();case RelatedStatus_Downloading():
+return downloading(_that.done,_that.total);case RelatedStatus_Loading():
+return loading();case RelatedStatus_Indexing():
+return indexing(_that.done,_that.total);case RelatedStatus_Ready():
+return ready(_that.notes);case RelatedStatus_Failed():
+return failed(_that.message);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  off,TResult? Function( int done,  int total)?  downloading,TResult? Function()?  loading,TResult? Function( int done,  int total)?  indexing,TResult? Function( int notes)?  ready,TResult? Function( String message)?  failed,}) {final _that = this;
+switch (_that) {
+case RelatedStatus_Off() when off != null:
+return off();case RelatedStatus_Downloading() when downloading != null:
+return downloading(_that.done,_that.total);case RelatedStatus_Loading() when loading != null:
+return loading();case RelatedStatus_Indexing() when indexing != null:
+return indexing(_that.done,_that.total);case RelatedStatus_Ready() when ready != null:
+return ready(_that.notes);case RelatedStatus_Failed() when failed != null:
+return failed(_that.message);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class RelatedStatus_Off extends RelatedStatus {
+  const RelatedStatus_Off(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RelatedStatus_Off);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'RelatedStatus.off()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class RelatedStatus_Downloading extends RelatedStatus {
+  const RelatedStatus_Downloading({required this.done, required this.total}): super._();
+  
+
+ final  int done;
+ final  int total;
+
+/// Create a copy of RelatedStatus
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$RelatedStatus_DownloadingCopyWith<RelatedStatus_Downloading> get copyWith => _$RelatedStatus_DownloadingCopyWithImpl<RelatedStatus_Downloading>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RelatedStatus_Downloading&&(identical(other.done, done) || other.done == done)&&(identical(other.total, total) || other.total == total));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,done,total);
+
+@override
+String toString() {
+  return 'RelatedStatus.downloading(done: $done, total: $total)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $RelatedStatus_DownloadingCopyWith<$Res> implements $RelatedStatusCopyWith<$Res> {
+  factory $RelatedStatus_DownloadingCopyWith(RelatedStatus_Downloading value, $Res Function(RelatedStatus_Downloading) _then) = _$RelatedStatus_DownloadingCopyWithImpl;
+@useResult
+$Res call({
+ int done, int total
+});
+
+
+
+
+}
+/// @nodoc
+class _$RelatedStatus_DownloadingCopyWithImpl<$Res>
+    implements $RelatedStatus_DownloadingCopyWith<$Res> {
+  _$RelatedStatus_DownloadingCopyWithImpl(this._self, this._then);
+
+  final RelatedStatus_Downloading _self;
+  final $Res Function(RelatedStatus_Downloading) _then;
+
+/// Create a copy of RelatedStatus
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? done = null,Object? total = null,}) {
+  return _then(RelatedStatus_Downloading(
+done: null == done ? _self.done : done // ignore: cast_nullable_to_non_nullable
+as int,total: null == total ? _self.total : total // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class RelatedStatus_Loading extends RelatedStatus {
+  const RelatedStatus_Loading(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RelatedStatus_Loading);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'RelatedStatus.loading()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class RelatedStatus_Indexing extends RelatedStatus {
+  const RelatedStatus_Indexing({required this.done, required this.total}): super._();
+  
+
+ final  int done;
+ final  int total;
+
+/// Create a copy of RelatedStatus
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$RelatedStatus_IndexingCopyWith<RelatedStatus_Indexing> get copyWith => _$RelatedStatus_IndexingCopyWithImpl<RelatedStatus_Indexing>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RelatedStatus_Indexing&&(identical(other.done, done) || other.done == done)&&(identical(other.total, total) || other.total == total));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,done,total);
+
+@override
+String toString() {
+  return 'RelatedStatus.indexing(done: $done, total: $total)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $RelatedStatus_IndexingCopyWith<$Res> implements $RelatedStatusCopyWith<$Res> {
+  factory $RelatedStatus_IndexingCopyWith(RelatedStatus_Indexing value, $Res Function(RelatedStatus_Indexing) _then) = _$RelatedStatus_IndexingCopyWithImpl;
+@useResult
+$Res call({
+ int done, int total
+});
+
+
+
+
+}
+/// @nodoc
+class _$RelatedStatus_IndexingCopyWithImpl<$Res>
+    implements $RelatedStatus_IndexingCopyWith<$Res> {
+  _$RelatedStatus_IndexingCopyWithImpl(this._self, this._then);
+
+  final RelatedStatus_Indexing _self;
+  final $Res Function(RelatedStatus_Indexing) _then;
+
+/// Create a copy of RelatedStatus
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? done = null,Object? total = null,}) {
+  return _then(RelatedStatus_Indexing(
+done: null == done ? _self.done : done // ignore: cast_nullable_to_non_nullable
+as int,total: null == total ? _self.total : total // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class RelatedStatus_Ready extends RelatedStatus {
+  const RelatedStatus_Ready({required this.notes}): super._();
+  
+
+ final  int notes;
+
+/// Create a copy of RelatedStatus
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$RelatedStatus_ReadyCopyWith<RelatedStatus_Ready> get copyWith => _$RelatedStatus_ReadyCopyWithImpl<RelatedStatus_Ready>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RelatedStatus_Ready&&(identical(other.notes, notes) || other.notes == notes));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,notes);
+
+@override
+String toString() {
+  return 'RelatedStatus.ready(notes: $notes)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $RelatedStatus_ReadyCopyWith<$Res> implements $RelatedStatusCopyWith<$Res> {
+  factory $RelatedStatus_ReadyCopyWith(RelatedStatus_Ready value, $Res Function(RelatedStatus_Ready) _then) = _$RelatedStatus_ReadyCopyWithImpl;
+@useResult
+$Res call({
+ int notes
+});
+
+
+
+
+}
+/// @nodoc
+class _$RelatedStatus_ReadyCopyWithImpl<$Res>
+    implements $RelatedStatus_ReadyCopyWith<$Res> {
+  _$RelatedStatus_ReadyCopyWithImpl(this._self, this._then);
+
+  final RelatedStatus_Ready _self;
+  final $Res Function(RelatedStatus_Ready) _then;
+
+/// Create a copy of RelatedStatus
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? notes = null,}) {
+  return _then(RelatedStatus_Ready(
+notes: null == notes ? _self.notes : notes // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class RelatedStatus_Failed extends RelatedStatus {
+  const RelatedStatus_Failed({required this.message}): super._();
+  
+
+ final  String message;
+
+/// Create a copy of RelatedStatus
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$RelatedStatus_FailedCopyWith<RelatedStatus_Failed> get copyWith => _$RelatedStatus_FailedCopyWithImpl<RelatedStatus_Failed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RelatedStatus_Failed&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,message);
+
+@override
+String toString() {
+  return 'RelatedStatus.failed(message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $RelatedStatus_FailedCopyWith<$Res> implements $RelatedStatusCopyWith<$Res> {
+  factory $RelatedStatus_FailedCopyWith(RelatedStatus_Failed value, $Res Function(RelatedStatus_Failed) _then) = _$RelatedStatus_FailedCopyWithImpl;
+@useResult
+$Res call({
+ String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$RelatedStatus_FailedCopyWithImpl<$Res>
+    implements $RelatedStatus_FailedCopyWith<$Res> {
+  _$RelatedStatus_FailedCopyWithImpl(this._self, this._then);
+
+  final RelatedStatus_Failed _self;
+  final $Res Function(RelatedStatus_Failed) _then;
+
+/// Create a copy of RelatedStatus
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? message = null,}) {
+  return _then(RelatedStatus_Failed(
+message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
 
 /// @nodoc
 mixin _$SaveState {
