@@ -17,6 +17,7 @@ is left to do by hand.
 - [Versions](#versions)
 - [What the workflow does](#what-the-workflow-does)
 - [Signing](#signing)
+- [iOS builds in Xcode Cloud](#ios-builds-in-xcode-cloud)
 - [Shorebird (over-the-air patches)](#shorebird-over-the-air-patches)
 - [Export compliance](#export-compliance)
 - [Privacy](#privacy)
@@ -166,6 +167,38 @@ key. `aab-check.sh` fails the job if a release bundle came out signed with the d
 R8 is on in release builds (`isMinifyEnabled`, `isShrinkResources`); `proguard-rules.pro`
 keeps what the Rust library calls by name. The mapping file is uploaded with the bundle so
 Play and the Play Console's crash reports de-obfuscate.
+
+## iOS builds in Xcode Cloud
+
+The iPhone and iPad app is built and sent to TestFlight by **Xcode Cloud**, not by the
+GitHub workflow's iOS job (App Store Connect app `6828301844`, bundle id `app.kanso.Kanso`,
+team `4973Y692JU`). Xcode Cloud signs with cloud-managed signing, so it needs no certificate,
+profile or API key from this repository. The GitHub iOS job keeps building the unsigned
+archive and checking the library in it; leave `IOS_ASC_API_KEY_*` unset and it never uploads,
+so one build number sequence (Xcode Cloud's) feeds TestFlight.
+
+`mobile/ios/ci_scripts/ci_post_clone.sh` is what Xcode Cloud runs after the clone. A runner
+has Xcode and nothing else, so it installs Rust (the toolchain and the iOS targets of
+`mobile/rust/rust-toolchain.toml`) and the Flutter release `mobile/pubspec.yaml` pins, initialises
+the submodules, writes `ios/Flutter/Generated.xcconfig` with the version of the root `Cargo.toml`
+and Xcode Cloud's build number, and builds once so the Rust library is ready when the archive
+step needs it.
+
+**One-time setup in App Store Connect** (Xcode's *Product › Xcode Cloud › Create Workflow*, or the
+app's *Xcode Cloud* tab):
+
+1. Connect the `iamngoni/kanso` repository (the GitHub app must be allowed on it, with submodule
+   access to `themes`).
+2. Workflow *Internal TestFlight*: start condition *Branch changes* on `master` (or *Tag changes*
+   for `v*`), environment *Latest Release* Xcode and macOS, action *Archive* of the `Runner` scheme
+   for iOS, and the post-action *TestFlight Internal Testing* with the internal group.
+3. Add the testers to that internal group (Users and Access, then TestFlight).
+
+**Unverified until its first run.** The script has been checked for syntax and with ShellCheck
+but has not run on an Xcode Cloud runner. The likely snags are `cargo` not being on the PATH of
+Xcode's build phases (the script links it into `/usr/local/bin`), the time the Rust build takes
+against the workflow's limit, and the runner's access to the `themes` submodule. Fix them from the
+first run's logs.
 
 ## Shorebird (over-the-air patches)
 
