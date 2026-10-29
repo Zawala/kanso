@@ -21,14 +21,21 @@ primary sources.
 
 ## Info.plist
 
-The key is **omitted** from `mobile/ios/Runner/Info.plist` (changed after Xcode Cloud
-build 2, 2026-10-29; it said `YES` before). Kanso uses encryption that Apple doesn't
-provide, so it can't claim the "only exempt encryption" answer that `NO` means — but YES
-with no approved compliance code makes App Store Connect refuse every upload at delivery
-(ITMS-90592), and Apple creates no declaration (hence no code) for standard third-party
-cryptography while the app is off the French store. Without the key each build uploads
-and the answers below are given for it in App Store Connect. When a code is approved,
-the release workflow adds both keys for that build (`IOS_EXPORT_COMPLIANCE_CODE`).
+`ITSAppUsesNonExemptEncryption` = **`NO`** (`mobile/ios/Runner/Info.plist`), so App Store
+Connect never asks and no per-build answer is needed. The reasoning: the only question
+this key answers is whether *documentation* is required. For standard published
+algorithms with the app off the French store, Apple's table requires none — and Apple's
+own API confirms it, by refusing to create a declaration for anything but proprietary
+cryptography or third-party cryptography on the French store. Kanso's E2EE (Argon2id,
+HKDF, XChaCha20-Poly1305, AES-256-GCM, X25519, Ed25519, all from open-source crates in
+public source) is inside that exempt row. This matches the per-build answer already given
+to build 0.8.4 (3) through the API, which cleared its Missing Compliance.
+
+History: the plist said `YES` until Xcode Cloud build 2 (2026-10-29), whose every upload
+then died at delivery (ITMS-90592), with no possible code; the key was omitted for build
+3 and answered per build, then set to `NO` so the dialog above never has to be answered
+at all. If France is ever added to the store and a code approved, the release workflow
+flips the key to `YES` and adds it for that build (`IOS_EXPORT_COMPLIANCE_CODE`).
 
 **Recorded for build 0.8.4 (3), 2026-10-29:** the per-build answer was submitted through
 the App Store Connect API as `usesNonExemptEncryption=false`. In the build record that

@@ -201,7 +201,7 @@ The first runs found four things: Xcode's build phases don't see `~/.cargo/bin` 
 framework's Info.plist with iOS 13.0 while the library links for 17.0, which App Store
 Connect refuses at upload (ITMS-90208, hence the deployment target in `mobile/hook/build.dart`);
 and `ITSAppUsesNonExemptEncryption` = YES with no approved compliance code makes App Store
-Connect refuse every upload before it starts (ITMS-90592, hence the omitted key below).
+Connect refuse every upload before it starts (ITMS-90592, hence the NO below).
 
 ## Shorebird (over-the-air patches)
 
@@ -298,25 +298,25 @@ beside TLS through the platform's certificate verifier.
 **What applies to Kanso, and what this repo does.** Kanso uses standard (IETF) algorithms that
 are not Apple's own, so it is in Apple's second row, not the first. Read literally,
 "only forms of encryption exempt from documentation requirements" is then not true when the
-app is available in France. The plist nonetheless omits the key entirely (since Xcode
-Cloud build 2, 2026-10-29): with YES and no approved code, App Store Connect refuses every
-upload at delivery with ITMS-90592 ("Invalid Export Compliance Code … value []"), and no
-code can exist yet — Apple only creates a declaration for proprietary cryptography, or for
-third-party cryptography when the app is on the French store, and France is off. Without
-the key each build uploads, shows as "Missing Compliance", and the drafted answers below
-are given for it in App Store Connect; internal testers get the build once they are. If a
-code is ever approved (France filed, say), set `IOS_EXPORT_COMPLIANCE_CODE` and the release
-workflow puts both keys into the plist for that build.
+app is available in France. `mobile/ios/Runner/Info.plist` answers the compliance
+question itself with `ITSAppUsesNonExemptEncryption` = **`NO`**: the key asks only whether
+*documentation* is required, and for standard published algorithms with France off Apple's
+table requires none — Apple's API agrees, refusing to create a declaration for anything
+but proprietary cryptography or third-party cryptography on the French store. With NO in
+the plist, App Store Connect asks nothing for any build. (YES with no approved code would
+refuse every upload at delivery with ITMS-90592 — that killed Xcode Cloud build 2, so the
+key was omitted for build 3 and answered per build, then settled as NO.) If a code is ever
+approved (France filed, say), set `IOS_EXPORT_COMPLIANCE_CODE` and the release workflow
+flips the key to YES and adds it for that build.
 
-**The answers are drafted** in [`mobile/store/app-store/export-compliance.md`](../mobile/store/app-store/export-compliance.md)
-(provisional decision 2 of #48 step 13): standard algorithms not provided by the OS; the
-mass-market exemption and publicly available source code for the US, which since BIS's 2021
-rule needs nothing filed; and **France left off the app's availability** until the owner has
-filed the ANSSI declaration. The owner submits the answers in App Store Connect and answers
-for them. When Apple returns a code, put it in the `mobile-release` variable
-`IOS_EXPORT_COMPLIANCE_CODE`; the workflow adds it to Info.plist as
-`ITSEncryptionExportComplianceCode` before the build. If the owner ends up with `NO`, change
-the value in `Info.plist` and say why in the commit.
+**The reasoning is written up** in [`mobile/store/app-store/export-compliance.md`](../mobile/store/app-store/export-compliance.md)
+(provisional decision 2 of #48 step 13): standard algorithms not provided by the OS, but
+no documentation required while France is off; the mass-market exemption and publicly
+available source code for the US, which since BIS's 2021 rule needs nothing filed; and
+**France left off the app's availability** until the owner has filed the ANSSI declaration.
+Nobody submits anything: the plist is the answer. If France is ever added and Apple returns
+a code, put it in the `mobile-release` variable `IOS_EXPORT_COMPLIANCE_CODE` and the workflow
+flips the plist key to YES and adds the code for that build.
 
 Play has no export questionnaire; Google's Play Console declares US export laws in the
 developer agreement.
