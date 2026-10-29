@@ -527,7 +527,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+			shellScript = "# Xcode Cloud installs Rust in ~/.cargo/bin (ci_scripts/ci_post_clone.sh), which\n# Xcode's PATH lacks; the native-assets hook runs rustup from this phase.\nif ! command -v rustup >/dev/null 2>&1 && [ -f \"$HOME/.cargo/env\" ]; then\n  . \"$HOME/.cargo/env\"\nfi\n/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

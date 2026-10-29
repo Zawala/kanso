@@ -7,8 +7,8 @@
 # iPhone and iPad app (docs/RELEASING-MOBILE.md, "iOS builds in Xcode Cloud").
 # An Xcode Cloud runner has Xcode but neither Flutter nor Rust, and the app's
 # Rust library is built by the Flutter native-assets hook (mobile/hook/build.dart)
-# inside Xcode's own build, so this installs both and leaves them where that
-# build finds them. Signing is Xcode Cloud's (cloud-managed), not this script's.
+# inside Xcode's own build, so this installs both. Rust goes in ~/.cargo/bin,
+# which Xcode's PATH lacks; the Runner target's Run Script phase adds it. Signing is Xcode Cloud's (cloud-managed), not this script's.
 #
 # The version is the root Cargo.toml's, as in every release build
 # (scripts/mobile-version.sh); the build number is Xcode Cloud's, which only
@@ -38,14 +38,6 @@ fi
 # The toolchain and the iOS targets mobile/rust/rust-toolchain.toml names.
 (cd mobile/rust && rustup toolchain install)
 
-# Xcode's build phases don't read this script's PATH, and the native-assets
-# hook runs cargo from them, so put the tools where every process looks.
-for tool in cargo rustc rustup; do
-	ln -sf "$HOME/.cargo/bin/$tool" "/usr/local/bin/$tool" 2>/dev/null ||
-		sudo -n ln -sf "$HOME/.cargo/bin/$tool" "/usr/local/bin/$tool" 2>/dev/null ||
-		echo "ci_post_clone: couldn't link $tool into /usr/local/bin"
-done
-
 echo "ci_post_clone: Flutter $flutter_version"
 if [ ! -d "$HOME/flutter" ]; then
 	git clone --depth 1 --branch "$flutter_version" https://github.com/flutter/flutter.git "$HOME/flutter"
@@ -66,9 +58,4 @@ echo "ci_post_clone: version $name ($number)"
 # Writes ios/Flutter/Generated.xcconfig (FLUTTER_ROOT, the version, the build
 # number) without building, so Xcode Cloud's own archive step uses them.
 flutter build ios --config-only --release --no-codesign \
-	--build-name="$name" --build-number="$number"
-
-# Builds the Rust library once here, where cargo is on PATH, so the archive
-# step finds the hook's cached output if it can't run cargo itself.
-flutter build ios --release --no-codesign \
 	--build-name="$name" --build-number="$number"

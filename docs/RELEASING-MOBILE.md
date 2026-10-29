@@ -181,8 +181,10 @@ so one build number sequence (Xcode Cloud's) feeds TestFlight.
 has Xcode and nothing else, so it installs Rust (the toolchain and the iOS targets of
 `mobile/rust/rust-toolchain.toml`) and the Flutter release `mobile/pubspec.yaml` pins, initialises
 the submodules, writes `ios/Flutter/Generated.xcconfig` with the version of the root `Cargo.toml`
-and Xcode Cloud's build number, and builds once so the Rust library is ready when the archive
-step needs it.
+and Xcode Cloud's build number. Rust stays in `~/.cargo/bin`, which the PATH of Xcode's build
+phases lacks, so the Runner target's *Run Script* phase (the one that runs Flutter's build and the
+native-assets hook) sources `~/.cargo/env` when `rustup` isn't on the PATH; on a computer with
+Rust installed it changes nothing.
 
 **One-time setup in App Store Connect** (Xcode's *Product › Xcode Cloud › Create Workflow*, or the
 app's *Xcode Cloud* tab):
@@ -194,11 +196,8 @@ app's *Xcode Cloud* tab):
    for iOS, and the post-action *TestFlight Internal Testing* with the internal group.
 3. Add the testers to that internal group (Users and Access, then TestFlight).
 
-**Unverified until its first run.** The script has been checked for syntax and with ShellCheck
-but has not run on an Xcode Cloud runner. The likely snags are `cargo` not being on the PATH of
-Xcode's build phases (the script links it into `/usr/local/bin`), the time the Rust build takes
-against the workflow's limit, and the runner's access to the `themes` submodule. Fix them from the
-first run's logs.
+The first runs found two things: Xcode's build phases don't see `~/.cargo/bin` (hence the
+*Run Script* change), and a runner can't write `/usr/local/bin`.
 
 ## Shorebird (over-the-air patches)
 
