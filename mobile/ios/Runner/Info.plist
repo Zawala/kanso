@@ -59,8 +59,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>FlutterDeepLinkingEnabled</key>
 	<true/>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<true/>
+	<!-- No ITSAppUsesNonExemptEncryption key on purpose (mobile/store/app-store/export-compliance.md):
+	     with YES and no approved compliance code, App Store Connect refuses every
+	     upload (ITMS-90592), and no code can exist while France is off the store.
+	     Without the key each build uploads, and the question is answered for it
+	     in App Store Connect. If a code is ever approved, the release workflow
+	     puts both keys back. -->
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>

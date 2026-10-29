@@ -169,6 +169,7 @@ jobs:
           CODE: ${{ vars.IOS_EXPORT_COMPLIANCE_CODE }}
         run: |
           if [ -n "$CODE" ]; then
+            /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool true" ios/Runner/Info.plist
             /usr/libexec/PlistBuddy -c "Add :ITSEncryptionExportComplianceCode string $CODE" ios/Runner/Info.plist
             echo "Export compliance code added to Info.plist."
           else
