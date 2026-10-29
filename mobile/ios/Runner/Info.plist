@@ -2,16 +2,32 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>app.kanso.Kanso.sync</string>
 	</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Kanso</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Markdown document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>app.kanso.markdown</string>
+				<string>public.plain-text</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -39,48 +55,32 @@
 			</array>
 		</dict>
 	</array>
-	<key>CFBundleDocumentTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>Markdown document</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Alternate</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>app.kanso.markdown</string>
-				<string>public.plain-text</string>
-			</array>
-		</dict>
-	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>FlutterDeepLinkingEnabled</key>
 	<true/>
-	<!-- Export compliance (docs/RELEASING-MOBILE.md): Kanso seals notes end to
-	     end with standard algorithms that are not Apple's own, which is not
-	     the "exempt" answer. The workflow adds ITSEncryptionExportComplianceCode
-	     when the owner has one from App Store Connect. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<true/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Kanso turns what you say into text on this device.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Kanso turns what you say into text on this device. Nothing you say leaves it.</string>
 	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Kanso uses the camera to take a photo for a note.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Kanso adds the photos you choose to your notes.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Kanso uses Face ID to unlock your locked notes.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kanso turns what you say into text on this device.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Kanso adds the photos you choose to your notes.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Kanso turns what you say into text on this device. Nothing you say leaves it.</string>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>app.kanso.Kanso.note</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
-		<!-- A note in a window of its own is a second scene (NoteWindows.swift):
-		     iPads show them side by side; iPhones keep to one. -->
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<true/>
 		<key>UISceneConfigurations</key>
@@ -108,37 +108,11 @@
 			</array>
 		</dict>
 	</dict>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<true/>
-	<key>NSUserActivityTypes</key>
-	<array>
-		<string>app.kanso.Kanso.note</string>
-	</array>
-	<key>UTExportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array><string>public.plain-text</string></array>
-			<key>UTTypeDescription</key>
-			<string>Markdown document</string>
-			<key>UTTypeIdentifier</key>
-			<string>app.kanso.markdown</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array><string>md</string><string>markdown</string></array>
-				<key>public.mime-type</key>
-				<string>text/markdown</string>
-			</dict>
-		</dict>
-	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
-		<!-- Silent pushes wake the app to sync (plugins/kanso_push). They show
-		     nothing, so no notification permission is asked. -->
 		<string>remote-notification</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
@@ -157,6 +131,29 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Markdown document</string>
+			<key>UTTypeIdentifier</key>
+			<string>app.kanso.markdown</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>md</string>
+					<string>markdown</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>text/markdown</string>
+			</dict>
+		</dict>
 	</array>
 </dict>
 </plist>
