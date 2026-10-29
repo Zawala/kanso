@@ -30,6 +30,12 @@ cryptography while the app is off the French store. Without the key each build u
 and the answers below are given for it in App Store Connect. When a code is approved,
 the release workflow adds both keys for that build (`IOS_EXPORT_COMPLIANCE_CODE`).
 
+**Recorded for build 0.8.4 (3), 2026-10-29:** the per-build answer was submitted through
+the App Store Connect API as `usesNonExemptEncryption=false`. In the build record that
+flag means "no export documentation is required for this build", which is the outcome of
+the answers below while France is off — not a claim that the app uses no encryption (it
+does, as listed above). With it the build left Missing Compliance for internal testing.
+
 ## The questions in App Store Connect, and the answers
 
 | Question (Apple's wording may vary) | Answer |
