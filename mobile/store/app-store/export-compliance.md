@@ -21,9 +21,14 @@ primary sources.
 
 ## Info.plist
 
-`ITSAppUsesNonExemptEncryption` = **`YES`** (`mobile/ios/Runner/Info.plist`, unchanged).
-Kanso uses encryption that Apple doesn't provide, so it can't claim the "only exempt
-encryption" answer that `NO` means.
+The key is **omitted** from `mobile/ios/Runner/Info.plist` (changed after Xcode Cloud
+build 2, 2026-10-29; it said `YES` before). Kanso uses encryption that Apple doesn't
+provide, so it can't claim the "only exempt encryption" answer that `NO` means — but YES
+with no approved compliance code makes App Store Connect refuse every upload at delivery
+(ITMS-90592), and Apple creates no declaration (hence no code) for standard third-party
+cryptography while the app is off the French store. Without the key each build uploads
+and the answers below are given for it in App Store Connect. When a code is approved,
+the release workflow adds both keys for that build (`IOS_EXPORT_COMPLIANCE_CODE`).
 
 ## The questions in App Store Connect, and the answers
 

@@ -44,6 +44,15 @@ Future<void> main(List<String> args) async {
     final environment = <String, String>{
       if (onPhone) ..._mobileProfile,
       if (onPhone) ...await _toolchainFromScript(input, output),
+      // Flutter wraps the library in a framework whose Info.plist it stamps
+      // with the native-assets iOS version (13.0 today), while the linkers
+      // stamp the binary with IPHONEOS_DEPLOYMENT_TARGET (the app's 17.0,
+      // from scripts/mobile/env.sh). App Store Connect refuses that pair
+      // (ITMS-90208: the framework does not support the minimum OS version
+      // in its Info.plist). Build the library for the version Flutter will
+      // declare; the app as a whole still requires the project's version.
+      if (os == OS.iOS)
+        'IPHONEOS_DEPLOYMENT_TARGET': '${code.iOS.targetVersion}.0',
     };
     await FlutterRustBridgeNativeAssetsBuilder(
       assetName: 'core/bridge/frb_generated.io.dart',

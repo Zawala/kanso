@@ -196,8 +196,12 @@ app's *Xcode Cloud* tab):
    for iOS, and the post-action *TestFlight Internal Testing* with the internal group.
 3. Add the testers to that internal group (Users and Access, then TestFlight).
 
-The first runs found two things: Xcode's build phases don't see `~/.cargo/bin` (hence the
-*Run Script* change), and a runner can't write `/usr/local/bin`.
+The first runs found four things: Xcode's build phases don't see `~/.cargo/bin` (hence the
+*Run Script* change); a runner can't write `/usr/local/bin`; Flutter stamps the Rust
+framework's Info.plist with iOS 13.0 while the library links for 17.0, which App Store
+Connect refuses at upload (ITMS-90208, hence the deployment target in `mobile/hook/build.dart`);
+and `ITSAppUsesNonExemptEncryption` = YES with no approved compliance code makes App Store
+Connect refuse every upload before it starts (ITMS-90592, hence the omitted key below).
 
 ## Shorebird (over-the-air patches)
 
@@ -294,10 +298,15 @@ beside TLS through the platform's certificate verifier.
 **What applies to Kanso, and what this repo does.** Kanso uses standard (IETF) algorithms that
 are not Apple's own, so it is in Apple's second row, not the first. Read literally,
 "only forms of encryption exempt from documentation requirements" is then not true when the
-app is available in France, so `mobile/ios/Runner/Info.plist` says
-`ITSAppUsesNonExemptEncryption` = **`true`**. That is the conservative answer: it never claims
-an exemption that isn't clear. It has a cost: until the owner answers, App Store Connect shows
-the build as "Missing Compliance" and holds it back from testers.
+app is available in France. The plist nonetheless omits the key entirely (since Xcode
+Cloud build 2, 2026-10-29): with YES and no approved code, App Store Connect refuses every
+upload at delivery with ITMS-90592 ("Invalid Export Compliance Code … value []"), and no
+code can exist yet — Apple only creates a declaration for proprietary cryptography, or for
+third-party cryptography when the app is on the French store, and France is off. Without
+the key each build uploads, shows as "Missing Compliance", and the drafted answers below
+are given for it in App Store Connect; internal testers get the build once they are. If a
+code is ever approved (France filed, say), set `IOS_EXPORT_COMPLIANCE_CODE` and the release
+workflow puts both keys into the plist for that build.
 
 **The answers are drafted** in [`mobile/store/app-store/export-compliance.md`](../mobile/store/app-store/export-compliance.md)
 (provisional decision 2 of #48 step 13): standard algorithms not provided by the OS; the
