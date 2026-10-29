@@ -3,15 +3,20 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/list_labels.dart';
 import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
-import '../../../core/views/widgets/kanso_feedback.dart';
+import '../../../core/views/widgets/kanso_button.dart';
+import '../../../core/views/widgets/kanso_chip.dart';
+import '../../../core/views/widgets/kanso_copy_button.dart';
+import '../../../core/views/widgets/kanso_inline_message.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
+import '../../../core/views/widgets/kanso_section_header.dart';
 import '../../../injection.dart';
 import '../../state/publish/publish_bloc.dart';
 
@@ -91,7 +96,7 @@ class PublishSheet extends StatelessWidget {
         if (view == null) {
           return const Padding(
             padding: EdgeInsets.all(KansoSpacing.lg),
-            child: Center(child: CircularProgressIndicator()),
+            child: Center(child: KansoSpinner()),
           );
         }
         final title = view.notebook
@@ -104,7 +109,7 @@ class PublishSheet extends StatelessWidget {
                     ? 0
                     : view.contentPreview.trim().split(RegExp(r'\s+')).length,
               );
-        return Padding(
+        return SingleChildScrollView(
           padding: const EdgeInsetsDirectional.fromSTEB(
             KansoSpacing.md,
             KansoSpacing.sm,
@@ -115,7 +120,7 @@ class PublishSheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Text(title, style: context.typography.barTitle),
+              Text(title, style: context.typography.heading1),
               const SizedBox(height: KansoSpacing.sm),
               Text(view.title, style: context.typography.listTitle),
               const SizedBox(height: KansoSpacing.xs),
@@ -136,32 +141,28 @@ class PublishSheet extends StatelessWidget {
               ],
               if (view.refusal != null) ...<Widget>[
                 const SizedBox(height: KansoSpacing.sm),
-                Text(
-                  view.refusal!,
-                  style: TextStyle(color: context.colors.danger),
-                ),
+                KansoInlineMessage(message: view.refusal!),
               ],
               if (failure != null) ...<Widget>[
                 const SizedBox(height: KansoSpacing.sm),
-                Text(failure, style: TextStyle(color: context.colors.danger)),
+                KansoInlineMessage(message: failure),
               ],
               if (view.refusal == null) ...<Widget>[
                 const SizedBox(height: KansoSpacing.md),
-                Text(
-                  l10n.publishExpiryHeading,
-                  style: context.typography.sectionLabel,
+                KansoSectionHeader(
+                  label: l10n.publishExpiryHeading,
+                  horizontalPadding: 0,
                 ),
-                const SizedBox(height: KansoSpacing.xs),
                 Wrap(
                   spacing: KansoSpacing.xs,
                   children: <Widget>[
                     for (final option in view.expiryOptions)
-                      ChoiceChip(
-                        label: Text(option.label),
+                      KansoChip(
+                        label: option.label,
                         selected: view.expiry == option.expiry,
-                        onSelected: busy
+                        onTap: busy
                             ? null
-                            : (_) => context.read<PublishBloc>().add(
+                            : () => context.read<PublishBloc>().add(
                                 PublishEvent.expiryPicked(option.expiry),
                               ),
                       ),
@@ -180,11 +181,7 @@ class PublishSheet extends StatelessWidget {
                       : link.expiresAtMs == null
                       ? l10n.publishNeverExpires
                       : l10n.publishExpiresOn(
-                          MaterialLocalizations.of(context).formatMediumDate(
-                            DateTime.fromMillisecondsSinceEpoch(
-                              link.expiresAtMs!,
-                            ),
-                          ),
+                          dateLabel(l10n, link.expiresAtMs!),
                         ),
                   style: context.typography.secondary,
                 ),
@@ -198,55 +195,47 @@ class PublishSheet extends StatelessWidget {
                   ),
                 )
               else if (published)
-                Wrap(
-                  spacing: KansoSpacing.sm,
-                  runSpacing: KansoSpacing.sm,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
                     if (view.needsUpdate || view.expiry != link!.expiry)
-                      FilledButton(
+                      KansoButton(
+                        label: view.notebook
+                            ? l10n.publishUpdateSite
+                            : l10n.publishUpdate,
                         onPressed: () => context.read<PublishBloc>().add(
                           PublishEvent.publish(view.expiry),
                         ),
-                        child: Text(
-                          view.notebook
-                              ? l10n.publishUpdateSite
-                              : l10n.publishUpdate,
-                        ),
                       ),
-                    FilledButton.icon(
-                      onPressed: () async {
-                        await Clipboard.setData(ClipboardData(text: link!.url));
-                        if (context.mounted) {
-                          KansoFeedback.show(context, l10n.publishCopied);
-                        }
-                      },
-                      icon: const Icon(Icons.copy),
-                      label: Text(l10n.publishCopyLink),
+                    const SizedBox(height: KansoSpacing.xs),
+                    KansoCopyButton(
+                      text: link!.url,
+                      label: l10n.publishCopyLink,
                     ),
-                    OutlinedButton(
+                    const SizedBox(height: KansoSpacing.xs),
+                    KansoButton(
+                      label: l10n.publishUnpublish,
+                      variant: KansoButtonVariant.quiet,
                       onPressed: () => context.read<PublishBloc>().add(
                         const PublishEvent.unpublish(),
                       ),
-                      child: Text(l10n.publishUnpublish),
                     ),
                   ],
                 )
               else
-                FilledButton(
+                KansoButton(
+                  label: view.link == null
+                      ? (view.notebook
+                            ? l10n.publishPublishSite
+                            : l10n.publishPublish)
+                      : (view.notebook
+                            ? l10n.publishUpdateSite
+                            : l10n.publishUpdate),
                   onPressed: view.refusal == null
                       ? () => context.read<PublishBloc>().add(
                           PublishEvent.publish(view.expiry),
                         )
                       : null,
-                  child: Text(
-                    view.link == null
-                        ? (view.notebook
-                              ? l10n.publishPublishSite
-                              : l10n.publishPublish)
-                        : (view.notebook
-                              ? l10n.publishUpdateSite
-                              : l10n.publishUpdate),
-                  ),
                 ),
             ],
           ),

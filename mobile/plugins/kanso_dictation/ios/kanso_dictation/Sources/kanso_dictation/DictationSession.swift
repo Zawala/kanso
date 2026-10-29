@@ -76,17 +76,31 @@ final class DictationSession {
   /// Closes the microphone and lets the recognizer finish what it heard.
   func stop() {
     guard !finished, !stopping else { return }
-    stopping = true
     restart?.cancel()
     restart = nil
+
+    // The phrase's final result is already in the note. If no audio has
+    // arrived since, there is nothing left for the recognizer to finish and
+    // waiting three seconds would only delay the terminal event.
+    if finishedRun == run {
+      let buffered = sink.hasBufferedAudio
+      closeMicrophone()
+      if !buffered {
+        end()
+        return
+      }
+      stopping = true
+      // Flush the short post-final gap into a fresh request before ending it.
+      beginTask(allowWhileStopping: true)
+      request?.endAudio()
+      startFinishTimer()
+      return
+    }
+
+    stopping = true
     closeMicrophone()
     request?.endAudio()
-    finishTimer?.cancel()
-    finishTimer = Task { @MainActor [weak self] in
-      try? await Task.sleep(for: DictationSession.finishTimeout)
-      guard !Task.isCancelled else { return }
-      self?.end()
-    }
+    startFinishTimer()
   }
 
   /// Stops at once, dropping what the recognizer had not finished.
@@ -102,8 +116,10 @@ final class DictationSession {
 
   /// Starts a fresh request and recognition task. The audio tap is already
   /// alive and will append the next buffer to this request.
-  private func beginTask() {
-    guard !finished, !stopping, engine.isRunning else { return }
+  private func beginTask(allowWhileStopping: Bool = false) {
+    guard !finished,
+          allowWhileStopping || (!stopping && engine.isRunning)
+    else { return }
     let request = makeRequest()
     self.request = request
     sink.use(request)
@@ -148,6 +164,10 @@ final class DictationSession {
 
     if isFinal {
       finishedRun = run
+      // Do not let the microphone keep appending to a request whose task has
+      // already finished. Buffers arriving during the short restart gap are
+      // replayed into the next request by the sink.
+      sink.use(nil)
       if stopping {
         end()
       } else {
@@ -172,6 +192,16 @@ final class DictationSession {
         )
         end()
       }
+    }
+  }
+
+  /// Gives the recognizer a bounded window to deliver its final result.
+  private func startFinishTimer() {
+    finishTimer?.cancel()
+    finishTimer = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: DictationSession.finishTimeout)
+      guard !Task.isCancelled else { return }
+      self?.end()
     }
   }
 
@@ -280,30 +310,70 @@ final class DictationSession {
   }
 }
 
+protocol AudioBufferAppending: AnyObject {
+  func append(_ buffer: AVAudioPCMBuffer)
+}
+
+extension SFSpeechAudioBufferRecognitionRequest: AudioBufferAppending {}
+
 /// Hands the audio tap's buffers to whichever recognition request is current.
 /// Appending and switching happen on different threads: the phone's audio
 /// tap runs on the audio thread, while a finished phrase replaces the request
-/// on the main actor.
-private final class RecognitionRequestSink: @unchecked Sendable {
+/// on the main actor. Audio that arrives between a final phrase and the next
+/// request is retained and replayed in order when that request is attached.
+final class RecognitionRequestSink: @unchecked Sendable {
+  private static let maxBufferedBuffers = 128
   private let lock = NSLock()
-  private var request: SFSpeechAudioBufferRecognitionRequest?
+  private var request: AudioBufferAppending?
+  private var buffered: [AVAudioPCMBuffer] = []
 
-  func use(_ request: SFSpeechAudioBufferRecognitionRequest?) {
+  var hasBufferedAudio: Bool {
     lock.lock()
+    defer { lock.unlock() }
+    return !buffered.isEmpty
+  }
+
+  var pendingBufferCount: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return buffered.count
+  }
+
+  func use(_ request: AudioBufferAppending?) {
+    lock.lock()
+    defer { lock.unlock() }
     self.request = request
-    lock.unlock()
+    guard let request, !buffered.isEmpty else { return }
+    // Keep the lock while flushing so the audio thread cannot append a newer
+    // buffer to the request before the older buffered ones are replayed.
+    for buffer in buffered {
+      request.append(buffer)
+    }
+    buffered.removeAll(keepingCapacity: true)
   }
 
   func append(_ buffer: AVAudioPCMBuffer) {
     lock.lock()
-    let request = self.request
+    if let request {
+      // Keep the lock while appending for the same ordering reason as use().
+      request.append(buffer)
+      lock.unlock()
+      return
+    }
+    guard let copy = buffer.copy() as? AVAudioPCMBuffer else {
+      lock.unlock()
+      return
+    }
+    buffered.append(copy)
+    if buffered.count > Self.maxBufferedBuffers {
+      buffered.removeFirst(buffered.count - Self.maxBufferedBuffers)
+    }
     lock.unlock()
-    request?.append(buffer)
   }
 }
 
 /// Lets about fifteen levels a second through.
-private final class LevelThrottle: @unchecked Sendable {
+final class LevelThrottle: @unchecked Sendable {
   private var last: CFAbsoluteTime = 0
 
   func next(_ level: Double) -> Double? {

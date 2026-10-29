@@ -9,6 +9,7 @@ import '../../configs/kanso_radii.dart';
 import '../../configs/kanso_sizes.dart';
 import '../../configs/kanso_spacing.dart';
 import '../../utils/context_extensions.dart';
+import '../../utils/tap_outside.dart';
 import 'kanso_icon.dart';
 import 'kanso_pressable.dart';
 import 'kanso_search_field.dart' show KansoSearchField;
@@ -101,7 +102,7 @@ class _KansoSearchInputState extends State<KansoSearchInput>
     // platforms and on Android's. What each is asked for here makes the
     // same caret on both (the pictures of the two are compared by the
     // goldens, pixel for pixel).
-    final (caretAsked, caretShift) = switch (Theme.of(context).platform) {
+    final (caretAsked, caretShift) = switch (context.platform) {
       TargetPlatform.iOS ||
       TargetPlatform.macOS => (KansoSearchInput.caretHeight - 2, 0.0),
       _ => (KansoSearchInput.caretHeight, 0.0),
@@ -170,6 +171,8 @@ class _KansoSearchInputState extends State<KansoSearchInput>
                         selectionControls: selectionControls,
                         contextMenuBuilder: (context, state) =>
                             KansoTextContextMenu(state: state),
+                        onTapOutside: (event) =>
+                            unfocusOnTapOutside(event, focusNode),
                         onChanged: widget.onChanged,
                       ),
                     ),
@@ -177,16 +180,18 @@ class _KansoSearchInputState extends State<KansoSearchInput>
                 ),
               ),
               if (!empty)
-                KansoPressable(
-                  onTap: clear,
-                  semanticLabel: widget.clearLabel,
-                  child: SizedBox.square(
-                    dimension: KansoSizes.searchField,
-                    child: Center(
-                      child: KansoIcon(
-                        KansoIcons.close,
-                        size: KansoSizes.iconSmall,
-                        color: colors.textMuted,
+                TextFieldTapRegion(
+                  child: KansoPressable(
+                    onTap: clear,
+                    semanticLabel: widget.clearLabel,
+                    child: SizedBox.square(
+                      dimension: KansoSizes.searchField,
+                      child: Center(
+                        child: KansoIcon(
+                          KansoIcons.close,
+                          size: KansoSizes.iconSmall,
+                          color: colors.textMuted,
+                        ),
                       ),
                     ),
                   ),

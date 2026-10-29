@@ -89,7 +89,9 @@ class DictationOverlay extends StatelessWidget {
           left: KansoSpacing.md,
           right: KansoSpacing.md,
           bottom: floor + KansoSpacing.sm,
-          child: Align(child: pill),
+          // Stop, Open Settings and OK belong to the field's tap group: using
+          // them must not take focus from the note being dictated into.
+          child: TextFieldTapRegion(child: Align(child: pill)),
         );
       },
     );

@@ -10,6 +10,7 @@ import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_grouped_section.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
 import '../../../core/views/widgets/kanso_text_field.dart';
 
 /// Lets someone download a Google Font and use it for note writing and reading.
@@ -98,7 +99,7 @@ class GoogleFontSectionState extends State<GoogleFontSection> {
                 ),
                 child: SizedBox.square(
                   dimension: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: KansoSpinner(size: 16),
                 ),
               ),
             if (state.googleFontError != null)

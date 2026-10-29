@@ -39,7 +39,7 @@ class NewNoteButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: colors.button,
           borderRadius: KansoRadii.pillBorder,
-          boxShadow: KansoShadows.raised(Theme.brightnessOf(context)),
+          boxShadow: KansoShadows.raised(context.brightness),
         ),
         child: ExcludeSemantics(
           child: Row(

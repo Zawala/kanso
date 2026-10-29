@@ -10,10 +10,9 @@ import 'package:flutter/material.dart';
 /// Font weights and styles in the theme file (bold headings, italic
 /// comments) are typography, so they live in `KansoTypography`.
 ///
-/// Like `KansoColors`, a [ThemeExtension] because of the framework's
-/// `copyWith` and `lerp` contract.
+/// Like `KansoColors`, a plain value the app hands down itself.
 @immutable
-class KansoSyntaxColors extends ThemeExtension<KansoSyntaxColors> {
+class KansoSyntaxColors {
   const KansoSyntaxColors({
     required this.text,
     required this.heading,
@@ -289,7 +288,6 @@ class KansoSyntaxColors extends ThemeExtension<KansoSyntaxColors> {
   @override
   int get hashCode => Object.hashAll(values);
 
-  @override
   KansoSyntaxColors copyWith({
     Color? text,
     Color? heading,
@@ -364,11 +362,7 @@ class KansoSyntaxColors extends ThemeExtension<KansoSyntaxColors> {
     );
   }
 
-  @override
-  KansoSyntaxColors lerp(ThemeExtension<KansoSyntaxColors>? other, double t) {
-    if (other is! KansoSyntaxColors) {
-      return this;
-    }
+  KansoSyntaxColors lerp(KansoSyntaxColors other, double t) {
     return KansoSyntaxColors(
       text: Color.lerp(text, other.text, t)!,
       heading: Color.lerp(heading, other.heading, t)!,

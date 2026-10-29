@@ -4,8 +4,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
+
+import 'kanso_test_app.dart';
 
 /// Pumps [child] in the Kanso theme with Kanso's strings, centred.
 Future<void> pumpKanso(
@@ -15,15 +15,9 @@ Future<void> pumpKanso(
   bool settle = true,
 }) async {
   await tester.pumpWidget(
-    MaterialApp(
-      theme: KansoTheme.light,
-      darkTheme: KansoTheme.dark,
-      themeMode: brightness == Brightness.dark
-          ? ThemeMode.dark
-          : ThemeMode.light,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(body: Center(child: child)),
+    KansoTestApp(
+      brightness: brightness,
+      home: Center(child: child),
     ),
   );
   if (settle) {

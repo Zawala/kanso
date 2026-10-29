@@ -212,6 +212,7 @@ void main() {
         'Theme',
         'Icons',
         'Fonts',
+        'Interface text size',
         'Text size',
         'Preview',
         'Preview text size',
@@ -313,15 +314,21 @@ void main() {
       expect(find.text('Lucide'), findsNothing);
     });
 
-    testWidgets('the Text size row shows the size chosen', (tester) async {
+    testWidgets('the text size rows show the interface and note sizes '
+        'chosen', (tester) async {
       final screen = await _pump(tester);
-      // The text size and the preview text size.
-      expect(find.text('100%'), findsNWidgets(2));
+      // The interface, editor and preview text sizes.
+      expect(find.text('100%'), findsNWidgets(3));
       screen.appearance.add(
-        const AppearanceEvent.textSizeChanged(1.3),
+        const AppearanceEvent.interfaceTextSizeChanged(1.2),
       );
       await tester.pumpAndSettle();
+      expect(find.text('120%'), findsOneWidget);
+      expect(find.text('100%'), findsNWidgets(2));
+      screen.appearance.add(const AppearanceEvent.textSizeChanged(1.3));
+      await tester.pumpAndSettle();
       expect(find.text('130%'), findsOneWidget);
+      expect(find.text('120%'), findsOneWidget);
       expect(find.text('100%'), findsOneWidget);
     });
 
@@ -333,7 +340,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('90%'), findsOneWidget);
-      expect(find.text('100%'), findsOneWidget);
+      expect(find.text('100%'), findsNWidgets(2));
     });
 
     testWidgets('the Diagrams row chooses between Pele and Kanso, Pele by '
@@ -665,6 +672,11 @@ void main() {
       screen.router.pop();
       await tester.pumpAndSettle();
       await tester.tap(find.text('Fonts'));
+      await tester.pumpAndSettle();
+      expect(topOf(screen.router), '/settings/fonts');
+      screen.router.pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Interface text size'));
       await tester.pumpAndSettle();
       expect(topOf(screen.router), '/settings/fonts');
       screen.router.pop();

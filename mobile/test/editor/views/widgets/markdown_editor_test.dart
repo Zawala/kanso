@@ -197,6 +197,17 @@ void main() {
       expect(editor.focusNode.hasFocus, isTrue);
     });
 
+    testWidgets('lets go of the keyboard when the tap is outside the page', (
+      tester,
+    ) async {
+      final editor = await pumpEditor(tester, text: 'hello');
+      expect(editor.focusNode.hasFocus, isTrue);
+
+      await tester.tapAt(const Offset(200, 580));
+      await tester.pump();
+      expect(editor.focusNode.hasFocus, isFalse);
+    });
+
     testWidgets('a double tap selects a word, with handles', (tester) async {
       final editor = await pumpEditor(tester, text: 'hello world');
       final at =

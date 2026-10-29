@@ -66,6 +66,15 @@ void main() {
         ),
         findsOneWidget,
       );
+      await tester.scrollUntilVisible(
+        find.textContaining('[[Weekly review]]', findRichText: true),
+        400,
+        scrollable: find.descendant(
+          of: find.byType(CustomScrollView),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.pumpAndSettle();
       expect(
         find.textContaining('[[Weekly review]]', findRichText: true),
         findsOne,

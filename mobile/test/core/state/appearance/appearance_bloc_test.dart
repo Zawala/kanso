@@ -177,6 +177,8 @@ void main() {
       expect(state.themeMode, ThemeMode.system);
       expect(state.fonts, const KansoFonts());
       expect(state.textSize, 1.0);
+      expect(state.previewTextSize, 1.0);
+      expect(state.interfaceTextSize, 1.0);
     });
 
     blocTest<AppearanceBloc, AppearanceState>(
@@ -205,6 +207,8 @@ void main() {
           ),
           fonts: KansoFonts(editorFont: KansoFontFamily.literata),
           textSize: 1.15,
+          previewTextSize: 1.2,
+          interfaceTextSize: 1.1,
         );
       },
       build: build,
@@ -216,6 +220,8 @@ void main() {
           dark: _nord,
           fonts: saved.fonts,
           textSize: 1.15,
+          previewTextSize: 1.2,
+          interfaceTextSize: 1.1,
           status: AppearanceStatus.ready,
         ),
       ],
@@ -684,6 +690,27 @@ void main() {
       verify: (_) {
         expect(saved.textSize, 1.25);
         expect(saved.previewTextSize, 1.8);
+      },
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'interfaceTextSizeChanged changes only the interface and saves the '
+      'normalized scale',
+      build: build,
+      act: (bloc) => bloc
+        ..add(const AppearanceEvent.interfaceTextSizeChanged(1.23))
+        ..add(const AppearanceEvent.interfaceTextSizeChanged(2)),
+      expect: () => const <AppearanceState>[
+        AppearanceState(interfaceTextSize: 1.25),
+        AppearanceState(interfaceTextSize: 1.3),
+      ],
+      verify: (bloc) {
+        expect(bloc.state.interfaceTextSize, 1.3);
+        expect(bloc.state.textSize, 1.0);
+        expect(bloc.state.previewTextSize, 1.0);
+        expect(saved.interfaceTextSize, 1.3);
+        expect(saved.textSize, 1.0);
+        expect(saved.previewTextSize, 1.0);
       },
     );
 

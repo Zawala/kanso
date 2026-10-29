@@ -6,10 +6,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/bridge/api/types.dart';
+import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_button.dart';
+import '../../../core/views/widgets/kanso_checkbox.dart';
+import '../../../core/views/widgets/kanso_grouped_section.dart';
+import '../../../core/views/widgets/kanso_icon_button.dart';
+import '../../../core/views/widgets/kanso_inline_message.dart';
 import '../../../core/views/widgets/kanso_page.dart';
+import '../../../core/views/widgets/kanso_pressable.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
+import '../../../core/views/widgets/kanso_section_header.dart';
+import '../../../core/views/widgets/kanso_settings_row.dart';
+import '../../../core/views/widgets/kanso_switch.dart';
+import '../../../core/views/widgets/kanso_text_field.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
+import '../../../gen/l10n/app_localizations.dart';
 import '../../../injection.dart';
 import '../../models/data/replace_option.dart';
 import '../../models/data/replace_preview_status.dart';
@@ -53,10 +67,10 @@ class _ReplacePageState extends State<ReplacePage> {
           children: <Widget>[
             KansoTopBar(
               title: l10n.replaceTitle,
-              leading: IconButton(
-                tooltip: l10n.replaceClose,
+              leading: KansoIconButton(
+                icon: KansoIcons.close,
+                semanticLabel: l10n.replaceClose,
                 onPressed: () => context.pop(),
-                icon: const Icon(Icons.close),
               ),
             ),
             Expanded(
@@ -64,148 +78,96 @@ class _ReplacePageState extends State<ReplacePage> {
                 builder: (context, state) {
                   final bloc = context.read<ReplaceNotesBloc>();
                   return ListView(
-                    padding: const EdgeInsets.all(KansoSpacing.md),
+                    padding: const EdgeInsets.fromLTRB(
+                      KansoSpacing.md,
+                      KansoSpacing.md,
+                      KansoSpacing.md,
+                      KansoSpacing.xxl,
+                    ),
                     children: <Widget>[
-                      TextField(
+                      KansoTextField(
                         controller: findController,
+                        label: l10n.replaceFind,
+                        textInputAction: TextInputAction.next,
                         onChanged: (text) => bloc.add(
                           ReplaceNotesEvent.findChanged(text),
                         ),
-                        decoration: InputDecoration(
-                          labelText: l10n.replaceFind,
-                        ),
                       ),
                       const SizedBox(height: KansoSpacing.sm),
-                      TextField(
+                      KansoTextField(
                         controller: replacementController,
+                        label: l10n.replaceWith,
+                        textInputAction: TextInputAction.done,
                         onChanged: (text) => bloc.add(
                           ReplaceNotesEvent.replacementChanged(text),
                         ),
-                        decoration: InputDecoration(
-                          labelText: l10n.replaceWith,
-                        ),
                       ),
-                      const SizedBox(height: KansoSpacing.sm),
-                      Text(
-                        l10n.replaceOptionsLabel,
-                        style: context.typography.heading2,
+                      const SizedBox(height: KansoSpacing.lg),
+                      KansoGroupedSection(
+                        title: l10n.replaceOptionsLabel,
+                        dividerIndent: KansoSettingsRow.iconInset,
+                        children: <Widget>[
+                          for (final option in ReplaceOption.values)
+                            KansoSettingsRow(
+                              label: _optionLabel(l10n, option),
+                              onTap: () => bloc.add(
+                                ReplaceNotesEvent.optionToggled(option),
+                              ),
+                              trailing: KansoSwitch(
+                                value: _optionValue(state, option),
+                                onChanged: (_) => bloc.add(
+                                  ReplaceNotesEvent.optionToggled(option),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                      for (final option in ReplaceOption.values)
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(switch (option) {
-                            ReplaceOption.matchCase => l10n.replaceMatchCase,
-                            ReplaceOption.wholeWord => l10n.replaceWholeWord,
-                            ReplaceOption.regex => l10n.replaceRegex,
-                            ReplaceOption.skipCode => l10n.replaceSkipCode,
-                            ReplaceOption.includeTrash =>
-                              l10n.replaceIncludeTrash,
-                          }),
-                          value: switch (option) {
-                            ReplaceOption.matchCase => state.options.matchCase,
-                            ReplaceOption.wholeWord => state.options.wholeWord,
-                            ReplaceOption.regex => state.options.regex,
-                            ReplaceOption.skipCode => state.options.skipCode,
-                            ReplaceOption.includeTrash =>
-                              state.options.includeTrash,
+                      if (state.problem != null) ...<Widget>[
+                        const SizedBox(height: KansoSpacing.md),
+                        KansoInlineMessage(
+                          message: switch (state.problem!) {
+                            ReplaceProblem.badPattern =>
+                              l10n.replaceProblemBadPattern,
+                            ReplaceProblem.applyFailed =>
+                              l10n.replaceProblemApply,
+                            ReplaceProblem.undoFailed =>
+                              l10n.replaceProblemUndo,
                           },
-                          onChanged: (_) => bloc.add(
-                            ReplaceNotesEvent.optionToggled(option),
-                          ),
                         ),
-                      const Divider(),
-                      if (state.problem != null)
-                        Text(switch (state.problem!) {
-                          ReplaceProblem.badPattern =>
-                            l10n.replaceProblemBadPattern,
-                          ReplaceProblem.applyFailed =>
-                            l10n.replaceProblemApply,
-                          ReplaceProblem.undoFailed => l10n.replaceProblemUndo,
-                        }, style: TextStyle(color: context.colors.danger)),
+                      ],
                       if (state.outcome case final outcome?) ...<Widget>[
-                        Text(l10n.replaceDone(outcome.replaced, outcome.notes)),
-                        if (outcome.skipped > 0)
-                          Text(l10n.replaceSkipped(outcome.skipped)),
+                        const SizedBox(height: KansoSpacing.md),
+                        KansoInlineMessage(
+                          message: <String>[
+                            l10n.replaceDone(outcome.replaced, outcome.notes),
+                            if (outcome.skipped > 0)
+                              l10n.replaceSkipped(outcome.skipped),
+                            if (state.undone case final undone?)
+                              l10n.replaceUndone(undone.restored),
+                          ].join('\n'),
+                          tone: KansoMessageTone.success,
+                        ),
                         if (state.undone == null)
-                          TextButton(
-                            onPressed: state.undoing
-                                ? null
-                                : () => bloc.add(
-                                    const ReplaceNotesEvent.undoRequested(),
-                                  ),
-                            child: Text(
-                              state.undoing
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              top: KansoSpacing.xs,
+                            ),
+                            child: KansoButton(
+                              label: state.undoing
                                   ? l10n.replaceUndoing
                                   : l10n.replaceUndo,
+                              variant: KansoButtonVariant.secondary,
+                              icon: KansoIcons.undo,
+                              onPressed: state.undoing
+                                  ? null
+                                  : () => bloc.add(
+                                      const ReplaceNotesEvent.undoRequested(),
+                                    ),
                             ),
-                          )
-                        else
-                          Text(l10n.replaceUndone(state.undone!.restored)),
+                          ),
                       ],
-                      if (state.previewStatus == ReplacePreviewStatus.loading)
-                        Semantics(
-                          label: l10n.replaceSearching,
-                          child: const LinearProgressIndicator(),
-                        )
-                      else if (state.options.find.isEmpty)
-                        Text(l10n.replaceTypeToFind)
-                      else if (state.previewStatus ==
-                          ReplacePreviewStatus.failed)
-                        Text(
-                          l10n.replaceProblemSearch,
-                          style: TextStyle(color: context.colors.danger),
-                        )
-                      else if (state.preview case final preview?) ...<Widget>[
-                        Text(
-                          l10n.replaceFound(
-                            preview.totalMatches,
-                            preview.notes.length,
-                          ),
-                          style: context.typography.heading2,
-                        ),
-                        for (final note in preview.notes)
-                          CheckboxListTile(
-                            contentPadding: EdgeInsets.zero,
-                            value: !state.excluded.contains(note.id),
-                            title: Text(
-                              note.title.isEmpty
-                                  ? l10n.replaceUntitled
-                                  : note.title,
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                if (note.trashed) Text(l10n.replaceInTrash),
-                                for (final match in note.matches.take(3))
-                                  Text(l10n.replaceLine(match.lineNumber)),
-                                if (note.matches.length > 3)
-                                  Text(
-                                    l10n.replaceMore(note.matches.length - 3),
-                                  ),
-                              ],
-                            ),
-                            onChanged: (_) => bloc.add(
-                              ReplaceNotesEvent.noteToggled(note.id),
-                            ),
-                          ),
-                        FilledButton(
-                          onPressed: state.planned.isEmpty || state.applying
-                              ? null
-                              : () => bloc.add(
-                                  const ReplaceNotesEvent.applyRequested(),
-                                ),
-                          child: Text(
-                            state.applying
-                                ? l10n.replaceApplying
-                                : l10n.replaceApply(
-                                    state.matches,
-                                    state.chosen.length,
-                                  ),
-                          ),
-                        ),
-                      ] else if (state.previewStatus ==
-                          ReplacePreviewStatus.ready)
-                        Text(l10n.replaceNoMatches),
+                      const SizedBox(height: KansoSpacing.lg),
+                      ..._preview(context, state, bloc, l10n),
                     ],
                   );
                 },
@@ -215,5 +177,168 @@ class _ReplacePageState extends State<ReplacePage> {
         ),
       ),
     );
+  }
+
+  /// What the preview of the matches says, note by note, or why it can't.
+  List<Widget> _preview(
+    BuildContext context,
+    ReplaceNotesState state,
+    ReplaceNotesBloc bloc,
+    AppLocalizations l10n,
+  ) {
+    if (state.previewStatus == ReplacePreviewStatus.loading) {
+      return <Widget>[
+        Semantics(
+          label: l10n.replaceSearching,
+          child: const KansoProgressBar(),
+        ),
+      ];
+    }
+    if (state.options.find.isEmpty) {
+      return <Widget>[_Quiet(l10n.replaceTypeToFind)];
+    }
+    if (state.previewStatus == ReplacePreviewStatus.failed) {
+      return <Widget>[
+        KansoInlineMessage(message: l10n.replaceProblemSearch),
+      ];
+    }
+    if (state.preview case final preview?) {
+      if (preview.notes.isEmpty) {
+        return <Widget>[_Quiet(l10n.replaceNoMatches)];
+      }
+      return <Widget>[
+        KansoSectionHeader(
+          label: l10n.replaceFound(preview.totalMatches, preview.notes.length),
+          horizontalPadding: 0,
+        ),
+        KansoGroupedSection(
+          children: <Widget>[
+            for (final note in preview.notes)
+              _PreviewNoteRow(
+                note: note,
+                included: !state.excluded.contains(note.id),
+                onToggle: () => bloc.add(
+                  ReplaceNotesEvent.noteToggled(note.id),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: KansoSpacing.md),
+        KansoButton(
+          label: state.applying
+              ? l10n.replaceApplying
+              : l10n.replaceApply(state.matches, state.chosen.length),
+          onPressed: state.planned.isEmpty || state.applying
+              ? null
+              : () => bloc.add(const ReplaceNotesEvent.applyRequested()),
+        ),
+      ];
+    }
+    if (state.previewStatus == ReplacePreviewStatus.ready) {
+      return <Widget>[_Quiet(l10n.replaceNoMatches)];
+    }
+    return const <Widget>[];
+  }
+}
+
+String _optionLabel(AppLocalizations l10n, ReplaceOption option) {
+  return switch (option) {
+    ReplaceOption.matchCase => l10n.replaceMatchCase,
+    ReplaceOption.wholeWord => l10n.replaceWholeWord,
+    ReplaceOption.regex => l10n.replaceRegex,
+    ReplaceOption.skipCode => l10n.replaceSkipCode,
+    ReplaceOption.includeTrash => l10n.replaceIncludeTrash,
+  };
+}
+
+bool _optionValue(ReplaceNotesState state, ReplaceOption option) {
+  return switch (option) {
+    ReplaceOption.matchCase => state.options.matchCase,
+    ReplaceOption.wholeWord => state.options.wholeWord,
+    ReplaceOption.regex => state.options.regex,
+    ReplaceOption.skipCode => state.options.skipCode,
+    ReplaceOption.includeTrash => state.options.includeTrash,
+  };
+}
+
+/// A note the replace would change, with its matches, and a box that leaves
+/// it out when cleared.
+class _PreviewNoteRow extends StatelessWidget {
+  const _PreviewNoteRow({
+    required this.note,
+    required this.included,
+    required this.onToggle,
+  });
+
+  final ReplaceNote note;
+  final bool included;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final title = note.title.isEmpty ? l10n.replaceUntitled : note.title;
+    final details = <String>[
+      if (note.trashed) l10n.replaceInTrash,
+      for (final match in note.matches.take(3))
+        l10n.replaceLine(match.lineNumber),
+      if (note.matches.length > 3) l10n.replaceMore(note.matches.length - 3),
+    ];
+    return KansoPressable(
+      onTap: onToggle,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: KansoSpacing.md,
+          vertical: KansoSpacing.sm,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: KansoCheckbox(
+                value: included,
+                onChanged: (_) => onToggle(),
+              ),
+            ),
+            const SizedBox(width: KansoSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.typography.listTitle,
+                  ),
+                  for (final line in details)
+                    Text(
+                      line,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.typography.meta,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: KansoSpacing.xs),
+            Text('${note.count}', style: context.typography.meta),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A sentence that only says where things stand.
+class _Quiet extends StatelessWidget {
+  const _Quiet(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(text, style: context.typography.secondary);
   }
 }

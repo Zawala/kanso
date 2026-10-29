@@ -47,6 +47,15 @@ abstract class Preferences with _$Preferences {
     @Default(1.0)
     double previewTextSize,
 
+    /// The size of the interface's labels and text, from 0.9 to 1.3.
+    @JsonKey(
+      fromJson: interfaceTextScaleFromJson,
+      toJson: interfaceTextScaleToJson,
+      defaultValue: 1.0,
+    )
+    @Default(1.0)
+    double interfaceTextSize,
+
     /// The icon theme the app is drawn in, by its ID. A theme this version
     /// does not know is Kanso's own icons.
     @Default(KansoIconSet.lucideId) String iconTheme,

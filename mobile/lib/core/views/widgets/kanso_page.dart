@@ -3,12 +3,13 @@
 
 import 'package:flutter/material.dart';
 
+import '../../utils/context_extensions.dart';
+
 /// A page body with explicit Kanso-owned background and keyboard behavior.
 ///
-/// The body intentionally owns its own safe areas, just as it did under
-/// [Scaffold]. When [resizeToAvoidBottomInset] is true, the body gives up the
-/// space occupied by the software keyboard while keeping the original
-/// [MediaQuery] available to descendants.
+/// The body owns its own safe areas. When [resizeToAvoidBottomInset] is
+/// true, the body gives up the space occupied by the software keyboard
+/// while keeping the original [MediaQuery] available to descendants.
 class KansoPage extends StatelessWidget {
   const KansoPage({
     required this.body,
@@ -34,11 +35,10 @@ class KansoPage extends StatelessWidget {
             padding: EdgeInsets.only(bottom: keyboard),
             child: body,
           );
-    final theme = Theme.of(context);
     return ColoredBox(
-      color: backgroundColor ?? theme.scaffoldBackgroundColor,
+      color: backgroundColor ?? context.colors.editor,
       child: DefaultTextStyle(
-        style: theme.textTheme.bodyMedium!,
+        style: context.typography.body,
         child: MediaQuery.removeViewInsets(
           context: context,
           removeBottom: resizeToAvoidBottomInset,

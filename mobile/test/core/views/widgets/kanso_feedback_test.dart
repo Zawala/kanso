@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kanso/core/configs/kanso_colors.dart';
 import 'package:kanso/core/views/widgets/kanso_feedback.dart';
 
+import '../../../helpers/kanso_test_app.dart';
+
 void main() {
-  Widget app(Widget child) => MaterialApp(
-    theme: ThemeData(
-      extensions: const <ThemeExtension<dynamic>>[
-        KansoColors.light,
-      ],
-    ),
-    home: Scaffold(body: KansoFeedbackHost(child: child)),
+  Widget app(Widget child) => KansoTestApp(
+    home: KansoFeedbackHost(child: child),
   );
 
   testWidgets('shows one message and coalesces a duplicate', (tester) async {

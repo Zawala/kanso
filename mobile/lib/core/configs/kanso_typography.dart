@@ -19,10 +19,10 @@ import 'kanso_colors.dart';
 /// The sizes are tuned for a phone, at the density of a compact notes app.
 /// Nothing clamps the text scale: dynamic type is respected everywhere.
 ///
-/// A [ThemeExtension] because the framework requires `copyWith` and `lerp`
-/// overrides; the styles are bound to the colours they are built with.
+/// The styles are bound to the colours they are built with and handed down
+/// through Kanso's own theme scope, not a framework theme extension.
 @immutable
-class KansoTypography extends ThemeExtension<KansoTypography> {
+class KansoTypography {
   const KansoTypography({
     required this.largeTitle,
     required this.barTitle,
@@ -49,12 +49,14 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
   /// The styles for [colors]: text in `text`, secondary lines in
   /// `textSecondary`, section labels in `textMuted`.
   ///
-  /// The note styles are set in [fonts] and scaled by [textSize].
+  /// The note styles are set in [fonts] and scaled by [textSize]. The
+  /// interface styles follow [interfaceTextSize].
   factory KansoTypography.fromColors(
     KansoColors colors, {
     KansoFonts fonts = const KansoFonts(),
     double textSize = 1,
     double? previewTextSize,
+    double interfaceTextSize = 1,
   }) {
     TextStyle ui(
       double size,
@@ -65,10 +67,12 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
     }) {
       return TextStyle(
         fontFamily: sansFamily,
-        fontSize: size,
+        fontSize: size * interfaceTextSize,
         fontWeight: weight,
         height: height,
-        letterSpacing: letterSpacing,
+        letterSpacing: letterSpacing == null
+            ? null
+            : letterSpacing * interfaceTextSize,
         color: color,
       );
     }
@@ -94,22 +98,22 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
     final preview = fonts.previewFont;
     return KansoTypography(
       largeTitle: ui(
-        30,
+        32,
         FontWeight.w700,
         1.15,
         colors.text,
         letterSpacing: -0.8,
       ),
-      barTitle: ui(17, FontWeight.w600, 1.3, colors.text),
-      heading1: ui(20, FontWeight.w700, 1.3, colors.text),
-      heading2: ui(17, FontWeight.w600, 1.3, colors.text),
-      listTitle: ui(15, FontWeight.w600, 1.3, colors.text),
-      body: ui(15, FontWeight.w400, 1.45, colors.text),
-      secondary: ui(13, FontWeight.w400, 1.35, colors.textSecondary),
-      label: ui(13, FontWeight.w500, 1.3, colors.textSecondary),
-      meta: ui(12, FontWeight.w400, 1.3, colors.textMuted),
+      barTitle: ui(18, FontWeight.w600, 1.3, colors.text),
+      heading1: ui(22, FontWeight.w700, 1.3, colors.text),
+      heading2: ui(18, FontWeight.w600, 1.3, colors.text),
+      listTitle: ui(16, FontWeight.w600, 1.3, colors.text),
+      body: ui(16, FontWeight.w400, 1.45, colors.text),
+      secondary: ui(14, FontWeight.w400, 1.35, colors.textSecondary),
+      label: ui(14, FontWeight.w500, 1.3, colors.textSecondary),
+      meta: ui(13, FontWeight.w400, 1.3, colors.textMuted),
       sectionLabel: ui(
-        12,
+        13,
         FontWeight.w500,
         1.3,
         colors.textMuted,
@@ -183,7 +187,7 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
       // Theme previews are interface, not note text: not scaled.
       monoSmall: fontStyle(
         fonts.codeFont,
-        size: 11.5,
+        size: 11.5 * interfaceTextSize,
         weight: FontWeight.w400,
         height: 1.55,
         color: colors.text,
@@ -232,64 +236,65 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
   /// The family of the interface.
   static const String sansFamily = 'Instrument Sans';
 
-  /// A page's heading, at the top of what scrolls: 30, bold, set tight.
+  /// A page's heading, at the top of what scrolls: 32, bold, set tight.
   final TextStyle largeTitle;
 
-  /// A top bar's title: 17, semibold.
+  /// A top bar's title: 18, semibold.
   final TextStyle barTitle;
 
-  /// A first-level heading inside a note: 20, bold.
+  /// A first-level heading inside a note: 22, bold.
   final TextStyle heading1;
 
-  /// A second-level heading inside a note: 17, semibold.
+  /// A second-level heading inside a note: 18, semibold.
   final TextStyle heading2;
 
-  /// A row's title in a list: 15, semibold.
+  /// A row's title in a list: 16, semibold.
   final TextStyle listTitle;
 
-  /// Running text: 15.
+  /// Running text: 16.
   final TextStyle body;
 
-  /// A row's second line, captions and hints: 13.
+  /// A row's second line, captions and hints: 14.
   final TextStyle secondary;
 
-  /// A control's label (chips, buttons' small text): 13, medium.
+  /// A control's label (chips, buttons' small text): 14, medium.
   final TextStyle label;
 
-  /// A quiet line of facts under a title: 12, muted.
+  /// A quiet line of facts under a title: 13, muted.
   final TextStyle meta;
 
-  /// A section's label above its rows: 12, medium, muted.
+  /// A section's label above its rows: 13, medium, muted.
   final TextStyle sectionLabel;
 
-  /// The title of a note being edited, in the editor font: 24, bold.
+  /// The title of a note being edited, in the editor font: 28, bold.
   final TextStyle editorTitle;
 
-  /// A first-level heading in the editor: 20, bold.
+  /// A first-level heading in the editor: 23, bold.
   final TextStyle editorHeading1;
 
-  /// A second-level heading in the editor: 17, semibold.
+  /// A second-level heading in the editor: 20, semibold.
   final TextStyle editorHeading2;
 
-  /// Text in the editor: 15.
+  /// Text in the editor: 18.
   final TextStyle editorBody;
 
-  /// The title of a note being read, in the preview font: 24, bold.
+  /// The title of a note being read, in the preview font: 28, bold.
   final TextStyle previewTitle;
 
-  /// A first-level heading in a rendered note: 20, bold.
+  /// A first-level heading in a rendered note: 23, bold.
   final TextStyle previewHeading1;
 
-  /// A second-level heading in a rendered note: 17, semibold.
+  /// A second-level heading in a rendered note: 20, semibold.
   final TextStyle previewHeading2;
 
-  /// Running text of a rendered note: 15.
+  /// Running text of a rendered note: 18.
   final TextStyle previewBody;
 
   /// Code in a note, in the code font: 13.5.
   final TextStyle mono;
 
-  /// Code in a small theme preview, in the code font: 11.5.
+  /// Code in a small theme preview, in the code font: 11.5, scaled with the
+  /// interface because it appears in interface chrome.
   final TextStyle monoSmall;
 
   /// A full Material [TextTheme] built from these styles, so no widget
@@ -314,7 +319,6 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
     );
   }
 
-  @override
   KansoTypography copyWith({
     TextStyle? largeTitle,
     TextStyle? barTitle,
@@ -361,11 +365,7 @@ class KansoTypography extends ThemeExtension<KansoTypography> {
     );
   }
 
-  @override
-  KansoTypography lerp(ThemeExtension<KansoTypography>? other, double t) {
-    if (other is! KansoTypography) {
-      return this;
-    }
+  KansoTypography lerp(KansoTypography other, double t) {
     return KansoTypography(
       largeTitle: TextStyle.lerp(largeTitle, other.largeTitle, t)!,
       barTitle: TextStyle.lerp(barTitle, other.barTitle, t)!,

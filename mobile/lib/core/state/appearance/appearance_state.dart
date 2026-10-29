@@ -42,6 +42,9 @@ abstract class AppearanceState with _$AppearanceState {
     /// The rendered preview's note text scale. The editor does not use it.
     @Default(1.0) double previewTextSize,
 
+    /// The interface's label and text scale. Note text has its own scales.
+    @Default(1.0) double interfaceTextSize,
+
     /// What draws Mermaid diagrams.
     @Default(DiagramRenderer.pele) DiagramRenderer diagramRenderer,
     @Default(AppearanceStatus.loading) AppearanceStatus status,

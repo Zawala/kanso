@@ -19,6 +19,9 @@ _Preferences _$PreferencesFromJson(Map<String, dynamic> json) => _Preferences(
   previewTextSize: json['previewTextSize'] == null
       ? 1.0
       : textScaleFromJson(json['previewTextSize']),
+  interfaceTextSize: json['interfaceTextSize'] == null
+      ? 1.0
+      : interfaceTextScaleFromJson(json['interfaceTextSize']),
   iconTheme: json['iconTheme'] as String? ?? KansoIconSet.lucideId,
   diagramRenderer:
       $enumDecodeNullable(
@@ -53,6 +56,7 @@ Map<String, dynamic> _$PreferencesToJson(_Preferences instance) =>
       'fonts': instance.fonts.toJson(),
       'textSize': textScaleToJson(instance.textSize),
       'previewTextSize': textScaleToJson(instance.previewTextSize),
+      'interfaceTextSize': interfaceTextScaleToJson(instance.interfaceTextSize),
       'iconTheme': instance.iconTheme,
       'diagramRenderer': _$DiagramRendererEnumMap[instance.diagramRenderer]!,
       'sort': _$SortKeyEnumMap[instance.sort]!,

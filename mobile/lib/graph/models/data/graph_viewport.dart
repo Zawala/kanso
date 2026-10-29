@@ -85,6 +85,23 @@ abstract class GraphViewport with _$GraphViewport {
   GraphViewport panned(Offset delta) =>
       GraphViewport(center: center - delta / zoom, zoom: zoom);
 
+  /// Applies either a one-pointer pan or a multi-pointer anchored zoom.
+  /// Pinching deliberately ignores [focalDelta], so the gesture cannot pan
+  /// and zoom the graph at the same time.
+  GraphViewport updatedForGesture({
+    required int pointerCount,
+    required double scaleFactor,
+    required Offset focalPoint,
+    required Offset focalDelta,
+    required Size size,
+    required Rect bounds,
+  }) {
+    final updated = pointerCount > 1
+        ? zoomAt(scaleFactor, focalPoint, size)
+        : panned(focalDelta);
+    return updated.keptOver(bounds);
+  }
+
   /// The layout rectangle a view [size] big shows, grown by [margin]
   /// points on every side.
   Rect visible(Size size, double margin) => Rect.fromPoints(

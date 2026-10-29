@@ -76,6 +76,75 @@ void main() {
       expect(find.text('A field'), findsOneWidget);
     });
 
+    testWidgets('keeps keyboard focus when a field is tapped again', (
+      tester,
+    ) async {
+      final focus = FocusNode();
+      final controller = TextEditingController();
+      addTearDown(focus.dispose);
+      addTearDown(controller.dispose);
+      await _openSheet(
+        tester,
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: KansoTextInput(
+            controller: controller,
+            focusNode: focus,
+            autofocus: true,
+            hint: 'A field',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(focus.hasFocus, isTrue);
+
+      // Repositioning the caret must not make the sheet drop focus first.
+      await tester.tapAt(tester.getCenter(find.byType(KansoTextInput)));
+      await tester.pump();
+      expect(focus.hasFocus, isTrue);
+
+      // Tapping the field again after its keyboard is visible is still a
+      // field tap, not a request to dismiss it.
+      await tester.tapAt(tester.getCenter(find.byType(KansoTextInput)));
+      await tester.pump();
+      expect(focus.hasFocus, isTrue);
+    });
+
+    testWidgets('dismisses the keyboard when the body outside a field is '
+        'tapped', (tester) async {
+      final focus = FocusNode();
+      final controller = TextEditingController();
+      addTearDown(focus.dispose);
+      addTearDown(controller.dispose);
+      await _openSheet(
+        tester,
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Outside the field'),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: KansoTextInput(
+                controller: controller,
+                focusNode: focus,
+                autofocus: true,
+                hint: 'A field',
+              ),
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(focus.hasFocus, isTrue);
+
+      await tester.tap(find.text('Outside the field'));
+      await tester.pump();
+      expect(focus.hasFocus, isFalse);
+    });
+
     testWidgets('releases focus when the sheet goes away', (tester) async {
       final focus = FocusNode();
       final controller = TextEditingController();

@@ -5,6 +5,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
@@ -34,6 +35,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
   bool _needsFit = true;
   Size? _lastSize;
   double _lastScale = 1;
+  Offset? _doubleTapPosition;
 
   @override
   void didUpdateWidget(GraphCanvas oldWidget) {
@@ -61,6 +63,14 @@ class _GraphCanvasState extends State<GraphCanvas> {
     _needsFit = false;
   }
 
+  Rect get _layoutBounds => graphExtent(_positions) ?? Rect.zero;
+
+  void _zoom(double factor, Offset focalPoint, Size size) {
+    _viewport.value = _viewport.value
+        .zoomAt(factor, focalPoint, size)
+        .keptOver(_layoutBounds);
+  }
+
   void _onScaleStart(ScaleStartDetails details) {
     _lastScale = 1;
   }
@@ -68,13 +78,14 @@ class _GraphCanvasState extends State<GraphCanvas> {
   void _onScaleUpdate(ScaleUpdateDetails details, Size size) {
     final factor = details.scale / _lastScale;
     _lastScale = details.scale;
-    final renderObject = context.findRenderObject();
-    if (renderObject is! RenderBox) return;
-    final renderBox = renderObject;
-    final focalPoint = renderBox.globalToLocal(details.focalPoint);
-    final current = _viewport.value;
-    final zoomed = current.zoomAt(factor, focalPoint, size);
-    _viewport.value = zoomed.panned(details.focalPointDelta);
+    _viewport.value = _viewport.value.updatedForGesture(
+      pointerCount: details.pointerCount,
+      scaleFactor: factor,
+      focalPoint: details.localFocalPoint,
+      focalDelta: details.focalPointDelta,
+      size: size,
+      bounds: _layoutBounds,
+    );
   }
 
   void _selectAt(Offset point, Size size, GraphViewport viewport) {
@@ -93,7 +104,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final textStyle = context.typography.secondary;
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dark = context.isDark;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -122,6 +133,13 @@ class _GraphCanvasState extends State<GraphCanvas> {
                     behavior: HitTestBehavior.opaque,
                     onScaleStart: _onScaleStart,
                     onScaleUpdate: (details) => _onScaleUpdate(details, size),
+                    onDoubleTapDown: (details) {
+                      _doubleTapPosition = details.localPosition;
+                    },
+                    onDoubleTap: () {
+                      final focalPoint = _doubleTapPosition;
+                      if (focalPoint != null) _zoom(1.5, focalPoint, size);
+                    },
                     onTapUp: (details) => _selectAt(
                       details.localPosition,
                       size,
@@ -137,7 +155,10 @@ class _GraphCanvasState extends State<GraphCanvas> {
                         surfaceColor: colors.editor,
                         accentColor: colors.accent,
                         textStyle: textStyle,
+                        textDirection: Directionality.of(context),
+                        untitled: context.l10n.noteUntitled,
                         dark: dark,
+                        onNodeSelected: widget.onNodeSelected,
                       ),
                       size: size,
                     ),
@@ -151,10 +172,27 @@ class _GraphCanvasState extends State<GraphCanvas> {
                       color: colors.elevated.withValues(alpha: 0.94),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: KansoIconButton(
-                      icon: KansoIcons.target,
-                      semanticLabel: context.l10n.graphFit,
-                      onPressed: () => _fit(size),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        KansoIconButton(
+                          icon: KansoIcons.plus,
+                          semanticLabel: context.l10n.graphZoomIn,
+                          onPressed: () =>
+                              _zoom(1.25, size.center(Offset.zero), size),
+                        ),
+                        KansoIconButton(
+                          icon: KansoIcons.minus,
+                          semanticLabel: context.l10n.graphZoomOut,
+                          onPressed: () =>
+                              _zoom(0.8, size.center(Offset.zero), size),
+                        ),
+                        KansoIconButton(
+                          icon: KansoIcons.target,
+                          semanticLabel: context.l10n.graphFit,
+                          onPressed: () => _fit(size),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -200,7 +238,10 @@ class _GraphPainter extends CustomPainter {
     required this.surfaceColor,
     required this.accentColor,
     required this.textStyle,
+    required this.textDirection,
+    required this.untitled,
     required this.dark,
+    required this.onNodeSelected,
   });
 
   final GraphLayout layout;
@@ -211,7 +252,40 @@ class _GraphPainter extends CustomPainter {
   final Color surfaceColor;
   final Color accentColor;
   final TextStyle textStyle;
+  final TextDirection textDirection;
+  final String untitled;
   final bool dark;
+  final ValueChanged<GraphNodeRow> onNodeSelected;
+
+  @override
+  SemanticsBuilderCallback get semanticsBuilder {
+    return (size) {
+      final semantics = <CustomPainterSemantics>[];
+      for (final node in layout.nodes) {
+        final center = viewport.toScreen(Offset(node.x, node.y), size);
+        final radius = math.max<double>(
+          screenRadius(node.radius, viewport.zoom) + 12,
+          22,
+        );
+        final rect = Rect.fromCircle(center: center, radius: radius);
+        if (!rect.overlaps(Offset.zero & size)) continue;
+        final title = node.title.trim().isEmpty ? untitled : node.title.trim();
+        semantics.add(
+          CustomPainterSemantics(
+            key: ValueKey<String>(node.id),
+            rect: rect,
+            properties: SemanticsProperties(
+              label: title,
+              button: true,
+              textDirection: textDirection,
+              onTap: () => onNodeSelected(node),
+            ),
+          ),
+        );
+      }
+      return semantics;
+    };
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -225,7 +299,7 @@ class _GraphPainter extends CustomPainter {
     ];
 
     final edgePaint = Paint()
-      ..color = edgeColor.withValues(alpha: dark ? 0.20 : 0.24)
+      ..color = edgeColor.withValues(alpha: dark ? 0.09 : 0.12)
       ..strokeWidth = viewport.zoom < 0.35 ? 0.8 : 1
       ..strokeCap = StrokeCap.round;
     for (final edge in layout.edges) {
@@ -287,10 +361,10 @@ class _GraphPainter extends CustomPainter {
       if (aNode.isCenter != bNode.isCenter) return aNode.isCenter ? -1 : 1;
       return bNode.degree.compareTo(aNode.degree);
     });
-    final maxLabels = viewport.zoom >= 0.85
-        ? math.min(60, labelCandidates.length)
-        : viewport.zoom >= 0.45
-        ? math.min(24, labelCandidates.length)
+    final maxLabels = viewport.zoom >= 0.9
+        ? math.min(36, labelCandidates.length)
+        : viewport.zoom >= 0.55
+        ? math.min(12, labelCandidates.length)
         : 0;
     final labelRects = <Rect>[];
     var labelsDrawn = 0;
@@ -298,7 +372,7 @@ class _GraphPainter extends CustomPainter {
       final node = layout.nodes[candidate.index];
       final isPriority = node.isCenter;
       if (labelsDrawn >= maxLabels && !isPriority) continue;
-      final title = node.title.trim().isEmpty ? 'Untitled' : node.title.trim();
+      final title = node.title.trim().isEmpty ? untitled : node.title.trim();
       final textPainter = TextPainter(
         text: TextSpan(
           text: title,
@@ -310,7 +384,7 @@ class _GraphPainter extends CustomPainter {
         ),
         maxLines: 1,
         ellipsis: '…',
-        textDirection: TextDirection.ltr,
+        textDirection: textDirection,
       )..layout(maxWidth: 150);
       final center = candidate.center;
       final gap = candidate.radius + 5;
@@ -345,7 +419,6 @@ class _GraphPainter extends CustomPainter {
           break;
         }
       }
-      if (placement == null && isPriority) placement = options.first;
       if (placement == null) continue;
       labelRects.add(placement);
       labelsDrawn++;
@@ -369,7 +442,10 @@ class _GraphPainter extends CustomPainter {
       oldDelegate.surfaceColor != surfaceColor ||
       oldDelegate.accentColor != accentColor ||
       oldDelegate.textStyle != textStyle ||
-      oldDelegate.dark != dark;
+      oldDelegate.textDirection != textDirection ||
+      oldDelegate.untitled != untitled ||
+      oldDelegate.dark != dark ||
+      oldDelegate.onNodeSelected != onNodeSelected;
 }
 
 class _LabelCandidate {

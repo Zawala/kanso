@@ -20,6 +20,7 @@ void main() {
       const preferences = Preferences();
       expect(preferences.textSize, 1.0);
       expect(preferences.previewTextSize, 1.0);
+      expect(preferences.interfaceTextSize, 1.0);
       expect(preferences.diagramRenderer, DiagramRenderer.pele);
       expect(preferences.themeSelection.syntax, isNull);
       expect(preferences.themeSelection.preview, isNull);
@@ -103,6 +104,7 @@ void main() {
         });
         expect(read.textSize, 1.15);
         expect(read.previewTextSize, 1.0);
+        expect(read.interfaceTextSize, 1.0);
         expect(read.diagramRenderer, DiagramRenderer.pele);
         expect(read.themeSelection.syntax, isNull);
         expect(read.themeSelection.preview, isNull);
@@ -124,6 +126,50 @@ void main() {
       });
       expect(read.previewTextSize, 1.0);
       expect(read.diagramRenderer, DiagramRenderer.pele);
+    });
+
+    test('writes and reads the interface scale independently', () {
+      final json = const Preferences(interfaceTextSize: 1.2).toJson();
+      expect(json['interfaceTextSize'], 1.2);
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': json['interfaceTextSize'],
+        }).interfaceTextSize,
+        1.2,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': 1.23,
+        }).interfaceTextSize,
+        1.25,
+      );
+    });
+
+    test('bounds and steps the interface scale within its own range', () {
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': 0.1,
+        }).interfaceTextSize,
+        0.9,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': 4,
+        }).interfaceTextSize,
+        1.3,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': 'huge',
+        }).interfaceTextSize,
+        1.0,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': double.nan,
+        }).interfaceTextSize,
+        1.0,
+      );
     });
 
     test('reads every legacy preset name and writes numeric scales', () {

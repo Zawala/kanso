@@ -136,6 +136,7 @@ enum KansoIcons {
   mapPin('map-pin'),
   megaphone('megaphone'),
   menu('menu'),
+  minus('minus'),
   messageCircle('message-circle'),
   messageSquare('message-square'),
   mic('mic'),

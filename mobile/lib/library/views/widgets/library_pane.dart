@@ -316,7 +316,7 @@ class _LibraryPaneState extends State<LibraryPane> {
     final place = ListPlace.notebook(id: notebook.id);
     final selected = current == place;
     final color = notebookColor(notebook.color);
-    final dark = Theme.brightnessOf(context) == Brightness.dark;
+    final dark = context.brightness == Brightness.dark;
     final icon = notebook.icon ?? KansoIcons.notebook.lucideName;
     return LibraryPlaceRow(
       place: place,
@@ -636,7 +636,7 @@ class _TagChip extends StatelessWidget {
                 style: context.typography.secondary.copyWith(
                   color: mutedTagColor(
                     tag.tint,
-                    dark: Theme.brightnessOf(context) == Brightness.dark,
+                    dark: context.brightness == Brightness.dark,
                   ),
                 ),
               ),

@@ -7,9 +7,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
+import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/list_labels.dart';
 import '../../../core/views/widgets/kanso_dialog.dart';
 import '../../../core/views/widgets/kanso_icon.dart';
+import '../../../core/views/widgets/kanso_icon_button.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
 import '../../state/backups/backups_bloc.dart';
 
 /// A daily copy cannot be deleted; on-request copies can.
@@ -22,7 +26,6 @@ class BackupRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final when = DateTime.fromMillisecondsSinceEpoch(backup.madeAtMs).toLocal();
     final size = backup.bytes < 1024
         ? l10n.fileSizeBytes(backup.bytes.toString())
         : backup.bytes < 1024 * 1024
@@ -30,29 +33,53 @@ class BackupRow extends StatelessWidget {
         : l10n.fileSizeMegabytes(
             (backup.bytes / (1024 * 1024)).toStringAsFixed(1),
           );
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: const KansoIcon(KansoIcons.databaseBackup),
-      title: Text(MaterialLocalizations.of(context).formatMediumDate(when)),
-      subtitle: Text(
-        l10n.backupsKindManualKept(
-          backup.manual ? l10n.backupsKindManual : l10n.backupsKindDaily,
-          size,
+    return Row(
+      children: <Widget>[
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: KansoSpacing.md),
+          child: KansoIcon(KansoIcons.databaseBackup),
         ),
-      ),
-      trailing: backup.manual
-          ? IconButton(
-              tooltip: l10n.backupsDelete,
-              onPressed: deleting
-                  ? null
-                  : () async {
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: KansoSpacing.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  dateLabel(l10n, backup.madeAtMs),
+                  style: context.typography.listTitle,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  l10n.backupsKindManualKept(
+                    backup.manual
+                        ? l10n.backupsKindManual
+                        : l10n.backupsKindDaily,
+                    size,
+                  ),
+                  style: context.typography.meta,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (backup.manual)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: KansoSpacing.xs),
+            child: deleting
+                ? const Padding(
+                    padding: EdgeInsets.all(KansoSpacing.sm),
+                    child: KansoSpinner(),
+                  )
+                : KansoIconButton(
+                    icon: KansoIcons.trash,
+                    semanticLabel: l10n.backupsDelete,
+                    onPressed: () async {
                       final confirmed = await showKansoConfirm(
                         context,
                         title: l10n.backupsDeleteTitle,
                         body: l10n.backupsDeleteMessage(
-                          MaterialLocalizations.of(
-                            context,
-                          ).formatMediumDate(when),
+                          dateLabel(l10n, backup.madeAtMs),
                         ),
                         cancelLabel: l10n.backupsDeleteCancel,
                         confirmLabel: l10n.backupsDeleteConfirm,
@@ -64,14 +91,9 @@ class BackupRow extends StatelessWidget {
                         );
                       }
                     },
-              icon: deleting
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.delete_outline),
-            )
-          : null,
+                  ),
+          ),
+      ],
     );
   }
 }

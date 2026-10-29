@@ -180,6 +180,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get graphFilterTag => 'Tag';
 
   @override
+  String get graphFilterTitle => 'Show the graph of';
+
+  @override
+  String get graphFilterNotebooks => 'Notebooks';
+
+  @override
+  String get graphFilterTags => 'Tags';
+
+  @override
   String get graphEmpty => 'No linked notes to show.';
 
   @override
@@ -187,6 +196,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get graphFit => 'Fit graph to view';
+
+  @override
+  String get graphZoomIn => 'Zoom in';
+
+  @override
+  String get graphZoomOut => 'Zoom out';
 
   @override
   String get noteMetaCreated => 'Created';
@@ -271,6 +286,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsTextSize => 'Text size';
+
+  @override
+  String get settingsInterfaceTextSize => 'Interface text size';
 
   @override
   String get settingsSync => 'Sync';
@@ -551,6 +569,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fontsSampleCode => 'let note = merge(a, b);';
+
+  @override
+  String get fontsInterfaceTextSizeSection => 'Interface text size';
+
+  @override
+  String get fontsInterfaceTextSizeFooter =>
+      'Changes labels, menus, buttons and the rest of Kanso. Notes keep their own text sizes.';
+
+  @override
+  String get fontsInterfaceTextSizeSample =>
+      'Notebooks · Search · Tasks · Settings';
+
+  @override
+  String get interfaceTextSizeControlLabel => 'Interface text size';
+
+  @override
+  String get interfaceTextSizeDecrease => 'Decrease interface text size';
+
+  @override
+  String get interfaceTextSizeIncrease => 'Increase interface text size';
 
   @override
   String get fontsTextSizeSection => 'Text size';
@@ -4284,6 +4322,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get dictationRestrictedMessage =>
       'This phone\'s rules keep Kanso from using the microphone or speech recognition.';
+
+  @override
+  String get sheetDismiss => 'Dismiss sheet';
 
   @override
   String get dictationOpenSettings => 'Open Settings';

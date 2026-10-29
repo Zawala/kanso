@@ -7,6 +7,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_icons.dart';
+import '../../../core/configs/kanso_radii.dart';
+import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/kanso_swipe_action.dart';
 import '../../../core/models/data/note_drag_data.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
@@ -147,8 +149,8 @@ class NoteListRow extends StatelessWidget {
           final chosen = await showKansoMenu<bool>(
             context,
             details.globalPosition,
-            <PopupMenuEntry<bool>>[
-              kansoMenuItem<bool>(context, true, l10n.tabOpenInNewTab),
+            <KansoMenuEntry<bool>>[
+              KansoMenuEntry<bool>(true, l10n.tabOpenInNewTab),
             ],
           );
           if (chosen ?? false) {
@@ -200,17 +202,35 @@ class _NoteDragFeedback extends StatelessWidget {
             : title,
     ];
     final summary = visibleTitles.take(2).join(', ');
-    return Chip(
-      avatar: KansoIcon(
-        titles.every((title) => title.isEmpty)
-            ? KansoIcons.lock
-            : KansoIcons.fileText,
-        size: 16,
-        color: colors.textSecondary,
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: KansoSpacing.sm),
+      decoration: BoxDecoration(
+        color: colors.sidebar,
+        borderRadius: KansoRadii.pillBorder,
+        border: Border.all(color: colors.divider),
       ),
-      label: Text('$count · $summary'),
-      backgroundColor: colors.sidebar,
-      side: BorderSide(color: colors.divider),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          KansoIcon(
+            titles.every((title) => title.isEmpty)
+                ? KansoIcons.lock
+                : KansoIcons.fileText,
+            size: 16,
+            color: colors.textSecondary,
+          ),
+          const SizedBox(width: KansoSpacing.xs),
+          Flexible(
+            child: Text(
+              '$count · $summary',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.typography.label,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/ai_settings/state/ai_status/ai_status_bloc.dart';
 import 'package:kanso/app.dart';
+import 'package:kanso/core/configs/kanso_theme_scope.dart';
 import 'package:kanso/core/configs/kanso_typography.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
@@ -75,9 +76,9 @@ Future<AppearanceBloc> pumpApp(
 void main() {
   Future<KansoTypography> typography(WidgetTester tester) async {
     await tester.pumpAndSettle();
-    return Theme.of(
+    return KansoThemeScope.of(
       tester.element(find.byType(DesignGalleryPage)),
-    ).extension<KansoTypography>()!;
+    ).typography;
   }
 
   group('App', () {
@@ -124,7 +125,22 @@ void main() {
       expect(styles.previewBody.fontSize, closeTo(18 * 1.3, 1e-9));
       // The interface is Kanso's own, whatever the notes are set in.
       expect(styles.body.fontFamily, 'Instrument Sans');
-      expect(styles.body.fontSize, 15);
+      expect(styles.body.fontSize, 16);
+    });
+
+    testWidgets('scales the interface without changing note text', (
+      tester,
+    ) async {
+      final bloc = await pumpApp(tester);
+      var styles = await typography(tester);
+      expect(styles.body.fontSize, 16);
+      expect(styles.editorBody.fontSize, 18);
+      bloc.add(const AppearanceEvent.interfaceTextSizeChanged(1.2));
+      styles = await typography(tester);
+      expect(styles.body.fontSize, closeTo(19.2, 1e-9));
+      expect(styles.barTitle.fontSize, closeTo(21.6, 1e-9));
+      expect(styles.editorBody.fontSize, 18);
+      expect(styles.previewBody.fontSize, 18);
     });
 
     testWidgets('the dark theme follows the same choices', (tester) async {
@@ -135,9 +151,9 @@ void main() {
       await tester.pumpAndSettle();
       final app = tester.widget<WidgetsApp>(find.byType(WidgetsApp));
       expect(
-        Theme.of(
+        KansoThemeScope.of(
           tester.element(find.byType(DesignGalleryPage)),
-        ).extension<KansoTypography>()!.mono.fontFamily,
+        ).typography.mono.fontFamily,
         'IBM Plex Mono',
       );
       expect(app.debugShowCheckedModeBanner, isFalse);

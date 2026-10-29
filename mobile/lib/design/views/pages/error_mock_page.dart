@@ -16,13 +16,12 @@ class ErrorMockPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      body: Stack(
+    return ColoredBox(
+      color: context.colors.list,
+      child: const Stack(
         children: <Widget>[
-          Positioned.fill(child: ColoredBox(color: context.colors.list)),
-          const Positioned.fill(child: KansoScrim()),
-          const Center(
+          Positioned.fill(child: KansoScrim()),
+          Center(
             child: Padding(
               padding: EdgeInsets.all(KansoSpacing.lg),
               child: SignedOutCard(),

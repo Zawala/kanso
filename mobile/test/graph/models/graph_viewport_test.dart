@@ -41,6 +41,66 @@ void main() {
     expect(zoomed.zoom, 2.1);
   });
 
+  test('gesture zoom keeps the local focal point anchored', () {
+    const viewport = GraphViewport(center: Offset(12, -8), zoom: 1.2);
+    const focalPoint = Offset(90, 210);
+    final graphPoint = viewport.toLayout(focalPoint, size);
+    final updated = viewport.updatedForGesture(
+      pointerCount: 2,
+      scaleFactor: 1.75,
+      focalPoint: focalPoint,
+      focalDelta: const Offset(40, -30),
+      size: size,
+      bounds: const Rect.fromLTRB(-100, -100, 100, 100),
+    );
+
+    expect(updated.toScreen(graphPoint, size), focalPoint);
+    expect(updated.zoom, 2.1);
+  });
+
+  test('one pointer pans without zooming and pinch zoom ignores pan delta', () {
+    const viewport = GraphViewport(zoom: 1.5);
+    const bounds = Rect.fromLTRB(-100, -100, 100, 100);
+    final panned = viewport.updatedForGesture(
+      pointerCount: 1,
+      scaleFactor: 2,
+      focalPoint: const Offset(70, 90),
+      focalDelta: const Offset(30, -12),
+      size: size,
+      bounds: bounds,
+    );
+    final pinched = viewport.updatedForGesture(
+      pointerCount: 2,
+      scaleFactor: 2,
+      focalPoint: const Offset(70, 90),
+      focalDelta: const Offset(30, -12),
+      size: size,
+      bounds: bounds,
+    );
+
+    expect(panned.zoom, viewport.zoom);
+    expect(panned.center, const Offset(-20, 8));
+    expect(pinched.zoom, 3);
+    expect(
+      pinched.center,
+      viewport.zoomAt(2, const Offset(70, 90), size).center,
+    );
+  });
+
+  test('gesture pan keeps the graph center within layout bounds', () {
+    const viewport = GraphViewport();
+    final moved = viewport.updatedForGesture(
+      pointerCount: 1,
+      scaleFactor: 1,
+      focalPoint: Offset.zero,
+      focalDelta: const Offset(1000, -1000),
+      size: size,
+      bounds: const Rect.fromLTRB(-40, -25, 60, 35),
+    );
+
+    expect(moved.center, const Offset(-40, 35));
+  });
+
   test('pan moves the visible graph opposite the finger delta', () {
     const viewport = GraphViewport(center: Offset(4, 7), zoom: 2);
     final panned = viewport.panned(const Offset(30, -10));

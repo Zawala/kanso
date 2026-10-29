@@ -10,9 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_palette.dart';
 import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
-import 'package:kanso/core/utils/kanso_scroll_behavior.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
 
+import 'kanso_test_app.dart';
 import 'kanso_viewport.dart';
 import 'seeded_appearance_bloc.dart';
 
@@ -90,21 +89,26 @@ Future<void> expectGoldenOnBothPlatforms(
       disableAnimations: true,
       reduceMotion: true,
     );
-  addTearDown(() {
+
+  final bloc = SeededAppearanceBloc(appearance);
+  // Leave the final render mounted for tests that assert against it after
+  // this helper returns. Dispose it here, before restoring globals, so the
+  // platform override in KansoTestApp unwinds while the widget tree is alive.
+  addTearDown(() async {
+    debugDisableShadows = true;
+    debugDefaultTargetPlatformOverride = null;
+    await bloc.close();
     tester.view.reset();
     tester.platformDispatcher
       ..clearTextScaleFactorTestValue()
       ..clearAccessibilityFeaturesTestValue();
   });
 
-  final bloc = SeededAppearanceBloc(appearance);
-  addTearDown(bloc.close);
   final renders = <TargetPlatform, Uint8List>{};
   for (final platform in <TargetPlatform>[
     TargetPlatform.iOS,
     TargetPlatform.android,
   ]) {
-    debugDefaultTargetPlatformOverride = platform;
     // The test binding draws shadows as hard-edged slabs; the pictures
     // should show them as a device does, blurred. The binding checks the
     // flag when the test ends, so it is put back after each render.
@@ -114,34 +118,24 @@ Future<void> expectGoldenOnBothPlatforms(
       await tester.pumpWidget(
         RepaintBoundary(
           key: key,
-          child: MaterialApp(
-            debugShowCheckedModeBanner: false,
-            // Built per platform: a ThemeData records the platform it was
-            // made on, and the shared themes are made once.
+          child: KansoTestApp(
             theme: KansoTheme.build(
-              palette ?? KansoPalette.kansoLight,
+              palette ??
+                  (brightness == Brightness.dark
+                      ? KansoPalette.kansoDark
+                      : KansoPalette.kansoLight),
               fonts: appearance.fonts,
               textSize: appearance.textSize,
-            ).copyWith(platform: platform),
-            darkTheme: KansoTheme.build(
-              palette ?? KansoPalette.kansoDark,
-              fonts: appearance.fonts,
-              textSize: appearance.textSize,
-            ).copyWith(platform: platform),
-            themeMode: brightness == Brightness.dark
-                ? ThemeMode.dark
-                : ThemeMode.light,
-            scrollBehavior: const KansoScrollBehavior(),
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            builder: (context, app) {
-              return MediaQuery(
-                data: MediaQuery.of(
-                  context,
-                ).copyWith(padding: insets, viewPadding: insets),
-                child: app!,
-              );
-            },
+              previewTextSize: appearance.previewTextSize,
+              interfaceTextSize: appearance.interfaceTextSize,
+            ),
+            platform: platform,
+            builder: (context, app) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(padding: insets, viewPadding: insets),
+              child: app,
+            ),
             home: BlocProvider<AppearanceBloc>.value(
               value: bloc,
               child: child,
@@ -168,10 +162,13 @@ Future<void> expectGoldenOnBothPlatforms(
           find.byKey(key),
           matchesGoldenFile('goldens/$name.png'),
         );
+        // Clear the iOS tree before mounting Android so the platform override
+        // is restored. If the golden mismatches, leave disposal to the test's
+        // own teardown; pumping from a failed async matcher deadlocks.
+        await tester.pumpWidget(const SizedBox.shrink());
       }
     } finally {
       debugDisableShadows = true;
-      debugDefaultTargetPlatformOverride = null;
     }
   }
 

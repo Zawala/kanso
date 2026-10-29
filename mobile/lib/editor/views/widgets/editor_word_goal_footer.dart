@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../../../core/bridge/api/word_goal.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_pressable.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
 
 /// The live word count and note target, pinned below the editor text.
 class EditorWordGoalFooter extends StatelessWidget {
@@ -38,7 +40,7 @@ class EditorWordGoalFooter extends StatelessWidget {
     return Semantics(
       button: onTap != null,
       label: label,
-      child: InkWell(
+      child: KansoPressable(
         onTap: onTap,
         child: Container(
           height: 44,
@@ -50,14 +52,9 @@ class EditorWordGoalFooter extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               if (target != null) ...<Widget>[
-                SizedBox.square(
-                  dimension: 14,
-                  child: CircularProgressIndicator(
-                    value: progress,
-                    strokeWidth: 1.75,
-                    backgroundColor: colors.divider,
-                    color: met ? colors.success : colors.accent,
-                  ),
+                KansoProgressRing(
+                  value: progress,
+                  color: met ? colors.success : colors.accent,
                 ),
                 const SizedBox(width: KansoSpacing.xs),
               ],

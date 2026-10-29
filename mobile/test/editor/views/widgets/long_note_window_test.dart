@@ -5,16 +5,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/editor/utils/editor_window.dart';
 import 'package:kanso/editor/views/controllers/kanso_markdown_controller.dart';
 import 'package:kanso/editor/views/widgets/kanso_editable_text.dart';
 import 'package:kanso/editor/views/widgets/outside_text.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
 
 import '../../../helpers/editor_fixture.dart';
 import '../../../helpers/golden.dart';
+import '../../../helpers/kanso_test_app.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 
 /// A note of 400 lines of about 50 units: some 20,000, more than two windows,
@@ -43,10 +42,7 @@ Future<void> pumpPhone(WidgetTester tester, EditorFixture fixture) async {
   final bloc = SeededAppearanceBloc(const AppearanceState());
   addTearDown(bloc.close);
   await tester.pumpWidget(
-    MaterialApp(
-      theme: KansoTheme.light,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
+    KansoTestApp(
       home: BlocProvider<AppearanceBloc>.value(
         value: bloc,
         child: fixture.phone,

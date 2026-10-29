@@ -2,7 +2,6 @@
 // Created 2026-10-25.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -10,6 +9,7 @@ import 'account/views/widgets/device_approval_host.dart';
 import 'ai_settings/state/ai_status/ai_status_bloc.dart';
 import 'assist/utils/assist_editor_extras.dart';
 import 'core/configs/kanso_theme.dart';
+import 'core/configs/kanso_theme_scope.dart';
 import 'core/models/repos/abs/ai_repository.dart';
 import 'core/router/kanso_router.dart';
 import 'core/state/appearance/appearance_bloc.dart';
@@ -104,26 +104,23 @@ class _AppState extends State<App> {
               fonts: state.fonts,
               textSize: state.textSize,
               previewTextSize: state.previewTextSize,
+              interfaceTextSize: state.interfaceTextSize,
             );
             return ScrollConfiguration(
               behavior: const KansoScrollBehavior(),
-              child: AnimatedTheme(
-                data: theme,
+              child: KansoThemeTransition(
+                theme: theme,
                 child: DefaultTextStyle(
-                  style: theme.textTheme.bodyMedium!,
+                  style: theme.typography.body,
                   child: DefaultSelectionStyle(
-                    selectionColor:
-                        theme.textSelectionTheme.selectionColor ??
-                        theme.colorScheme.primary.withValues(alpha: 0.4),
-                    cursorColor:
-                        theme.textSelectionTheme.cursorColor ??
-                        theme.colorScheme.primary,
-                    child: CupertinoTheme(
-                      data: MaterialBasedCupertinoThemeData(
-                        materialTheme: theme,
-                      ),
-                      child: KansoFeedbackHost(
-                        child: DictationScope(others: assistant, child: hosted),
+                    selectionColor: theme.colors.accent.withValues(
+                      alpha: 0.3,
+                    ),
+                    cursorColor: theme.colors.accent,
+                    child: KansoFeedbackHost(
+                      child: DictationScope(
+                        others: assistant,
+                        child: hosted,
                       ),
                     ),
                   ),

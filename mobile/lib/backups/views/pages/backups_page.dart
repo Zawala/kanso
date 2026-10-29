@@ -14,6 +14,7 @@ import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
 import '../../../core/views/widgets/kanso_page.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../models/data/backups_notice.dart';
 import '../../models/data/backups_problem.dart';
@@ -91,7 +92,7 @@ class BackupsPage extends StatelessWidget {
                       label: l10n.backupsLoading,
                       child: const Padding(
                         padding: EdgeInsets.all(KansoSpacing.md),
-                        child: LinearProgressIndicator(),
+                        child: KansoProgressBar(),
                       ),
                     )
                   else if (state.status == LoadStatus.failed)

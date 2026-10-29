@@ -54,6 +54,10 @@ extension KansoFontsAny on Any {
   /// Any supported note text scale.
   Generator<double> get textSize => intInRange(16, 37).map((step) => step / 20);
 
+  /// Any supported interface text scale.
+  Generator<double> get interfaceTextSize =>
+      intInRange(18, 26).map((step) => step / 20);
+
   /// Any combination of the three fonts.
   Generator<KansoFonts> get fonts => combine3(
     fontFamily,
@@ -175,11 +179,12 @@ extension KansoThemeSelectionAny on Any {
 
   /// Preferences with the icon theme left as the default.
   Generator<Preferences> get appearanceAndLists => combine2(
-    combine6(
+    combine7(
       themeSelection,
       fonts,
       textSize,
       textSize,
+      interfaceTextSize,
       diagramRenderer,
       choose(SortKey.values),
       (
@@ -187,9 +192,10 @@ extension KansoThemeSelectionAny on Any {
         KansoFonts fonts,
         double size,
         double previewSize,
+        double interfaceSize,
         DiagramRenderer diagrams,
         SortKey sort,
-      ) => (themes, fonts, size, previewSize, diagrams, sort),
+      ) => (themes, fonts, size, previewSize, interfaceSize, diagrams, sort),
     ),
     combine2(
       this.bool,
@@ -201,8 +207,9 @@ extension KansoThemeSelectionAny on Any {
       fonts: appearance.$2,
       textSize: appearance.$3,
       previewTextSize: appearance.$4,
-      diagramRenderer: appearance.$5,
-      sort: appearance.$6,
+      interfaceTextSize: appearance.$5,
+      diagramRenderer: appearance.$6,
+      sort: appearance.$7,
       descending: flags.$1,
       backupNoticeSeen: flags.$2,
     ),

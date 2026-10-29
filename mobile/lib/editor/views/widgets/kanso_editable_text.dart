@@ -40,6 +40,7 @@ class KansoEditableText extends EditableText {
     super.cursorOffset,
     super.scrollController,
     super.onChanged,
+    super.onTapOutside,
     super.undoController,
     super.readOnly,
   }) : super(

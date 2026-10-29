@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/configs/kanso_typography.dart';
 import '../../../core/models/data/kanso_font_family.dart';
+import '../../../core/models/data/kanso_text_size.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_grouped_section.dart';
@@ -113,6 +114,25 @@ class FontsPane extends StatelessWidget {
                                 ),
                               ),
                           ],
+                        ),
+                        const SizedBox(height: KansoSpacing.lg),
+                        TextSizeSection(
+                          title: l10n.fontsInterfaceTextSizeSection,
+                          footer: l10n.fontsInterfaceTextSizeFooter,
+                          sample: l10n.fontsInterfaceTextSizeSample,
+                          selected: state.interfaceTextSize,
+                          minimum: minimumInterfaceTextScale,
+                          maximum: maximumInterfaceTextScale,
+                          step: interfaceTextScaleStep,
+                          semanticLabel: l10n.interfaceTextSizeControlLabel,
+                          decreaseLabel: l10n.interfaceTextSizeDecrease,
+                          increaseLabel: l10n.interfaceTextSizeIncrease,
+                          sampleStyle: context.typography.body.copyWith(
+                            fontSize: 16 * state.interfaceTextSize,
+                          ),
+                          onChanged: (size) => bloc.add(
+                            AppearanceEvent.interfaceTextSizeChanged(size),
+                          ),
                         ),
                         const SizedBox(height: KansoSpacing.lg),
                         TextSizeSection(

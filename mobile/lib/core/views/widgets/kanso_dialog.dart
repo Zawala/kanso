@@ -104,7 +104,10 @@ class KansoDialogRoute<T> extends PopupRoute<T> {
             opacity: curved,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).maybePop(),
+              onTap: () {
+                FocusManager.instance.primaryFocus?.unfocus();
+                Navigator.of(context).maybePop();
+              },
               child: const KansoScrim(),
             ),
           ),
@@ -193,7 +196,7 @@ class _KansoDialogSurfaceState extends State<_KansoDialogSurface> {
                   color: context.colors.app,
                   borderRadius: KansoRadii.largeBorder,
                   border: Border.all(color: context.colors.divider),
-                  boxShadow: KansoShadows.floating(Theme.brightnessOf(context)),
+                  boxShadow: KansoShadows.floating(context.brightness),
                 ),
                 child: ClipRRect(
                   borderRadius: KansoRadii.largeBorder,

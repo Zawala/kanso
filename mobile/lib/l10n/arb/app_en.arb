@@ -223,6 +223,18 @@
   "@graphFilterTag": {
     "description": "Filters the graph by tag."
   },
+  "graphFilterTitle": "Show the graph of",
+  "@graphFilterTitle": {
+    "description": "Heading of the sheet that chooses what the graph covers."
+  },
+  "graphFilterNotebooks": "Notebooks",
+  "@graphFilterNotebooks": {
+    "description": "Heading over the notebooks a graph can be limited to."
+  },
+  "graphFilterTags": "Tags",
+  "@graphFilterTags": {
+    "description": "Heading over the tags a graph can be limited to."
+  },
   "graphEmpty": "No linked notes to show.",
   "@graphEmpty": {
     "description": "The graph contains no linked notes."
@@ -231,6 +243,14 @@
   "graphFit": "Fit graph to view",
   "@graphFit": {
     "description": "Accessible label for the graph fit-to-content control."
+  },
+  "graphZoomIn": "Zoom in",
+  "@graphZoomIn": {
+    "description": "Accessible label for the graph zoom-in control."
+  },
+  "graphZoomOut": "Zoom out",
+  "@graphZoomOut": {
+    "description": "Accessible label for the graph zoom-out control."
   },
   "@graphFailed": {
     "description": "Explains that the graph could not be read."
@@ -347,6 +367,10 @@
   "settingsTextSize": "Text size",
   "@settingsTextSize": {
     "description": "The size of text in notes."
+  },
+  "settingsInterfaceTextSize": "Interface text size",
+  "@settingsInterfaceTextSize": {
+    "description": "The size of labels, menus and other interface text."
   },
   "settingsSync": "Sync",
   "@settingsSync": {
@@ -718,6 +742,30 @@
   "fontsSampleCode": "let note = merge(a, b);",
   "@fontsSampleCode": {
     "description": "A short line of code shown in each code font."
+  },
+  "fontsInterfaceTextSizeSection": "Interface text size",
+  "@fontsInterfaceTextSizeSection": {
+    "description": "The section that sets how large labels, menus and other interface text are."
+  },
+  "fontsInterfaceTextSizeFooter": "Changes labels, menus, buttons and the rest of Kanso. Notes keep their own text sizes.",
+  "@fontsInterfaceTextSizeFooter": {
+    "description": "Explains that interface text size is separate from note text size."
+  },
+  "fontsInterfaceTextSizeSample": "Notebooks · Search · Tasks · Settings",
+  "@fontsInterfaceTextSizeSample": {
+    "description": "A short interface line that shows the chosen interface text size."
+  },
+  "interfaceTextSizeControlLabel": "Interface text size",
+  "@interfaceTextSizeControlLabel": {
+    "description": "The accessible name of the adjustable interface text size control."
+  },
+  "interfaceTextSizeDecrease": "Decrease interface text size",
+  "@interfaceTextSizeDecrease": {
+    "description": "The accessible name of the button that reduces interface text size."
+  },
+  "interfaceTextSizeIncrease": "Increase interface text size",
+  "@interfaceTextSizeIncrease": {
+    "description": "The accessible name of the button that increases interface text size."
   },
   "fontsTextSizeSection": "Text size",
   "@fontsTextSizeSection": {
@@ -5419,6 +5467,10 @@
   "dictationRestrictedMessage": "This phone's rules keep Kanso from using the microphone or speech recognition.",
   "@dictationRestrictedMessage": {
     "description": "Says that the device restricts dictation."
+  },
+  "sheetDismiss": "Dismiss sheet",
+  "@sheetDismiss": {
+    "description": "What a screen reader says for the handle of a sheet that can be dragged down to close it."
   },
   "dictationOpenSettings": "Open Settings",
   "@dictationOpenSettings": {

@@ -53,6 +53,10 @@ sealed class AppearanceEvent with _$AppearanceEvent {
   const factory AppearanceEvent.previewTextSizeChanged(double scale) =
       AppearancePreviewTextSizeChangedEvent;
 
+  /// The person picked [scale] for the interface's labels and text.
+  const factory AppearanceEvent.interfaceTextSizeChanged(double scale) =
+      AppearanceInterfaceTextSizeChangedEvent;
+
   /// Downloads [family] from Google Fonts and applies it to editor and preview.
   const factory AppearanceEvent.googleFontPicked(String family) =
       AppearanceGoogleFontPickedEvent;

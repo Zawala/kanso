@@ -128,33 +128,28 @@ class _NoteTabBarState extends State<NoteTabBar> {
     final chosen = await showKansoMenu<_TabMenuAction>(
       context,
       at,
-      <PopupMenuEntry<_TabMenuAction>>[
-        kansoMenuItem(
-          context,
+      <KansoMenuEntry<_TabMenuAction>>[
+        KansoMenuEntry(
           _TabMenuAction.close,
           l10n.tabClose,
           enabled: count > 1,
         ),
-        kansoMenuItem(
-          context,
+        KansoMenuEntry(
           _TabMenuAction.closeOthers,
           l10n.tabCloseOthers,
           enabled: count > 1,
         ),
-        kansoMenuItem(
-          context,
+        KansoMenuEntry(
           _TabMenuAction.closeRight,
           l10n.tabCloseRight,
           enabled: index + 1 < count,
         ),
-        if (window != null) ...<PopupMenuEntry<_TabMenuAction>>[
-          const PopupMenuDivider(height: 1),
-          kansoMenuItem(
-            context,
+        if (window != null)
+          KansoMenuEntry(
             _TabMenuAction.openInNewWindow,
             l10n.tabOpenInNewWindow,
+            divider: true,
           ),
-        ],
       ],
     );
     switch (chosen) {
@@ -178,17 +173,12 @@ class _NoteTabBarState extends State<NoteTabBar> {
     final chosen = await showKansoMenu<int>(
       context,
       at,
-      <PopupMenuEntry<int>>[
+      <KansoMenuEntry<int>>[
         for (var index = 0; index < widget.tabs.length; index++)
-          CheckedPopupMenuItem<int>(
-            value: index,
+          KansoMenuEntry(
+            index,
+            widget.tabs[index].label(l10n.noteUntitled),
             checked: index == widget.active,
-            child: Text(
-              widget.tabs[index].label(l10n.noteUntitled),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.typography.body,
-            ),
           ),
       ],
     );

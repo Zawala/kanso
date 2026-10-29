@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/configs/kanso_spacing.dart';
+import '../../../core/models/data/kanso_text_size.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_grouped_section.dart';
 import 'continuous_text_size_control.dart';
@@ -20,15 +21,29 @@ class TextSizeSection extends StatelessWidget {
     required this.sampleStyle,
     this.title,
     this.footer,
+    this.sample,
+    this.minimum,
+    this.maximum,
+    this.step,
+    this.semanticLabel,
+    this.decreaseLabel,
+    this.increaseLabel,
     super.key,
   });
 
   final String? title;
   final String? footer;
+  final String? sample;
   final TextStyle sampleStyle;
 
   final double selected;
   final ValueChanged<double> onChanged;
+  final double? minimum;
+  final double? maximum;
+  final double? step;
+  final String? semanticLabel;
+  final String? decreaseLabel;
+  final String? increaseLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +57,12 @@ class TextSizeSection extends StatelessWidget {
           child: ContinuousTextSizeControl(
             value: selected,
             onChanged: onChanged,
+            minimum: minimum ?? minimumTextScale,
+            maximum: maximum ?? maximumTextScale,
+            step: step ?? textScaleStep,
+            semanticLabel: semanticLabel,
+            decreaseLabel: decreaseLabel,
+            increaseLabel: increaseLabel,
           ),
         ),
         Padding(
@@ -52,7 +73,7 @@ class TextSizeSection extends StatelessWidget {
             KansoSpacing.md,
           ),
           child: Text(
-            l10n.fontsTextSizeSample,
+            sample ?? l10n.fontsTextSizeSample,
             style: sampleStyle,
           ),
         ),

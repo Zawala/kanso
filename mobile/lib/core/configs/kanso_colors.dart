@@ -10,10 +10,10 @@ import 'package:flutter/material.dart';
 /// `themes/kanso-light.json`, the files the desktop app's `theme.rs` agrees
 /// with; a test reads the files so the three cannot drift.
 ///
-/// This is a [ThemeExtension] rather than a Freezed model because the
-/// framework requires `copyWith` and `lerp` overrides.
+/// It is a plain value: the app hands it down itself, so it carries no
+/// framework dependency beyond `@immutable`.
 @immutable
-class KansoColors extends ThemeExtension<KansoColors> {
+class KansoColors {
   const KansoColors({
     required this.app,
     required this.sidebar,
@@ -219,7 +219,6 @@ class KansoColors extends ThemeExtension<KansoColors> {
   @override
   int get hashCode => Object.hashAll(values);
 
-  @override
   KansoColors copyWith({
     Color? app,
     Color? sidebar,
@@ -274,11 +273,7 @@ class KansoColors extends ThemeExtension<KansoColors> {
     );
   }
 
-  @override
-  KansoColors lerp(ThemeExtension<KansoColors>? other, double t) {
-    if (other is! KansoColors) {
-      return this;
-    }
+  KansoColors lerp(KansoColors other, double t) {
     return KansoColors(
       app: Color.lerp(app, other.app, t)!,
       sidebar: Color.lerp(sidebar, other.sidebar, t)!,

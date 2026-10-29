@@ -108,6 +108,7 @@ void main() {
           .first,
     );
     await tester.tapAt(canvas.center);
+    await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
     expect(topOf(router), '${KansoRoutes.noteById}/note-b');
   });

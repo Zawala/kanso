@@ -14,6 +14,7 @@ import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_page.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../injection.dart';
 import '../../state/graph/graph_bloc.dart';
@@ -63,7 +64,7 @@ class GraphPage extends StatelessWidget {
                       ),
                     Expanded(
                       child: state.loading && state.layout == null
-                          ? const Center(child: CircularProgressIndicator())
+                          ? const Center(child: KansoSpinner())
                           : state.failed
                           ? Center(
                               child: Column(

@@ -147,13 +147,10 @@ class _Body extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 2),
                       child: Semantics(
                         label: l10n.boardTaskDue(due.label),
-                        child: Tooltip(
-                          message: due.tooltip,
-                          child: ExcludeSemantics(
-                            child: TaskDueChip(
-                              label: due.label,
-                              tone: due.tone,
-                            ),
+                        child: ExcludeSemantics(
+                          child: TaskDueChip(
+                            label: due.label,
+                            tone: due.tone,
                           ),
                         ),
                       ),

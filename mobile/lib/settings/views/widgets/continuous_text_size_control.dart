@@ -8,32 +8,59 @@ import 'package:flutter/services.dart';
 import '../../../core/models/data/kanso_text_size.dart';
 import '../../../core/utils/context_extensions.dart';
 
-/// An owned, keyboard accessible control for adjusting note text continuously.
+/// An owned, keyboard accessible control for adjusting a text scale.
 class ContinuousTextSizeControl extends StatelessWidget {
   const ContinuousTextSizeControl({
     required this.value,
     required this.onChanged,
+    this.minimum = minimumTextScale,
+    this.maximum = maximumTextScale,
+    this.step = textScaleStep,
+    this.semanticLabel,
+    this.decreaseLabel,
+    this.increaseLabel,
     super.key,
   });
 
   final double value;
   final ValueChanged<double> onChanged;
+  final double minimum;
+  final double maximum;
+  final double step;
+  final String? semanticLabel;
+  final String? decreaseLabel;
+  final String? increaseLabel;
 
-  double get _scale => normalizeTextScale(value);
+  double get _scale => _normalize(value);
 
-  void _adjust(double amount) => onChanged(normalizeTextScale(_scale + amount));
+  double _normalize(double scale) {
+    if (!scale.isFinite) {
+      return 1;
+    }
+    final bounded = scale.clamp(minimum, maximum);
+    final steps = ((bounded - minimum) / step).round();
+    return double.parse(
+      (minimum + steps * step).clamp(minimum, maximum).toStringAsFixed(2),
+    );
+  }
+
+  void _adjust(double amount) => onChanged(_normalize(_scale + amount));
 
   void _setFromOffset(double dx, double width) {
     if (width <= 0) {
       return;
     }
     final fraction = (dx / width).clamp(0.0, 1.0);
-    onChanged(
-      normalizeTextScale(
-        minimumTextScale + fraction * (maximumTextScale - minimumTextScale),
-      ),
-    );
+    onChanged(_normalize(minimum + fraction * (maximum - minimum)));
   }
+
+  int get _percent => (_scale * 100).round();
+
+  int get _nextPercent =>
+      ((_scale + step).clamp(minimum, maximum) * 100).round();
+
+  int get _previousPercent =>
+      ((_scale - step).clamp(minimum, maximum) * 100).round();
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) {
@@ -43,18 +70,18 @@ class ContinuousTextSizeControl extends StatelessWidget {
       case LogicalKeyboardKey.arrowLeft:
       case LogicalKeyboardKey.arrowDown:
       case LogicalKeyboardKey.minus:
-        _adjust(-textScaleStep);
+        _adjust(-step);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowRight:
       case LogicalKeyboardKey.arrowUp:
       case LogicalKeyboardKey.equal:
-        _adjust(textScaleStep);
+        _adjust(step);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.home:
-        onChanged(minimumTextScale);
+        onChanged(minimum);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.end:
-        onChanged(maximumTextScale);
+        onChanged(maximum);
         return KeyEventResult.handled;
       default:
         return KeyEventResult.ignored;
@@ -65,45 +92,35 @@ class ContinuousTextSizeControl extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final colors = context.colors;
-    final percent = (_scale * 100).round();
+    final percent = _percent;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Row(
           children: <Widget>[
             _ScaleButton(
-              label: l10n.textSizeDecrease,
+              label: decreaseLabel ?? l10n.textSizeDecrease,
               symbol: '\u2212',
-              enabled: _scale > minimumTextScale,
-              onTap: () => _adjust(-textScaleStep),
+              enabled: _scale > minimum,
+              onTap: () => _adjust(-step),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Focus(
                 onKeyEvent: _onKey,
                 child: Semantics(
-                  label: l10n.textSizeControlLabel,
+                  label: semanticLabel ?? l10n.textSizeControlLabel,
                   value: l10n.textSizePercent(percent),
-                  increasedValue: l10n.textSizePercent(
-                    (percent + 5).clamp(80, 180),
-                  ),
-                  decreasedValue: l10n.textSizePercent(
-                    (percent - 5).clamp(80, 180),
-                  ),
+                  increasedValue: l10n.textSizePercent(_nextPercent),
+                  decreasedValue: l10n.textSizePercent(_previousPercent),
                   slider: true,
                   focusable: true,
-                  onIncrease: _scale < maximumTextScale
-                      ? () => _adjust(textScaleStep)
-                      : null,
-                  onDecrease: _scale > minimumTextScale
-                      ? () => _adjust(-textScaleStep)
-                      : null,
+                  onIncrease: _scale < maximum ? () => _adjust(step) : null,
+                  onDecrease: _scale > minimum ? () => _adjust(-step) : null,
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final width = constraints.maxWidth;
-                      final fraction =
-                          (_scale - minimumTextScale) /
-                          (maximumTextScale - minimumTextScale);
+                      final fraction = (_scale - minimum) / (maximum - minimum);
                       return GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTapDown: (details) => _setFromOffset(
@@ -133,10 +150,10 @@ class ContinuousTextSizeControl extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             _ScaleButton(
-              label: l10n.textSizeIncrease,
+              label: increaseLabel ?? l10n.textSizeIncrease,
               symbol: '+',
-              enabled: _scale < maximumTextScale,
-              onTap: () => _adjust(textScaleStep),
+              enabled: _scale < maximum,
+              onTap: () => _adjust(step),
             ),
           ],
         ),

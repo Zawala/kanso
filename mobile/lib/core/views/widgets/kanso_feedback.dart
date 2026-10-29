@@ -5,10 +5,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../configs/kanso_colors.dart';
 import '../../configs/kanso_icons.dart';
 import '../../configs/kanso_radii.dart';
+import '../../configs/kanso_spacing.dart';
+import '../../utils/context_extensions.dart';
 import 'kanso_icon.dart';
+import 'kanso_pressable.dart';
 
 enum KansoFeedbackTone { success, info, error }
 
@@ -177,7 +179,7 @@ class _KansoFeedbackPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<KansoColors>()!;
+    final colors = context.colors;
     final icon = switch (message.tone) {
       KansoFeedbackTone.success => KansoIcons.circleCheck,
       KansoFeedbackTone.info => KansoIcons.info,
@@ -218,26 +220,31 @@ class _KansoFeedbackPill extends StatelessWidget {
                         Flexible(
                           child: Text(
                             message.text,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: colors.editor),
+                            style: context.typography.body.copyWith(
+                              color: colors.editor,
+                            ),
                             softWrap: true,
                           ),
                         ),
                         if (message.actionLabel case final label?) ...<Widget>[
                           const SizedBox(width: 12),
-                          TextButton(
-                            onPressed: () {
+                          KansoPressable(
+                            onTap: () {
                               KansoFeedback.hide(context);
                               message.onAction?.call();
                             },
-                            style: TextButton.styleFrom(
-                              foregroundColor: colors.accent,
-                              minimumSize: const Size(32, 32),
+                            child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
+                                horizontal: KansoSpacing.sm,
+                                vertical: KansoSpacing.xxs,
+                              ),
+                              child: Text(
+                                label,
+                                style: context.typography.label.copyWith(
+                                  color: colors.accent,
+                                ),
                               ),
                             ),
-                            child: Text(label),
                           ),
                         ],
                       ],

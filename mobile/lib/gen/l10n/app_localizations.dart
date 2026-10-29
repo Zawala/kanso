@@ -394,6 +394,24 @@ abstract class AppLocalizations {
   /// **'Tag'**
   String get graphFilterTag;
 
+  /// Heading of the sheet that chooses what the graph covers.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the graph of'**
+  String get graphFilterTitle;
+
+  /// Heading over the notebooks a graph can be limited to.
+  ///
+  /// In en, this message translates to:
+  /// **'Notebooks'**
+  String get graphFilterNotebooks;
+
+  /// Heading over the tags a graph can be limited to.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get graphFilterTags;
+
   /// The graph contains no linked notes.
   ///
   /// In en, this message translates to:
@@ -411,6 +429,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Fit graph to view'**
   String get graphFit;
+
+  /// Accessible label for the graph zoom-in control.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom in'**
+  String get graphZoomIn;
+
+  /// Accessible label for the graph zoom-out control.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom out'**
+  String get graphZoomOut;
 
   /// The label of when a note was made.
   ///
@@ -573,6 +603,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Text size'**
   String get settingsTextSize;
+
+  /// The size of labels, menus and other interface text.
+  ///
+  /// In en, this message translates to:
+  /// **'Interface text size'**
+  String get settingsInterfaceTextSize;
 
   /// A section of settings.
   ///
@@ -1095,6 +1131,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'let note = merge(a, b);'**
   String get fontsSampleCode;
+
+  /// The section that sets how large labels, menus and other interface text are.
+  ///
+  /// In en, this message translates to:
+  /// **'Interface text size'**
+  String get fontsInterfaceTextSizeSection;
+
+  /// Explains that interface text size is separate from note text size.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes labels, menus, buttons and the rest of Kanso. Notes keep their own text sizes.'**
+  String get fontsInterfaceTextSizeFooter;
+
+  /// A short interface line that shows the chosen interface text size.
+  ///
+  /// In en, this message translates to:
+  /// **'Notebooks · Search · Tasks · Settings'**
+  String get fontsInterfaceTextSizeSample;
+
+  /// The accessible name of the adjustable interface text size control.
+  ///
+  /// In en, this message translates to:
+  /// **'Interface text size'**
+  String get interfaceTextSizeControlLabel;
+
+  /// The accessible name of the button that reduces interface text size.
+  ///
+  /// In en, this message translates to:
+  /// **'Decrease interface text size'**
+  String get interfaceTextSizeDecrease;
+
+  /// The accessible name of the button that increases interface text size.
+  ///
+  /// In en, this message translates to:
+  /// **'Increase interface text size'**
+  String get interfaceTextSizeIncrease;
 
   /// The section that sets how large the text of notes is.
   ///
@@ -7365,6 +7437,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This phone\'s rules keep Kanso from using the microphone or speech recognition.'**
   String get dictationRestrictedMessage;
+
+  /// What a screen reader says for the handle of a sheet that can be dragged down to close it.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss sheet'**
+  String get sheetDismiss;
 
   /// Opens the phone's settings page for Kanso.
   ///

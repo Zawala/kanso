@@ -171,7 +171,7 @@ class _Grids extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final dark = Theme.brightnessOf(context) == Brightness.dark;
+    final dark = context.brightness == Brightness.dark;
     final shownId = selection.uiFor(systemDark: dark);
     final shown = themes.isEmpty
         ? null

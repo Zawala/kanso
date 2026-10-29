@@ -74,11 +74,11 @@ class AccountActionSheet extends StatelessWidget {
       count: fields.length,
       builder: (context, controllers) {
         return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
+          padding: const EdgeInsets.fromLTRB(
             KansoSpacing.md,
             KansoSpacing.md,
             KansoSpacing.md,
-            KansoSpacing.md + MediaQuery.viewInsetsOf(context).bottom,
+            KansoSpacing.md,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_dialog.dart';
 import '../../state/note_discovery/note_discovery_bloc.dart';
 
@@ -30,16 +31,23 @@ class NoteTwinCard extends StatelessWidget {
             style: context.typography.body,
           ),
           const SizedBox(height: KansoSpacing.xs),
-          Wrap(
-            spacing: KansoSpacing.xs,
+          Row(
             children: <Widget>[
-              TextButton(
+              KansoButton(
+                label: l10n.noteMeaningDismiss,
+                variant: KansoButtonVariant.quiet,
+                compact: true,
+                expanded: false,
                 onPressed: () => context.read<NoteDiscoveryBloc>().add(
                   NoteDiscoveryEvent.twinDismissed(twin.id),
                 ),
-                child: Text(l10n.noteMeaningDismiss),
               ),
-              TextButton(
+              const SizedBox(width: KansoSpacing.xs),
+              KansoButton(
+                label: l10n.noteMeaningMerge,
+                variant: KansoButtonVariant.secondary,
+                compact: true,
+                expanded: false,
                 onPressed: () async {
                   final merge = await showKansoConfirm(
                     context,
@@ -54,7 +62,6 @@ class NoteTwinCard extends StatelessWidget {
                     );
                   }
                 },
-                child: Text(l10n.noteMeaningMerge),
               ),
             ],
           ),

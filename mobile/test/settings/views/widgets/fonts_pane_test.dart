@@ -12,6 +12,7 @@ import 'package:kanso/core/views/widgets/kanso_icon.dart';
 import 'package:kanso/settings/views/widgets/continuous_text_size_control.dart';
 import 'package:kanso/settings/views/widgets/font_choice_row.dart';
 import 'package:kanso/settings/views/widgets/fonts_pane.dart';
+import 'package:kanso/settings/views/widgets/text_size_section.dart';
 
 import '../../../helpers/pump.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
@@ -46,6 +47,14 @@ Finder _row(KansoFontFamily font, {int index = 0}) {
       .at(index);
 }
 
+Finder _sizeControl(String title) => find.descendant(
+  of: find.ancestor(
+    of: find.text(title),
+    matching: find.byType(TextSizeSection),
+  ),
+  matching: find.byType(ContinuousTextSizeControl),
+);
+
 void main() {
   group('FontsPane', () {
     testWidgets('lists the choices of each section, the right families', (
@@ -55,7 +64,12 @@ void main() {
       expect(find.text('Editor font'), findsOneWidget);
       expect(find.text('Preview font'), findsOneWidget);
       expect(find.text('Code font'), findsOneWidget);
+      expect(find.text('Interface text size'), findsOneWidget);
       expect(find.text('Text size'), findsOneWidget);
+      expect(
+        find.text('Notebooks · Search · Tasks · Settings'),
+        findsOneWidget,
+      );
       expect(
         find.byType(FontChoiceRow),
         findsNWidgets(
@@ -187,17 +201,23 @@ void main() {
     testWidgets('the text size controls step down and up', (tester) async {
       final bloc = await _pump(tester);
       expect(bloc.state.textSize, 1.0);
-      await tester.tap(find.text('+').first);
+      final control = _sizeControl('Text size');
+      await tester.tap(
+        find.descendant(of: control, matching: find.text('+')),
+      );
       await tester.pump();
       expect(bloc.state.textSize, 1.05);
       final sample = tester.widget<Text>(
         find.textContaining('Calm software says less').first,
       );
       expect(sample.style!.fontSize, closeTo(18.9, 1e-9));
-      await tester.tap(find.text('\u2212').first);
+      await tester.tap(
+        find.descendant(of: control, matching: find.text('\u2212')),
+      );
       await tester.pump();
       expect(bloc.state.textSize, 1.0);
       expect(bloc.state.previewTextSize, 1.0);
+      expect(bloc.state.interfaceTextSize, 1.0);
     });
 
     testWidgets('dragging the editor track updates its scale independently', (
@@ -205,7 +225,7 @@ void main() {
     ) async {
       final bloc = await _pump(tester);
       final track = find.descendant(
-        of: find.byType(ContinuousTextSizeControl).first,
+        of: _sizeControl('Text size'),
         matching: find.byType(CustomPaint),
       );
       final rect = tester.getRect(track);
@@ -219,6 +239,48 @@ void main() {
       expect(find.text('155%'), findsOneWidget);
     });
 
+    testWidgets('the interface has its own bounded, accessible scale control', (
+      tester,
+    ) async {
+      final bloc = await _pump(tester);
+      expect(find.text('Interface text size'), findsOneWidget);
+      expect(
+        find.text('Notebooks · Search · Tasks · Settings'),
+        findsOneWidget,
+      );
+      final control = _sizeControl('Interface text size');
+      expect(
+        find.descendant(
+          of: control,
+          matching: find.bySemanticsLabel('Interface text size'),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.descendant(of: control, matching: find.text('+')),
+      );
+      await tester.pump();
+      expect(bloc.state.interfaceTextSize, 1.05);
+      expect(bloc.state.textSize, 1.0);
+      expect(bloc.state.previewTextSize, 1.0);
+      expect(
+        find.descendant(of: control, matching: find.text('105%')),
+        findsOneWidget,
+      );
+      final track = find.descendant(
+        of: control,
+        matching: find.byType(CustomPaint),
+      );
+      final rect = tester.getRect(track);
+      await tester.tapAt(Offset(rect.right - 1, rect.center.dy));
+      await tester.pump();
+      expect(bloc.state.interfaceTextSize, 1.3);
+      expect(
+        find.descendant(of: control, matching: find.text('130%')),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('the preview has its own accessible scale control', (
       tester,
     ) async {
@@ -228,10 +290,16 @@ void main() {
         find.text('The preview’s text, in Split and Preview.'),
         findsOneWidget,
       );
-      await tester.tap(find.text('+').last);
+      await tester.tap(
+        find.descendant(
+          of: _sizeControl('Preview text size'),
+          matching: find.text('+'),
+        ),
+      );
       await tester.pump();
       expect(bloc.state.previewTextSize, 1.05);
       expect(bloc.state.textSize, 1.0);
+      expect(bloc.state.interfaceTextSize, 1.0);
       expect(find.bySemanticsLabel('Increase text size'), findsNWidgets(2));
       expect(find.bySemanticsLabel('Text size'), findsNWidgets(2));
     });

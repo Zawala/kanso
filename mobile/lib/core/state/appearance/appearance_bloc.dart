@@ -94,6 +94,8 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
         ),
         AppearancePreviewTextSizeChangedEvent(:final scale) =>
           _onPreviewTextSizeChanged(scale, emit),
+        AppearanceInterfaceTextSizeChangedEvent(:final scale) =>
+          _onInterfaceTextSizeChanged(scale, emit),
         AppearanceGoogleFontPickedEvent(:final family) => _onGoogleFontPicked(
           family,
           emit,
@@ -161,6 +163,7 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
         googleFontError: googleFontError,
         textSize: preferences.textSize,
         previewTextSize: preferences.previewTextSize,
+        interfaceTextSize: preferences.interfaceTextSize,
         diagramRenderer: preferences.diagramRenderer,
         status: loaded.isRight() && shown.complete && icons != null
             ? AppearanceStatus.ready
@@ -243,6 +246,17 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
     emit(state.copyWith(previewTextSize: normalized));
     await _preferences.update(
       (current) => current.copyWith(previewTextSize: normalized),
+    );
+  }
+
+  Future<void> _onInterfaceTextSizeChanged(
+    double scale,
+    Emitter<AppearanceState> emit,
+  ) async {
+    final normalized = normalizeInterfaceTextScale(scale);
+    emit(state.copyWith(interfaceTextSize: normalized));
+    await _preferences.update(
+      (current) => current.copyWith(interfaceTextSize: normalized),
     );
   }
 
