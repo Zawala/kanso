@@ -618,8 +618,7 @@ impl Walk<'_> {
                             let title = row.title.trim();
                             QueryRow {
                                 url: app::note_address(&row.id),
-                                title: if title.is_empty() { "Untitled" } else { title }
-                                    .to_owned(),
+                                title: if title.is_empty() { "Untitled" } else { title }.to_owned(),
                                 cells: row.cells,
                             }
                         })
@@ -674,7 +673,9 @@ impl Walk<'_> {
 
     fn inline(&mut self, node: &Node, style: Style, out: &mut Vec<Inline>) {
         match node {
-            Node::Text(t) => push_text(&t.value.replace("\r\n", " ").replace('\n', " "), style, out),
+            Node::Text(t) => {
+                push_text(&t.value.replace("\r\n", " ").replace('\n', " "), style, out)
+            }
             Node::Emphasis(e) => out.extend(self.inlines(
                 &e.children,
                 Style {
@@ -741,8 +742,8 @@ impl Walk<'_> {
                     None => {
                         // The page can't fetch it: its alt text, without a
                         // width where the page took one off.
-                        let web = image.url.starts_with("https://")
-                            || image.url.starts_with("http://");
+                        let web =
+                            image.url.starts_with("https://") || image.url.starts_with("http://");
                         let shown = if width.is_some() && web {
                             alt
                         } else {
