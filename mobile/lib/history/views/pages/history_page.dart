@@ -13,6 +13,8 @@ import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
+import '../../../core/views/widgets/kanso_page.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../injection.dart';
 import '../../models/data/history_status.dart';
@@ -36,7 +38,7 @@ class HistoryPage extends StatelessWidget {
         listener: (context, state) {
           _leaveHistory(context, noteId);
         },
-        child: Scaffold(
+        child: KansoPage(
           backgroundColor: context.colors.app,
           body: Column(
             children: <Widget>[
@@ -54,7 +56,7 @@ class HistoryPage extends StatelessWidget {
                     HistoryStatus.loading => Center(
                       child: Semantics(
                         label: context.l10n.historyLoading,
-                        child: const CircularProgressIndicator(),
+                        child: const KansoSpinner(),
                       ),
                     ),
                     HistoryStatus.failed => Center(

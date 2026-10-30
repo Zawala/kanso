@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:glados/glados.dart' as glados;
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
+import 'package:kanso/core/models/repos/abs/google_font_repository.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/note/models/data/preview_action.dart';
 import 'package:kanso/note/state/preview/preview_bloc.dart';
@@ -24,6 +25,15 @@ import '../../../helpers/theme_tokens.dart';
 final ThemeTokens _tokens = tokensFor(fakePalette('nord'));
 
 const _failure = ApplicationError.storage(message: 'Disk error.');
+
+class FakePreviewGoogleFonts implements GoogleFontRepository {
+  @override
+  Future<List<int>?> cachedBytes(String family) async => <int>[1, 2, 3];
+
+  @override
+  Future<Either<ApplicationError, String>> load(String family) async =>
+      Right<ApplicationError, String>(family);
+}
 
 void main() {
   late MockLibraryRepository library;
@@ -64,8 +74,14 @@ void main() {
     when(() => haptics.selection()).thenAnswer((_) async {});
   });
 
-  PreviewBloc build() =>
-      PreviewBloc(library, renderer, links, undoNotice, haptics);
+  PreviewBloc build({GoogleFontRepository? googleFonts}) => PreviewBloc(
+    library,
+    renderer,
+    links,
+    undoNotice,
+    haptics,
+    googleFonts: googleFonts,
+  );
 
   void answer(String url, PreviewLink target) => when(
     () => renderer.linkTarget(any(), url),
@@ -94,10 +110,39 @@ void main() {
                   ),
                 ).captured.single
                 as PreviewOptions;
-        expect(options.size, previewTextSize);
+        expect(options.size, previewBaseTextSize);
         expect(options.code, _tokens.syntax);
       },
     );
+
+    test('draws the selected font, size and its cached font asset', () async {
+      final bloc = build(googleFonts: FakePreviewGoogleFonts())
+        ..add(
+          PreviewEvent.started(
+            mockOpenNote.id,
+            'nord',
+            font: 'Lora',
+            mono: 'IBM Plex Mono',
+            size: 23,
+          ),
+        );
+      addTearDown(bloc.close);
+      final state = await bloc.stream.firstWhere((value) => value.html != null);
+      expect(state.html, contains('data:font/ttf;base64,AQID'));
+      expect(state.html, contains("font-family:'Lora'"));
+      final options =
+          verify(
+                () => renderer.previewPage(
+                  mockOpenNote.id,
+                  _tokens.palette,
+                  captureAny(),
+                ),
+              ).captured.single
+              as PreviewOptions;
+      expect(options.font, 'Lora');
+      expect(options.mono, 'IBM Plex Mono');
+      expect(options.size, 23);
+    });
 
     test('draws it again when the library changes', () async {
       final bloc = await started();

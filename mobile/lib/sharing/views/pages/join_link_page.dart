@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/join_link/join_link_bloc.dart';
 import '../widgets/join_link_pane.dart';
@@ -18,7 +19,7 @@ class JoinLinkPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider<JoinLinkBloc>(
       create: (context) => getIt<JoinLinkBloc>(),
-      child: Scaffold(
+      child: KansoPage(
         resizeToAvoidBottomInset: false,
         backgroundColor: context.colors.app,
         body: const JoinLinkPane(),

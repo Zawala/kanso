@@ -35,7 +35,7 @@ fn signing_in_binds_the_library_and_signing_out_leaves_the_notes() {
     };
     assert!(matches!(
         try_with(ACCOUNT, "short"),
-        Err(KansoError::Invalid { .. })
+        Err(KansoError::Auth { .. })
     ));
     assert!(matches!(
         try_with(ACCOUNT, "not the right password"),

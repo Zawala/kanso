@@ -10,8 +10,17 @@ import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/load_status.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/list_labels.dart';
 import '../../../core/views/widgets/kanso_button.dart';
+import '../../../core/views/widgets/kanso_card.dart';
+import '../../../core/views/widgets/kanso_grouped_section.dart';
+import '../../../core/views/widgets/kanso_inline_message.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
+import '../../../core/views/widgets/kanso_pressable.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
+import '../../../core/views/widgets/kanso_section_header.dart';
+import '../../../core/views/widgets/kanso_segment.dart';
+import '../../../core/views/widgets/kanso_segmented.dart';
 import '../../models/data/history_pane.dart';
 import '../../models/data/history_problem.dart';
 import '../../state/note_history/note_history_bloc.dart';
@@ -30,108 +39,95 @@ class HistoryContent extends StatelessWidget {
     final selected = history.versions
         .where((version) => version.rev == state.selectedRev)
         .firstOrNull;
+    final bloc = context.read<NoteHistoryBloc>();
     return ListView(
-      padding: const EdgeInsets.all(KansoSpacing.md),
+      padding: const EdgeInsets.fromLTRB(
+        KansoSpacing.md,
+        KansoSpacing.md,
+        KansoSpacing.md,
+        KansoSpacing.xxl,
+      ),
       children: <Widget>[
-        Text(l10n.historyVersionsTitle, style: context.typography.heading2),
-        const SizedBox(height: KansoSpacing.xs),
-        ListTile(
-          title: Text(l10n.historyNow),
-          subtitle: Text(history.currentTitle),
-          selected: state.selectedRev == null,
+        KansoSectionHeader(
+          label: l10n.historyVersionsTitle,
+          horizontalPadding: 0,
         ),
-        for (final version in history.versions)
-          ListTile(
-            title: Text(
-              version.title.isEmpty ? l10n.replaceUntitled : version.title,
+        KansoGroupedSection(
+          children: <Widget>[
+            _VersionRow(
+              title: l10n.historyNow,
+              detail: history.currentTitle,
+              selected: state.selectedRev == null,
+              onTap: null,
             ),
-            subtitle: Text(
-              '${MaterialLocalizations.of(context).formatMediumDate(
-                DateTime.fromMillisecondsSinceEpoch(
-                  version.savedAt,
-                ).toLocal(),
-              )} · ${version.originLabel}',
-            ),
-            selected: version.rev == state.selectedRev,
-            onTap: () => context.read<NoteHistoryBloc>().add(
-              NoteHistoryEvent.versionSelected(version.rev),
-            ),
-          ),
-        if (selected != null) ...<Widget>[
-          const Divider(),
-          SegmentedButton<HistoryPane>(
-            segments: <ButtonSegment<HistoryPane>>[
-              ButtonSegment<HistoryPane>(
-                value: HistoryPane.changes,
-                label: Text(l10n.historyPaneChanges),
+            for (final version in history.versions)
+              _VersionRow(
+                title: version.title.isEmpty
+                    ? l10n.replaceUntitled
+                    : version.title,
+                detail:
+                    '${dateLabel(l10n, version.savedAt)} · '
+                    '${version.originLabel}',
+                selected: version.rev == state.selectedRev,
+                onTap: () => bloc.add(
+                  NoteHistoryEvent.versionSelected(version.rev),
+                ),
               ),
-              ButtonSegment<HistoryPane>(
+          ],
+        ),
+        if (selected != null) ...<Widget>[
+          const SizedBox(height: KansoSpacing.lg),
+          KansoSegmented<HistoryPane>(
+            selected: state.pane,
+            semanticLabel: l10n.historyVersionsTitle,
+            segments: <KansoSegment<HistoryPane>>[
+              KansoSegment<HistoryPane>(
+                value: HistoryPane.changes,
+                label: l10n.historyPaneChanges,
+              ),
+              KansoSegment<HistoryPane>(
                 value: HistoryPane.version,
-                label: Text(l10n.historyPaneVersion),
+                label: l10n.historyPaneVersion,
               ),
             ],
-            selected: <HistoryPane>{state.pane},
-            onSelectionChanged: (value) => context.read<NoteHistoryBloc>().add(
-              NoteHistoryEvent.paneChanged(value.first),
-            ),
+            onChanged: (value) => bloc.add(NoteHistoryEvent.paneChanged(value)),
           ),
-          const SizedBox(height: KansoSpacing.sm),
+          const SizedBox(height: KansoSpacing.md),
           if (state.problem != null)
-            Text(switch (state.problem!) {
-              HistoryProblem.changedMeanwhile => l10n.historyProblemChanged,
-              HistoryProblem.versionGone => l10n.historyProblemGone,
-              HistoryProblem.restoreFailed => l10n.historyProblemRestore,
-              HistoryProblem.diffFailed => l10n.historyProblemDiff,
-            }, style: TextStyle(color: context.colors.danger)),
+            Padding(
+              padding: const EdgeInsets.only(bottom: KansoSpacing.md),
+              child: KansoInlineMessage(
+                message: switch (state.problem!) {
+                  HistoryProblem.changedMeanwhile => l10n.historyProblemChanged,
+                  HistoryProblem.versionGone => l10n.historyProblemGone,
+                  HistoryProblem.restoreFailed => l10n.historyProblemRestore,
+                  HistoryProblem.diffFailed => l10n.historyProblemDiff,
+                },
+              ),
+            ),
           if (state.pane == HistoryPane.version)
-            SelectableText('${selected.title}\n\n${selected.body}')
+            KansoCard(
+              child: SelectableText(
+                '${selected.title}\n\n${selected.body}',
+                style: context.typography.body,
+              ),
+            )
           else if (state.diffStatus == LoadStatus.loading)
             Semantics(
               label: l10n.historyDiffLoading,
-              child: const LinearProgressIndicator(),
+              child: const KansoProgressBar(),
             )
           else if (state.hunks.isEmpty)
-            Text(l10n.historyNoChanges)
+            Text(l10n.historyNoChanges, style: context.typography.secondary)
           else
-            for (final hunk in state.hunks)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(KansoSpacing.sm),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      for (final line in hunk.lines)
-                        Text(
-                          '${line.kind == DiffKind.added
-                              ? '+ '
-                              : line.kind == DiffKind.removed
-                              ? '− '
-                              : '  '}${line.text}',
-                          style: TextStyle(
-                            color: line.kind == DiffKind.added
-                                ? context.colors.success
-                                : line.kind == DiffKind.removed
-                                ? context.colors.danger
-                                : context.colors.text,
-                          ),
-                        ),
-                      Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: TextButton.icon(
-                          onPressed: () => context.read<NoteHistoryBloc>().add(
-                            NoteHistoryEvent.sectionCopied(
-                              state.hunks.indexOf(hunk),
-                            ),
-                          ),
-                          icon: const Icon(Icons.copy),
-                          label: Text(l10n.historyCopySection),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            for (var i = 0; i < state.hunks.length; i++) ...<Widget>[
+              if (i > 0) const SizedBox(height: KansoSpacing.sm),
+              _DiffHunkCard(
+                hunk: state.hunks[i],
+                onCopy: () => bloc.add(NoteHistoryEvent.sectionCopied(i)),
               ),
-          const SizedBox(height: KansoSpacing.md),
+            ],
+          const SizedBox(height: KansoSpacing.lg),
           KansoButton(
             label: state.restoring
                 ? l10n.historyRestoring
@@ -139,9 +135,7 @@ class HistoryContent extends StatelessWidget {
             icon: KansoIcons.undo,
             onPressed: state.restoring
                 ? null
-                : () => context.read<NoteHistoryBloc>().add(
-                    const NoteHistoryEvent.restoreRequested(),
-                  ),
+                : () => bloc.add(const NoteHistoryEvent.restoreRequested()),
           ),
         ],
         if (history.versions.isEmpty)
@@ -155,6 +149,121 @@ class HistoryContent extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// One version in the list: its title, and the day and where it came from.
+///
+/// [selected] puts a quiet wash behind it and an accent rule down its
+/// leading edge, the same mark the list uses for the note that is open.
+class _VersionRow extends StatelessWidget {
+  const _VersionRow({
+    required this.title,
+    required this.detail,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final String detail;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Semantics(
+      selected: selected,
+      child: KansoPressable(
+        onTap: onTap,
+        child: Stack(
+          children: <Widget>[
+            if (selected)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: colors.selected.withValues(alpha: 0.6),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsetsDirectional.only(
+                start: KansoSpacing.md,
+                end: KansoSpacing.md,
+                top: KansoSpacing.sm,
+                bottom: KansoSpacing.sm,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.typography.listTitle,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.typography.meta,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One block of a diff: its lines in their colours, and a way to take just
+/// this block.
+class _DiffHunkCard extends StatelessWidget {
+  const _DiffHunkCard({required this.hunk, required this.onCopy});
+
+  final DiffHunk hunk;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final l10n = context.l10n;
+    return KansoCard(
+      padding: const EdgeInsets.all(KansoSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          for (final line in hunk.lines)
+            Text(
+              '${switch (line.kind) {
+                DiffKind.added => '+ ',
+                DiffKind.removed => '− ',
+                DiffKind.same => '  ',
+              }}${line.text}',
+              style: context.typography.mono.copyWith(
+                color: switch (line.kind) {
+                  DiffKind.added => colors.success,
+                  DiffKind.removed => colors.danger,
+                  DiffKind.same => colors.text,
+                },
+              ),
+            ),
+          const SizedBox(height: KansoSpacing.xs),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: KansoButton(
+              label: l10n.historyCopySection,
+              variant: KansoButtonVariant.quiet,
+              icon: KansoIcons.copy,
+              compact: true,
+              expanded: false,
+              onPressed: onCopy,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

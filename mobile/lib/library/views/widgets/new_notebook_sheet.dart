@@ -3,8 +3,6 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'dart:async';
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -76,24 +74,17 @@ class _NewNotebookSheetState extends State<NewNotebookSheet> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final colors = context.colors;
-    // The keyboard comes up under the sheet, which already has the home
-    // indicator's room.
-    final keyboard = math.max<double>(
-      0,
-      MediaQuery.viewInsetsOf(context).bottom -
-          MediaQuery.paddingOf(context).bottom,
-    );
     return BlocProvider<NewNotebookBloc>.value(
       value: bloc,
       child: BlocListener<NewNotebookBloc, NewNotebookState>(
         listenWhen: (before, now) => now.created != null,
         listener: (context, state) => Navigator.of(context).pop(state.created),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(
+          padding: const EdgeInsets.fromLTRB(
             KansoSpacing.md,
             KansoSpacing.xs,
             KansoSpacing.md,
-            KansoSpacing.md + keyboard,
+            KansoSpacing.md,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,

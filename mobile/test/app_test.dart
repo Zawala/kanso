@@ -7,10 +7,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/ai_settings/state/ai_status/ai_status_bloc.dart';
 import 'package:kanso/app.dart';
+import 'package:kanso/core/configs/kanso_theme_scope.dart';
 import 'package:kanso/core/configs/kanso_typography.dart';
 import 'package:kanso/core/models/data/design_gallery_access.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
-import 'package:kanso/core/models/data/kanso_text_size.dart';
+import 'package:kanso/core/models/data/kanso_fonts.dart';
 import 'package:kanso/core/models/data/layout_class.dart';
 import 'package:kanso/core/router/kanso_router.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
@@ -19,6 +20,7 @@ import 'package:kanso/core/state/account/account_bloc.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/state/device_approval/device_approval_bloc.dart';
 import 'package:kanso/core/state/sync_status/sync_status_bloc.dart';
+import 'package:kanso/core/views/widgets/kanso_feedback.dart';
 import 'package:kanso/crash/state/crash_reports/crash_reports_bloc.dart';
 import 'package:kanso/design/views/pages/design_gallery_page.dart';
 import 'package:kanso/injection.dart';
@@ -33,8 +35,11 @@ import 'helpers/fixture_sync_repository.dart';
 import 'helpers/seeded_appearance_bloc.dart';
 import 'helpers/sync_settings_blocs.dart';
 
-Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
-  final bloc = SeededAppearanceBloc(const AppearanceState());
+Future<AppearanceBloc> pumpApp(
+  WidgetTester tester, {
+  AppearanceState state = const AppearanceState(),
+}) async {
+  final bloc = SeededAppearanceBloc(state);
   addTearDown(bloc.close);
   tester.view
     ..physicalSize = const Size(393, 2400)
@@ -71,19 +76,36 @@ Future<AppearanceBloc> pumpApp(WidgetTester tester) async {
 void main() {
   Future<KansoTypography> typography(WidgetTester tester) async {
     await tester.pumpAndSettle();
-    return Theme.of(
+    return KansoThemeScope.of(
       tester.element(find.byType(DesignGalleryPage)),
-    ).extension<KansoTypography>()!;
+    ).typography;
   }
 
   group('App', () {
+    testWidgets('applies downloaded Google Font families to the note theme', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        state: const AppearanceState(
+          fonts: KansoFonts(
+            editorGoogleFont: 'Lora',
+            previewGoogleFont: 'Nunito Sans',
+          ),
+        ),
+      );
+      final styles = await typography(tester);
+      expect(styles.editorBody.fontFamily, 'Lora');
+      expect(styles.previewBody.fontFamily, 'Nunito Sans');
+    });
+
     testWidgets('builds its themes from the fonts and text size chosen', (
       tester,
     ) async {
       final bloc = await pumpApp(tester);
       var styles = await typography(tester);
       expect(styles.previewBody.fontFamily, 'Instrument Sans');
-      expect(styles.previewBody.fontSize, 15);
+      expect(styles.previewBody.fontSize, 18);
 
       bloc
         ..add(
@@ -91,13 +113,34 @@ void main() {
             KansoFontFamily.sourceSerif4,
           ),
         )
-        ..add(const AppearanceEvent.textSizeChanged(KansoTextSize.large));
+        ..add(const AppearanceEvent.textSizeChanged(1.15));
       styles = await typography(tester);
       expect(styles.previewBody.fontFamily, 'Source Serif 4');
-      expect(styles.previewBody.fontSize, closeTo(15 * 1.15, 1e-9));
+      expect(styles.previewBody.fontSize, 18);
+      expect(styles.editorBody.fontSize, closeTo(18 * 1.15, 1e-9));
+      bloc.add(
+        const AppearanceEvent.previewTextSizeChanged(1.3),
+      );
+      styles = await typography(tester);
+      expect(styles.previewBody.fontSize, closeTo(18 * 1.3, 1e-9));
       // The interface is Kanso's own, whatever the notes are set in.
       expect(styles.body.fontFamily, 'Instrument Sans');
-      expect(styles.body.fontSize, 15);
+      expect(styles.body.fontSize, 16);
+    });
+
+    testWidgets('scales the interface without changing note text', (
+      tester,
+    ) async {
+      final bloc = await pumpApp(tester);
+      var styles = await typography(tester);
+      expect(styles.body.fontSize, 16);
+      expect(styles.editorBody.fontSize, 18);
+      bloc.add(const AppearanceEvent.interfaceTextSizeChanged(1.2));
+      styles = await typography(tester);
+      expect(styles.body.fontSize, closeTo(19.2, 1e-9));
+      expect(styles.barTitle.fontSize, closeTo(21.6, 1e-9));
+      expect(styles.editorBody.fontSize, 18);
+      expect(styles.previewBody.fontSize, 18);
     });
 
     testWidgets('the dark theme follows the same choices', (tester) async {
@@ -106,15 +149,15 @@ void main() {
         const AppearanceEvent.codeFontChanged(KansoFontFamily.ibmPlexMono),
       );
       await tester.pumpAndSettle();
-      final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+      final app = tester.widget<WidgetsApp>(find.byType(WidgetsApp));
       expect(
-        app.darkTheme!.extension<KansoTypography>()!.mono.fontFamily,
+        KansoThemeScope.of(
+          tester.element(find.byType(DesignGalleryPage)),
+        ).typography.mono.fontFamily,
         'IBM Plex Mono',
       );
-      expect(
-        app.theme!.extension<KansoTypography>()!.mono.fontFamily,
-        'IBM Plex Mono',
-      );
+      expect(app.debugShowCheckedModeBanner, isFalse);
+      expect(find.byType(KansoFeedbackHost), findsOneWidget);
     });
 
     testWidgets("does not clamp the device's text scale", (tester) async {

@@ -11,14 +11,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/publish.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/configs/kanso_palette.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/models/data/application_error.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
+import 'package:kanso/core/views/widgets/kanso_button.dart';
 import 'package:kanso/publish/models/repos/abs/publish_repository.dart';
 import 'package:kanso/publish/state/publish/publish_bloc.dart';
 import 'package:kanso/publish/views/widgets/publish_sheet.dart';
 
 import '../../../helpers/golden.dart';
+import '../../../helpers/kanso_test_app.dart';
 import '../../../helpers/kanso_viewport.dart';
 
 const PaletteDto _palette = PaletteDto(
@@ -173,7 +173,7 @@ Widget _sheet({
     }
     return bloc;
   },
-  child: const Scaffold(body: PublishSheet()),
+  child: const PublishSheet(),
 );
 
 void main() {
@@ -181,10 +181,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: KansoTheme.light,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
+      KansoTestApp(
         home: _sheet(repository: _PublishRepository(), notebook: false),
       ),
     );
@@ -203,10 +200,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: KansoTheme.light,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
+      KansoTestApp(
         home: _sheet(
           repository: _PublishRepository(),
           notebook: true,
@@ -228,10 +222,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: KansoTheme.light,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
+      KansoTestApp(
         home: _sheet(
           repository: _PublishRepository(
             refusal: "Locked notes can't be published. Remove the lock first.",
@@ -245,10 +236,10 @@ void main() {
       find.text("Locked notes can't be published. Remove the lock first."),
       findsOneWidget,
     );
-    final button = tester.widget<FilledButton>(
+    final button = tester.widget<KansoButton>(
       find.ancestor(
         of: find.text('Publish'),
-        matching: find.byType(FilledButton),
+        matching: find.byType(KansoButton),
       ),
     );
     expect(button.onPressed, isNull);
@@ -256,10 +247,7 @@ void main() {
 
   testWidgets('expired link shows why it needs an update', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: KansoTheme.light,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
+      KansoTestApp(
         home: _sheet(
           repository: _PublishRepository(published: true, expired: true),
           notebook: false,

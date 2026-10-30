@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/settings_navigation.dart';
 import '../../../core/state/account/account_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/account_details/account_details_bloc.dart';
 import '../../utils/account_actions.dart';
@@ -50,7 +51,7 @@ class AccountPage extends StatelessWidget {
             listener: (context, state) => GoRouter.of(context).popToSettings(),
           ),
         ],
-        child: Scaffold(
+        child: KansoPage(
           backgroundColor: context.colors.app,
           body: const AccountPane(),
         ),

@@ -101,6 +101,35 @@ void main() {
       expect(find.bySemanticsLabel('Username'), findsWidgets);
       handle.dispose();
     });
+
+    testWidgets('lets go of the keyboard when the tap is outside it', (
+      tester,
+    ) async {
+      final controller = TextEditingController();
+      final focus = FocusNode();
+      addTearDown(controller.dispose);
+      addTearDown(focus.dispose);
+      await pumpKanso(
+        tester,
+        SizedBox(
+          width: 320,
+          child: KansoTextInput(
+            controller: controller,
+            focusNode: focus,
+            hint: 'Username',
+          ),
+        ),
+      );
+
+      focus.requestFocus();
+      await tester.pump();
+      await tester.pump();
+      expect(focus.hasFocus, isTrue);
+
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pump();
+      expect(focus.hasFocus, isFalse);
+    });
   });
 
   group('KansoTextInput with a focus node of its caller', () {

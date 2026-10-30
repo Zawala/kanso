@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../widgets/shared_with_you_pane.dart';
 
 /// Shared with you: the invitations to notes other people shared. It reads
@@ -15,7 +16,7 @@ class SharedWithYouPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return KansoPage(
       resizeToAvoidBottomInset: false,
       backgroundColor: context.colors.app,
       body: const SharedWithYouPane(),

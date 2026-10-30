@@ -9,19 +9,20 @@ import 'package:kanso/core/configs/kanso_colors.dart';
 import 'package:kanso/core/configs/kanso_typography.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
-import 'package:kanso/core/models/data/kanso_text_size.dart';
 
 import '../../helpers/property.dart';
 
 void main() {
   KansoTypography build({
     KansoFonts fonts = const KansoFonts(),
-    KansoTextSize size = KansoTextSize.standard,
+    double size = 1.0,
+    double? previewSize,
   }) {
     return KansoTypography.fromColors(
       KansoColors.light,
       fonts: fonts,
       textSize: size,
+      previewTextSize: previewSize,
     );
   }
 
@@ -67,6 +68,26 @@ void main() {
       expect(t.monoSmall.fontFamily, 'IBM Plex Mono');
     });
 
+    test('a downloaded family takes precedence in the note theme', () {
+      final t = build(
+        fonts: const KansoFonts(
+          editorGoogleFont: 'Lora',
+          previewGoogleFont: 'Nunito Sans',
+        ),
+      );
+      expect(t.editorBody.fontFamily, 'Lora');
+      expect(t.previewBody.fontFamily, 'Nunito Sans');
+    });
+
+    test('preview size is independent from the editor size', () {
+      final t = build(
+        size: 0.9,
+        previewSize: 1.3,
+      );
+      expect(t.editorBody.fontSize, closeTo(18 * 0.9, 1e-9));
+      expect(t.previewBody.fontSize, closeTo(18 * 1.3, 1e-9));
+    });
+
     test('weights are plain font weights, which the variable fonts draw', () {
       final t = build(
         fonts: const KansoFonts(previewFont: KansoFontFamily.literata),
@@ -103,7 +124,7 @@ void main() {
       );
     });
 
-    Glados2<KansoFonts, KansoTextSize>(
+    Glados2<KansoFonts, double>(
       any.fonts,
       any.textSize,
       kansoExploreConfig(),
@@ -120,7 +141,7 @@ void main() {
   group('KansoTypography text size', () {
     test('scales every note style and nothing else', () {
       final base = build();
-      final large = build(size: KansoTextSize.large);
+      final large = build(size: 1.15);
       final pairs = <(TextStyle, TextStyle)>[
         (base.editorTitle, large.editorTitle),
         (base.editorHeading1, large.editorHeading1),
@@ -141,15 +162,16 @@ void main() {
 
     test('Default leaves the designed sizes', () {
       final t = build();
-      expect(t.editorBody.fontSize, 15);
-      expect(t.previewTitle.fontSize, 24);
+      expect(t.editorBody.fontSize, 18);
+      expect(t.previewBody.fontSize, 18);
+      expect(t.previewTitle.fontSize, 28);
       expect(t.mono.fontSize, 13.5);
     });
 
     test('never touches the text scaler: no clamp is set on any style', () {
-      final t = build(size: KansoTextSize.larger);
+      final t = build(size: 1.3);
       // A TextStyle has no scale cap; sizes grow by the multiplier only.
-      expect(t.previewBody.fontSize, closeTo(15 * 1.3, 1e-9));
+      expect(t.previewBody.fontSize, closeTo(18 * 1.3, 1e-9));
     });
   });
 }

@@ -4,77 +4,212 @@
 
 import 'package:flutter/material.dart';
 
+import '../../configs/kanso_colors.dart';
+import '../../configs/kanso_motion.dart';
 import '../../configs/kanso_radii.dart';
 import '../../configs/kanso_shadows.dart';
 import '../../configs/kanso_sizes.dart';
-import '../../configs/kanso_spacing.dart';
 import '../../utils/context_extensions.dart';
 
 /// The panel of a sheet that rises from the foot of the screen: a rounded
 /// surface that is as tall as its [child] and at most nine tenths of the
 /// screen, no wider than a tablet's sheet and centred when the screen is
-/// wider. It takes the home indicator's height as well.
+/// wider. It takes the home indicator's height as well, moves above the
+/// keyboard, dismisses the keyboard when its body or a scrolling pane is
+/// touched, and goes down when its grab bar is dragged down.
 ///
 /// The veil behind it and the way it moves in are the route's
 /// (`showKansoBottomSheet`).
-class KansoBottomSheet extends StatelessWidget {
+class KansoBottomSheet extends StatefulWidget {
   const KansoBottomSheet({required this.child, super.key});
 
   final Widget child;
 
-  /// How much of the screen's height the panel may take.
-  static const double heightFraction = 0.9;
+  /// How much of the available screen height the panel may take.
+  static const double heightFraction = 0.92;
+
+  /// How far the handle is dragged before letting go closes the sheet.
+  static const double dismissDistance = 120;
+
+  /// How fast a flick closes the sheet, in points per second.
+  static const double dismissVelocity = 700;
+
+  /// The grab handle, for tests and for a steady place to drag from.
+  static const Key handleKey = ValueKey<String>('kanso-sheet-handle');
+
+  @override
+  State<KansoBottomSheet> createState() => _KansoBottomSheetState();
+}
+
+class _KansoBottomSheetState extends State<KansoBottomSheet> {
+  final ValueNotifier<double> _drag = ValueNotifier<double>(0);
+
+  @override
+  void dispose() {
+    // A field in a sheet must not keep the keyboard alive after the route
+    // goes. This also covers a system back or a veil tap.
+    FocusManager.instance.primaryFocus?.unfocus();
+    _drag.dispose();
+    super.dispose();
+  }
+
+  void _dismissKeyboard() {
+    FocusScope.of(context).unfocus();
+  }
+
+  void _dragStarted(DragStartDetails details) {
+    _dismissKeyboard();
+  }
+
+  void _dragged(DragUpdateDetails details) {
+    final delta = details.primaryDelta ?? 0;
+    if (delta <= 0) return;
+    _drag.value += delta;
+  }
+
+  void _dragEnded(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (_drag.value > KansoBottomSheet.dismissDistance ||
+        velocity > KansoBottomSheet.dismissVelocity) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    _drag.value = 0;
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     return LayoutBuilder(
       builder: (context, constraints) {
-        return Align(
-          alignment: Alignment.bottomCenter,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: KansoSizes.sheetWidth,
-              maxHeight: constraints.maxHeight * heightFraction,
-            ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.app,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(KansoRadii.large),
-                ),
-                border: Border.all(color: colors.divider),
-                boxShadow: KansoShadows.sheet(Theme.brightnessOf(context)),
-              ),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(KansoRadii.large),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.paddingOf(context).bottom,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const SizedBox(height: KansoSpacing.xs),
-                      Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: colors.divider,
-                          borderRadius: KansoRadii.pillBorder,
+        final media = MediaQuery.of(context);
+        final keyboard = media.viewInsets.bottom;
+        final available = (constraints.maxHeight - keyboard).clamp(
+          0.0,
+          constraints.maxHeight,
+        );
+        final maxHeight = available * KansoBottomSheet.heightFraction;
+        return ValueListenableBuilder<double>(
+          valueListenable: _drag,
+          builder: (context, drag, _) {
+            final settling = drag == 0;
+            final duration = KansoMotion.resolve(
+              context,
+              settling ? KansoMotion.short : const Duration(milliseconds: 1),
+            );
+            return Align(
+              alignment: Alignment.bottomCenter,
+              child: AnimatedPadding(
+                duration: KansoMotion.resolve(context, KansoMotion.short),
+                curve: KansoMotion.standard,
+                padding: EdgeInsets.only(bottom: keyboard),
+                child: AnimatedContainer(
+                  duration: duration,
+                  curve: KansoMotion.standard,
+                  transform: Matrix4.translationValues(0, drag, 0),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: KansoSizes.sheetWidth,
+                      maxHeight: maxHeight,
+                    ),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colors.app,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(KansoRadii.large),
+                        ),
+                        border: Border.all(color: colors.divider),
+                        boxShadow: KansoShadows.sheet(
+                          context.brightness,
                         ),
                       ),
-                      Flexible(child: child),
-                    ],
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(KansoRadii.large),
+                        ),
+                        child: SafeArea(
+                          top: false,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              _SheetGrabBar(
+                                colors: colors,
+                                onDragStart: _dragStarted,
+                                onDragUpdate: _dragged,
+                                onDragEnd: _dragEnded,
+                              ),
+                              Flexible(
+                                child: NotificationListener<ScrollNotification>(
+                                  onNotification: (notification) {
+                                    if (notification
+                                            is ScrollStartNotification ||
+                                        notification
+                                            is UserScrollNotification) {
+                                      _dismissKeyboard();
+                                    }
+                                    return false;
+                                  },
+                                  child: widget.child,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// The full-width grab area at the top of a sheet. A wide target is easier
+/// to catch than the five-point bar alone, and it does not steal vertical
+/// drags from the content below it.
+class _SheetGrabBar extends StatelessWidget {
+  const _SheetGrabBar({
+    required this.colors,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+  });
+
+  final KansoColors colors;
+  final GestureDragStartCallback onDragStart;
+  final GestureDragUpdateCallback onDragUpdate;
+  final GestureDragEndCallback onDragEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: KansoBottomSheet.handleKey,
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragStart: onDragStart,
+      onVerticalDragUpdate: onDragUpdate,
+      onVerticalDragEnd: onDragEnd,
+      child: Semantics(
+        button: true,
+        label: context.l10n.sheetDismiss,
+        child: SizedBox(
+          height: 32,
+          width: double.infinity,
+          child: Center(
+            child: Container(
+              width: 40,
+              height: 5,
+              decoration: BoxDecoration(
+                color: colors.textMuted.withValues(alpha: 0.55),
+                borderRadius: KansoRadii.pillBorder,
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

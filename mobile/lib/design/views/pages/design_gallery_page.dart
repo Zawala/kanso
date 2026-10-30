@@ -10,6 +10,7 @@ import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_grouped_section.dart';
+import '../../../core/views/widgets/kanso_page_route.dart';
 import '../../../core/views/widgets/kanso_segment.dart';
 import '../../../core/views/widgets/kanso_segmented.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
@@ -31,9 +32,9 @@ class DesignGalleryPage extends StatelessWidget {
     final colors = context.colors;
     final l10n = context.l10n;
     final bottom = MediaQuery.paddingOf(context).bottom;
-    return Scaffold(
-      backgroundColor: colors.app,
-      body: Column(
+    return ColoredBox(
+      color: colors.app,
+      child: Column(
         children: <Widget>[
           KansoTopBar(
             backgroundColor: colors.app,
@@ -96,7 +97,7 @@ class DesignGalleryPage extends StatelessWidget {
                           chevron: true,
                           onTap: () {
                             Navigator.of(context).push(
-                              MaterialPageRoute<void>(
+                              KansoPageRoute<void>(
                                 builder: (_) => pageForScreen(screen, layout),
                               ),
                             );

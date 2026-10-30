@@ -60,18 +60,18 @@ void main() {
     when(() => account.serverMethods(_server)).thenAnswer(
       (_) async => const Right<ApplicationError, ServerMethods>(allMethods),
     );
-    when(session.close).thenAnswer(
-      (_) async => const Right<ApplicationError, Unit>(unit),
-    );
+    when(
+      session.close,
+    ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
     when(
       () => session.open(any(), callbackScheme: any(named: 'callbackScheme')),
     ).thenAnswer((_) async => const Right<ApplicationError, String?>(null));
-    when(() => account.providerPageEnded(any())).thenAnswer(
-      (_) async => const Right<ApplicationError, Unit>(unit),
-    );
-    when(account.cancelProvider).thenAnswer(
-      (_) async => const Right<ApplicationError, Unit>(unit),
-    );
+    when(
+      () => account.providerPageEnded(any()),
+    ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
+    when(
+      account.cancelProvider,
+    ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
   });
 
   SignInBloc make() => SignInBloc(account, sync, session);
@@ -216,22 +216,39 @@ void main() {
       },
     );
 
-    test(
-      'a password no account can have is answered like a wrong one',
-      () async {
-        final bloc = await started();
-        bloc.add(
-          const SignInEvent.passwordSubmitted(
-            username: 'ana',
-            password: 'short',
-            deviceName: _device,
-          ),
-        );
-        await pumpEventQueue();
-        expect(bloc.state.problem, FormProblem.credentialsDontMatch);
-        await bloc.close();
-      },
-    );
+    test('a short password is sent, and the server decides', () async {
+      when(
+        () => account.signInPassword(
+          server: _server,
+          username: 'ana',
+          password: 'short',
+          deviceName: _device,
+        ),
+      ).thenAnswer(
+        (_) async =>
+            const Left<ApplicationError, AccountState>(_badCredentials),
+      );
+      final bloc = await started();
+      bloc.add(
+        const SignInEvent.passwordSubmitted(
+          username: 'ana',
+          password: 'short',
+          deviceName: _device,
+        ),
+      );
+      await bloc.stream.firstWhere((state) => state.error != null);
+      expect(bloc.state.problem, isNull);
+      expect(bloc.state.error, _badCredentials);
+      verify(
+        () => account.signInPassword(
+          server: _server,
+          username: 'ana',
+          password: 'short',
+          deviceName: _device,
+        ),
+      ).called(1);
+      await bloc.close();
+    });
 
     test('signing in is busy, then ends the flow signed in', () async {
       final gate = Completer<void>();
@@ -509,9 +526,8 @@ void main() {
         (_) async => const Right<ApplicationError, AccountState>(_signedIn),
       );
       when(account.pendingRecoveryKey).thenAnswer(
-        (_) async => const Right<ApplicationError, RecoveryKeyText?>(
-          sampleRecoveryKey,
-        ),
+        (_) async =>
+            const Right<ApplicationError, RecoveryKeyText?>(sampleRecoveryKey),
       );
       final bloc = await started();
       bloc.add(
@@ -765,9 +781,7 @@ void main() {
             'http://127.0.0.1:1234/start',
             callbackScheme: any(named: 'callbackScheme'),
           ),
-        ).thenAnswer(
-          (_) async => const Right<ApplicationError, String?>(null),
-        );
+        ).thenAnswer((_) async => const Right<ApplicationError, String?>(null));
         final bloc = await started();
         bloc.add(
           const SignInEvent.providerPressed(

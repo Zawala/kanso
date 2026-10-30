@@ -4,10 +4,10 @@
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/assist/views/widgets/show_assist_sheet.dart';
 import 'package:kanso/core/models/data/assist_update.dart';
+import 'package:kanso/shell/views/widgets/browse_shell.dart';
 
 import '../../../helpers/ai_screen_goldens.dart';
 import '../../../helpers/fixture_ai_repository.dart';
@@ -18,7 +18,7 @@ Future<void> _open(
   BrowseApp app,
   FixtureAiRepository ai,
 ) async {
-  final context = tester.element(find.byType(Scaffold).first);
+  final context = tester.element(find.byType(BrowseShell).first);
   unawaited(
     showAssistSheet(
       context,
@@ -39,7 +39,7 @@ void main() {
       'assist_actions',
       at: '/notes',
       interact: (tester, app, ai) async {
-        final context = tester.element(find.byType(Scaffold).first);
+        final context = tester.element(find.byType(BrowseShell).first);
         unawaited(
           showAssistSheet(
             context,

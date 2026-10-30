@@ -56,11 +56,11 @@ class LockFormSheet extends StatelessWidget {
     final text = notice;
     final body = message;
     return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
+      padding: const EdgeInsets.fromLTRB(
         KansoSpacing.md,
         KansoSpacing.sm,
         KansoSpacing.md,
-        KansoSpacing.md + MediaQuery.viewInsetsOf(context).bottom,
+        KansoSpacing.md,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

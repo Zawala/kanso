@@ -100,12 +100,15 @@ void main() {
       const GraphPage(centerId: 'note-b'),
     );
     final canvas = tester.getRect(
-      find.descendant(
-        of: find.byType(GraphCanvas),
-        matching: find.byType(CustomPaint),
-      ),
+      find
+          .descendant(
+            of: find.byType(GraphCanvas),
+            matching: find.byType(CustomPaint),
+          )
+          .first,
     );
     await tester.tapAt(canvas.center);
+    await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
     expect(topOf(router), '${KansoRoutes.noteById}/note-b');
   });

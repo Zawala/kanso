@@ -12,6 +12,7 @@ import '../../configs/kanso_sizes.dart';
 import '../../configs/kanso_spacing.dart';
 import '../../configs/kanso_typography.dart';
 import '../../utils/context_extensions.dart';
+import '../../utils/tap_outside.dart';
 import 'kanso_search_input.dart' show KansoSearchInput;
 import 'kanso_selection_controls.dart';
 import 'kanso_text_context_menu.dart';
@@ -121,7 +122,7 @@ class _KansoTextFieldState extends State<KansoTextField>
     }
     // The framework sizes the caret differently on Apple's platforms and on
     // Android's; the same is asked for on both so the pictures match.
-    final caret = switch (Theme.of(context).platform) {
+    final caret = switch (context.platform) {
       TargetPlatform.iOS ||
       TargetPlatform.macOS => KansoTextField.caretHeight - 2,
       _ => KansoTextField.caretHeight,
@@ -174,6 +175,8 @@ class _KansoTextFieldState extends State<KansoTextField>
                   selectionControls: selectionControls,
                   contextMenuBuilder: (context, state) =>
                       KansoTextContextMenu(state: state),
+                  onTapOutside: (event) =>
+                      unfocusOnTapOutside(event, focusNode),
                   onChanged: widget.onChanged,
                   onSubmitted: widget.onSubmitted,
                 ),
@@ -192,7 +195,7 @@ class _KansoTextFieldState extends State<KansoTextField>
     KansoTypography typography,
   ) {
     final fieldStyle = widget.mono ? typography.mono : typography.body;
-    final caret = switch (Theme.of(context).platform) {
+    final caret = switch (context.platform) {
       TargetPlatform.iOS ||
       TargetPlatform.macOS => KansoSearchInput.caretHeight - 2,
       _ => KansoSearchInput.caretHeight,
@@ -270,6 +273,8 @@ class _KansoTextFieldState extends State<KansoTextField>
                         selectionControls: selectionControls,
                         contextMenuBuilder: (context, state) =>
                             KansoTextContextMenu(state: state),
+                        onTapOutside: (event) =>
+                            unfocusOnTapOutside(event, focusNode),
                         onChanged: widget.onChanged,
                         onSubmitted: widget.onSubmitted,
                       ),

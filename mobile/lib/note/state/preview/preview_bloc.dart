@@ -3,16 +3,18 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:bloc/bloc.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:clock/clock.dart';
-import 'package:dartz/dartz.dart' show Left;
+import 'package:dartz/dartz.dart' show Either, Left, Right;
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:injectable/injectable.dart';
 
 import '../../../core/bridge/api/types.dart';
 import '../../../core/models/data/application_error.dart';
+import '../../../core/models/repos/abs/google_font_repository.dart';
 import '../../../core/models/repos/abs/haptics_repository.dart';
 import '../../../core/models/repos/abs/library_repository.dart';
 import '../../../core/models/repos/abs/renderer_repository.dart';
@@ -25,7 +27,11 @@ part 'preview_event.dart';
 part 'preview_state.dart';
 
 /// The body size of the page, in points: the desktop preview's.
-const double previewTextSize = 16;
+const double previewBaseTextSize = 18;
+
+/// The rendered page size retained by exports that do not receive
+/// appearance preferences.
+const double previewTextSize = previewBaseTextSize;
 
 /// A note's preview page, and what a tap in it does.
 ///
@@ -42,10 +48,12 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     this._renderer,
     this._links,
     this._undoNotice,
-    this._haptics,
-  ) : super(const PreviewState()) {
+    this._haptics, {
+    this._googleFonts,
+  }) : super(const PreviewState()) {
     on<PreviewStartedEvent>(_onStarted, transformer: restartable());
     on<PreviewThemeChangedEvent>(_onThemeChanged, transformer: restartable());
+    on<PreviewStyleChangedEvent>(_onStyleChanged, transformer: restartable());
     on<PreviewChangesReceivedEvent>(_onChanges, transformer: droppable());
     on<PreviewLinkTappedEvent>(_onLinkTapped, transformer: sequential());
     on<PreviewActionHandledEvent>(
@@ -61,13 +69,22 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
   final WebLinkRepository _links;
   final UndoNoticeBloc _undoNotice;
   final HapticsRepository _haptics;
+  final GoogleFontRepository? _googleFonts;
   StreamSubscription<List<String>>? _changes;
 
   Future<void> _onStarted(
     PreviewStartedEvent event,
     Emitter<PreviewState> emit,
   ) async {
-    emit(PreviewState(noteId: event.noteId, themeId: event.themeId));
+    emit(
+      PreviewState(
+        noteId: event.noteId,
+        themeId: event.themeId,
+        font: event.font,
+        mono: event.mono,
+        size: event.size,
+      ),
+    );
     await _changes?.cancel();
     _changes = _library.changes().listen(
       (_) => add(const PreviewEvent.changesReceived()),
@@ -83,6 +100,19 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
       return;
     }
     emit(state.copyWith(themeId: event.themeId));
+    await _draw(emit);
+  }
+
+  Future<void> _onStyleChanged(
+    PreviewStyleChangedEvent event,
+    Emitter<PreviewState> emit,
+  ) async {
+    if (event.font == state.font &&
+        event.mono == state.mono &&
+        event.size == state.size) {
+      return;
+    }
+    emit(state.copyWith(font: event.font, mono: event.mono, size: event.size));
     await _draw(emit);
   }
 
@@ -109,12 +139,19 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
             noteId,
             tokens.palette,
             PreviewOptions(
-              size: previewTextSize,
+              font: state.font,
+              mono: state.mono,
+              size: state.size,
               utcOffsetSecs: clock.now().timeZoneOffset.inSeconds,
               code: tokens.syntax,
             ),
           );
-          return page.map((html) => (html, note.rev));
+          return page.fold<Future<Either<ApplicationError, (String, String)>>>(
+            (error) async => Left<ApplicationError, (String, String)>(error),
+            (html) async => Right<ApplicationError, (String, String)>(
+              (await _withGoogleFont(html), note.rev),
+            ),
+          );
         },
       ),
     );
@@ -127,6 +164,30 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
         (page) => state.copyWith(html: page.$1, rev: page.$2, error: null),
       ),
     );
+  }
+
+  Future<String> _withGoogleFont(String html) async {
+    final family = state.font;
+    if (family == null || _googleFonts == null) {
+      return html;
+    }
+    try {
+      final bytes = await _googleFonts.cachedBytes(family);
+      if (bytes == null) {
+        return html;
+      }
+      final safeFamily = family.replaceAll("'", r"\'");
+      final face = base64Encode(bytes);
+      final style =
+          "<style>@font-face{font-family:'$safeFamily';"
+          "src:url(data:font/ttf;base64,$face) format('truetype');}</style>";
+      final head = html.indexOf('</head>');
+      return head < 0
+          ? '$style$html'
+          : '${html.substring(0, head)}$style${html.substring(head)}';
+    } on Object {
+      return html;
+    }
   }
 
   Future<void> _onLinkTapped(

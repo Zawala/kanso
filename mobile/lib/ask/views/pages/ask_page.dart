@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/ask/ask_bloc.dart';
 import '../widgets/ask_pane.dart';
@@ -22,9 +23,8 @@ class AskPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider<AskBloc>(
       create: (context) => getIt<AskBloc>()..add(const AskEvent.started()),
-      child: Scaffold(
+      child: KansoPage(
         // The question field rises with the keyboard.
-        resizeToAvoidBottomInset: true,
         backgroundColor: context.colors.app,
         body: AskPane(inSheet: inSheet),
       ),

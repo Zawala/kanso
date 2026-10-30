@@ -34,7 +34,7 @@ class KansoSheet extends StatelessWidget {
         color: context.colors.app,
         borderRadius: KansoRadii.largeBorder,
         border: Border.all(color: context.colors.divider),
-        boxShadow: KansoShadows.sheet(Theme.brightnessOf(context)),
+        boxShadow: KansoShadows.sheet(context.brightness),
       ),
       // A sheet floats clear of the status bar and the home indicator.
       child: MediaQuery.removePadding(

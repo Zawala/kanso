@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../configs/kanso_effects.dart';
+import '../../utils/context_extensions.dart';
 
 /// A veil over what is behind a drawer, a sheet or a card.
 class KansoScrim extends StatelessWidget {
@@ -17,7 +18,7 @@ class KansoScrim extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.brightnessOf(context) == Brightness.dark;
+    final dark = context.brightness == Brightness.dark;
     return ColoredBox(
       color: dark
           ? Colors.black.withValues(alpha: KansoEffects.scrimDark)

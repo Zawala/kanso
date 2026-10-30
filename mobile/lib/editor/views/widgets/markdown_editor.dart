@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/tap_outside.dart';
 import '../../../core/views/widgets/kanso_text_context_menu.dart';
 import '../controllers/kanso_markdown_controller.dart';
 import 'kanso_editable_text.dart';
@@ -120,7 +121,7 @@ class _MarkdownEditorState extends State<MarkdownEditor>
     final style = context.typography.editorBody.copyWith(
       color: context.syntaxColors.text,
     );
-    final apple = switch (Theme.of(context).platform) {
+    final apple = switch (context.platform) {
       TargetPlatform.iOS || TargetPlatform.macOS => true,
       _ => false,
     };
@@ -135,7 +136,7 @@ class _MarkdownEditorState extends State<MarkdownEditor>
       ..commentStyle = TextStyle(
         backgroundColor: colors.warning.withValues(alpha: 0.2),
       )
-      ..darkCursors = Theme.brightnessOf(context) == Brightness.dark;
+      ..darkCursors = context.brightness == Brightness.dark;
     return Actions(
       actions: <Type, Action<Intent>>{
         UndoTextIntent: CallbackAction<UndoTextIntent>(
@@ -160,12 +161,13 @@ class _MarkdownEditorState extends State<MarkdownEditor>
           cursorRadius: const Radius.circular(1),
           cursorHeight: apple ? caret - 2 : caret,
           scrollPadding: widget.scrollPadding,
-          keyboardAppearance: Theme.brightnessOf(context),
+          keyboardAppearance: context.brightness,
           selectionControls: selectionControls,
           magnifierConfiguration: KansoMagnifier.configuration(),
           contextMenuBuilder:
               widget.menuBuilder ??
               (context, state) => KansoTextContextMenu(state: state),
+          onTapOutside: (event) => unfocusOnTapOutside(event, widget.focusNode),
           spellCheckConfiguration: service == null
               ? const SpellCheckConfiguration.disabled()
               : SpellCheckConfiguration(

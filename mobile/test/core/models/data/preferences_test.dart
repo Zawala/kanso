@@ -9,7 +9,6 @@ import 'package:glados/glados.dart' show Glados, any;
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
-import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
 
@@ -19,8 +18,9 @@ void main() {
   group('Preferences', () {
     test('defaults', () {
       const preferences = Preferences();
-      expect(preferences.textSize, KansoTextSize.standard);
-      expect(preferences.previewTextSize, KansoTextSize.standard);
+      expect(preferences.textSize, 1.0);
+      expect(preferences.previewTextSize, 1.0);
+      expect(preferences.interfaceTextSize, 1.0);
       expect(preferences.diagramRenderer, DiagramRenderer.pele);
       expect(preferences.themeSelection.syntax, isNull);
       expect(preferences.themeSelection.preview, isNull);
@@ -76,13 +76,13 @@ void main() {
       );
     });
 
-    test('is written with names, not numbers', () {
+    test('writes note scales as numbers', () {
       final json = const Preferences(
         sort: SortKey.title,
-        textSize: KansoTextSize.large,
+        textSize: 1.15,
       ).toJson();
       expect(json['sort'], 'title');
-      expect(json['textSize'], 'large');
+      expect(json['textSize'], 1.15);
       expect(json['themeSelection'], isA<Map<String, dynamic>>());
     });
 
@@ -102,8 +102,9 @@ void main() {
           'descending': false,
           'backupNoticeSeen': true,
         });
-        expect(read.textSize, KansoTextSize.large);
-        expect(read.previewTextSize, KansoTextSize.standard);
+        expect(read.textSize, 1.15);
+        expect(read.previewTextSize, 1.0);
+        expect(read.interfaceTextSize, 1.0);
         expect(read.diagramRenderer, DiagramRenderer.pele);
         expect(read.themeSelection.syntax, isNull);
         expect(read.themeSelection.preview, isNull);
@@ -123,17 +124,97 @@ void main() {
         'previewTextSize': 'enormous',
         'diagramRenderer': 'mermaidJs',
       });
-      expect(read.previewTextSize, KansoTextSize.standard);
+      expect(read.previewTextSize, 1.0);
       expect(read.diagramRenderer, DiagramRenderer.pele);
     });
 
-    test('writes the preview settings with names', () {
+    test('writes and reads the interface scale independently', () {
+      final json = const Preferences(interfaceTextSize: 1.2).toJson();
+      expect(json['interfaceTextSize'], 1.2);
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': json['interfaceTextSize'],
+        }).interfaceTextSize,
+        1.2,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': 1.23,
+        }).interfaceTextSize,
+        1.25,
+      );
+    });
+
+    test('bounds and steps the interface scale within its own range', () {
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': 0.1,
+        }).interfaceTextSize,
+        0.9,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': 4,
+        }).interfaceTextSize,
+        1.3,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': 'huge',
+        }).interfaceTextSize,
+        1.0,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'interfaceTextSize': double.nan,
+        }).interfaceTextSize,
+        1.0,
+      );
+    });
+
+    test('reads every legacy preset name and writes numeric scales', () {
+      final legacy = <String, double>{
+        'small': 0.9,
+        'standard': 1,
+        'large': 1.15,
+        'larger': 1.3,
+      };
+      for (final entry in legacy.entries) {
+        expect(
+          Preferences.fromJson(<String, dynamic>{
+            'textSize': entry.key,
+          }).textSize,
+          entry.value,
+        );
+      }
       final json = const Preferences(
-        previewTextSize: KansoTextSize.larger,
+        previewTextSize: 1.3,
         diagramRenderer: DiagramRenderer.kanso,
       ).toJson();
-      expect(json['previewTextSize'], 'larger');
+      expect(json['previewTextSize'], 1.3);
       expect(json['diagramRenderer'], 'kanso');
+    });
+
+    test('normalizes numeric scales to bounds and the nearest step', () {
+      expect(
+        Preferences.fromJson(<String, dynamic>{'textSize': 1.23}).textSize,
+        1.25,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{'textSize': 0.1}).textSize,
+        0.8,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{
+          'previewTextSize': 4,
+        }).previewTextSize,
+        1.8,
+      );
+      expect(
+        Preferences.fromJson(<String, dynamic>{'textSize': 'unknown'}).textSize,
+        1.0,
+      );
+      expect(Preferences.fromJson(<String, dynamic>{}).textSize, 1.0);
     });
   });
 }

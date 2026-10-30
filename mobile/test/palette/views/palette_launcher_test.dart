@@ -7,7 +7,6 @@ import 'dart:async';
 import 'package:clock/clock.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' hide LockState;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -915,7 +914,7 @@ void main() {
         );
       await tester.pump();
 
-      final note = tester.element(find.byType(Scaffold).last).read<NoteBloc>();
+      final note = tester.element(find.byType(NotePane).last).read<NoteBloc>();
       expect(note.state.noteId, noteB);
       expect(note.state.mode, NoteMode.preview);
       expect(intents.state.pending, isTrue);

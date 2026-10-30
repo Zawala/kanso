@@ -223,11 +223,35 @@
   "@graphFilterTag": {
     "description": "Filters the graph by tag."
   },
+  "graphFilterTitle": "Show the graph of",
+  "@graphFilterTitle": {
+    "description": "Heading of the sheet that chooses what the graph covers."
+  },
+  "graphFilterNotebooks": "Notebooks",
+  "@graphFilterNotebooks": {
+    "description": "Heading over the notebooks a graph can be limited to."
+  },
+  "graphFilterTags": "Tags",
+  "@graphFilterTags": {
+    "description": "Heading over the tags a graph can be limited to."
+  },
   "graphEmpty": "No linked notes to show.",
   "@graphEmpty": {
     "description": "The graph contains no linked notes."
   },
   "graphFailed": "Couldn't load the graph.",
+  "graphFit": "Fit graph to view",
+  "@graphFit": {
+    "description": "Accessible label for the graph fit-to-content control."
+  },
+  "graphZoomIn": "Zoom in",
+  "@graphZoomIn": {
+    "description": "Accessible label for the graph zoom-in control."
+  },
+  "graphZoomOut": "Zoom out",
+  "@graphZoomOut": {
+    "description": "Accessible label for the graph zoom-out control."
+  },
   "@graphFailed": {
     "description": "Explains that the graph could not be read."
   },
@@ -343,6 +367,10 @@
   "settingsTextSize": "Text size",
   "@settingsTextSize": {
     "description": "The size of text in notes."
+  },
+  "settingsInterfaceTextSize": "Interface text size",
+  "@settingsInterfaceTextSize": {
+    "description": "The size of labels, menus and other interface text."
   },
   "settingsSync": "Sync",
   "@settingsSync": {
@@ -626,6 +654,43 @@
   "@fontsTitle": {
     "description": "The title of the page where the fonts of notes are chosen."
   },
+  "googleFontSection": "Google Font",
+  "@googleFontSection": {
+    "description": "The section for downloading a Google Font for notes."
+  },
+  "googleFontFooter": "Enter a Google Fonts family name. It is saved on this device and works offline after downloading.",
+  "@googleFontFooter": {
+    "description": "Explains Google Font download and offline cache behavior."
+  },
+  "googleFontHint": "For example, Lora or Nunito Sans",
+  "@googleFontHint": {
+    "description": "Example Google Fonts family name."
+  },
+  "googleFontDownload": "Download and use",
+  "@googleFontDownload": {
+    "description": "Downloads a Google Font and applies it to notes."
+  },
+  "googleFontLoading": "Loading font…",
+  "@googleFontLoading": {
+    "description": "Progress label while a Google Font is downloaded or loaded."
+  },
+  "googleFontOffline": "You’re offline. Connect to download this font; saved fonts remain available offline.",
+  "@googleFontOffline": {
+    "description": "Offline feedback for Google Font download."
+  },
+  "googleFontFailed": "This font could not be loaded. Check the family name and try again.",
+  "@googleFontFailed": {
+    "description": "Failure feedback for Google Font download."
+  },
+  "googleFontActive": "{family} is in use for writing and reading.",
+  "@googleFontActive": {
+    "description": "Names the active Google Font family.",
+    "placeholders": {
+      "family": {
+        "type": "String"
+      }
+    }
+  },
   "fontsEditorSection": "Editor font",
   "@fontsEditorSection": {
     "description": "The section of fonts to write in."
@@ -678,6 +743,30 @@
   "@fontsSampleCode": {
     "description": "A short line of code shown in each code font."
   },
+  "fontsInterfaceTextSizeSection": "Interface text size",
+  "@fontsInterfaceTextSizeSection": {
+    "description": "The section that sets how large labels, menus and other interface text are."
+  },
+  "fontsInterfaceTextSizeFooter": "Changes labels, menus, buttons and the rest of Kanso. Notes keep their own text sizes.",
+  "@fontsInterfaceTextSizeFooter": {
+    "description": "Explains that interface text size is separate from note text size."
+  },
+  "fontsInterfaceTextSizeSample": "Notebooks · Search · Tasks · Settings",
+  "@fontsInterfaceTextSizeSample": {
+    "description": "A short interface line that shows the chosen interface text size."
+  },
+  "interfaceTextSizeControlLabel": "Interface text size",
+  "@interfaceTextSizeControlLabel": {
+    "description": "The accessible name of the adjustable interface text size control."
+  },
+  "interfaceTextSizeDecrease": "Decrease interface text size",
+  "@interfaceTextSizeDecrease": {
+    "description": "The accessible name of the button that reduces interface text size."
+  },
+  "interfaceTextSizeIncrease": "Increase interface text size",
+  "@interfaceTextSizeIncrease": {
+    "description": "The accessible name of the button that increases interface text size."
+  },
   "fontsTextSizeSection": "Text size",
   "@fontsTextSizeSection": {
     "description": "The section that sets how large the text of notes is."
@@ -690,21 +779,26 @@
   "@fontsTextSizeSample": {
     "description": "A paragraph that shows the chosen text size."
   },
-  "textSizeSmall": "Small",
-  "@textSizeSmall": {
-    "description": "A text size."
+  "textSizePercent": "{percent}%",
+  "@textSizePercent": {
+    "description": "The note text scale as a percentage.",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
   },
-  "textSizeDefault": "Default",
-  "@textSizeDefault": {
-    "description": "The text size the app was designed at."
+  "textSizeControlLabel": "Text size",
+  "@textSizeControlLabel": {
+    "description": "The accessible name of the adjustable note text size control."
   },
-  "textSizeLarge": "Large",
-  "@textSizeLarge": {
-    "description": "A text size."
+  "textSizeDecrease": "Decrease text size",
+  "@textSizeDecrease": {
+    "description": "The accessible name of the button that reduces note text size."
   },
-  "textSizeLarger": "Larger",
-  "@textSizeLarger": {
-    "description": "The largest text size."
+  "textSizeIncrease": "Increase text size",
+  "@textSizeIncrease": {
+    "description": "The accessible name of the button that increases note text size."
   },
   "editorTitleHint": "Title",
   "@editorTitleHint": {
@@ -5373,6 +5467,10 @@
   "dictationRestrictedMessage": "This phone's rules keep Kanso from using the microphone or speech recognition.",
   "@dictationRestrictedMessage": {
     "description": "Says that the device restricts dictation."
+  },
+  "sheetDismiss": "Dismiss sheet",
+  "@sheetDismiss": {
+    "description": "What a screen reader says for the handle of a sheet that can be dragged down to close it."
   },
   "dictationOpenSettings": "Open Settings",
   "@dictationOpenSettings": {

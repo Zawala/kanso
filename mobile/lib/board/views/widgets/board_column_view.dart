@@ -111,12 +111,9 @@ class BoardColumnView extends StatelessWidget {
                       }
                       return LongPressDraggable<BoardDrag>(
                         data: BoardDrag(card: card.key, from: column.lane),
-                        feedback: Material(
-                          type: MaterialType.transparency,
-                          child: SizedBox(
-                            width: 280,
-                            child: Opacity(opacity: 0.9, child: tile),
-                          ),
+                        feedback: SizedBox(
+                          width: 280,
+                          child: Opacity(opacity: 0.9, child: tile),
                         ),
                         childWhenDragging: Opacity(opacity: 0.4, child: tile),
                         child: tile,

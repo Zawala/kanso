@@ -13,20 +13,15 @@ _Preferences _$PreferencesFromJson(Map<String, dynamic> json) => _Preferences(
   fonts: json['fonts'] == null
       ? const KansoFonts()
       : KansoFonts.fromJson(json['fonts'] as Map<String, dynamic>),
-  textSize:
-      $enumDecodeNullable(
-        _$KansoTextSizeEnumMap,
-        json['textSize'],
-        unknownValue: KansoTextSize.standard,
-      ) ??
-      KansoTextSize.standard,
-  previewTextSize:
-      $enumDecodeNullable(
-        _$KansoTextSizeEnumMap,
-        json['previewTextSize'],
-        unknownValue: KansoTextSize.standard,
-      ) ??
-      KansoTextSize.standard,
+  textSize: json['textSize'] == null
+      ? 1.0
+      : textScaleFromJson(json['textSize']),
+  previewTextSize: json['previewTextSize'] == null
+      ? 1.0
+      : textScaleFromJson(json['previewTextSize']),
+  interfaceTextSize: json['interfaceTextSize'] == null
+      ? 1.0
+      : interfaceTextScaleFromJson(json['interfaceTextSize']),
   iconTheme: json['iconTheme'] as String? ?? KansoIconSet.lucideId,
   diagramRenderer:
       $enumDecodeNullable(
@@ -59,8 +54,9 @@ Map<String, dynamic> _$PreferencesToJson(_Preferences instance) =>
     <String, dynamic>{
       'themeSelection': instance.themeSelection.toJson(),
       'fonts': instance.fonts.toJson(),
-      'textSize': _$KansoTextSizeEnumMap[instance.textSize]!,
-      'previewTextSize': _$KansoTextSizeEnumMap[instance.previewTextSize]!,
+      'textSize': textScaleToJson(instance.textSize),
+      'previewTextSize': textScaleToJson(instance.previewTextSize),
+      'interfaceTextSize': interfaceTextScaleToJson(instance.interfaceTextSize),
       'iconTheme': instance.iconTheme,
       'diagramRenderer': _$DiagramRendererEnumMap[instance.diagramRenderer]!,
       'sort': _$SortKeyEnumMap[instance.sort]!,
@@ -74,13 +70,6 @@ Map<String, dynamic> _$PreferencesToJson(_Preferences instance) =>
       'remindersEnabled': instance.remindersEnabled,
       'focusMode': instance.focusMode,
     };
-
-const _$KansoTextSizeEnumMap = {
-  KansoTextSize.small: 'small',
-  KansoTextSize.standard: 'standard',
-  KansoTextSize.large: 'large',
-  KansoTextSize.larger: 'larger',
-};
 
 const _$DiagramRendererEnumMap = {
   DiagramRenderer.pele: 'pele',

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../../core/models/repos/abs/renderer_repository.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/syntax_theme_id.dart';
+import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../injection.dart';
 import '../../state/export/note_pdf_exporter.dart';
 import 'note_export_progress.dart';
@@ -20,7 +21,6 @@ Future<void> exportNotePdf(
   required String noteId,
 }) async {
   final l10n = context.l10n;
-  final messenger = ScaffoldMessenger.maybeOf(context);
   final overlay = Overlay.of(context, rootOverlay: true);
   // Where the share sheet points on a tablet. Taken before the menu closes.
   final origin = exportOriginOf(context);
@@ -39,13 +39,19 @@ Future<void> exportNotePdf(
       case Right(value: final path):
         await sharePdf(path, path.split('/').last, origin: origin);
       case Left():
-        messenger?.showSnackBar(
-          SnackBar(content: Text(l10n.noteExportFailed)),
+        KansoFeedback.show(
+          context,
+          l10n.noteExportFailed,
+          tone: KansoFeedbackTone.error,
         );
     }
   } on Object {
     progress.remove();
-    messenger?.showSnackBar(SnackBar(content: Text(l10n.noteExportFailed)));
+    KansoFeedback.show(
+      context,
+      l10n.noteExportFailed,
+      tone: KansoFeedbackTone.error,
+    );
   } finally {
     progress.remove();
   }

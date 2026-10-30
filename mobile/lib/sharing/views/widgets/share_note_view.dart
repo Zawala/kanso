@@ -29,7 +29,6 @@ class ShareNoteView extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final typography = context.typography;
-    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -55,11 +54,11 @@ class ShareNoteView extends StatelessWidget {
         ),
         Flexible(
           child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
+            padding: const EdgeInsets.fromLTRB(
               KansoSpacing.md,
               0,
               KansoSpacing.md,
-              KansoSpacing.lg + keyboard,
+              KansoSpacing.lg,
             ),
             child: BlocBuilder<ShareNoteBloc, ShareNoteState>(
               builder: (context, state) {

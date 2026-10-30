@@ -5,16 +5,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/editor/views/controllers/kanso_markdown_controller.dart';
 import 'package:kanso/editor/views/widgets/completion_host.dart';
 import 'package:kanso/editor/views/widgets/completion_popup.dart';
 import 'package:kanso/editor/views/widgets/kanso_editable_text.dart';
 import 'package:kanso/editor/views/widgets/markdown_editor.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
 import 'package:kanso/search/views/widgets/highlighted_text.dart';
 
 import '../../../helpers/fake_editor_document.dart';
+import '../../../helpers/kanso_test_app.dart';
 
 Completion _completion(int rows) => Completion(
   kind: CompletionKind.wiki,
@@ -66,10 +65,7 @@ Future<_Rig> _pump(
   });
   final key = GlobalKey<EditableTextState>();
   await tester.pumpWidget(
-    MaterialApp(
-      theme: KansoTheme.light,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
+    KansoTestApp(
       home: Scaffold(
         resizeToAvoidBottomInset: false,
         body: SingleChildScrollView(

@@ -56,7 +56,7 @@ class DictationPill extends StatelessWidget {
         color: colors.elevated,
         borderRadius: KansoRadii.largeBorder,
         border: Border.all(color: colors.divider),
-        boxShadow: KansoShadows.floating(Theme.brightnessOf(context)),
+        boxShadow: KansoShadows.floating(context.brightness),
       ),
       child: Row(
         children: <Widget>[

@@ -79,7 +79,12 @@ Future<void> expectAppGoldenOnBothPlatforms(
       disableAnimations: true,
       reduceMotion: true,
     );
-  addTearDown(() {
+  // Leave the final render mounted for tests that assert against it after
+  // this helper returns. Disposing it before resetting the window and
+  // platform values lets the app-owned platform override unwind correctly.
+  addTearDown(() async {
+    debugDisableShadows = true;
+    debugDefaultTargetPlatformOverride = null;
     tester.view.reset();
     tester.platformDispatcher
       ..clearTextScaleFactorTestValue()
@@ -92,7 +97,6 @@ Future<void> expectAppGoldenOnBothPlatforms(
     TargetPlatform.iOS,
     TargetPlatform.android,
   ]) {
-    debugDefaultTargetPlatformOverride = platform;
     debugDisableShadows = false;
     try {
       await atMockNow(() async {
@@ -143,12 +147,13 @@ Future<void> expectAppGoldenOnBothPlatforms(
           find.byKey(appBoundaryKey),
           matchesGoldenFile('goldens/$name.png'),
         );
+        // Clear the iOS tree before mounting Android. If the golden mismatches,
+        // leave disposal to the test's own teardown; pumping from a failed
+        // async matcher deadlocks.
+        await tester.pumpWidget(const SizedBox.shrink());
       }
-      // The next platform starts from a window with nothing in it.
-      await tester.pumpWidget(const SizedBox.shrink());
     } finally {
       debugDisableShadows = true;
-      debugDefaultTargetPlatformOverride = null;
     }
   }
 

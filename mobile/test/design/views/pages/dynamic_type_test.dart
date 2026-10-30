@@ -5,12 +5,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/design/models/data/design_layout.dart';
 import 'package:kanso/design/models/data/design_screen.dart';
 import 'package:kanso/design/utils/page_for_screen.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
+
+import '../../../helpers/kanso_test_app.dart';
 import '../../../helpers/seeded_appearance_bloc.dart';
 
 void main() {
@@ -33,10 +33,7 @@ void main() {
           await tester.pumpWidget(
             BlocProvider<AppearanceBloc>.value(
               value: bloc,
-              child: MaterialApp(
-                theme: KansoTheme.light,
-                localizationsDelegates: AppLocalizations.localizationsDelegates,
-                supportedLocales: AppLocalizations.supportedLocales,
+              child: KansoTestApp(
                 home: pageForScreen(screen, DesignLayout.phone),
               ),
             ),

@@ -42,7 +42,7 @@ class KansoNotice extends StatelessWidget {
           color: colors.elevated,
           borderRadius: KansoRadii.mediumBorder,
           border: Border.all(color: colors.divider),
-          boxShadow: KansoShadows.floating(Theme.brightnessOf(context)),
+          boxShadow: KansoShadows.floating(context.brightness),
         ),
         child: Row(
           children: <Widget>[

@@ -138,6 +138,27 @@ void main() {
     );
 
     blocTest<DictationBloc, DictationState>(
+      'keeps the words before a recognizer starts a new phrase without a final',
+      build: () => DictationBloc(spoken.repository, PassThroughRules()),
+      act: (bloc) async {
+        var now = DateTime(2026, 10, 29, 12);
+        bloc.continuity.clock = () => now;
+        bloc.add(const DictationEvent.started());
+        await pumpEventQueue();
+        await hear(const DictationSignal.listening());
+        await hear(const DictationSignal.partial('buy milk'));
+        now = now.add(const Duration(seconds: 1));
+        await hear(const DictationSignal.partial('call Ana'));
+      },
+      expect: () => <DictationState>[
+        _requesting,
+        _listening,
+        _heard(const <String>[], partial: 'buy milk'),
+        _heard(const <String>['buy milk'], partial: 'call Ana'),
+      ],
+    );
+
+    blocTest<DictationBloc, DictationState>(
       'asks for the permission that is not asked yet, then listens',
       setUp: () => spoken = SpokenRepository(
         capability: const DictationCapability(

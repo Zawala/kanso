@@ -17,14 +17,16 @@ import 'dictation_insertion.dart';
 /// Dictation as the editor's extra: one key in the accessory bar, after the
 /// Markdown keys, that turns the microphone on and off.
 ///
-/// While it listens the key is lit ([EditorAccessoryExtra.active]). Each
-/// time the recognizer finishes a phrase, the dictated range of the note the
-/// key was pressed in is replaced, through the [EditorTextTarget] the editor
-/// handed over, with what the [DictationTextRules] make of everything said so
-/// far: one `replace` and so one undo step per phrase, not one per word (see
-/// [DictationInsertion]). The words still being spoken are shown, as the
-/// rules would write them, in the pill above the bar ([preview]), and are
-/// written once the microphone goes off, so nothing said is lost.
+/// While it listens the key is lit ([EditorAccessoryExtra.active]). The
+/// dictated range of the note the key was pressed in is kept up to date
+/// through the [EditorTextTarget] the editor handed over, with what the
+/// [DictationTextRules] make of everything said so far. Words still being
+/// spoken are revised in place ([EditorTextTarget.revise]) as the recognizer
+/// hears them, so the note shows the transcript live, while those revisions
+/// collapse into one undo step. A finished phrase commits that step; each
+/// phrase after it is one more step (see [DictationInsertion]). The words
+/// being spoken are also shown, as the rules would write them, in the pill
+/// above the bar ([preview]).
 ///
 /// Dictation belongs to one note at a time. The editor calls [release] when
 /// it closes the note or shows another, which stops the microphone and lets
@@ -132,6 +134,9 @@ class DictationEditorExtras implements EditorExtras {
     if (!identical(target, note) || ticket != generation || !note.active) {
       return;
     }
+    // Finish each phrase as its own undo step. The partial for this phrase
+    // is already in the note; revising the same range and then committing
+    // folds its final punctuation and wording into that one step.
     while (written < state.segments.length) {
       final phrases = state.segments.take(written + 1).toList();
       final edit = await insertion.next(note.value, phrases);
@@ -139,9 +144,26 @@ class DictationEditorExtras implements EditorExtras {
         return;
       }
       if (edit != null) {
-        note.replace(edit.range, edit.text);
+        note.revise(edit.range, edit.text, joining: true);
       }
+      note.commitRevision();
       written++;
+    }
+    // Show the words being spoken in the note while they are still changing.
+    // Never ask the rules about an empty transcript: after a final phrase the
+    // established range already says exactly what the recognizer last heard.
+    if (state.partial.trim().isNotEmpty) {
+      final edit = await insertion.next(
+        note.value,
+        state.segments,
+        partial: state.partial,
+      );
+      if (!identical(target, note) || ticket != generation || !note.active) {
+        return;
+      }
+      if (edit != null) {
+        note.revise(edit.range, edit.text, joining: true);
+      }
     }
     final shown = state.active
         ? await insertion.preview(note.value, state.segments, state.partial)

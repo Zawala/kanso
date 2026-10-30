@@ -18,7 +18,9 @@ mixin _$KansoFonts {
 /// Writing in the editor.
 @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) KansoFontFamily get editorFont;/// Reading a note.
 @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) KansoFontFamily get previewFont;/// Code spans, code blocks and the theme previews.
-@JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono) KansoFontFamily get codeFont;
+@JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono) KansoFontFamily get codeFont;/// A downloaded Google Font for the editor, when selected.
+ String? get editorGoogleFont;/// A downloaded Google Font for the preview, when selected.
+ String? get previewGoogleFont;
 /// Create a copy of KansoFonts
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -31,16 +33,16 @@ $KansoFontsCopyWith<KansoFonts> get copyWith => _$KansoFontsCopyWithImpl<KansoFo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is KansoFonts&&(identical(other.editorFont, editorFont) || other.editorFont == editorFont)&&(identical(other.previewFont, previewFont) || other.previewFont == previewFont)&&(identical(other.codeFont, codeFont) || other.codeFont == codeFont));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is KansoFonts&&(identical(other.editorFont, editorFont) || other.editorFont == editorFont)&&(identical(other.previewFont, previewFont) || other.previewFont == previewFont)&&(identical(other.codeFont, codeFont) || other.codeFont == codeFont)&&(identical(other.editorGoogleFont, editorGoogleFont) || other.editorGoogleFont == editorGoogleFont)&&(identical(other.previewGoogleFont, previewGoogleFont) || other.previewGoogleFont == previewGoogleFont));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,editorFont,previewFont,codeFont);
+int get hashCode => Object.hash(runtimeType,editorFont,previewFont,codeFont,editorGoogleFont,previewGoogleFont);
 
 @override
 String toString() {
-  return 'KansoFonts(editorFont: $editorFont, previewFont: $previewFont, codeFont: $codeFont)';
+  return 'KansoFonts(editorFont: $editorFont, previewFont: $previewFont, codeFont: $codeFont, editorGoogleFont: $editorGoogleFont, previewGoogleFont: $previewGoogleFont)';
 }
 
 
@@ -51,7 +53,7 @@ abstract mixin class $KansoFontsCopyWith<$Res>  {
   factory $KansoFontsCopyWith(KansoFonts value, $Res Function(KansoFonts) _then) = _$KansoFontsCopyWithImpl;
 @useResult
 $Res call({
-@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) KansoFontFamily editorFont,@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) KansoFontFamily previewFont,@JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono) KansoFontFamily codeFont
+@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) KansoFontFamily editorFont,@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) KansoFontFamily previewFont,@JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono) KansoFontFamily codeFont, String? editorGoogleFont, String? previewGoogleFont
 });
 
 
@@ -68,12 +70,14 @@ class _$KansoFontsCopyWithImpl<$Res>
 
 /// Create a copy of KansoFonts
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? editorFont = null,Object? previewFont = null,Object? codeFont = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? editorFont = null,Object? previewFont = null,Object? codeFont = null,Object? editorGoogleFont = freezed,Object? previewGoogleFont = freezed,}) {
   return _then(_self.copyWith(
 editorFont: null == editorFont ? _self.editorFont : editorFont // ignore: cast_nullable_to_non_nullable
 as KansoFontFamily,previewFont: null == previewFont ? _self.previewFont : previewFont // ignore: cast_nullable_to_non_nullable
 as KansoFontFamily,codeFont: null == codeFont ? _self.codeFont : codeFont // ignore: cast_nullable_to_non_nullable
-as KansoFontFamily,
+as KansoFontFamily,editorGoogleFont: freezed == editorGoogleFont ? _self.editorGoogleFont : editorGoogleFont // ignore: cast_nullable_to_non_nullable
+as String?,previewGoogleFont: freezed == previewGoogleFont ? _self.previewGoogleFont : previewGoogleFont // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 
@@ -158,10 +162,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function(@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily editorFont, @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily previewFont, @JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono)  KansoFontFamily codeFont)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function(@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily editorFont, @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily previewFont, @JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono)  KansoFontFamily codeFont,  String? editorGoogleFont,  String? previewGoogleFont)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _KansoFonts() when $default != null:
-return $default(_that.editorFont,_that.previewFont,_that.codeFont);case _:
+return $default(_that.editorFont,_that.previewFont,_that.codeFont,_that.editorGoogleFont,_that.previewGoogleFont);case _:
   return orElse();
 
 }
@@ -179,10 +183,10 @@ return $default(_that.editorFont,_that.previewFont,_that.codeFont);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function(@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily editorFont, @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily previewFont, @JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono)  KansoFontFamily codeFont)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function(@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily editorFont, @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily previewFont, @JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono)  KansoFontFamily codeFont,  String? editorGoogleFont,  String? previewGoogleFont)  $default,) {final _that = this;
 switch (_that) {
 case _KansoFonts():
-return $default(_that.editorFont,_that.previewFont,_that.codeFont);case _:
+return $default(_that.editorFont,_that.previewFont,_that.codeFont,_that.editorGoogleFont,_that.previewGoogleFont);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -199,10 +203,10 @@ return $default(_that.editorFont,_that.previewFont,_that.codeFont);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function(@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily editorFont, @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily previewFont, @JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono)  KansoFontFamily codeFont)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function(@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily editorFont, @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans)  KansoFontFamily previewFont, @JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono)  KansoFontFamily codeFont,  String? editorGoogleFont,  String? previewGoogleFont)?  $default,) {final _that = this;
 switch (_that) {
 case _KansoFonts() when $default != null:
-return $default(_that.editorFont,_that.previewFont,_that.codeFont);case _:
+return $default(_that.editorFont,_that.previewFont,_that.codeFont,_that.editorGoogleFont,_that.previewGoogleFont);case _:
   return null;
 
 }
@@ -214,7 +218,7 @@ return $default(_that.editorFont,_that.previewFont,_that.codeFont);case _:
 @JsonSerializable()
 
 class _KansoFonts extends KansoFonts {
-  const _KansoFonts({@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) this.editorFont = KansoFontFamily.instrumentSans, @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) this.previewFont = KansoFontFamily.instrumentSans, @JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono) this.codeFont = KansoFontFamily.jetBrainsMono}): super._();
+  const _KansoFonts({@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) this.editorFont = KansoFontFamily.instrumentSans, @JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) this.previewFont = KansoFontFamily.instrumentSans, @JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono) this.codeFont = KansoFontFamily.jetBrainsMono, this.editorGoogleFont, this.previewGoogleFont}): super._();
   factory _KansoFonts.fromJson(Map<String, dynamic> json) => _$KansoFontsFromJson(json);
 
 /// Writing in the editor.
@@ -223,6 +227,10 @@ class _KansoFonts extends KansoFonts {
 @override@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) final  KansoFontFamily previewFont;
 /// Code spans, code blocks and the theme previews.
 @override@JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono) final  KansoFontFamily codeFont;
+/// A downloaded Google Font for the editor, when selected.
+@override final  String? editorGoogleFont;
+/// A downloaded Google Font for the preview, when selected.
+@override final  String? previewGoogleFont;
 
 /// Create a copy of KansoFonts
 /// with the given fields replaced by the non-null parameter values.
@@ -237,16 +245,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _KansoFonts&&(identical(other.editorFont, editorFont) || other.editorFont == editorFont)&&(identical(other.previewFont, previewFont) || other.previewFont == previewFont)&&(identical(other.codeFont, codeFont) || other.codeFont == codeFont));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _KansoFonts&&(identical(other.editorFont, editorFont) || other.editorFont == editorFont)&&(identical(other.previewFont, previewFont) || other.previewFont == previewFont)&&(identical(other.codeFont, codeFont) || other.codeFont == codeFont)&&(identical(other.editorGoogleFont, editorGoogleFont) || other.editorGoogleFont == editorGoogleFont)&&(identical(other.previewGoogleFont, previewGoogleFont) || other.previewGoogleFont == previewGoogleFont));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,editorFont,previewFont,codeFont);
+int get hashCode => Object.hash(runtimeType,editorFont,previewFont,codeFont,editorGoogleFont,previewGoogleFont);
 
 @override
 String toString() {
-  return 'KansoFonts(editorFont: $editorFont, previewFont: $previewFont, codeFont: $codeFont)';
+  return 'KansoFonts(editorFont: $editorFont, previewFont: $previewFont, codeFont: $codeFont, editorGoogleFont: $editorGoogleFont, previewGoogleFont: $previewGoogleFont)';
 }
 
 
@@ -257,7 +265,7 @@ abstract mixin class _$KansoFontsCopyWith<$Res> implements $KansoFontsCopyWith<$
   factory _$KansoFontsCopyWith(_KansoFonts value, $Res Function(_KansoFonts) _then) = __$KansoFontsCopyWithImpl;
 @override @useResult
 $Res call({
-@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) KansoFontFamily editorFont,@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) KansoFontFamily previewFont,@JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono) KansoFontFamily codeFont
+@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) KansoFontFamily editorFont,@JsonKey(unknownEnumValue: KansoFontFamily.instrumentSans) KansoFontFamily previewFont,@JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono) KansoFontFamily codeFont, String? editorGoogleFont, String? previewGoogleFont
 });
 
 
@@ -274,12 +282,14 @@ class __$KansoFontsCopyWithImpl<$Res>
 
 /// Create a copy of KansoFonts
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? editorFont = null,Object? previewFont = null,Object? codeFont = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? editorFont = null,Object? previewFont = null,Object? codeFont = null,Object? editorGoogleFont = freezed,Object? previewGoogleFont = freezed,}) {
   return _then(_KansoFonts(
 editorFont: null == editorFont ? _self.editorFont : editorFont // ignore: cast_nullable_to_non_nullable
 as KansoFontFamily,previewFont: null == previewFont ? _self.previewFont : previewFont // ignore: cast_nullable_to_non_nullable
 as KansoFontFamily,codeFont: null == codeFont ? _self.codeFont : codeFont // ignore: cast_nullable_to_non_nullable
-as KansoFontFamily,
+as KansoFontFamily,editorGoogleFont: freezed == editorGoogleFont ? _self.editorGoogleFont : editorGoogleFont // ignore: cast_nullable_to_non_nullable
+as String?,previewGoogleFont: freezed == previewGoogleFont ? _self.previewGoogleFont : previewGoogleFont // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 

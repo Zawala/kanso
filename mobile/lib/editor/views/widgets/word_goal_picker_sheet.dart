@@ -8,8 +8,11 @@ import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
+import '../../../core/views/widgets/kanso_button.dart';
+import '../../../core/views/widgets/kanso_dialog.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_sheet_group.dart';
+import '../../../core/views/widgets/kanso_text_input.dart';
 import '../../../palette/models/data/palette_choice.dart';
 import '../../models/data/word_goal_choice.dart';
 
@@ -31,10 +34,8 @@ class WordGoalPickerSheet extends StatelessWidget {
   }) async {
     final value = await showKansoBottomSheet<String>(
       context,
-      builder: (_) => WordGoalPickerSheet(
-        setting: setting,
-        defaultGoal: defaultGoal,
-      ),
+      builder: (_) =>
+          WordGoalPickerSheet(setting: setting, defaultGoal: defaultGoal),
     );
     if (value == null || !context.mounted) {
       return null;
@@ -76,9 +77,7 @@ class WordGoalPickerSheet extends StatelessWidget {
       ),
       if (defaultGoal case final goal?)
         PaletteChoice(
-          label: l10n.editorWordGoalDefault(
-            wordGoalFormatCount(count: goal),
-          ),
+          label: l10n.editorWordGoalDefault(wordGoalFormatCount(count: goal)),
           value: 'default',
           checked: setting is WordGoalDefault,
         )
@@ -138,8 +137,8 @@ class WordGoalPickerSheet extends StatelessWidget {
 
   static Future<int?> _custom(BuildContext context) async {
     final controller = TextEditingController();
-    final parsed = await showDialog<int>(
-      context: context,
+    final parsed = await showKansoDialog<int>(
+      context,
       builder: (context) => _CustomGoalDialog(controller: controller),
     );
     controller.dispose();
@@ -168,31 +167,41 @@ class _CustomGoalDialogState extends State<_CustomGoalDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return AlertDialog(
-      title: Text(l10n.editorWordGoalCustomTitle),
-      content: ValueListenableBuilder<String?>(
-        valueListenable: error,
-        builder: (context, errorText, _) => TextField(
-          controller: widget.controller,
-          autofocus: true,
-          keyboardType: TextInputType.text,
-          decoration: InputDecoration(
-            hintText: l10n.editorWordGoalCustomHint,
-            errorText: errorText,
-          ),
-          onSubmitted: (_) => submit(),
-        ),
-      ),
+    return KansoDialog(
+      title: l10n.editorWordGoalCustomTitle,
       actions: <Widget>[
-        TextButton(
+        KansoButton(label: l10n.editorWordGoalSave, onPressed: submit),
+        const SizedBox(height: KansoSpacing.xs),
+        KansoButton(
+          label: l10n.editorWordGoalCancel,
+          variant: KansoButtonVariant.secondary,
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(l10n.editorWordGoalCancel),
-        ),
-        FilledButton(
-          onPressed: submit,
-          child: Text(l10n.editorWordGoalSave),
         ),
       ],
+      child: ValueListenableBuilder<String?>(
+        valueListenable: error,
+        builder: (context, errorText, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            KansoTextInput(
+              controller: widget.controller,
+              autofocus: true,
+              hint: l10n.editorWordGoalCustomHint,
+              onSubmitted: (_) => submit(),
+            ),
+            if (errorText != null) ...<Widget>[
+              const SizedBox(height: KansoSpacing.xs),
+              Text(
+                errorText,
+                style: context.typography.secondary.copyWith(
+                  color: context.colors.danger,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 

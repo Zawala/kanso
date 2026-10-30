@@ -2,6 +2,8 @@
 // Created 2026-10-25.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../configs/kanso_sizes.dart';
@@ -35,7 +37,7 @@ class KansoSectionHeader extends StatelessWidget {
       ),
       padding: EdgeInsetsDirectional.only(
         start: horizontalPadding,
-        end: horizontalPadding - KansoSpacing.xs,
+        end: math.max(0, horizontalPadding - KansoSpacing.xs),
         top: plain ? KansoSpacing.sm : 0,
         bottom: plain ? KansoSpacing.xxs : 0,
       ),

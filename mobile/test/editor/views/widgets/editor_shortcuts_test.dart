@@ -6,13 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/editor/views/controllers/kanso_markdown_controller.dart';
 import 'package:kanso/editor/views/widgets/editor_shortcuts.dart';
 import 'package:kanso/editor/views/widgets/markdown_editor.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
 
 import '../../../helpers/fake_editor_document.dart';
+import '../../../helpers/kanso_test_app.dart';
 
 const _completion = Completion(
   kind: CompletionKind.wiki,
@@ -56,20 +55,16 @@ Future<_Rig> _pump(
   });
   final rig = _Rig(document, controller);
   await tester.pumpWidget(
-    MaterialApp(
-      theme: KansoTheme.light.copyWith(platform: platform),
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(
-        body: EditorShortcuts(
-          controller: controller,
-          platform: platform,
-          completionOpen: () => controller.completion != null,
-          onSave: () => rig.saves++,
-          onDismissCompletion: () => rig.dismissed++,
-          onEscape: () => rig.escapes++,
-          child: MarkdownEditor(controller: controller, focusNode: focus),
-        ),
+    KansoTestApp(
+      platform: platform,
+      home: EditorShortcuts(
+        controller: controller,
+        platform: platform,
+        completionOpen: () => controller.completion != null,
+        onSave: () => rig.saves++,
+        onDismissCompletion: () => rig.dismissed++,
+        onEscape: () => rig.escapes++,
+        child: MarkdownEditor(controller: controller, focusNode: focus),
       ),
     ),
   );

@@ -28,6 +28,12 @@ abstract class KansoFonts with _$KansoFonts {
     @JsonKey(unknownEnumValue: KansoFontFamily.jetBrainsMono)
     @Default(KansoFontFamily.jetBrainsMono)
     KansoFontFamily codeFont,
+
+    /// A downloaded Google Font for the editor, when selected.
+    String? editorGoogleFont,
+
+    /// A downloaded Google Font for the preview, when selected.
+    String? previewGoogleFont,
   }) = _KansoFonts;
 
   const KansoFonts._();
@@ -45,9 +51,11 @@ abstract class KansoFonts with _$KansoFonts {
       return font == KansoFontFamily.system ? systemLabel : font.displayName;
     }
 
+    final editor = editorGoogleFont ?? name(editorFont);
+    final preview = previewGoogleFont ?? name(previewFont);
     final names = <String>[
-      name(editorFont),
-      if (previewFont != editorFont) name(previewFont),
+      editor,
+      if (preview != editor) preview,
       name(codeFont),
     ];
     return names.join(' · ');

@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/configs/kanso_spacing.dart';
+import '../../../core/configs/kanso_typography.dart';
 import '../../../core/models/data/kanso_font_family.dart';
+import '../../../core/models/data/kanso_text_size.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_grouped_section.dart';
@@ -14,6 +16,7 @@ import '../../../core/views/widgets/kanso_scroll_host.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../shell/views/widgets/shell_back_button.dart';
 import 'font_choice_row.dart';
+import 'google_font_section.dart';
 import 'text_size_section.dart';
 
 /// Settings › Fonts: the editor font, the preview font and the code font,
@@ -59,6 +62,8 @@ class FontsPane extends StatelessWidget {
                         bottom + KansoSpacing.lg,
                       ),
                       children: <Widget>[
+                        const GoogleFontSection(),
+                        const SizedBox(height: KansoSpacing.lg),
                         KansoGroupedSection(
                           title: l10n.fontsEditorSection,
                           footer: l10n.fontsEditorFooter,
@@ -67,7 +72,9 @@ class FontsPane extends StatelessWidget {
                               FontChoiceRow(
                                 font: font,
                                 sample: l10n.fontsSampleText,
-                                selected: font == state.fonts.editorFont,
+                                selected:
+                                    state.fonts.editorGoogleFont == null &&
+                                    font == state.fonts.editorFont,
                                 onTap: () => bloc.add(
                                   AppearanceEvent.editorFontChanged(font),
                                 ),
@@ -83,7 +90,9 @@ class FontsPane extends StatelessWidget {
                               FontChoiceRow(
                                 font: font,
                                 sample: l10n.fontsSampleText,
-                                selected: font == state.fonts.previewFont,
+                                selected:
+                                    state.fonts.previewGoogleFont == null &&
+                                    font == state.fonts.previewFont,
                                 onTap: () => bloc.add(
                                   AppearanceEvent.previewFontChanged(font),
                                 ),
@@ -108,7 +117,36 @@ class FontsPane extends StatelessWidget {
                         ),
                         const SizedBox(height: KansoSpacing.lg),
                         TextSizeSection(
+                          title: l10n.fontsInterfaceTextSizeSection,
+                          footer: l10n.fontsInterfaceTextSizeFooter,
+                          sample: l10n.fontsInterfaceTextSizeSample,
+                          selected: state.interfaceTextSize,
+                          minimum: minimumInterfaceTextScale,
+                          maximum: maximumInterfaceTextScale,
+                          step: interfaceTextScaleStep,
+                          semanticLabel: l10n.interfaceTextSizeControlLabel,
+                          decreaseLabel: l10n.interfaceTextSizeDecrease,
+                          increaseLabel: l10n.interfaceTextSizeIncrease,
+                          sampleStyle: context.typography.body.copyWith(
+                            fontSize: 16 * state.interfaceTextSize,
+                          ),
+                          onChanged: (size) => bloc.add(
+                            AppearanceEvent.interfaceTextSizeChanged(size),
+                          ),
+                        ),
+                        const SizedBox(height: KansoSpacing.lg),
+                        TextSizeSection(
                           selected: state.textSize,
+                          sampleStyle: context.typography.editorBody.copyWith(
+                            fontSize: 18 * state.textSize,
+                            height: KansoTypography.leading(
+                              state.fonts.editorFont,
+                            ),
+                            fontFamily:
+                                state.fonts.editorGoogleFont ??
+                                state.fonts.editorFont.family ??
+                                KansoTypography.systemFamily,
+                          ),
                           onChanged: (size) =>
                               bloc.add(AppearanceEvent.textSizeChanged(size)),
                         ),
@@ -117,6 +155,16 @@ class FontsPane extends StatelessWidget {
                           title: l10n.fontsPreviewTextSizeSection,
                           footer: l10n.fontsPreviewTextSizeFooter,
                           selected: state.previewTextSize,
+                          sampleStyle: context.typography.previewBody.copyWith(
+                            fontSize: 18 * state.previewTextSize,
+                            height: KansoTypography.leading(
+                              state.fonts.previewFont,
+                            ),
+                            fontFamily:
+                                state.fonts.previewGoogleFont ??
+                                state.fonts.previewFont.family ??
+                                KansoTypography.systemFamily,
+                          ),
                           onChanged: (size) => bloc.add(
                             AppearanceEvent.previewTextSizeChanged(size),
                           ),

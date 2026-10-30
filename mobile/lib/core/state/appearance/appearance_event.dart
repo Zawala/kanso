@@ -45,13 +45,21 @@ sealed class AppearanceEvent with _$AppearanceEvent {
   const factory AppearanceEvent.codeFontChanged(KansoFontFamily font) =
       AppearanceCodeFontChangedEvent;
 
-  /// The person picked [size] for the text of notes.
-  const factory AppearanceEvent.textSizeChanged(KansoTextSize size) =
+  /// The person picked [scale] for the text of notes.
+  const factory AppearanceEvent.textSizeChanged(double scale) =
       AppearanceTextSizeChangedEvent;
 
-  /// The person picked [size] for rendered previews.
-  const factory AppearanceEvent.previewTextSizeChanged(KansoTextSize size) =
+  /// The person picked [scale] for rendered previews.
+  const factory AppearanceEvent.previewTextSizeChanged(double scale) =
       AppearancePreviewTextSizeChangedEvent;
+
+  /// The person picked [scale] for the interface's labels and text.
+  const factory AppearanceEvent.interfaceTextSizeChanged(double scale) =
+      AppearanceInterfaceTextSizeChangedEvent;
+
+  /// Downloads [family] from Google Fonts and applies it to editor and preview.
+  const factory AppearanceEvent.googleFontPicked(String family) =
+      AppearanceGoogleFontPickedEvent;
 
   /// The person picked [renderer] for Mermaid diagrams.
   const factory AppearanceEvent.diagramRendererChanged(

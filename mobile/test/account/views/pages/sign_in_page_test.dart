@@ -134,18 +134,14 @@ void main() {
       );
     });
 
-    testWidgets('a password that cannot be right is answered like a wrong '
-        'one', (tester) async {
+    testWidgets('a short password is sent to the server', (tester) async {
       final rig = _Rig(FixtureAccountRepository());
       await _pump(tester, rig);
       await tester.enterText(_fields.at(0), 'ana');
       await tester.enterText(_fields.at(1), 'short');
       await tester.tap(find.text('Sign in').last);
       await tester.pumpAndSettle();
-      expect(
-        find.text('That username and password don’t match.'),
-        findsOneWidget,
-      );
+      expect(rig.account.calls, contains('signInPassword ana'));
     });
 
     testWidgets('the button is busy while the account signs in, and the '
@@ -200,10 +196,7 @@ void main() {
       final router = await _pump(tester, rig);
       await tester.tap(find.textContaining('Forgot your password?'));
       await tester.pumpAndSettle();
-      expect(
-        topOf(router),
-        startsWith('/settings/account/recover'),
-      );
+      expect(topOf(router), startsWith('/settings/account/recover'));
     });
   });
 

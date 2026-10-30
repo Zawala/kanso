@@ -14,6 +14,7 @@ import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/syntax_theme_id.dart';
 import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../editor/models/data/editor_destination.dart';
 import '../../../editor/views/widgets/editor_destination_scope.dart';
@@ -113,7 +114,7 @@ class _NoteWindowPageState extends State<NoteWindowPage> {
                     ),
                   },
                   child: NoteModeShortcuts(
-                    child: Scaffold(
+                    child: KansoPage(
                       resizeToAvoidBottomInset: false,
                       backgroundColor: context.colors.editor,
                       body: _Body(windows: windows),

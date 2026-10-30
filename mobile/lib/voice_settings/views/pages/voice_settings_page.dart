@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/voice_settings/voice_settings_bloc.dart';
 import '../widgets/voice_settings_pane.dart';
@@ -19,7 +20,7 @@ class VoiceSettingsPage extends StatelessWidget {
     return BlocProvider<VoiceSettingsBloc>(
       create: (context) =>
           getIt<VoiceSettingsBloc>()..add(const VoiceSettingsEvent.started()),
-      child: Scaffold(
+      child: KansoPage(
         resizeToAvoidBottomInset: false,
         backgroundColor: context.colors.app,
         body: const VoiceSettingsPane(),

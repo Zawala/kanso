@@ -294,6 +294,24 @@ void main() {
       );
     });
 
+    testWidgets('tablet settings sheet accepts a nested settings page', (
+      tester,
+    ) async {
+      final router = await _pump(
+        tester,
+        at: '/pinned',
+        size: const Size(1024, 768),
+      );
+      unawaited(router.push(KansoRoutes.settings));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsPage), findsOneWidget);
+
+      unawaited(router.push(KansoRoutes.settingsTheme));
+      await tester.pumpAndSettle();
+      expect(find.byType(ThemePickerPage), findsOneWidget);
+      expect(find.byType(SettingsPage, skipOffstage: false), findsOneWidget);
+    });
+
     testWidgets('Fonts opens at its text size section when asked', (
       tester,
     ) async {

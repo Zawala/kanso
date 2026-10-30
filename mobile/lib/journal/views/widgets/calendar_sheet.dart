@@ -33,7 +33,9 @@ class CalendarSheet extends StatelessWidget {
   /// [openNote] (or today's), and completes with the day chosen, or null.
   /// Weeks start on the first day of the week of the device's language.
   static Future<DayDate?> show(BuildContext context, {String? openNote}) {
-    final firstDay = MaterialLocalizations.of(context).firstDayOfWeekIndex;
+    final firstDay = firstDayOfWeekIndexFor(
+      WidgetsBinding.instance.platformDispatcher.locale.countryCode,
+    );
     return showKansoBottomSheet<DayDate>(
       context,
       builder: (_) => BlocProvider<CalendarBloc>(
@@ -42,7 +44,8 @@ class CalendarSheet extends StatelessWidget {
             CalendarEvent.started(
               openNote: openNote,
               today: dayDateOf(clock.now()),
-              // Flutter counts weeks from Sunday; the library from Monday.
+              // The calendar counts weeks from Sunday; the library from
+              // Monday.
               weekStart: weekStartOf(firstDay),
             ),
           ),

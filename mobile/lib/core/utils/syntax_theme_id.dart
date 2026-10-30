@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../state/appearance/appearance_bloc.dart';
+import 'context_extensions.dart';
 
 /// The id of the theme the Rust core highlights a note's Markdown in: the
 /// syntax theme chosen (the interface's own while there is none), for the
@@ -16,6 +17,6 @@ import '../state/appearance/appearance_bloc.dart';
 String syntaxThemeId(BuildContext context) {
   final appearance = context.watch<AppearanceBloc>().state;
   return appearance.syntaxThemeId(
-    dark: Theme.brightnessOf(context) == Brightness.dark,
+    dark: context.brightness == Brightness.dark,
   );
 }

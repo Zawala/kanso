@@ -8,6 +8,7 @@ public class KansoDictationPlugin: NSObject, FlutterPlugin, DictationHostApi {
   private let flutterApi: DictationFlutterApi
   private let pump: AsyncStream<DictationEvent>.Continuation
   private var session: DictationSession?
+  @MainActor private var analyzerSession: AnyObject?
 
   init(messenger: FlutterBinaryMessenger) {
     flutterApi = DictationFlutterApi(binaryMessenger: messenger)
@@ -31,6 +32,13 @@ public class KansoDictationPlugin: NSObject, FlutterPlugin, DictationHostApi {
   func availability(localeTag: String?) async throws -> DictationAvailability {
     let permission = DictationPermissions.current()
     let language = Self.languageName(for: localeTag)
+    if #available(iOS 26.0, *) {
+      let locale = localeTag.map { Locale(identifier: $0) } ?? Locale.current
+      let available = await DictationTranscriber.supportedLocale(equivalentTo: locale) != nil
+      return DictationAvailability(
+        available: available, onDevice: available, permission: permission, language: language,
+        reason: available ? nil : DictationUnavailableReason.unsupportedLanguage)
+    }
     switch Self.recognizer(for: localeTag) {
     case .success:
       return DictationAvailability(
@@ -47,15 +55,29 @@ public class KansoDictationPlugin: NSObject, FlutterPlugin, DictationHostApi {
   }
 
   func start(localeTag: String?) async throws {
-    await MainActor.run { begin(localeTag: localeTag) }
+    await begin(localeTag: localeTag)
   }
 
   func stop() throws {
-    MainActor.assumeIsolated { session?.stop() }
+    MainActor.assumeIsolated {
+      session?.stop()
+      if #available(iOS 26.0, *),
+        let analyzerSession = analyzerSession as? SpeechAnalyzerDictationSession
+      {
+        analyzerSession.stop()
+      }
+    }
   }
 
   func cancel() throws {
-    MainActor.assumeIsolated { session?.cancel() }
+    MainActor.assumeIsolated {
+      session?.cancel()
+      if #available(iOS 26.0, *),
+        let analyzerSession = analyzerSession as? SpeechAnalyzerDictationSession
+      {
+        analyzerSession.cancel()
+      }
+    }
   }
 
   func openSettings() throws {
@@ -64,13 +86,39 @@ public class KansoDictationPlugin: NSObject, FlutterPlugin, DictationHostApi {
   }
 
   @MainActor
-  private func begin(localeTag: String?) {
-    if let running = session, !running.finished {
+  private func begin(localeTag: String?) async {
+    if session.map({ !$0.finished }) ?? false {
+      refuse(.busy)
+      return
+    }
+    if #available(iOS 26.0, *),
+      let analyzerSession = analyzerSession as? SpeechAnalyzerDictationSession,
+      !analyzerSession.finished
+    {
       refuse(.busy)
       return
     }
     guard DictationPermissions.current() == .granted else {
       refuse(.permissionDenied)
+      return
+    }
+    if #available(iOS 26.0, *) {
+      let requestedLocale = localeTag.map { Locale(identifier: $0) } ?? Locale.current
+      guard let locale = await DictationTranscriber.supportedLocale(equivalentTo: requestedLocale) else {
+        refuse(.notAvailable)
+        return
+      }
+      let started = SpeechAnalyzerDictationSession(locale: locale) { [pump] event in
+        pump.yield(event)
+      }
+      analyzerSession = started
+      do {
+        try await started.begin()
+      } catch {
+        if !started.finished {
+          refuse(started.failureCode ?? .audio, message: "\(error)")
+        }
+      }
       return
     }
     guard case .success(let recognizer) = Self.recognizer(for: localeTag) else {

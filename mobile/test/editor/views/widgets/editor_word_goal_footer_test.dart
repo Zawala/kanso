@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kanso/core/views/widgets/kanso_pressable.dart';
 import 'package:kanso/editor/views/widgets/editor_word_goal_footer.dart';
 
 import '../../../helpers/pump.dart';
@@ -46,7 +47,17 @@ void main() {
 
       expect(find.text('640 / 1,000'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      expect(tester.widget<InkWell>(find.byType(InkWell)).onTap, isNull);
+      expect(
+        tester
+            .widget<KansoPressable>(
+              find.descendant(
+                of: find.byType(EditorWordGoalFooter),
+                matching: find.byType(KansoPressable),
+              ),
+            )
+            .onTap,
+        isNull,
+      );
     });
   });
 }

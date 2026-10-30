@@ -23,6 +23,7 @@ import '../../core/state/library_index/library_index_bloc.dart';
 import '../../core/state/sync_status/sync_status_bloc.dart';
 import '../../core/utils/journal_time.dart';
 import '../../core/views/widgets/kanso_bottom_sheet_route.dart';
+import '../../core/views/widgets/kanso_feedback.dart';
 import '../../injection.dart';
 import '../../journal/utils/open_made_note.dart';
 import '../../journal/views/widgets/calendar_sheet.dart';
@@ -778,8 +779,7 @@ abstract final class PaletteLauncher {
   }
 
   static void _say(BuildContext context, String message) {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    messenger?.showSnackBar(SnackBar(content: Text(message)));
+    KansoFeedback.show(context, message);
   }
 
   static T? _maybeRead<T extends Object>(BuildContext context) {

@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_button.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
 
 /// The live local model status, including progress while it is being prepared.
 class DiscoveryStatusRow extends StatelessWidget {
@@ -55,17 +57,21 @@ class DiscoveryStatusRow extends StatelessWidget {
           ],
           if (progress != null) ...<Widget>[
             const SizedBox(height: KansoSpacing.xs),
-            LinearProgressIndicator(
-              value: progress.clamp(0, 1),
-              minHeight: 2,
-              color: context.colors.accent,
-              backgroundColor: context.colors.selected,
-            ),
+            KansoProgressBar(value: progress.clamp(0, 1).toDouble()),
           ],
           if (failed)
-            TextButton(
-              onPressed: onRetry,
-              child: Text(context.l10n.discoveryTryAgain),
+            Padding(
+              padding: const EdgeInsets.only(top: KansoSpacing.xs),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: KansoButton(
+                  label: context.l10n.discoveryTryAgain,
+                  variant: KansoButtonVariant.quiet,
+                  compact: true,
+                  expanded: false,
+                  onPressed: onRetry,
+                ),
+              ),
             ),
         ],
       ),

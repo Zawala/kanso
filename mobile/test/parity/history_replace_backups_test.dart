@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/router/kanso_routes.dart';
+import 'package:kanso/core/views/widgets/kanso_icon_button.dart';
 
 import '../helpers/app_golden.dart';
 import '../helpers/fixture_parity_repositories.dart';
@@ -91,7 +92,7 @@ void main() {
       at: KansoRoutes.replace,
       replace: replace,
     );
-    await tester.enterText(find.byType(TextField).first, 'needle');
+    await tester.enterText(find.byType(EditableText).first, 'needle');
     await tester.pumpAndSettle();
     expect(find.text('Field notes'), findsOneWidget);
     await tester.tap(find.text('Replace 2 in 1 note'));
@@ -101,7 +102,7 @@ void main() {
     await tester.tap(find.text('Undo replace'));
     await tester.pumpAndSettle();
     expect(replace.undone, <String>['batch-1']);
-    expect(find.text('Put back 1 note.'), findsOneWidget);
+    expect(find.textContaining('Put back 1 note.'), findsOneWidget);
   });
 
   testWidgets('Back up now makes a manual copy that can be deleted', (
@@ -118,7 +119,13 @@ void main() {
     await tester.tap(find.text('Back up now'));
     await tester.pumpAndSettle();
     expect(backups.manualCount, 1);
-    await tester.tap(find.byTooltip('Delete backup'));
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is KansoIconButton &&
+            widget.semanticLabel == 'Delete backup',
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete').last);
     await tester.pumpAndSettle();
