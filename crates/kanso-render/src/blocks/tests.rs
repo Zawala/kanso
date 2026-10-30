@@ -724,11 +724,122 @@ fn code_runs_cover_the_whole_code_in_order() {
 #[test]
 fn urls_are_written_as_the_page_writes_them() {
     assert_eq!(
-        normalize_url("https://a b/é?q=1#x"),
+        page_url("https://a b/é?q=1#x"),
         "https://a%20b/%C3%A9?q=1#x"
     );
-    assert_eq!(normalize_url("a%20b%zz%"), "a%20b%zz%25");
-    assert_eq!(normalize_url("kanso-tag:work"), "kanso-tag:work");
+    assert_eq!(page_url("a%20b%zz%"), "a%20b%zz%25");
+    assert_eq!(page_url("kanso-tag:work"), "kanso-tag:work");
+    assert_eq!(
+        page_url("https://x.org/a b?x=1&y=ü"),
+        "https://x.org/a%20b?x=1&y=%C3%BC"
+    );
+}
+
+#[test]
+fn urls_with_spaces_ampersands_and_accents_match_the_page() {
+    let md = "[a](<https://x.org/a b?x=1&y=ü>) [b](https://x.org/?q=a&amp;b=é) [c](#Caf%C3%A9)\n\n# Café\n";
+    let mode = AppMode::default();
+    let options = PageOptions {
+        app: Some(&mode),
+        ..PageOptions::default()
+    };
+    let page = page_with("N", md, &Palette::LIGHT, &none, &options);
+    let from_page = page_addresses(&page);
+    let from_blocks = block_addresses(&plain_blocks(md));
+    assert!(
+        from_page
+            .links
+            .contains(&"https://x.org/a%20b?x=1&y=%C3%BC".to_owned()),
+        "{page}"
+    );
+    assert_eq!(from_blocks.links, from_page.links, "{page}");
+}
+
+#[test]
+fn ragged_table_rows_have_a_cell_for_each_column() {
+    let drawn = plain_blocks("| a | b |\n|---|---|\n| 1 |\n| 1 | 2 | 3 |\n");
+    let Block::Table { aligns, head, rows } = &drawn[0] else {
+        panic!("{drawn:#?}")
+    };
+    assert_eq!(aligns.len(), 2);
+    assert_eq!(head.len(), 2);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0], vec![vec![plain_text("1")], vec![]]);
+    assert_eq!(rows[1], vec![vec![plain_text("1")], vec![plain_text("2")]]);
+}
+
+/// How many quotes deep `blocks` go.
+fn quote_depth(blocks: &[Block]) -> usize {
+    let mut depth = 0;
+    let mut level = blocks;
+    while let Some(inner) = level.iter().find_map(|block| match block {
+        Block::Quote { blocks } => Some(blocks),
+        _ => None,
+    }) {
+        depth += 1;
+        level = inner;
+    }
+    depth
+}
+
+#[test]
+fn deep_quotes_are_flattened_not_overflowed() {
+    let md = format!("{}deep\n", ">".repeat(2000));
+    let drawn = plain_blocks(&md);
+    assert_eq!(quote_depth(&drawn), MAX_DEPTH);
+    let mut level = drawn.as_slice();
+    for _ in 0..MAX_DEPTH {
+        let Some(Block::Quote { blocks }) = level.first() else {
+            panic!("{level:#?}")
+        };
+        level = blocks;
+    }
+    assert_eq!(
+        level,
+        [Block::Paragraph {
+            inlines: vec![plain_text("deep")]
+        }]
+    );
+}
+
+#[test]
+fn deep_lists_are_flattened_not_overflowed() {
+    // A list in a list, 2000 deep, on one line.
+    let md = format!("{}deep\n", "- ".repeat(2000));
+    let drawn = plain_blocks(&md);
+    let mut depth = 0;
+    let mut level = drawn.as_slice();
+    while let Some(Block::List { items, .. }) = level.first() {
+        depth += 1;
+        level = &items[0].blocks;
+    }
+    assert_eq!(depth, MAX_DEPTH);
+    assert_eq!(
+        level,
+        [Block::Paragraph {
+            inlines: vec![plain_text("deep")]
+        }]
+    );
+}
+
+#[test]
+fn a_lone_carriage_return_is_a_space() {
+    let drawn = plain_blocks("a\rb\n");
+    assert_eq!(paragraph(&drawn), [plain_text("a b")]);
+}
+
+#[test]
+fn reference_labels_match_as_markdown_matches_them() {
+    // A no-break space is not collapsed: the labels differ.
+    let drawn = plain_blocks("[x][a\u{a0}b]\n\n[a b]: https://x.org\n");
+    assert!(
+        !block_addresses(&drawn)
+            .links
+            .contains(&"https://x.org".to_owned()),
+        "{drawn:#?}"
+    );
+    let drawn = plain_blocks("[x][A  b]\n\n[a b]: https://x.org\n");
+    assert_eq!(block_addresses(&drawn).links, ["https://x.org"]);
 }
 
 #[test]

@@ -222,6 +222,7 @@ pub fn blocks(
         definitions: HashMap::new(),
         footnotes: HashMap::new(),
         cited: Vec::new(),
+        depth: 0,
     };
     walk.gather(&root);
     let mut out = walk.children(&root);
@@ -259,48 +260,18 @@ fn text(text: &str, style: Style, code: bool) -> Inline {
     }
 }
 
-/// A URL as the page's HTML carries it: unsafe characters percent-encoded,
-/// sequences already encoded kept (markdown-rs's `sanitize_uri::normalize`).
+/// A URL as the page's link carries it: markdown-rs's own sanitizing
+/// (unsafe characters percent-encoded, sequences already encoded kept,
+/// HTML characters escaped), read back the way the page reads its `href`.
 /// Pure.
-pub(crate) fn normalize_url(value: &str) -> String {
-    let chars: Vec<char> = value.chars().collect();
-    let mut out = String::with_capacity(value.len());
-    let mut index = 0;
-    while index < chars.len() {
-        let c = chars[index];
-        if c == '%'
-            && index + 2 < chars.len()
-            && chars[index + 1].is_ascii_alphanumeric()
-            && chars[index + 2].is_ascii_alphanumeric()
-        {
-            out.extend(&chars[index..index + 3]);
-            index += 3;
-            continue;
-        }
-        if c >= '\u{0080}'
-            || !matches!(c, '!' | '#' | '$' | '&'..=';' | '=' | '?'..='Z' | '_' | 'a'..='z' | '~')
-        {
-            let mut buf = [0; 4];
-            for byte in c.encode_utf8(&mut buf).bytes() {
-                out.push_str(&format!("%{byte:02X}"));
-            }
-        } else {
-            out.push(c);
-        }
-        index += 1;
-    }
-    out
+pub(crate) fn page_url(value: &str) -> String {
+    app::unescape(&markdown::sanitize(value))
 }
 
-/// A reference's or definition's label as they match: case and spacing
-/// ignored.
-fn label_key(identifier: &str) -> String {
-    identifier
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
-}
+/// How many quotes and lists deep the blocks go; anything deeper is shown
+/// in the deepest one, flattened, so a pathological note can't exhaust the
+/// stack.
+const MAX_DEPTH: usize = 64;
 
 /// A fence's language as the page labels it.
 fn language(lang: &Option<String>) -> Option<String> {
@@ -338,20 +309,23 @@ struct Walk<'a> {
     footnotes: HashMap<String, Node>,
     /// The footnotes cited, in the order first cited.
     cited: Vec<String>,
+    /// How many quotes and lists the walk is in.
+    depth: usize,
 }
 
-impl Walk<'_> {
+impl<'a> Walk<'a> {
     /// Finds the note's link reference and footnote definitions.
     fn gather(&mut self, node: &Node) {
         match node {
             Node::Definition(definition) => {
+                // markdown-rs gives the label normalized (case and spacing).
                 self.definitions
-                    .entry(label_key(&definition.identifier))
+                    .entry(definition.identifier.clone())
                     .or_insert_with(|| definition.url.clone());
             }
             Node::FootnoteDefinition(definition) => {
                 self.footnotes
-                    .entry(label_key(&definition.identifier))
+                    .entry(definition.identifier.clone())
                     .or_insert_with(|| node.clone());
             }
             _ => {}
@@ -365,9 +339,11 @@ impl Walk<'_> {
     fn footnote_list(&mut self, out: &mut Vec<Block>) {
         let mut items = Vec::new();
         let mut n = 0;
+        // Each is listed once: once cited it is looked up by its number.
         while n < self.cited.len() {
-            let key = self.cited[n].clone();
-            if let Some(Node::FootnoteDefinition(definition)) = self.footnotes.get(&key).cloned() {
+            if let Some(Node::FootnoteDefinition(definition)) =
+                self.footnotes.remove(&self.cited[n])
+            {
                 let blocks = self.blocks_of(&definition.children);
                 items.push(ListItem { task: None, blocks });
             }
@@ -384,7 +360,7 @@ impl Walk<'_> {
         }
     }
 
-    fn written(&self, node: &Node) -> &str {
+    fn written(&self, node: &Node) -> &'a str {
         node.position()
             .and_then(|p| self.source.get(p.start.offset..p.end.offset))
             .unwrap_or_default()
@@ -435,8 +411,11 @@ impl Walk<'_> {
     }
 
     fn block(&mut self, node: &Node, out: &mut Vec<Block>) {
-        let written = self.written(node).to_owned();
+        let written = self.written(node);
         match node {
+            Node::Blockquote(_) | Node::List(_) if self.depth >= MAX_DEPTH => {
+                self.flattened(node, out);
+            }
             Node::Heading(heading) => {
                 let id = self
                     .headings
@@ -451,10 +430,10 @@ impl Walk<'_> {
                     inlines,
                 });
             }
-            Node::Paragraph(_) if html::display_math_paragraph(node, &written).is_some() => {
-                let formula = html::display_math_paragraph(node, &written).unwrap_or_default();
+            Node::Paragraph(_) if html::display_math_paragraph(node, written).is_some() => {
+                let formula = html::display_math_paragraph(node, written).unwrap_or_default();
                 let outcome = self.draw(Kind::DisplayMath, formula);
-                out.push(self.figure(outcome, FigureKind::Math, None, &written, None));
+                out.push(self.figure(outcome, FigureKind::Math, None, written, None));
             }
             Node::Paragraph(_) if html::attached_scene(node).is_some() => {
                 let scene = html::attached_scene(node)
@@ -464,12 +443,12 @@ impl Walk<'_> {
                     Some(scene) if app::is_empty_scene(&scene) => Block::EmptyDrawing,
                     Some(scene) => {
                         let outcome = self.draw(Kind::Excalidraw, &scene);
-                        self.figure(outcome, FigureKind::Drawing, None, &written, None)
+                        self.figure(outcome, FigureKind::Drawing, None, written, None)
                     }
                     None => failed(
                         &Failure::Invalid("The drawing's file is missing.".into()),
                         None,
-                        &written,
+                        written,
                         None,
                     ),
                 });
@@ -480,7 +459,7 @@ impl Walk<'_> {
             }
             Node::Math(math) => {
                 let outcome = self.draw(Kind::DisplayMath, &math.value);
-                out.push(self.figure(outcome, FigureKind::Math, None, &written, None));
+                out.push(self.figure(outcome, FigureKind::Math, None, written, None));
             }
             Node::Code(code) => out.push(self.code(node, code)),
             Node::List(list) => {
@@ -499,7 +478,9 @@ impl Walk<'_> {
                             .and_then(|p| self.tasks.get(&p.start.offset).copied().flatten())
                             .map(|slot| slot as u32),
                     });
+                    self.depth += 1;
                     let blocks = self.blocks_of(&item.children);
+                    self.depth -= 1;
                     items.push(ListItem { task, blocks });
                 }
                 out.push(Block::List {
@@ -514,25 +495,37 @@ impl Walk<'_> {
                 });
             }
             Node::Blockquote(_) => {
+                self.depth += 1;
                 let blocks = self.children(node);
+                self.depth -= 1;
                 out.push(Block::Quote { blocks });
             }
             Node::ThematicBreak(_) => out.push(Block::Rule),
             Node::Table(table) => {
+                // Every row has a cell for each column, as in the page: short
+                // rows are filled with empty cells, extra cells dropped.
+                let columns = table.align.len();
                 let mut rows = table.children.iter().filter_map(|row| match row {
                     Node::TableRow(row) => Some(row),
                     _ => None,
                 });
                 let mut cells = |row: &markdown::mdast::TableRow| -> Vec<Vec<Inline>> {
-                    row.children
+                    let mut cells: Vec<Vec<Inline>> = row
+                        .children
                         .iter()
+                        .take(columns)
                         .map(|cell| match cell.children() {
                             Some(children) => self.inlines(children, Style::default()),
                             None => Vec::new(),
                         })
-                        .collect()
+                        .collect();
+                    cells.resize_with(columns, Vec::new);
+                    cells
                 };
-                let head = rows.next().map(&mut cells).unwrap_or_default();
+                let head = rows
+                    .next()
+                    .map(&mut cells)
+                    .unwrap_or_else(|| vec![Vec::new(); columns]);
                 let body = rows.map(&mut cells).collect();
                 out.push(Block::Table {
                     aligns: table
@@ -563,6 +556,21 @@ impl Walk<'_> {
             _ => {
                 let blocks = self.children(node);
                 out.extend(blocks);
+            }
+        }
+    }
+
+    /// The blocks in `node`, a quote or list past [`MAX_DEPTH`], at this
+    /// depth: its quotes, lists and items opened without recursing, each
+    /// other block in order.
+    fn flattened(&mut self, node: &Node, out: &mut Vec<Block>) {
+        let mut stack = vec![node];
+        while let Some(next) = stack.pop() {
+            match next {
+                Node::Blockquote(_) | Node::List(_) | Node::ListItem(_) => {
+                    stack.extend(next.children().into_iter().flatten().rev());
+                }
+                other => self.block(other, out),
             }
         }
     }
@@ -632,10 +640,12 @@ impl Walk<'_> {
                 highlight.highlight(code.lang.as_deref().unwrap_or_default(), &code.value)
             })
             .unwrap_or_default();
+        // Every code node is in the list it is numbered by: markdown-rs
+        // gives each node its position, and `facts` lists each code node's.
+        debug_assert!(copy.is_some(), "a code block without a copy number");
         Block::Code {
             language: lang,
             runs: code_runs(&code.value, &spans),
-            // Every code node is in the list it is numbered by.
             copy: copy.unwrap_or_default(),
         }
     }
@@ -674,7 +684,9 @@ impl Walk<'_> {
     fn inline(&mut self, node: &Node, style: Style, out: &mut Vec<Inline>) {
         match node {
             Node::Text(t) => {
-                push_text(&t.value.replace("\r\n", " ").replace('\n', " "), style, out)
+                // Line endings are spaces, as in the page.
+                let value = t.value.replace("\r\n", " ").replace(['\n', '\r'], " ");
+                push_text(&value, style, out)
             }
             Node::Emphasis(e) => out.extend(self.inlines(
                 &e.children,
@@ -726,11 +738,7 @@ impl Walk<'_> {
             }
             Node::LinkReference(reference) => {
                 let inlines = self.inlines(&reference.children, style);
-                match self
-                    .definitions
-                    .get(&label_key(&reference.identifier))
-                    .cloned()
-                {
+                match self.definitions.get(&reference.identifier).cloned() {
                     Some(url) => self.link(&url, inlines, out),
                     None => out.extend(inlines),
                 }
@@ -763,15 +771,17 @@ impl Walk<'_> {
                 None => push_text(&raw.value, style, out),
             },
             Node::FootnoteReference(reference) => {
-                let key = label_key(&reference.identifier);
-                if self.footnotes.contains_key(&key) {
-                    let n = match self.cited.iter().position(|cited| *cited == key) {
-                        Some(n) => n,
-                        None => {
-                            self.cited.push(key);
-                            self.cited.len() - 1
-                        }
-                    };
+                let key = &reference.identifier;
+                // Cited before (and so maybe listed already), else defined.
+                let n = match self.cited.iter().position(|cited| cited == key) {
+                    Some(n) => Some(n),
+                    None if self.footnotes.contains_key(key) => {
+                        self.cited.push(key.clone());
+                        Some(self.cited.len() - 1)
+                    }
+                    None => None,
+                };
+                if let Some(n) = n {
                     out.push(text(&format!("[{}]", n + 1), style, false));
                 }
             }
@@ -795,7 +805,7 @@ impl Walk<'_> {
                 other => vec![other],
             })
             .collect();
-        let url = normalize_url(url);
+        let url = page_url(url);
         if let Some(fragment) = url.strip_prefix('#') {
             let wanted = app::percent_decode(fragment);
             match app::fragment_target(&wanted, &self.headings) {
