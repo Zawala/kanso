@@ -38,6 +38,14 @@ columns on `sessions`, the clearing trigger) and the `AccountRoom` push alarm, w
 devices' tokens and sends nothing. The D1 Time Travel bookmark from just before the migration is
 `00000dc9-00000000-00005110-7106e37824a26e2b3a16d4b6b2588907`.
 
+Since 2026-10-30 it accepts crash reports from the mobile apps (issue #48 step 13, `POST
+/v1/crash-reports`) and sealed attachments up to the 10 MiB limit plus 4 KiB (issue #44):
+migrations `0012_crash_reports` and `0013_sealed_file_size`, deployed as Worker version
+`3567154c-62b9-423e-8636-4b1363c0fb15`. `0013` rebuilds `account_files`; its 51 rows, their sizes and
+upload times, and the three upload triggers (`uploads_global`, `uploads_count_insert`,
+`uploads_count_update`) were checked the same before and after. The D1 Time Travel bookmark from
+just before the migrations is `0000153b-00000000-00005114-16ce93800a1e5f0b05eb474d2cd0d582`.
+
 ## Restoring D1
 
 Only with `npm run -s admin -- restore <time | bookmark>`, run first without `--confirm` to see
