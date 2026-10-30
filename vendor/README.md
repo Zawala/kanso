@@ -7,7 +7,7 @@ the copy here through `[patch.crates-io]`:
 | Crate | Version | Why |
 |---|---|---|
 | [`gpui-component`](gpui-component) | 0.7.3, as published | One small hook, so an icon theme draws the component library's own icons too. |
-| [`gpui-base`](gpui-base) | 0.7.3, as published | One small hook, so a click on a task box in a Markdown view says which task it was; and a render-only presentation for the code editor (hidden ranges, taller lines) for Live mode. |
+| [`gpui-base`](gpui-base) | 0.7.3, as published | One small hook, so a click on a task box in a Markdown view says which task it was; and a render-only presentation for the code editor (hidden and replaced ranges, taller, spaced, inset and ornamented lines, block widgets) for Live mode. |
 
 ## What changed
 
@@ -48,7 +48,9 @@ published files.
 ## gpui-base: a render-only presentation for the code editor
 
 Live mode draws a note's Markdown in place: marks such as `**` and `#` are
-hidden on the lines the caret is not on, and headings are drawn larger. The
+hidden on the lines the caret is not on, headings are drawn larger, list
+markers become bullets, quotes get a bar, and blocks such as tables can be
+drawn by the Preview's renderer. The
 editor's text stays the Markdown source, so this is a presentation of it,
 set with `EditorState::set_presentation` (off by default; with none set the
 editor lays out exactly as before). The diff and the proposal are in
@@ -56,28 +58,53 @@ editor lays out exactly as before). The diff and the proposal are in
 These files differ from the published `gpui-base` for it:
 
 - `src/input/editor/presentation.rs` (new) defines `EditorPresentation`
-  (concealed byte ranges, per-line scales), validates it against the text,
-  and adds `set_presentation` and `editor_presentation` to `EditorState`.
-  `src/input/mod.rs` declares it and re-exports `EditorPresentation`.
+  (concealed byte ranges, per-line scales, replacements, per-line space,
+  insets and ornaments, block widgets) and `EditorPresentationEvent` (a
+  clickable replacement or a block widget was clicked), validates it against
+  the text, and adds `set_presentation` and `editor_presentation` to
+  `EditorState`. `src/input/mod.rs` declares it and re-exports its types.
 - `src/input/editor/display_map/text_wrapper.rs` keeps the presentation,
-  carries it across edits, wraps a concealed range as a zero-width element and
-  a scaled line at `wrap_width / scale`, and gives `LineLayout` a scale so each
-  of its rows is `line_height * scale` tall.
+  carries it across edits, wraps a concealed range as a zero-width element, a
+  replacement as an element as wide as its text, a scaled line at
+  `wrap_width / scale`, an inset line that much narrower and a block widget's
+  first line not at all, and gives `LineLayout` a scale and a frame (space
+  above and below, inset, block height).
 - `src/input/editor/display_map/wrap_map.rs` and `display_map.rs` pass it
-  through, and the display map keeps the scaled rows to map display rows to
-  and from y (`display_row_top`, `display_row_at_y`, `display_row_height`,
-  `wrap_rows_height`).
+  through, and the display map keeps the rows that are not one line height
+  (scaled lines, spaced lines, block widgets, with measured widget heights) to
+  map display rows to and from y (`display_row_top`, `display_row_at_y`,
+  `display_row_height`, `wrap_rows_height`). `fold_map.rs` hides a block
+  widget's lines after the first the way a fold hides its inside.
 - `src/input/editor/display_map/inline_line.rs`: a click on a zero-width
-  fragment lands after it, and `is_concealed` tells whitespace indicators to
-  skip hidden text.
+  fragment lands after it, a replacement fragment is atomic for the caret,
+  and `is_concealed` tells whitespace indicators to skip hidden text. A
+  replacement fragment can be drawn offset in its room (right-aligned in a
+  column, or hanging left of it into the inset), moved to keep the row's
+  baseline at another size, on a box (with an icon and a dashed underline),
+  or as an image.
+- Live mode draws as the Preview does, so the presentation also has a row
+  height factor per line (`line_heights`, a heading's tighter line height),
+  a base row height that is not rounded (`line_height`), scales below 1.0,
+  replacements in their own family and size, in columns, on chips or as
+  images, and a check box ornament (`Ornament::Check`). It also has
+  `leaves`: runs of lines laid out as one box whose height is rounded up to
+  whole device pixels, as the layout rounds a measured text box. Chips that
+  stand for an inline element sit on whole device pixels, with their text
+  placed in the box as the element places it.
+  `src/input/base/element.rs` lays these out and paints them, and clips
+  decorations to the visible lines when there is no highlighter (a
+  decoration over a line hidden by a block widget shifted every later run).
 - `src/input/base/element.rs` shapes a presented line at its scale with its
-  concealed ranges as zero-width fragments, and uses the per-line heights for
-  the visible range, scroll size, carets, selections and range decorations,
-  line numbers, the active line and fold icons.
+  concealed ranges as zero-width fragments and its replacements as their
+  text, uses the per-line heights for the visible range, scroll size, carets,
+  selections and range decorations, line numbers, the active line and fold
+  icons, paints ornaments under each line, and lays out and paints block
+  widgets' elements in their rows.
 - `src/input/base/state.rs`, `movement.rs`, `touch.rs` and
   `src/input/editor/indent.rs` use the per-line heights for hit testing,
   scrolling to the caret, IME and range bounds, up/down moves, touch handles
-  and indent guides.
+  and indent guides; a press on a clickable replacement is reported instead
+  of placing the caret.
 
 ## Why
 

@@ -58,6 +58,7 @@ class KansoMarkdownController extends TextEditingController {
     required this.themeId,
     int? caret,
     bool live = false,
+    bool unwindowed = false,
     this.windowUnits = WindowSizes.cap,
     this.windowMargin = WindowSizes.margin,
     this.onContext,
@@ -72,16 +73,22 @@ class KansoMarkdownController extends TextEditingController {
   }) : _version = snapshot.version,
        _history = snapshot.history,
        _liveOn = live,
+       _whole = unwindowed,
        super(
          text: _firstWindow(
            snapshot.text,
            caret,
-           windowUnits,
+           unwindowed ? _unbounded : windowUnits,
            windowMargin,
          ).slice(snapshot.text),
        ) {
     final note = snapshot.text;
-    final first = _firstWindow(note, caret, windowUnits, windowMargin);
+    final first = _firstWindow(
+      note,
+      caret,
+      unwindowed ? _unbounded : windowUnits,
+      windowMargin,
+    );
     _before = note.substring(0, first.start);
     _after = note.substring(first.end);
     hasBefore.value = _before.isNotEmpty;
@@ -112,6 +119,9 @@ class KansoMarkdownController extends TextEditingController {
     final at = (caret ?? 0).clamp(0, note.length);
     return windowAround(note, at, at, cap: cap, margin: margin);
   }
+
+  /// A window no note is longer than.
+  static const int _unbounded = 1 << 52;
 
   /// The note open for editing.
   final EditorDocument document;
@@ -180,6 +190,7 @@ class KansoMarkdownController extends TextEditingController {
   bool _runsScheduled = false;
   bool _runsInFlight = false;
   bool _liveOn;
+  bool _whole;
   LiveLayer _live = LiveLayer.empty;
   bool _liveDue = false;
   bool _liveScheduled = false;
@@ -263,6 +274,38 @@ class KansoMarkdownController extends TextEditingController {
     }
     notifyListeners();
   }
+
+  /// Whether the field holds the whole note, however long, and never a
+  /// window of it: what the Live editor, which lays out only the blocks on
+  /// screen, edits. Turned on, the window becomes the whole note, the
+  /// selection kept.
+  bool get unwindowed => _whole;
+
+  set unwindowed(bool on) {
+    if (on == _whole || _disposed) {
+      return;
+    }
+    _whole = on;
+    if (on && isWindowed) {
+      final note = noteText;
+      final selection = noteSelection;
+      onWindowWillMove?.call(selection.isValid ? selection.extentOffset : 0);
+      _putWindow(
+        note,
+        wholeNote(note.length),
+        selection.isValid
+            ? selection
+            : const TextSelection.collapsed(offset: 0),
+      );
+      _tell(super.value);
+    } else if (!on) {
+      _rewindow();
+      requestRuns();
+    }
+  }
+
+  /// The most units a window holds now.
+  int get _cap => _whole ? _unbounded : windowUnits;
 
   /// What Live mode draws now, in units of the field; empty outside it.
   LiveLayer get liveLayer => _live;
@@ -769,7 +812,7 @@ class KansoMarkdownController extends TextEditingController {
     if (_disposed ||
         (_before.isEmpty &&
             _after.isEmpty &&
-            super.value.text.length <= windowUnits)) {
+            super.value.text.length <= _cap)) {
       return;
     }
     final value = super.value;
@@ -789,7 +832,7 @@ class KansoMarkdownController extends TextEditingController {
       first,
       last,
       noteLength,
-      cap: windowUnits,
+      cap: _cap,
       margin: windowMargin,
     )) {
       return;
@@ -800,7 +843,7 @@ class KansoMarkdownController extends TextEditingController {
       current,
       first,
       last,
-      cap: windowUnits,
+      cap: _cap,
       margin: windowMargin,
     );
     if (next != null) {
@@ -823,16 +866,16 @@ class KansoMarkdownController extends TextEditingController {
     final window = _firstWindow(
       note,
       selection.extentOffset,
-      windowUnits,
+      _cap,
       windowMargin,
     );
-    final wanted = selection.isCollapsed || note.length <= windowUnits
+    final wanted = selection.isCollapsed || note.length <= _cap
         ? window
         : windowAround(
             note,
             selection.start,
             selection.end,
-            cap: windowUnits,
+            cap: _cap,
             margin: windowMargin,
           );
     _runs = const <EditorRun>[];
@@ -922,7 +965,7 @@ class KansoMarkdownController extends TextEditingController {
       note,
       at,
       at,
-      cap: windowUnits,
+      cap: _cap,
       margin: windowMargin,
     );
     onWindowWillMove?.call(at);
@@ -950,7 +993,7 @@ class KansoMarkdownController extends TextEditingController {
       note,
       from,
       to,
-      cap: windowUnits,
+      cap: _cap,
       margin: windowMargin,
     );
     onWindowWillMove?.call(to);
@@ -1162,6 +1205,11 @@ class KansoMarkdownController extends TextEditingController {
   void requestRuns() {
     requestLive();
     _runsDue = true;
+    if (_whole) {
+      // The Live editor draws the note from its own layout; the colours
+      // are asked for when the field is back.
+      return;
+    }
     if (_runsScheduled || _runsInFlight || _disposed) {
       return;
     }

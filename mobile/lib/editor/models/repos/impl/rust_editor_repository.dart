@@ -96,6 +96,11 @@ class RustEditorDocument implements EditorDocument {
   }) => attempt(() => _editor.liveLayout(start: start, end: end));
 
   @override
+  Future<Either<ApplicationError, LiveDocument>> liveDocument(
+    List<Range16> reveal,
+  ) => attempt(() => _editor.liveDocument(reveal: reveal));
+
+  @override
   Future<Either<ApplicationError, Completion?>> completion() =>
       attempt(_editor.completion);
 

@@ -129,6 +129,8 @@ impl<M: InputModeKind> TextElement<M> {
         {
             let line = state.text.slice_line(buffer_line);
             let line_height = line_layout.row_height(line_height);
+            // The guides run beside the rows, not through the space around them.
+            let rows_top = offset_y + line_layout.frame().above;
             let mut current_indents = vec![];
             if line.len() > 0 {
                 let indent_count = tab_size.indent_count(&line);
@@ -139,7 +141,7 @@ impl<M: InputModeKind> TextElement<M> {
                         px(0.)
                     };
 
-                    let pos = point(x + last_layout.line_number_width, offset_y);
+                    let pos = point(x + last_layout.line_number_width, rows_top);
 
                     builder.move_to(pos);
                     builder.line_to(point(pos.x, pos.y + line_height));
@@ -147,7 +149,7 @@ impl<M: InputModeKind> TextElement<M> {
                 }
             } else if last_indents.len() > 0 {
                 for x in &last_indents {
-                    let pos = point(*x, offset_y);
+                    let pos = point(*x, rows_top);
                     builder.move_to(pos);
                     builder.line_to(point(pos.x, pos.y + line_height));
                 }

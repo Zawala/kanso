@@ -38,6 +38,9 @@ kanso-sync = { path = "../kanso-sync", default-features = false }
 # phone's certificate store.
 kanso-tls = { workspace = true, features = ["ureq"] }
 kanso-update.workspace = true
+# The phone's Live mode numbers lists from the same syntax tree the engine
+# reads (already in the tree through kanso-render and kanso-engine).
+markdown.workspace = true
 semver.workspace = true
 # The native plugin's answers are read with derive.
 serde.workspace = true

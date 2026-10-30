@@ -25,6 +25,7 @@ class EditorShortcuts extends StatelessWidget {
     required this.onEscape,
     required this.child,
     this.platform,
+    this.includeSemantics = true,
     super.key,
   });
 
@@ -47,10 +48,15 @@ class EditorShortcuts extends StatelessWidget {
   /// The platform whose keys apply; the device's when null.
   final TargetPlatform? platform;
 
+  /// Whether the shortcuts' focus adds a semantics node: none around a
+  /// sliver (the Live editor), which takes no box.
+  final bool includeSemantics;
+
   @override
   Widget build(BuildContext context) {
     return Shortcuts(
       shortcuts: editorShortcutBindings(platform ?? defaultTargetPlatform),
+      includeSemantics: includeSemantics,
       child: Actions(
         actions: <Type, Action<Intent>>{
           FormatIntent: CallbackAction<FormatIntent>(

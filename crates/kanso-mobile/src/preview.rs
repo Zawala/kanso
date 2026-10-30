@@ -29,6 +29,7 @@ use kanso_engine::export::PageStyle;
 use kanso_engine::highlight::{self, Token};
 use kanso_engine::links::{self, WikiIndex};
 use kanso_engine::tasks::{self as due_chips, Tone};
+use kanso_engine::text::Utf16Index;
 use kanso_engine::theme::Rgb;
 use kanso_engine::theme::file::TokenStyle;
 use kanso_render::html::{
@@ -40,9 +41,10 @@ use kanso_sync::lock::{FileKey, SEGMENT_CONTENT, SealId, open_container};
 use crate::boundary::{guard, held};
 use crate::errors::KansoError;
 use crate::library::Library;
+use crate::live_document::LineStarts;
 use crate::model::{
     AttachmentFile, ExportedPage, NewNote, PaletteDto, PreviewBlock, PreviewLink, PreviewOptions,
-    Saved, SyntaxStyleRow, Ticked,
+    PreviewSourcedBlock, Range16, Saved, SyntaxStyleRow, Ticked,
 };
 use crate::renderer::{Renderer, palette_of};
 
@@ -125,6 +127,65 @@ impl Renderer {
         })
     }
 
+    /// The blocks of the preview of `text`, the text of note `id` as an
+    /// editor has it now rather than as saved: the same blocks as
+    /// [`Self::preview_blocks`] (the same links, task boxes, query views,
+    /// due chips and code colors), each top-level one with the whole lines
+    /// of `text` it is drawn from. Nothing is read of the saved note, so a
+    /// locked note open in an editor is drawn too.
+    pub fn preview_blocks_for_text(
+        &self,
+        id: &str,
+        text: &str,
+        palette: PaletteDto,
+        options: PreviewOptions,
+    ) -> Result<Vec<PreviewSourcedBlock>, KansoError> {
+        guard(|| {
+            let library = self.library();
+            let index = Utf16Index::new(text);
+            let lines = LineStarts::new(text);
+            preview_of(&library, id, "", text, &options, |page| {
+                // The preparation writes links over links, a line at a time,
+                // so a line of the page's text is the same line of `text`.
+                let page_lines = LineStarts::new(page.text);
+                let last = lines.count() - 1;
+                kanso_render::blocks::blocks_with_sources(
+                    page.text,
+                    page.attachments,
+                    &palette_of(palette),
+                    page.mode,
+                    page.highlight,
+                )
+                .into_iter()
+                .map(|(block, source)| {
+                    let whole = source.map(|source| {
+                        let first = page_lines.line_of(source.start).min(last);
+                        let end = page_lines
+                            .line_of(source.end.saturating_sub(1).max(source.start))
+                            .clamp(first, last)
+                            + 1;
+                        let bytes = lines.whole(text, first..end);
+                        (
+                            first as u32,
+                            end as u32,
+                            Range16 {
+                                start: index.byte_to_utf16(text, bytes.start) as u32,
+                                end: index.byte_to_utf16(text, bytes.end) as u32,
+                            },
+                        )
+                    });
+                    PreviewSourcedBlock {
+                        block: PreviewBlock::from(block),
+                        first_line: whole.as_ref().map(|w| w.0),
+                        end_line: whole.as_ref().map(|w| w.1),
+                        lines: whole.map(|w| w.2),
+                    }
+                })
+                .collect()
+            })
+        })
+    }
+
     /// Runs `draw` with what the preview of note `id` is made from: its
     /// prepared text, its attachments, its task list, query views and due
     /// chips, and its code colors.
@@ -136,45 +197,7 @@ impl Renderer {
     ) -> Result<R, KansoError> {
         let library = self.library();
         let (note, text) = library.readable_text(id)?.ok_or(KansoError::Locked)?;
-        let page_text = library.prepared(&text)?;
-        let mut resolved_attachments = BTreeMap::new();
-        for file in linked_file_ids(&text) {
-            match library.attachment(&file) {
-                Ok(attachment) => {
-                    resolved_attachments.insert(file, (attachment.content_type, attachment.bytes));
-                }
-                Err(KansoError::NotFound) => {}
-                Err(error) => return Err(error),
-            }
-        }
-        let tasks: Vec<TaskSlot> = task_items(&text)
-            .iter()
-            .map(|item| TaskSlot {
-                line: item.line,
-                checked: item.checked,
-            })
-            .collect();
-        let views = Views {
-            library: &library,
-            note_id: id,
-            notes: OnceLock::new(),
-        };
-        let offset = i64::from(options.utc_offset_secs);
-        let chip = move |url: &str| due_chip(url, now_ms() + offset * 1000);
-        let colors = CodeColors::new(&options.code);
-        let mode = AppMode {
-            tasks: &tasks,
-            query: Some(&views),
-            due: Some(&chip),
-        };
-        let attachments = |file: &str| resolved_attachments.get(file).cloned();
-        Ok(draw(&PreviewSource {
-            title: &note.title,
-            text: &page_text,
-            attachments: &attachments,
-            mode: &mode,
-            highlight: colors.as_ref().map(|colors| colors as &dyn Highlighter),
-        }))
+        preview_of(&library, id, &note.title, &text, options, draw)
     }
 
     /// A note as the page the desktop exports: one self-contained file, in
@@ -539,6 +562,58 @@ impl Library {
             _ => PreviewLink::Nothing,
         })
     }
+}
+
+/// Runs `draw` with what the preview of `text`, note `id`'s titled
+/// `title`, is made from: its prepared text, its attachments, its task
+/// list, query views and due chips, and its code colors.
+fn preview_of<R>(
+    library: &Library,
+    id: &str,
+    title: &str,
+    text: &str,
+    options: &PreviewOptions,
+    draw: impl FnOnce(&PreviewSource<'_>) -> R,
+) -> Result<R, KansoError> {
+    let page_text = library.prepared(text)?;
+    let mut resolved_attachments = BTreeMap::new();
+    for file in linked_file_ids(text) {
+        match library.attachment(&file) {
+            Ok(attachment) => {
+                resolved_attachments.insert(file, (attachment.content_type, attachment.bytes));
+            }
+            Err(KansoError::NotFound) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    let tasks: Vec<TaskSlot> = task_items(text)
+        .iter()
+        .map(|item| TaskSlot {
+            line: item.line,
+            checked: item.checked,
+        })
+        .collect();
+    let views = Views {
+        library,
+        note_id: id,
+        notes: OnceLock::new(),
+    };
+    let offset = i64::from(options.utc_offset_secs);
+    let chip = move |url: &str| due_chip(url, now_ms() + offset * 1000);
+    let colors = CodeColors::new(&options.code);
+    let mode = AppMode {
+        tasks: &tasks,
+        query: Some(&views),
+        due: Some(&chip),
+    };
+    let attachments = |file: &str| resolved_attachments.get(file).cloned();
+    Ok(draw(&PreviewSource {
+        title,
+        text: &page_text,
+        attachments: &attachments,
+        mode: &mode,
+        highlight: colors.as_ref().map(|colors| colors as &dyn Highlighter),
+    }))
 }
 
 /// What the preview of a note is made from (see [`Renderer::with_preview`]).

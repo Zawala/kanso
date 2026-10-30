@@ -30,24 +30,49 @@ class PreviewBlocks extends StatelessWidget {
     PreviewStyle style, {
     bool tight = false,
   }) {
-    final size = style.size;
     return switch (block) {
-      PreviewBlock_Heading(:final level) => () {
+      PreviewBlock_Heading(:final level) => room(
+        PreviewRoom.heading,
+        style,
+        level: level,
+      ),
+      PreviewBlock_Rule() => room(PreviewRoom.rule, style),
+      PreviewBlock_Paragraph() || PreviewBlock_Html() => room(
+        PreviewRoom.text,
+        style,
+        tight: tight,
+      ),
+      PreviewBlock_Figure(kind: PreviewFigureKind.math) => room(
+        PreviewRoom.math,
+        style,
+      ),
+      _ => room(PreviewRoom.other, style),
+    };
+  }
+
+  /// The room above a block of [kind] and below it, in points: a heading of
+  /// [level]; text in a [tight] list item has none.
+  static (double above, double below) room(
+    PreviewRoom kind,
+    PreviewStyle style, {
+    int level = 1,
+    bool tight = false,
+  }) {
+    final size = style.size;
+    return switch (kind) {
+      PreviewRoom.heading => () {
         final (ratio, gap) = PreviewStyle.headingMetrics(level);
         return (gap * ratio * size, 0.35 * ratio * size);
       }(),
-      PreviewBlock_Rule() => (1.6 * size, 1.6 * size),
-      PreviewBlock_Paragraph() || PreviewBlock_Html() when tight => (0.0, 0.0),
-      PreviewBlock_Figure(kind: PreviewFigureKind.math) => (
-        0.4 * size,
-        math.max(0.4 * size, style.gap),
-      ),
+      PreviewRoom.rule => (1.6 * size, 1.6 * size),
+      PreviewRoom.text when tight => (0.0, 0.0),
+      PreviewRoom.math => (0.4 * size, math.max(0.4 * size, style.gap)),
       _ => (0.0, style.gap),
     };
   }
 
   /// The room between [before] and [block] below it, in points.
-  static double room(
+  static double between(
     PreviewBlock before,
     PreviewBlock block,
     PreviewStyle style, {
@@ -56,10 +81,15 @@ class PreviewBlocks extends StatelessWidget {
     final (_, below) = margins(before, style, tight: tight);
     var (above, _) = margins(block, style, tight: tight);
     if (before is PreviewBlock_Heading && block is PreviewBlock_Heading) {
-      final (ratio, _) = PreviewStyle.headingMetrics(block.level);
-      above = 0.25 * ratio * style.size;
+      above = headingAfterHeading(block.level, style);
     }
     return math.max(above, below);
+  }
+
+  /// The room above a heading of [level] right after another heading.
+  static double headingAfterHeading(int level, PreviewStyle style) {
+    final (ratio, _) = PreviewStyle.headingMetrics(level);
+    return 0.25 * ratio * style.size;
   }
 
   @override
@@ -69,7 +99,7 @@ class PreviewBlocks extends StatelessWidget {
     for (var at = 0; at < blocks.length; at++) {
       final block = blocks[at];
       if (at > 0) {
-        final gap = room(blocks[at - 1], block, style, tight: tight);
+        final gap = between(blocks[at - 1], block, style, tight: tight);
         if (gap > 0) {
           children.add(SizedBox(height: gap));
         }
@@ -82,6 +112,19 @@ class PreviewBlocks extends StatelessWidget {
       children: children,
     );
   }
+}
+
+/// What a block is to the room around it ([PreviewBlocks.room]).
+enum PreviewRoom {
+  heading,
+  rule,
+
+  /// A paragraph or HTML: none in a tight list item.
+  text,
+
+  /// A formula on a line of its own.
+  math,
+  other,
 }
 
 /// One block of a note.
@@ -158,9 +201,14 @@ class _Quote extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = PreviewScope.of(context).style;
     return Container(
-      padding: const EdgeInsets.only(left: 14),
+      padding: const EdgeInsets.only(left: PreviewStyle.quotePadding),
       decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: style.quoteBar, width: 3)),
+        border: Border(
+          left: BorderSide(
+            color: style.quoteBar,
+            width: PreviewStyle.quoteBarWidth,
+          ),
+        ),
       ),
       child: PreviewScope.nested(
         context,

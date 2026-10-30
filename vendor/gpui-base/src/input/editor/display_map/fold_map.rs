@@ -54,6 +54,10 @@ pub(super) struct FoldMap {
     /// Cached wrap_row_count from last rebuild
     /// Used to detect if WrapMap changed and rebuild is needed
     cached_wrap_row_count: usize,
+
+    /// Buffer lines a presentation hides (those of block widgets after the first), sorted
+    /// and disjoint. Hidden like the inside of a fold.
+    hidden_lines: Vec<Range<usize>>,
 }
 
 impl FoldMap {
@@ -66,7 +70,22 @@ impl FoldMap {
             folded: Vec::new(),
             needs_rebuild: true,
             cached_wrap_row_count: 0,
+            hidden_lines: Vec::new(),
         }
+    }
+
+    /// Replace the buffer lines a presentation hides.
+    pub(super) fn set_hidden_lines(&mut self, hidden_lines: Vec<Range<usize>>) {
+        if self.hidden_lines != hidden_lines {
+            self.hidden_lines = hidden_lines;
+            self.needs_rebuild = true;
+        }
+    }
+
+    /// Whether any wrap row is hidden, by a fold or a presentation.
+    #[inline]
+    pub(super) fn hides_rows(&self) -> bool {
+        !self.folded.is_empty() || !self.hidden_lines.is_empty()
     }
 
     /// Update cached wrap_row_count without full rebuild.
@@ -78,7 +97,7 @@ impl FoldMap {
 
     /// Get total number of visible display rows
     pub(super) fn display_row_count(&self) -> usize {
-        if self.folded.is_empty() {
+        if !self.hides_rows() {
             return self.cached_wrap_row_count;
         }
         self.projected_wrap_row_count - self.total_hidden
@@ -94,7 +113,7 @@ impl FoldMap {
     /// Convert wrap_row to display_row
     /// Returns None if the wrap_row is hidden by folding
     pub(super) fn wrap_row_to_display_row(&self, wrap_row: usize) -> Option<usize> {
-        if self.folded.is_empty() {
+        if !self.hides_rows() {
             return if wrap_row < self.cached_wrap_row_count {
                 Some(wrap_row)
             } else {
@@ -119,7 +138,7 @@ impl FoldMap {
 
     /// Convert display_row to wrap_row
     pub(super) fn display_row_to_wrap_row(&self, display_row: usize) -> Option<usize> {
-        if self.folded.is_empty() {
+        if !self.hides_rows() {
             return if display_row < self.cached_wrap_row_count {
                 Some(display_row)
             } else {
@@ -137,7 +156,7 @@ impl FoldMap {
 
     /// Find the nearest visible display_row for a given wrap_row
     pub(super) fn nearest_visible_display_row(&self, wrap_row: usize) -> usize {
-        if self.folded.is_empty() {
+        if !self.hides_rows() {
             return wrap_row.min(self.cached_wrap_row_count.saturating_sub(1));
         }
 
@@ -307,7 +326,7 @@ impl FoldMap {
 
         self.cached_wrap_row_count = wrap_row_count;
 
-        if self.folded.is_empty() {
+        if !self.hides_rows() {
             // Fast path: no folds, all wrap rows are visible
             self.set_hidden_rows(wrap_row_count, Vec::new());
             self.needs_rebuild = false;
@@ -334,6 +353,17 @@ impl FoldMap {
                 wrap_row_count
             };
 
+            if start_wrap_row < end_wrap_row {
+                hidden_ranges.push(start_wrap_row..end_wrap_row);
+            }
+        }
+        for lines in &self.hidden_lines {
+            let start_wrap_row = wrap_map.buffer_line_to_first_wrap_row(lines.start);
+            let end_wrap_row = if lines.end < wrap_map.buffer_line_count() {
+                wrap_map.buffer_line_to_first_wrap_row(lines.end)
+            } else {
+                wrap_row_count
+            };
             if start_wrap_row < end_wrap_row {
                 hidden_ranges.push(start_wrap_row..end_wrap_row);
             }

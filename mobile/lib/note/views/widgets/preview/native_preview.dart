@@ -375,7 +375,7 @@ class _TopBlock extends StatelessWidget {
     final piece = this.piece;
     final room = before == null || (piece != null && piece.chunk > 0)
         ? 0.0
-        : PreviewBlocks.room(before!, block, style);
+        : PreviewBlocks.between(before!, block, style);
     Widget child;
     final code = block;
     if (piece != null && code is PreviewBlock_Code) {

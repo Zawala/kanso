@@ -17,7 +17,12 @@ use std::{ops::Range, rc::Rc};
 
 use crate::{
     Scrollbar,
-    input::{RopeExt as _, blink_cursor::CURSOR_WIDTH, display_map::LineLayout},
+    input::{
+        RopeExt as _,
+        blink_cursor::CURSOR_WIDTH,
+        display_map::LineLayout,
+        presentation::{EditorPresentationEvent, Ornament, Replacement},
+    },
 };
 
 use super::{
@@ -48,6 +53,8 @@ fn diagnostic_highlight_style(
 
 const BOTTOM_MARGIN_ROWS: usize = 3;
 pub(super) const RIGHT_MARGIN: Pixels = px(10.);
+/// A check box's mark, as the text view draws a ticked task's (`text/node.rs`).
+const CHECK_MARK_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path d="m3.25 8.25 3 3 6.5-7" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
 pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(6.);
 const FOLD_ICON_WIDTH: Pixels = px(14.);
 const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
@@ -610,7 +617,7 @@ impl<M: InputModeKind> TextElement<M> {
             let affinity = is_active && state.cursor_line_end_affinity;
             let cursor_pos = caret_for(cursor_row, cursor, affinity);
             // A scaled line's rows are taller, and so is its caret.
-            let row_height = line_height * state.display_map.line_scale(cursor_row);
+            let row_height = line_height * state.display_map.row_scale(cursor_row);
             let cursor_height = 0.85 * row_height;
             let below_row = row_height - line_height;
             let cursor_start = caret_for(sel_start_row, selected_range.start, false);
@@ -771,6 +778,7 @@ impl<M: InputModeKind> TextElement<M> {
             let mut offset = line_offset;
             let alignment = last_layout.alignment_offset(line.longest_width);
             let row_height = line.row_height(last_layout.line_height);
+            y += line.frame().above;
             for (row, shaped) in line.wrapped_lines.iter().enumerate() {
                 let end = offset + shaped.len;
                 let start_ix = range.start.max(offset);
@@ -780,7 +788,7 @@ impl<M: InputModeKind> TextElement<M> {
                 // A wrap boundary is not a newline and must not get such a cell.
                 let newline = is_last && range.start <= end && range.end > end;
                 if start_ix < end_ix || newline {
-                    let indent = if row == 0 { px(0.) } else { line.wrap_indent };
+                    let indent = line.line_indent(row);
                     let left = alignment + indent + shaped.x_for_index(start_ix.min(end) - offset);
                     let right = alignment
                         + indent
@@ -799,6 +807,7 @@ impl<M: InputModeKind> TextElement<M> {
                 offset = end;
                 y += row_height;
             }
+            y += line.frame().below;
         }
         (!corners.is_empty()).then_some(corners)
     }
@@ -1050,7 +1059,7 @@ impl<M: InputModeKind> TextElement<M> {
         } else {
             state.scroll_handle.offset().y
         };
-        let content_height = if state.display_map.line_scales().is_empty() {
+        let content_height = if !state.display_map.has_uneven_rows() {
             line_height * total_lines
         } else {
             state.display_map.wrap_rows_height(line_height)
@@ -1067,7 +1076,7 @@ impl<M: InputModeKind> TextElement<M> {
         // taller; the display map walks those instead.
         let viewport_top = (-scroll_top).max(px(0.));
         let viewport_bottom = viewport_top + input_height;
-        let (first_display, last_display) = if state.display_map.line_scales().is_empty() {
+        let (first_display, last_display) = if !state.display_map.has_uneven_rows() {
             let line_height_f = f32::from(line_height);
             (
                 ((f32::from(viewport_top) / line_height_f).floor() as usize).min(display_count - 1),
@@ -1350,7 +1359,7 @@ impl<M: InputModeKind> TextElement<M> {
                         buffer_line,
                         is_folded,
                         display_row: buffer_line,
-                        offset_y,
+                        offset_y: offset_y + line.frame().above,
                         row_height: line.row_height(last_layout.line_height),
                     });
                 }
@@ -1894,6 +1903,12 @@ impl<M: InputModeKind> TextElement<M> {
                                 x,
                                 width,
                                 text: Some(shaped),
+                                replaced: false,
+                                text_x: px(0.),
+                                hang: px(0.),
+                                text_y: px(0.),
+                                chip: None,
+                                image: None,
                             });
                             x += width;
                         }
@@ -1903,6 +1918,12 @@ impl<M: InputModeKind> TextElement<M> {
                             x,
                             width,
                             text: None,
+                            replaced: false,
+                            text_x: px(0.),
+                            hang: px(0.),
+                            text_y: px(0.),
+                            chip: None,
+                            image: None,
                         });
                         x += width;
                         offset = local.end;
@@ -1921,6 +1942,12 @@ impl<M: InputModeKind> TextElement<M> {
                             x,
                             width,
                             text: Some(shaped),
+                            replaced: false,
+                            text_x: px(0.),
+                            hang: px(0.),
+                            text_y: px(0.),
+                            chip: None,
+                            image: None,
                         });
                     }
                     lines.push(InputLine::inline(text[range].to_owned().into(), fragments));
@@ -1939,7 +1966,8 @@ impl<M: InputModeKind> TextElement<M> {
                 LineLayout::new()
                     .inline_lines(lines)
                     .wrap_indent(wrap_indent)
-                    .with_scale(scale)
+                    .with_scale(state.display_map.row_scale(row))
+                    .with_frame(state.display_map.line_frame(row))
             })
             .collect()
     }
@@ -2025,6 +2053,85 @@ impl<M: InputModeKind> TextElement<M> {
         out
     }
 
+    /// Lay out the elements of the visible block widgets at the rows of their first lines,
+    /// the width of the text area, and record their measured heights for the next frame.
+    fn prepaint_blocks(
+        &self,
+        layout: &LastLayout,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Vec<AnyElement> {
+        use gpui::{InteractiveElement as _, StatefulInteractiveElement as _};
+
+        let placements: Vec<(crate::input::BlockWidget, Pixels)> = {
+            let state = self.state.read(cx);
+            if state.display_map.presentation().blocks.is_empty() {
+                return vec![];
+            }
+            let mut y = layout.visible_top;
+            let mut placements = Vec::new();
+            for (line, &row) in layout.lines.iter().zip(layout.visible_buffer_lines.iter()) {
+                if let Some(block) = state.display_map.block_at(row) {
+                    placements.push((block.clone(), y));
+                }
+                y += line.size(layout.line_height).height;
+            }
+            placements
+        };
+        let width = layout
+            .wrap_width
+            .unwrap_or(layout.content_width - layout.line_number_width)
+            .max(px(1.));
+        let mut elements = Vec::with_capacity(placements.len());
+        let mut measured = Vec::with_capacity(placements.len());
+        for (block, y) in placements {
+            let lines = block.lines.clone();
+            let state = self.state.clone();
+            let mut element = gpui::div()
+                .id(ElementId::from(("presentation-block", block.key as usize)))
+                .w(width)
+                .cursor_default()
+                // A press on the widget that its element leaves alone does not place the
+                // caret; a click is reported instead.
+                .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+                .on_click(move |_, _, cx| {
+                    let lines = lines.clone();
+                    state.update(cx, |_, cx| {
+                        cx.emit(EditorPresentationEvent::BlockClicked { lines })
+                    });
+                })
+                .child((block.render)(window, cx))
+                .into_any_element();
+            let element_size = element.layout_as_root(
+                size(
+                    gpui::AvailableSpace::Definite(width),
+                    gpui::AvailableSpace::MinContent,
+                ),
+                window,
+                cx,
+            );
+            element.prepaint_at(
+                bounds.origin + point(layout.line_number_width, y),
+                window,
+                cx,
+            );
+            measured.push((block.key, element_size.height));
+            elements.push(element);
+        }
+        self.state.update(cx, |state, cx| {
+            let mut changed = false;
+            for (key, height) in measured {
+                changed |= state.display_map.set_block_height(key, height);
+            }
+            // The rows below follow the measured height from the next frame.
+            if changed {
+                cx.notify();
+            }
+        });
+        elements
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn layout_lines(
         state: &InputBaseState<M>,
@@ -2079,12 +2186,21 @@ impl<M: InputModeKind> TextElement<M> {
             let line_layout = LineLayout::new()
                 .lines(placeholder_lines)
                 .with_background(line_has_background)
-                .with_scale(state.display_map.line_scale(0))
+                .with_scale(state.display_map.row_scale(0))
+                .with_frame(state.display_map.line_frame(0))
                 .with_whitespaces(whitespace_indicators);
             return vec![line_layout];
         }
 
         let mut lines = Vec::with_capacity(last_layout.visible_buffer_lines.len());
+        // Replacement text is drawn in the editor's text style, refined by its own.
+        let replacement_style = {
+            let mut style = window.text_style();
+            if state.disabled {
+                style.color = style.color.opacity(0.5);
+            }
+            style
+        };
         // run_offset tracks position in the runs vec coordinate space (only visible line bytes).
         // This is separate from the visible_text offset because runs from highlight_lines
         // only cover visible (non-folded) lines.
@@ -2099,32 +2215,67 @@ impl<M: InputModeKind> TextElement<M> {
 
             debug_assert_eq!(line_item.len(), line_text.len());
 
-            // A presentation scales the line's text and conceals ranges of it. Concealed
-            // text is laid out at zero width through inline fragments, like a token's.
+            // A presentation scales the line's text, conceals ranges of it and draws others
+            // as replacement text. Concealed text is laid out at zero width through inline
+            // fragments, like a token's, and a replacement as a fragment of its own text.
             let scale = state.display_map.line_scale(buffer_line);
-            let concealed = if state.masked {
+            let frame = state.display_map.line_frame(buffer_line);
+            let hidden = if state.masked {
                 Vec::new()
             } else {
-                concealed_in_line(
-                    state.display_map.concealed(),
-                    state.text.line_start_offset(buffer_line),
-                    &line_text,
-                )
+                let line_start = state.text.line_start_offset(buffer_line);
+                let mut hidden: Vec<(Range<usize>, Option<&Replacement>)> =
+                    concealed_in_line(state.display_map.concealed(), line_start, &line_text)
+                        .into_iter()
+                        .map(|range| (range, None))
+                        .collect();
+                let replacements = &state.display_map.presentation().replacements;
+                if !replacements.is_empty() {
+                    let ranges: Vec<Range<usize>> =
+                        replacements.iter().map(|r| r.range.clone()).collect();
+                    let first = replacements.partition_point(|r| r.range.end <= line_start);
+                    let local = concealed_in_line(&ranges[first..], line_start, &line_text);
+                    let mut found = replacements[first..].iter();
+                    for range in local {
+                        // `concealed_in_line` keeps them in order, so each is found ahead.
+                        if let Some(replacement) = found
+                            .by_ref()
+                            .find(|r| r.range.start == range.start + line_start)
+                        {
+                            hidden.push((range, Some(replacement)));
+                        }
+                    }
+                    hidden.sort_by_key(|(range, _)| range.start);
+                    let mut end = 0;
+                    hidden.retain(|(range, _)| {
+                        let keep = range.start >= end;
+                        if keep {
+                            end = range.end;
+                        }
+                        keep
+                    });
+                }
+                hidden
             };
-            if scale != 1. || !concealed.is_empty() {
-                lines.push(Self::layout_presented_line(
-                    &line_text,
-                    &line_item.wrapped_lines,
-                    line_item.indent,
-                    &concealed,
-                    scale,
-                    font_size * scale,
-                    &runs_for_range(runs, run_offset, &(0..line_text.len())),
-                    last_layout.visible_line_byte_offsets[vi],
-                    bg_segments,
-                    whitespace_indicators.clone(),
-                    window,
-                ));
+            let row_scale = state.display_map.row_scale(buffer_line);
+            if scale != 1. || row_scale != scale || !hidden.is_empty() {
+                lines.push(
+                    Self::layout_presented_line(
+                        &line_text,
+                        &line_item.wrapped_lines,
+                        line_item.indent,
+                        &hidden,
+                        row_scale,
+                        font_size * scale,
+                        &runs_for_range(runs, run_offset, &(0..line_text.len())),
+                        last_layout.visible_line_byte_offsets[vi],
+                        bg_segments,
+                        whitespace_indicators.clone(),
+                        &replacement_style,
+                        window,
+                    )
+                    .with_frame(frame),
+                );
                 run_offset += line_text.len() + 1;
                 continue;
             }
@@ -2171,6 +2322,7 @@ impl<M: InputModeKind> TextElement<M> {
                 .lines(wrapped_lines)
                 .wrap_indent(wrap_indent)
                 .with_background(line_has_background)
+                .with_frame(frame)
                 .with_whitespaces(whitespace_indicators.clone());
             lines.push(line_layout);
 
@@ -2182,8 +2334,9 @@ impl<M: InputModeKind> TextElement<M> {
     }
 
     /// Lay out one buffer line under a presentation: shaped at `font_size` (the scaled
-    /// size), with its rows `scale` line heights tall and `concealed` (line-local, sorted,
-    /// disjoint, on char boundaries) laid out at zero width and not painted.
+    /// size), with its rows `scale` line heights tall and the ranges in `hidden` (line-local,
+    /// sorted, disjoint, on char boundaries) laid out at zero width and not painted, or, for a
+    /// replacement, as its text shaped in `replacement_style` refined by its own style.
     ///
     /// `runs` cover exactly this line's bytes.
     #[allow(clippy::too_many_arguments)]
@@ -2191,16 +2344,17 @@ impl<M: InputModeKind> TextElement<M> {
         line_text: &str,
         wrapped_ranges: &[Range<usize>],
         indent: u32,
-        concealed: &[Range<usize>],
+        hidden: &[(Range<usize>, Option<&Replacement>)],
         scale: f32,
         font_size: Pixels,
         runs: &[TextRun],
         line_offset: usize,
         bg_segments: &[(Range<usize>, Hsla)],
         whitespace_indicators: Option<WhitespaceIndicators>,
+        replacement_style: &TextStyle,
         window: &mut Window,
     ) -> LineLayout {
-        use crate::input::display_map::{InlineFragment, InputLine};
+        use crate::input::display_map::{FragmentChip, InlineFragment, InputLine};
 
         let mut lines: SmallVec<[InputLine; 1]> = SmallVec::with_capacity(1);
         let mut line_has_background = false;
@@ -2231,17 +2385,25 @@ impl<M: InputModeKind> TextElement<M> {
                     x,
                     width: shaped.width,
                     text: Some(shaped),
+                    replaced: false,
+                    text_x: px(0.),
+                    hang: px(0.),
+                    text_y: px(0.),
+                    chip: None,
+                    image: None,
                 }
             };
 
-            let first = concealed.partition_point(|c| c.end <= range.start);
-            let hidden = concealed[first..]
+            let first = hidden.partition_point(|(c, _)| c.end <= range.start);
+            let in_row = hidden[first..]
                 .iter()
-                .take_while(|c| c.start < range.end);
+                .take_while(|(c, _)| c.start < range.end);
             let mut fragments = Vec::new();
             let mut offset = 0;
             let mut x = px(0.);
-            for c in hidden {
+            for (c, replacement) in in_row {
+                // A replacement split by a wrap (which the wrapper never makes) is concealed.
+                let whole = c.start >= range.start && c.end <= range.end;
                 let c = c.start.max(range.start) - range.start..c.end.min(range.end) - range.start;
                 if c.start < offset || c.is_empty() {
                     continue;
@@ -2251,17 +2413,105 @@ impl<M: InputModeKind> TextElement<M> {
                     x += fragment.width;
                     fragments.push(fragment);
                 }
-                fragments.push(InlineFragment {
-                    range: c.clone(),
-                    x,
-                    width: px(0.),
-                    text: None,
-                });
+                match replacement.filter(|_| whole) {
+                    Some(replacement) => {
+                        let text = replacement.text.clone();
+                        let mut text_style = replacement_style.clone();
+                        if let Some(family) = &replacement.family {
+                            text_style.font_family = family.clone();
+                        }
+                        let run = text_style
+                            .clone()
+                            .highlight(replacement.style)
+                            .to_run(text.len());
+                        let shaped = window.text_system().shape_line(
+                            text,
+                            replacement.font_size(font_size),
+                            &[run],
+                            None,
+                        );
+                        let (width, text_x, hang) = replacement.placement(shaped.width);
+                        // Another size keeps the row's baseline: the text moves by half
+                        // the difference of what is above and below it.
+                        let base = window.text_system().resolve_font(&replacement_style.font());
+                        let (ascent, descent) = (
+                            window.text_system().ascent(base, font_size),
+                            // The text system gives the descent below the baseline as
+                            // a negative number; the shaped line, as a positive one.
+                            window.text_system().descent(base, font_size).abs(),
+                        );
+                        let centred = matches!(
+                            replacement.chip,
+                            Some(crate::input::ReplacementChip {
+                                height: crate::input::ChipHeight::Fixed(_),
+                                ..
+                            })
+                        );
+                        let placed = replacement
+                            .chip
+                            .as_ref()
+                            .is_some_and(|chip| chip.text_baseline.is_some());
+                        let text_y =
+                            if placed || centred || replacement.font_size(font_size) == font_size {
+                                px(0.)
+                            } else {
+                                (ascent - descent - shaped.ascent + shaped.descent) / 2.
+                            };
+                        let chip = replacement.chip.as_ref().map(|chip| {
+                            let font = window.text_system().resolve_font(&text_style.font());
+                            let size = replacement.font_size(font_size);
+                            let color = replacement.style.color.unwrap_or(text_style.color);
+                            FragmentChip {
+                                icon: chip.icon.as_ref().map(|icon| {
+                                    (icon.path.clone(), icon.size, color, chip.padding)
+                                }),
+                                dashed_bottom: chip.dashed_bottom,
+                                whole_width: chip.whole_width,
+                                text_baseline: chip.text_baseline,
+                                background: chip.background,
+                                radius: chip.radius,
+                                height: chip.height,
+                                cap_height: window.text_system().cap_height(font, size),
+                                font_size: size,
+                            }
+                        });
+                        fragments.push(InlineFragment {
+                            range: c.clone(),
+                            x,
+                            width,
+                            text: Some(shaped),
+                            replaced: true,
+                            text_x,
+                            hang,
+                            text_y,
+                            chip,
+                            image: replacement
+                                .image
+                                .clone()
+                                .map(|image| (image, ascent, descent)),
+                        });
+                        x += width;
+                    }
+                    None => fragments.push(InlineFragment {
+                        range: c.clone(),
+                        x,
+                        width: px(0.),
+                        text: None,
+                        replaced: false,
+                        text_x: px(0.),
+                        hang: px(0.),
+                        text_y: px(0.),
+                        chip: None,
+                        image: None,
+                    }),
+                }
                 offset = c.end;
             }
             if offset < row_text.len() || fragments.is_empty() {
                 fragments.push(shape(offset..row_text.len(), x, window));
             }
+            // A replacement's box is drawn with the backgrounds.
+            line_has_background |= fragments.iter().any(|f| f.chip.is_some());
             lines.push(InputLine::inline(row_text.to_owned().into(), fragments));
         }
 
@@ -2285,6 +2535,41 @@ impl<M: InputModeKind> TextElement<M> {
             .with_whitespaces(whitespace_indicators)
     }
 
+    /// The decorations alone, without a highlighter, clipped to the visible lines' bytes:
+    /// the runs cover only lines that are not folded (or hidden by a block widget), so a
+    /// style over a hidden line would shift every later run.
+    fn decorations_only(
+        state: &InputBaseState<M>,
+        text: &Rope,
+        visible_buffer_lines: &[usize],
+        visible_byte_range: Range<usize>,
+    ) -> Option<Vec<(Range<usize>, HighlightStyle)>> {
+        if state.masked {
+            return None;
+        }
+        let styles = compose_decoration_collections(
+            Vec::new(),
+            state.extras.decoration_layers().into_iter(),
+            visible_byte_range,
+        )?;
+        let is_multi_line = state.is_multi_line();
+        let mut groups: Vec<Range<usize>> = Vec::new();
+        let mut lines = visible_buffer_lines.iter().peekable();
+        while let Some(&first) = lines.next() {
+            let mut last = first;
+            while lines.peek().is_some_and(|&&next| next == last + 1) {
+                last = *lines.next().expect("peeked");
+            }
+            let end = if is_multi_line {
+                text.line_start_offset(last + 1)
+            } else {
+                text.line_end_offset(last)
+            };
+            groups.push(text.line_start_offset(first)..end);
+        }
+        Some(clip_styles_to_ranges(styles, &groups))
+    }
+
     /// First usize is the offset of skipped.
     fn highlight_lines(
         &mut self,
@@ -2304,27 +2589,16 @@ impl<M: InputModeKind> TextElement<M> {
                 ..
             } => (highlighter.borrow_mut(), diagnostics),
             _ => {
-                return (!state.masked)
-                    .then(|| {
-                        compose_decoration_collections(
-                            Vec::new(),
-                            state.extras.decoration_layers().into_iter(),
-                            visible_byte_range,
-                        )
-                    })
-                    .flatten();
+                return Self::decorations_only(
+                    state,
+                    text,
+                    visible_buffer_lines,
+                    visible_byte_range,
+                );
             }
         };
         let Some(highlighter) = highlighter.as_mut() else {
-            return (!state.masked)
-                .then(|| {
-                    compose_decoration_collections(
-                        Vec::new(),
-                        state.extras.decoration_layers().into_iter(),
-                        visible_byte_range,
-                    )
-                })
-                .flatten();
+            return Self::decorations_only(state, text, visible_buffer_lines, visible_byte_range);
         };
 
         let mut styles = Vec::with_capacity(visible_buffer_lines.len());
@@ -2449,6 +2723,8 @@ pub(super) struct PrepaintState {
     /// The lines of entire lines.
     last_layout: LastLayout,
     token_elements: Vec<AnyElement>,
+    /// The elements of the presentation's visible block widgets, laid out in place.
+    block_elements: Vec<AnyElement>,
     /// The lines only contains the visible lines in the viewport, based on `visible_range`.
     ///
     /// The child is the soft lines.
@@ -2655,7 +2931,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let state = self.state.read(cx);
-        let line_height = window.line_height();
+        let line_height = state.presented_line_height(window);
 
         let mut style = Style::default();
         style.size.width = relative(1.).into();
@@ -2752,8 +3028,13 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 state.display_map.set_wrapping_indent(wrapping_indent, cx);
             });
         }
+        // A presentation's leaves round to the window's device pixels.
+        let scale_factor = window.scale_factor();
+        self.state.update(cx, |state, _| {
+            state.display_map.set_device_scale(scale_factor);
+        });
 
-        let line_height = window.line_height();
+        let line_height = self.state.read(cx).presented_line_height(window);
         let token_elements = self.measure_tokens(
             (bounds.size.width - line_number_width - RIGHT_MARGIN).max(px(1.)),
             line_height,
@@ -3150,8 +3431,10 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let hitbox = window.insert_hitbox(input_bounds, HitboxBehavior::Normal);
 
         let token_elements = self.prepaint_tokens(&last_layout, bounds, token_elements, window, cx);
+        let block_elements = self.prepaint_blocks(&last_layout, bounds, window, cx);
         PrepaintState {
             token_elements,
+            block_elements,
             hitbox,
             bounds,
             last_layout,
@@ -3207,7 +3490,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
         );
 
         // Paint multi line text
-        let line_height = window.line_height();
+        let line_height = self.state.read(cx).presented_line_height(window);
         let origin = bounds.origin;
 
         let invisible_top_padding = prepaint.last_layout.visible_top;
@@ -3266,6 +3549,16 @@ impl<M: InputModeKind> Element for TextElement<M> {
         // backgrounds need their own pass. It runs ahead of the indent guides, selections,
         // and text so a highlighted range sits under them instead of covering them.
         let mut offset_y = invisible_top_padding;
+        // A presentation's ornaments are drawn with their lines, beneath everything else.
+        let ornaments = {
+            let state = self.state.read(cx);
+            let presentation = state.display_map.presentation();
+            (!presentation.line_ornaments.is_empty()).then(|| presentation.line_ornaments.clone())
+        };
+        let text_width = prepaint.last_layout.wrap_width.unwrap_or(
+            (prepaint.last_layout.content_width - prepaint.last_layout.line_number_width)
+                .max(px(0.)),
+        );
         for (line, &buffer_line) in prepaint
             .last_layout
             .lines
@@ -3276,6 +3569,81 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 origin.x + prepaint.last_layout.line_number_width + scroll_offset,
                 origin.y + offset_y,
             );
+
+            if let Some(ornaments) = &ornaments {
+                let first = ornaments.partition_point(|(l, _)| *l < buffer_line);
+                let height = line.size(line_height).height;
+                let frame = line.frame();
+                for (_, ornament) in ornaments[first..]
+                    .iter()
+                    .take_while(|(l, _)| *l == buffer_line)
+                {
+                    let quad = match *ornament {
+                        Ornament::Check {
+                            x,
+                            size: side,
+                            radius,
+                            border,
+                            border_color,
+                            fill: background,
+                            check,
+                            row,
+                        } => {
+                            // Centred in its row's box, or in the box given, on whole device
+                            // pixels as a laid-out box is.
+                            let row = row.unwrap_or_else(|| line.row_height(line_height));
+                            let origin = p + point(x, frame.above + (row - side).half());
+                            let scale = window.scale_factor();
+                            // Within a rounding error of a half is a half.
+                            let snap = |v: Pixels| {
+                                let device = f32::from(v) * scale;
+                                px((device.abs() - 0.5 - 1e-3).ceil().copysign(device) / scale)
+                            };
+                            let origin = point(snap(origin.x), snap(origin.y));
+                            let bounds = Bounds::new(origin, size(side, side));
+                            window.paint_quad(gpui::quad(
+                                bounds,
+                                radius,
+                                background.unwrap_or(gpui::transparent_black()),
+                                border.max(px(0.)),
+                                border_color,
+                                gpui::BorderStyle::default(),
+                            ));
+                            if let Some(color) = check {
+                                // The text view's check mark, in the middle `0.8` of the box.
+                                let mark = Bounds::new(
+                                    origin + point(side * 0.1, side * 0.1),
+                                    size(side * 0.8, side * 0.8),
+                                );
+                                window
+                                    .paint_svg(
+                                        mark,
+                                        "gpui-base-presentation-check.svg".into(),
+                                        Some(CHECK_MARK_SVG),
+                                        gpui::TransformationMatrix::unit(),
+                                        color,
+                                        cx,
+                                    )
+                                    .ok();
+                            }
+                            continue;
+                        }
+                        Ornament::Bar { x, width, color } => fill(
+                            Bounds::new(p + point(x, px(0.)), size(width, height)),
+                            color,
+                        ),
+                        Ornament::Rule { thickness, color } => {
+                            let rows = height - frame.above - frame.below;
+                            let y = frame.above + (rows - thickness).half();
+                            fill(
+                                Bounds::new(p + point(px(0.), y), size(text_width, thickness)),
+                                color,
+                            )
+                        }
+                    };
+                    window.paint_quad(quad);
+                }
+            }
 
             line.paint_background(
                 p,
@@ -3407,6 +3775,9 @@ impl<M: InputModeKind> Element for TextElement<M> {
         for element in &mut prepaint.token_elements {
             element.paint(window, cx);
         }
+        for element in &mut prepaint.block_elements {
+            element.paint(window, cx);
+        }
 
         // Paint blinking cursors (shared blink state for all carets)
         if focused && show_cursor {
@@ -3441,6 +3812,8 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 .zip(prepaint.last_layout.visible_buffer_lines.iter())
                 .zip(prepaint.last_layout.lines.iter())
             {
+                // A line's number sits beside its rows, past the space above them.
+                offset_y += layout.frame().above;
                 let p = point(input_bounds.origin.x, origin.y + offset_y);
                 let is_active = prepaint.current_row == Some(buffer_line);
                 // A scaled line's number sits centred in its taller rows.
@@ -3464,6 +3837,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
                     _ = line.paint(p, line_height, TextAlign::Left, None, window, cx);
                     offset_y += line_height;
                 }
+                offset_y += layout.frame().below;
 
                 // Add ghost line height after cursor row for line numbers alignment
                 if !prepaint.ghost_lines.is_empty() && prepaint.current_row == Some(buffer_line) {
@@ -3803,7 +4177,8 @@ fn split_runs_by_bg_segments(
 mod tests {
     use super::*;
     use crate::input::{
-        EditorMode, EditorPresentation, EditorState, FoldRange, RangeDecoration, Redo, Undo,
+        BlockWidget, EditorMode, EditorPresentation, EditorPresentationEvent, EditorState,
+        FoldRange, Ornament, RangeDecoration, Redo, Replacement, Undo,
     };
     use gpui::{
         AppContext as _, Context, EntityInputHandler as _, Render, TestAppContext,
@@ -4317,6 +4692,7 @@ mod tests {
                 Some(EditorPresentation {
                     concealed,
                     line_scales,
+                    ..Default::default()
                 }),
                 cx,
             )
@@ -4517,6 +4893,7 @@ mod tests {
                     Some(EditorPresentation {
                         concealed: vec![],
                         line_scales: vec![(1, 2.), (3, 1.5)],
+                        ..Default::default()
                     }),
                     cx,
                 );
@@ -4548,7 +4925,7 @@ mod tests {
             present(
                 &editor,
                 vec![0..2, 3..5, 50..60, 9..20, reversed, 2..2],
-                vec![(1, 1.6), (7, 2.), (0, -1.), (2, f32::NAN), (2, 0.5)],
+                vec![(1, 1.6), (7, 2.), (0, -1.), (2, f32::NAN), (2, 0.), (2, 1.)],
                 cx,
             );
             assert_eq!(
@@ -4556,6 +4933,7 @@ mod tests {
                 EditorPresentation {
                     concealed: vec![0..2, 3..5],
                     line_scales: vec![(1, 1.6)],
+                    ..Default::default()
                 }
             );
             window.draw(cx).clear(cx);
@@ -4569,6 +4947,7 @@ mod tests {
                 EditorPresentation {
                     concealed: vec![3..5, 6..8],
                     line_scales: vec![(2, 1.6)],
+                    ..Default::default()
                 }
             );
             window.draw(cx).clear(cx);
@@ -4585,6 +4964,7 @@ mod tests {
                 EditorPresentation {
                     concealed: vec![7..9],
                     line_scales: vec![(2, 1.6)],
+                    ..Default::default()
                 }
             );
             window.draw(cx).clear(cx);
@@ -4699,6 +5079,765 @@ mod tests {
             editor.update(cx, |state, cx| {
                 state.set_presentation(Some(EditorPresentation::default()), cx)
             });
+            assert_eq!(snapshot(window, cx), before);
+        });
+    }
+
+    fn present_with(editor: &Entity<EditorState>, presentation: EditorPresentation, cx: &mut App) {
+        editor.update(cx, |state, cx| {
+            state.set_presentation(Some(presentation), cx)
+        });
+    }
+
+    fn replacement(range: Range<usize>, text: &str, clickable: bool) -> Replacement {
+        Replacement {
+            clickable,
+            ..Replacement::new(range, SharedString::from(text.to_string()))
+        }
+    }
+
+    /// Record the presentation events `editor` emits.
+    fn record_events(
+        editor: &Entity<EditorState>,
+        cx: &mut VisualTestContext,
+    ) -> (
+        Rc<std::cell::RefCell<Vec<EditorPresentationEvent>>>,
+        gpui::Subscription,
+    ) {
+        let events = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let subscription = cx.update(|_, cx| {
+            let events = events.clone();
+            cx.subscribe(editor, move |_, event: &EditorPresentationEvent, _| {
+                events.borrow_mut().push(event.clone())
+            })
+        });
+        (events, subscription)
+    }
+
+    #[gpui::test]
+    fn presentation_replacement_takes_its_text_width_and_is_atomic(cx: &mut TestAppContext) {
+        let text = "- item\n••••";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            present_with(
+                &editor,
+                EditorPresentation {
+                    replacements: vec![replacement(0..2, "••••", false)],
+                    ..Default::default()
+                },
+                cx,
+            );
+            editor.update(cx, |state, cx| state.set_selected_range(2..2, cx));
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let row = &layout.lines[0].wrapped_lines[0];
+            // The replacement is as wide as its text, shaped like the same text in the line
+            // below, and offsets still address the source.
+            let bullets = layout.lines[1].wrapped_lines[0].width;
+            assert_eq!(row.len, 6);
+            assert_close(row.x_for_index(2), bullets);
+            // Atomic: a caret inside it sits at its start, one after it at its end.
+            assert_eq!(row.x_for_index(0), px(0.));
+            assert_eq!(row.x_for_index(1), px(0.));
+            assert_eq!(row.closest_index_for_x(px(1.)), 0);
+            assert_eq!(row.closest_index_for_x(bullets - px(1.)), 2);
+            assert!(row.closest_index_for_x(bullets + px(40.)) > 2);
+            let caret = layout.cursor_bounds.unwrap();
+            assert_close(
+                caret.origin.x,
+                state.input_bounds.left() + layout.line_number_width + bullets,
+            );
+            // A selection over it covers its text.
+            let corners = TextElement::<EditorMode>::layout_range_corners(&(0..2), layout).unwrap();
+            assert_close(corners[0].top_right.x - corners[0].top_left.x, bullets);
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_line_heights_and_line_height_set_row_heights(cx: &mut TestAppContext) {
+        let text = "# Title\nbody\nmore";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            present_with(
+                &editor,
+                EditorPresentation {
+                    line_scales: vec![(0, 2.)],
+                    line_heights: vec![(0, 0.75), (2, 0.5)],
+                    line_height: Some(px(20.5)),
+                    ..Default::default()
+                },
+                cx,
+            );
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            // The rows are as tall as asked, not rounded to whole pixels.
+            let lh = layout.line_height;
+            assert_close(lh, px(20.5));
+            let map = &state.display_map;
+            assert_close(map.display_row_height(0, lh), px(20.5 * 2. * 0.75));
+            assert_close(map.display_row_height(1, lh), px(20.5));
+            assert_close(map.display_row_height(2, lh), px(20.5 * 0.5));
+            assert_close(layout.lines[0].size(lh).height, px(20.5 * 1.5));
+            assert_close(map.wrap_rows_height(lh), px(20.5 * (1.5 + 1. + 0.5)));
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_leaves_round_up_to_device_pixels(cx: &mut TestAppContext) {
+        let text = "one\ntwo\nthree";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            present_with(
+                &editor,
+                EditorPresentation {
+                    line_height: Some(px(20.3)),
+                    leaves: vec![(0..2, px(0.25)), (2..3, px(0.))],
+                    ..Default::default()
+                },
+                cx,
+            );
+            window.draw(cx).clear(cx);
+            window.draw(cx).clear(cx);
+            let scale = window.scale_factor();
+            let state = editor.read(cx);
+            let lh = state.last_layout.as_ref().unwrap().line_height;
+            let map = &state.display_map;
+            let ceil = |v: f32| (v * scale).ceil() / scale;
+            // Two rows and the extra, rounded up below the second.
+            assert_close(map.display_row_height(0, lh), px(20.3));
+            assert_close(map.display_row_height(1, lh), px(ceil(40.85) - 20.55));
+            assert_close(map.display_row_height(2, lh), px(ceil(20.3)));
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_hanging_column_takes_no_room_and_takes_clicks(cx: &mut TestAppContext) {
+        let text = "- item";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            present_with(
+                &editor,
+                EditorPresentation {
+                    replacements: vec![Replacement {
+                        clickable: true,
+                        column: Some(crate::input::ReplacementColumn {
+                            width: px(20.),
+                            gap: px(6.),
+                            hanging: true,
+                        }),
+                        ..Replacement::new(0..2, "•")
+                    }],
+                    line_insets: vec![(0, px(20.))],
+                    ..Default::default()
+                },
+                cx,
+            );
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let row = &layout.lines[0].wrapped_lines[0];
+            // The text starts at the inset; the marker hangs in it.
+            assert_eq!(row.x_for_index(2), px(0.));
+            assert_eq!(row.replacement_at_x(px(-10.)), Some(0..2));
+            assert_eq!(row.replacement_at_x(px(-21.)), None);
+            assert_eq!(row.replacement_at_x(px(1.)), None);
+        });
+    }
+
+    #[test]
+    fn decorations_without_a_highlighter_keep_to_the_visible_lines() {
+        let text = Rope::from("hidden\nalso\nbold here");
+        let styles = vec![(0..text.len(), HighlightStyle::default())];
+        // Lines 0 and 1 are hidden (folded, or under a block widget): the
+        // styles keep only line 2's bytes, so the runs line up with it.
+        let groups = [12..text.len()];
+        let clipped = clip_styles_to_ranges(styles, &groups);
+        assert_eq!(clipped, vec![(12..text.len(), HighlightStyle::default())]);
+    }
+
+    #[gpui::test]
+    fn presentation_click_on_a_clickable_replacement_is_reported(cx: &mut TestAppContext) {
+        let text = "- [ ] task\nnext";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let (events, _subscription) = record_events(&editor, &mut cx);
+        let set = |clickable: bool, cx: &mut VisualTestContext| {
+            cx.update(|window, cx| {
+                present_with(
+                    &editor,
+                    EditorPresentation {
+                        replacements: vec![replacement(0..6, "☐ ", clickable)],
+                        ..Default::default()
+                    },
+                    cx,
+                );
+                editor.update(cx, |state, cx| state.set_selected_range(13..13, cx));
+                window.draw(cx).clear(cx);
+            });
+            editor.read_with(cx, |state, _| state.range_to_bounds(&(0..6)).unwrap())
+        };
+
+        // A plain replacement places the caret at one of its ends.
+        let bounds = set(false, &mut cx);
+        cx.simulate_click(bounds.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        let cursor = editor.read_with(&cx, |state, _| state.cursor());
+        assert!(cursor == 0 || cursor == 6, "{cursor}");
+        assert!(events.borrow().is_empty());
+
+        // A clickable one is reported, and the caret stays.
+        let bounds = set(true, &mut cx);
+        cx.simulate_click(bounds.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert_eq!(editor.read_with(&cx, |state, _| state.cursor()), 13);
+        assert_eq!(
+            *events.borrow(),
+            vec![EditorPresentationEvent::ReplacementClicked { range: 0..6 }]
+        );
+
+        // Past it, a click places the caret as usual.
+        let past = bounds.center() + point(bounds.size.width, px(0.)) + point(px(20.), px(0.));
+        cx.simulate_click(past, gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(editor.read_with(&cx, |state, _| state.cursor()) > 6);
+        assert_eq!(events.borrow().len(), 1);
+    }
+
+    #[gpui::test]
+    fn presentation_space_around_a_line_moves_rows_and_maps_points_in_it(cx: &mut TestAppContext) {
+        let text = "alpha\nbeta\ngamma";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            present_with(
+                &editor,
+                EditorPresentation {
+                    line_space: vec![(1, px(10.), px(6.))],
+                    ..Default::default()
+                },
+                cx,
+            );
+            editor.update(cx, |state, cx| state.set_selected_range(8..8, cx));
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let lh = layout.line_height;
+            let map = &state.display_map;
+            assert_close(map.display_row_top(1, lh), lh);
+            assert_close(map.display_row_height(1, lh), lh + px(16.));
+            assert_close(map.display_row_top(2, lh), lh * 2. + px(16.));
+            assert_eq!(map.display_row_at_y(lh + px(3.), lh), 1);
+            assert_eq!(map.display_row_at_y(lh * 2. + px(14.), lh), 1);
+            assert_eq!(map.display_row_at_y(lh * 2. + px(17.), lh), 2);
+            assert_close(map.wrap_rows_height(lh), lh * 3. + px(16.));
+            assert_close(layout.lines[1].size(lh).height, lh + px(16.));
+
+            // The text, the caret and selections sit in the row, inside the space.
+            let beta = TextElement::<EditorMode>::layout_range_corners(&(6..10), layout).unwrap();
+            assert_close(beta[0].top_left.y, layout.visible_top + lh + px(10.));
+            assert_close(beta[0].bottom_left.y - beta[0].top_left.y, lh);
+            let gamma = TextElement::<EditorMode>::layout_range_corners(&(11..16), layout).unwrap();
+            assert_close(gamma[0].top_left.y, layout.visible_top + lh * 2. + px(16.));
+            let caret = layout.cursor_bounds.unwrap();
+            assert_close(
+                caret.origin.y,
+                state.input_bounds.top() + lh + px(10.) + (lh - caret.size.height) / 2.,
+            );
+
+            // Points in the space land on the line's row.
+            let origin =
+                state.last_bounds.unwrap().origin + point(layout.line_number_width, px(0.));
+            let (above, _, _) = state.resolve_mouse_position(origin + point(px(1.), lh + px(4.)));
+            assert!((6..=10).contains(&above), "{above}");
+            let (below, _, _) =
+                state.resolve_mouse_position(origin + point(px(1.), lh * 2. + px(13.)));
+            assert!((6..=10).contains(&below), "{below}");
+            let (next, _, _) =
+                state.resolve_mouse_position(origin + point(px(1.), lh * 2.5 + px(16.)));
+            assert!(next >= 11, "{next}");
+        });
+
+        // Up and down step over the space a row at a time.
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_selected_range(2..2, cx);
+                state.down(&crate::input::MoveDown, window, cx);
+            });
+            window.draw(cx).clear(cx);
+            assert_eq!(editor.read(cx).cursor(), 8);
+            editor.update(cx, |state, cx| {
+                state.down(&crate::input::MoveDown, window, cx)
+            });
+            assert_eq!(editor.read(cx).cursor(), 13);
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_space_keeps_the_caret_in_view(cx: &mut TestAppContext) {
+        let text = (0..40)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (editor, window) = decoration_editor(cx, &text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            let space = (0..40).map(|line| (line, px(12.), px(12.))).collect();
+            present_with(
+                &editor,
+                EditorPresentation {
+                    line_space: space,
+                    ..Default::default()
+                },
+                cx,
+            );
+            window.draw(cx).clear(cx);
+            let target = text.find("line 30").unwrap() + 2;
+            editor.update(cx, |state, cx| {
+                state.set_selected_range(target..target, cx);
+                state.scroll_to(target, None, cx);
+            });
+            window.draw(cx).clear(cx);
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let lh = layout.line_height;
+            assert!(layout.visible_buffer_lines.contains(&30));
+            // The caret's text row, inside the line's space, is within the viewport.
+            let row_top = state.display_map.display_row_top(30, lh) + px(12.);
+            let view_top = -state.scroll_handle.offset().y;
+            let view_bottom = view_top + state.input_bounds.size.height;
+            assert!(
+                row_top >= view_top && row_top + lh <= view_bottom,
+                "{row_top:?} outside {view_top:?}..{view_bottom:?}"
+            );
+            assert!(state.scroll_size.height >= lh * 40. + px(24. * 40.));
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_inset_shifts_a_line_and_narrows_its_wrapping(cx: &mut TestAppContext) {
+        let text = "alpha beta gamma delta epsilon zeta eta theta iota kappa\nshort";
+        let (editor, window) = decoration_editor(cx, text, true);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            let rows = editor.read(cx).last_layout.as_ref().unwrap().lines[0]
+                .wrapped_lines
+                .len();
+            present_with(
+                &editor,
+                EditorPresentation {
+                    line_insets: vec![(0, px(60.))],
+                    ..Default::default()
+                },
+                cx,
+            );
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let line = &layout.lines[0];
+            assert!(line.wrapped_lines.len() > rows);
+            let wrap_width = layout.wrap_width.unwrap();
+            for row in &line.wrapped_lines {
+                assert!(
+                    row.width <= wrap_width - px(60.) + px(4.),
+                    "{:?}",
+                    row.width
+                );
+            }
+            for (ix, offset) in [(0, 0), (1, line.wrapped_lines[0].len)] {
+                let position = line.position_for_index(offset, layout, false).unwrap();
+                assert!(position.x >= px(60.), "row {ix}: {position:?}");
+            }
+            assert_close(
+                line.position_for_index(0, layout, false).unwrap().x,
+                px(60.),
+            );
+            let corners = TextElement::<EditorMode>::layout_range_corners(&(0..5), layout).unwrap();
+            assert_close(corners[0].top_left.x, px(60.));
+            // The next line is not inset.
+            assert_eq!(
+                layout.lines[1]
+                    .position_for_index(0, layout, false)
+                    .unwrap()
+                    .x,
+                px(0.)
+            );
+            // A click left of the inset text lands at its start; one on it, inside it.
+            let origin =
+                state.last_bounds.unwrap().origin + point(layout.line_number_width, px(0.));
+            let half = layout.line_height / 2.;
+            let (start, _, _) = state.resolve_mouse_position(origin + point(px(10.), half));
+            assert_eq!(start, 0);
+            let beta = line.position_for_index(7, layout, false).unwrap().x;
+            let (inside, _, _) = state.resolve_mouse_position(origin + point(beta, half));
+            assert!((6..=8).contains(&inside), "{inside}");
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_ornaments_change_no_layout(cx: &mut TestAppContext) {
+        let text = "> quote\n---\nbody";
+        let (editor, window) = decoration_editor(cx, text, true);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| state.set_selected_range(3..3, cx));
+            let snapshot = |window: &mut Window, cx: &mut App| {
+                window.draw(cx).clear(cx);
+                let state = editor.read(cx);
+                let layout = state.last_layout.as_ref().unwrap();
+                (
+                    layout
+                        .lines
+                        .iter()
+                        .map(|line| line.size(layout.line_height))
+                        .collect::<Vec<_>>(),
+                    layout.cursor_bounds,
+                    state.scroll_size,
+                )
+            };
+            let before = snapshot(window, cx);
+            let color = gpui::hsla(0., 0., 0.5, 1.);
+            present_with(
+                &editor,
+                EditorPresentation {
+                    line_ornaments: vec![
+                        (
+                            0,
+                            Ornament::Bar {
+                                x: px(2.),
+                                width: px(3.),
+                                color,
+                            },
+                        ),
+                        (
+                            1,
+                            Ornament::Rule {
+                                thickness: px(1.),
+                                color,
+                            },
+                        ),
+                    ],
+                    ..Default::default()
+                },
+                cx,
+            );
+            assert_eq!(snapshot(window, cx), before);
+            assert_eq!(
+                editor.read(cx).editor_presentation().line_ornaments.len(),
+                2
+            );
+        });
+    }
+
+    fn block(lines: Range<usize>, key: u64, height: f32) -> BlockWidget {
+        BlockWidget {
+            lines,
+            height: px(50.),
+            key,
+            render: Rc::new(move |_, _| div().h(px(height)).w_full().into_any_element()),
+        }
+    }
+
+    #[gpui::test]
+    fn presentation_block_widget_replaces_its_lines_with_its_element(cx: &mut TestAppContext) {
+        let text = "top\n| a |\n| b |\nbottom";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let (events, _subscription) = record_events(&editor, &mut cx);
+        cx.update(|window, cx| {
+            present_with(
+                &editor,
+                EditorPresentation {
+                    block_widgets: vec![block(1..3, 7, 30.)],
+                    ..Default::default()
+                },
+                cx,
+            );
+            window.draw(cx).clear(cx);
+            {
+                // Laid out at the height it was given until measured.
+                let state = editor.read(cx);
+                let layout = state.last_layout.as_ref().unwrap();
+                assert_eq!(layout.visible_buffer_lines, vec![0, 1, 3]);
+                assert_close(layout.lines[1].size(layout.line_height).height, px(50.));
+            }
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let lh = layout.line_height;
+            assert_eq!(layout.visible_buffer_lines, vec![0, 1, 3]);
+            assert_close(layout.lines[1].size(lh).height, px(30.));
+            assert_close(state.display_map.display_row_top(2, lh), lh + px(30.));
+            assert_close(state.display_map.wrap_rows_height(lh), lh * 2. + px(30.));
+            let bottom = text.find("bottom").unwrap();
+            let corners =
+                TextElement::<EditorMode>::layout_range_corners(&(bottom..bottom + 2), layout)
+                    .unwrap();
+            assert_close(corners[0].top_left.y, layout.visible_top + lh + px(30.));
+        });
+
+        // Vertical moves step over the widget's lines in one row.
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.set_selected_range(1..1, cx);
+                state.down(&crate::input::MoveDown, window, cx);
+            });
+            let on_block = editor.read(cx).cursor();
+            assert!((4..10).contains(&on_block), "{on_block}");
+            editor.update(cx, |state, cx| {
+                state.down(&crate::input::MoveDown, window, cx)
+            });
+            assert!(editor.read(cx).cursor() >= text.find("bottom").unwrap());
+            editor.update(cx, |state, cx| state.set_selected_range(1..1, cx));
+            window.draw(cx).clear(cx);
+        });
+
+        // A click on the widget is reported and leaves the caret.
+        let (origin, lh) = editor.read_with(&cx, |state, _| {
+            let layout = state.last_layout.as_ref().unwrap();
+            (
+                state.last_bounds.unwrap().origin + point(layout.line_number_width, px(0.)),
+                layout.line_height,
+            )
+        });
+        cx.simulate_click(
+            origin + point(px(20.), lh + px(15.)),
+            gpui::Modifiers::default(),
+        );
+        cx.run_until_parked();
+        assert_eq!(editor.read_with(&cx, |state, _| state.cursor()), 1);
+        assert_eq!(
+            *events.borrow(),
+            vec![EditorPresentationEvent::BlockClicked { lines: 1..3 }]
+        );
+
+        // An edit in its lines drops it, and the lines come back.
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.replace_text_in_range(Some(12..12), "z", window, cx)
+            });
+            assert!(
+                editor
+                    .read(cx)
+                    .editor_presentation()
+                    .block_widgets
+                    .is_empty()
+            );
+            window.draw(cx).clear(cx);
+            let layout = editor.read(cx).last_layout.clone().unwrap();
+            assert_eq!(layout.visible_buffer_lines, vec![0, 1, 2, 3]);
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_block_widget_element_gets_its_own_clicks(cx: &mut TestAppContext) {
+        use gpui::StatefulInteractiveElement as _;
+        let text = "top\n| a |\nbottom";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let (events, _subscription) = record_events(&editor, &mut cx);
+        let clicks = Rc::new(std::cell::Cell::new(0));
+        cx.update(|window, cx| {
+            let clicks = clicks.clone();
+            present_with(
+                &editor,
+                EditorPresentation {
+                    block_widgets: vec![BlockWidget {
+                        lines: 1..2,
+                        height: px(40.),
+                        key: 1,
+                        render: Rc::new(move |_, _| {
+                            let clicks = clicks.clone();
+                            div()
+                                .id("inner")
+                                .size(px(40.))
+                                .on_click(move |_, _, cx| {
+                                    clicks.set(clicks.get() + 1);
+                                    cx.stop_propagation();
+                                })
+                                .into_any_element()
+                        }),
+                    }],
+                    ..Default::default()
+                },
+                cx,
+            );
+            editor.update(cx, |state, cx| state.set_selected_range(0..0, cx));
+            window.draw(cx).clear(cx);
+            window.draw(cx).clear(cx);
+        });
+        let (origin, lh) = editor.read_with(&cx, |state, _| {
+            let layout = state.last_layout.as_ref().unwrap();
+            (
+                state.last_bounds.unwrap().origin + point(layout.line_number_width, px(0.)),
+                layout.line_height,
+            )
+        });
+        cx.simulate_click(
+            origin + point(px(10.), lh + px(10.)),
+            gpui::Modifiers::default(),
+        );
+        cx.run_until_parked();
+        assert_eq!(clicks.get(), 1);
+        assert!(events.borrow().is_empty());
+        assert_eq!(editor.read_with(&cx, |state, _| state.cursor()), 0);
+    }
+
+    #[gpui::test]
+    fn presentation_extras_survive_edits_and_invalid_input(cx: &mut TestAppContext) {
+        let text = "- a\n> b\n---\n| t |\n| u |\nend";
+        let (editor, window) = decoration_editor(cx, text, true);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            let color = gpui::hsla(0., 0., 0., 1.);
+            present_with(
+                &editor,
+                EditorPresentation {
+                    concealed: vec![4..6],
+                    replacements: vec![
+                        replacement(0..2, "•", true),
+                        replacement(1..3, "x", false),
+                        replacement(4..5, "x", false),
+                        replacement(90..95, "x", false),
+                        replacement(2..3, "a\nb", false),
+                    ],
+                    line_space: vec![
+                        (2, px(8.), px(8.)),
+                        (40, px(1.), px(1.)),
+                        (1, px(f32::NAN), px(1.)),
+                    ],
+                    line_insets: vec![(1, px(20.)), (1, px(30.)), (2, px(-4.))],
+                    line_ornaments: vec![
+                        (
+                            1,
+                            Ornament::Bar {
+                                x: px(0.),
+                                width: px(3.),
+                                color,
+                            },
+                        ),
+                        (
+                            2,
+                            Ornament::Rule {
+                                thickness: px(1.),
+                                color,
+                            },
+                        ),
+                        (
+                            9,
+                            Ornament::Rule {
+                                thickness: px(1.),
+                                color,
+                            },
+                        ),
+                    ],
+                    block_widgets: vec![block(3..5, 1, 20.), block(4..9, 2, 20.)],
+                    ..Default::default()
+                },
+                cx,
+            );
+            let kept = editor.read(cx).editor_presentation();
+            assert_eq!(kept.replacements.len(), 1);
+            assert_eq!(kept.line_space, vec![(2, px(8.), px(8.))]);
+            assert_eq!(kept.line_insets, vec![(1, px(20.))]);
+            assert_eq!(kept.line_ornaments.len(), 2);
+            assert_eq!(kept.block_widgets.len(), 1);
+            window.draw(cx).clear(cx);
+
+            // A new line at the top shifts everything down a line.
+            editor.update(cx, |state, cx| {
+                state.replace_text_in_range(Some(0..0), "x\n", window, cx)
+            });
+            let shifted = editor.read(cx).editor_presentation();
+            assert_eq!(shifted.replacements[0].range, 2..4);
+            assert_eq!(shifted.line_space, vec![(3, px(8.), px(8.))]);
+            assert_eq!(shifted.line_insets, vec![(2, px(20.))]);
+            assert_eq!(
+                shifted
+                    .line_ornaments
+                    .iter()
+                    .map(|(line, _)| *line)
+                    .collect::<Vec<_>>(),
+                vec![2, 3]
+            );
+            assert_eq!(shifted.block_widgets[0].lines, 4..6);
+            window.draw(cx).clear(cx);
+
+            // Typing in the replaced bullet drops it; joining the quote into the list line
+            // drops the quote's items.
+            editor.update(cx, |state, cx| {
+                state.replace_text_in_range(Some(3..3), "y", window, cx);
+                let quote = state.text().to_string().find("> b").unwrap();
+                state.replace_text_in_range(Some(quote - 1..quote), "", window, cx);
+            });
+            let edited = editor.read(cx).editor_presentation();
+            assert!(edited.replacements.is_empty());
+            assert!(edited.line_insets.is_empty());
+            assert_eq!(edited.line_space, vec![(2, px(8.), px(8.))]);
+            assert_eq!(edited.block_widgets[0].lines, 3..5);
+            window.draw(cx).clear(cx);
+
+            // Replacing everything leaves nothing stale behind.
+            editor.update(cx, |state, cx| state.set_value("", window, cx));
+            window.draw(cx).clear(cx);
+            assert!(editor.read(cx).editor_presentation().is_empty());
+            editor.update(cx, |state, cx| state.set_presentation(None, cx));
+            window.draw(cx).clear(cx);
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_extras_unset_keep_the_layout_unchanged(cx: &mut TestAppContext) {
+        let text = "alpha beta gamma delta epsilon zeta eta theta\n\n    short\nlast line";
+        let (editor, window) = decoration_editor(cx, text, true);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| state.set_selected_range(20..20, cx));
+            let snapshot = |window: &mut Window, cx: &mut App| {
+                window.draw(cx).clear(cx);
+                let state = editor.read(cx);
+                let layout = state.last_layout.as_ref().unwrap();
+                (
+                    layout.visible_top,
+                    layout.visible_buffer_lines.clone(),
+                    layout
+                        .lines
+                        .iter()
+                        .map(|line| {
+                            (
+                                line.size(layout.line_height),
+                                line.wrapped_lines
+                                    .iter()
+                                    .map(|row| (row.len, row.width))
+                                    .collect::<Vec<_>>(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    layout.cursor_bounds,
+                    state.scroll_size,
+                )
+            };
+            let before = snapshot(window, cx);
+            present_with(
+                &editor,
+                EditorPresentation {
+                    replacements: vec![replacement(0..5, "•", true)],
+                    line_space: vec![(1, px(9.), px(9.))],
+                    line_insets: vec![(0, px(30.))],
+                    block_widgets: vec![block(2..4, 3, 20.)],
+                    ..Default::default()
+                },
+                cx,
+            );
+            assert_ne!(snapshot(window, cx), before);
+            editor.update(cx, |state, cx| state.set_presentation(None, cx));
             assert_eq!(snapshot(window, cx), before);
         });
     }

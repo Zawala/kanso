@@ -196,6 +196,33 @@ void rendererSuite(OpenLibrary open) {
       );
     });
 
+    test("a note, saved or as it is being typed, is drawn as the preview's "
+        'blocks', () async {
+      final library = await open();
+      final id = await makeNote(library, 'Blocks', '# Saved\n');
+      const options = PreviewOptions(size: 18, utcOffsetSecs: 0, code: []);
+      final renderer = library.renderer();
+      final saved = await renderer.previewBlocks(
+        id: id,
+        palette: palette,
+        options: options,
+      );
+      expect(saved.single, isA<PreviewBlock_Heading>());
+      // Text not saved yet, each block with the lines it was drawn from.
+      final typed = await renderer.previewBlocksForText(
+        id: id,
+        text: 'Intro\n\n```js\nlet a = 1;\n```\n',
+        palette: palette,
+        options: options,
+      );
+      expect(typed.map((b) => b.block.runtimeType).toList(), <Type>[
+        PreviewBlock_Paragraph,
+        PreviewBlock_Code,
+      ]);
+      expect(typed.last.firstLine, 2);
+      expect(typed.last.endLine, 5);
+    });
+
     test('a note is previewed as a page in the palette', () async {
       final library = await open();
       final id = await makeNote(

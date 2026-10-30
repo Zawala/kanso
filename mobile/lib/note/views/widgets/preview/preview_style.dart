@@ -86,6 +86,13 @@ class PreviewStyle {
   /// The underline of a link: the accent over the page.
   Color get linkUnderline => previewOver(accent, background, 0.4);
 
+  /// A quote's bar, and the room between it and the quote's text.
+  static const double quoteBarWidth = 3;
+  static const double quotePadding = 14;
+
+  /// How far each quote sets its text in: its bar and the room after it.
+  static const double quoteStep = quoteBarWidth + quotePadding;
+
   /// The room below a paragraph, a list, a table or a code block.
   double get gap => 0.9 * size;
 

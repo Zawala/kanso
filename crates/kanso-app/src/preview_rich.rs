@@ -211,29 +211,53 @@ impl MarkdownPlugin for MathPlugin {
         cx: &mut App,
     ) -> Option<InlineElement> {
         let InlineMath(source) = node.data::<InlineMath>()?;
-        let job = Job::new(Kind::InlineMath, source.clone(), palette(cx));
-        let outcome = drawing(&job, &self.rich)?;
-        let (image, svg) = match outcome.as_ref() {
-            Ok(svg) => (image(&job, svg), svg),
-            // A mistake shows as its source, set apart.
-            Err(_) => return None,
-        };
-        // In the layout's units: `px` below adds the zoom.
-        let scale = crate::zoom::unscaled(context.font_size()) / kanso_render::TEXT_SIZE;
-        // Whole points tall: the text view drops an inline element whose
-        // baseline falls below its (pixel-snapped) bottom, as a formula
-        // without descenders can by a fraction.
-        let height = (svg.height * scale).ceil();
-        let fit = height / (svg.height * scale);
-        let width = svg.width * scale * fit;
-        let baseline = (svg.baseline.unwrap_or(svg.height) * scale * fit)
-            .min(height - 0.5)
-            .max(0.);
+        let math = typeset(source, context.font_size(), &self.rich, cx)?;
         Some(
-            InlineElement::new(img(image).w(px(width)).h(px(height)).flex_none())
-                .with_baseline(px(baseline)),
+            InlineElement::new(img(math.image).w(math.width).h(math.height).flex_none())
+                .with_baseline(math.baseline),
         )
     }
+}
+
+/// An inline formula typeset: its image, its size and its baseline from its
+/// top, in the window's pixels.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypesetMath {
+    pub image: Arc<Image>,
+    pub width: Pixels,
+    pub height: Pixels,
+    pub baseline: Pixels,
+}
+
+/// `source` (a formula without its `$`s) typeset for text at `font_size`,
+/// as the preview draws it; `None` until it is drawn (it is then asked for,
+/// and `rich` is woken when it is ready) or when it can't be.
+// no-prop-test: sizes an image; the Live and preview snapshots show it.
+pub fn typeset(source: &str, font_size: Pixels, rich: &Rich, cx: &App) -> Option<TypesetMath> {
+    let job = Job::new(Kind::InlineMath, source, palette(cx));
+    let outcome = drawing(&job, rich)?;
+    let (image, svg) = match outcome.as_ref() {
+        Ok(svg) => (image(&job, svg), svg),
+        // A mistake shows as its source, set apart.
+        Err(_) => return None,
+    };
+    // In the layout's units: `px` below adds the zoom.
+    let scale = crate::zoom::unscaled(font_size) / kanso_render::TEXT_SIZE;
+    // Whole points tall: the text view drops an inline element whose
+    // baseline falls below its (pixel-snapped) bottom, as a formula
+    // without descenders can by a fraction.
+    let height = (svg.height * scale).ceil();
+    let fit = height / (svg.height * scale);
+    let width = svg.width * scale * fit;
+    let baseline = (svg.baseline.unwrap_or(svg.height) * scale * fit)
+        .min(height - 0.5)
+        .max(0.);
+    Some(TypesetMath {
+        image,
+        width: px(width),
+        height: px(height),
+        baseline: px(baseline),
+    })
 }
 
 /// Adds the math plugin and the block renderer to `extensions`.

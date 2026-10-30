@@ -118,6 +118,7 @@ mod library;
 mod library_admin;
 mod linking;
 mod linking_model;
+mod live_document;
 mod locks;
 mod matching;
 mod model;
