@@ -10,8 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:glados/glados.dart' as glados;
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
-import 'package:kanso/core/models/repos/abs/bundled_font_repository.dart';
-import 'package:kanso/core/models/repos/abs/google_font_repository.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/note/models/data/preview_action.dart';
 import 'package:kanso/note/state/preview/preview_bloc.dart';
@@ -20,42 +18,45 @@ import 'package:mocktail/mocktail.dart';
 import '../../../helpers/library_fixtures.dart';
 import '../../../helpers/mock_repositories.dart';
 import '../../../helpers/seeded_appearance_bloc.dart'
-    show MockRendererRepository;
+    show MockRendererRepository, MockThemesRepository;
 import '../../../helpers/theme_tokens.dart';
 
 final ThemeTokens _tokens = tokensFor(fakePalette('nord'));
 
 const _failure = ApplicationError.storage(message: 'Disk error.');
 
-class FakePreviewBundledFonts implements BundledFontRepository {
-  @override
-  Future<List<BundledFontFace>> faces(String family) async => family == 'Inter'
-      ? const <BundledFontFace>[
-          BundledFontFace(weight: '100 900', bytes: <int>[4, 5, 6]),
-        ]
-      : const <BundledFontFace>[];
-}
+const PreviewThemes _nord = (
+  ui: 'nord',
+  syntax: 'nord',
+  preview: 'nord',
+  dark: true,
+);
 
-class FakePreviewGoogleFonts implements GoogleFontRepository {
-  FakePreviewGoogleFonts({
-    this.cached = const <String>{'Lora', 'IBM Plex Mono'},
-  });
+/// The blocks of the [n]-th drawing: one paragraph saying so.
+List<PreviewBlock> _page(int n) => <PreviewBlock>[
+  PreviewBlock.paragraph(
+    inlines: <PreviewInline>[
+      PreviewInline.text(
+        text: 'page $n',
+        bold: false,
+        italic: false,
+        strike: false,
+        code: false,
+      ),
+    ],
+  ),
+];
 
-  /// The families with a downloaded file.
-  final Set<String> cached;
-
-  @override
-  Future<List<int>?> cachedBytes(String family) async =>
-      cached.contains(family) ? <int>[1, 2, 3] : null;
-
-  @override
-  Future<Either<ApplicationError, String>> load(String family) async =>
-      Right<ApplicationError, String>(family);
-}
+/// The text of the blocks drawn, or null when there are none yet.
+String? _shown(PreviewState state) => switch (state.blocks) {
+  [PreviewBlock_Paragraph(inlines: [PreviewInline_Text(:final text)])] => text,
+  _ => null,
+};
 
 void main() {
   late MockLibraryRepository library;
   late MockRendererRepository renderer;
+  late MockThemesRepository themes;
   late MockWebLinkRepository links;
   late MockUndoNoticeBloc undoNotice;
   late MockHapticsRepository haptics;
@@ -76,6 +77,7 @@ void main() {
     addTearDown(changes.close);
     library = MockLibraryRepository();
     renderer = MockRendererRepository();
+    themes = MockThemesRepository();
     links = MockWebLinkRepository();
     undoNotice = MockUndoNoticeBloc();
     haptics = MockHapticsRepository();
@@ -83,49 +85,40 @@ void main() {
     when(() => library.note(any())).thenAnswer(
       (_) async => Right<ApplicationError, NoteView>(mockOpenNote),
     );
-    when(() => renderer.builtinThemeTokens(any())).thenAnswer(
+    when(() => themes.fit(any(), any(), any())).thenAnswer(
       (_) async => Right<ApplicationError, ThemeTokens>(_tokens),
     );
-    when(() => renderer.previewPage(any(), any(), any())).thenAnswer(
-      (_) async => Right<ApplicationError, String>('<p>page ${++drawn}</p>'),
+    when(() => renderer.previewBlocks(any(), any(), any())).thenAnswer(
+      (_) async => Right<ApplicationError, List<PreviewBlock>>(_page(++drawn)),
     );
     when(() => haptics.selection()).thenAnswer((_) async {});
   });
 
-  PreviewBloc build({
-    GoogleFontRepository? googleFonts,
-    BundledFontRepository? bundledFonts,
-  }) => PreviewBloc(
-    library,
-    renderer,
-    links,
-    undoNotice,
-    haptics,
-    googleFonts: googleFonts,
-    bundledFonts: bundledFonts,
-  );
+  PreviewBloc build() =>
+      PreviewBloc(library, renderer, themes, links, undoNotice, haptics);
 
   void answer(String url, PreviewLink target) => when(
     () => renderer.linkTarget(any(), url),
   ).thenAnswer((_) async => Right<ApplicationError, PreviewLink>(target));
 
   Future<PreviewBloc> started() async {
-    final bloc = build()..add(PreviewEvent.started(mockOpenNote.id, 'nord'));
+    final bloc = build()..add(PreviewEvent.started(mockOpenNote.id, _nord));
     addTearDown(bloc.close);
-    await bloc.stream.firstWhere((state) => state.html != null);
+    await bloc.stream.firstWhere((state) => state.blocks != null);
     return bloc;
   }
 
   group('PreviewBloc', () {
     test(
-      "draws the note's page in the theme, with its code colours",
+      "draws the note's blocks in the fitted themes, with their code colours",
       () async {
         final bloc = await started();
-        expect(bloc.state.html, '<p>page 1</p>');
+        expect(_shown(bloc.state), 'page 1');
         expect(bloc.state.rev, mockOpenNote.rev);
+        verify(() => themes.fit('nord', 'nord', 'nord')).called(1);
         final options =
             verify(
-                  () => renderer.previewPage(
+                  () => renderer.previewBlocks(
                     mockOpenNote.id,
                     _tokens.palette,
                     captureAny(),
@@ -134,97 +127,82 @@ void main() {
                 as PreviewOptions;
         expect(options.size, previewBaseTextSize);
         expect(options.code, _tokens.syntax);
+        verifyNever(() => renderer.builtinThemeTokens(any()));
       },
     );
 
-    test('draws the selected font, size and its cached font asset', () async {
-      final bloc = build(googleFonts: FakePreviewGoogleFonts())
+    test('the preview and gallery themes chosen are fitted together', () async {
+      final bloc = await started();
+      const PreviewThemes picked = (
+        ui: 'kanso-light',
+        syntax: 'gallery-dracula',
+        preview: 'gallery-paper',
+        dark: false,
+      );
+      bloc.add(const PreviewEvent.themeChanged(picked));
+      await bloc.stream.firstWhere((state) => _shown(state) == 'page 2');
+      verify(
+        () => themes.fit('kanso-light', 'gallery-dracula', 'gallery-paper'),
+      ).called(1);
+      expect(bloc.state.themes, picked);
+    });
+
+    test('the same themes again draw nothing', () async {
+      final bloc = await started();
+      bloc.add(const PreviewEvent.themeChanged(_nord));
+      await pumpEventQueue();
+      expect(drawn, 1);
+    });
+
+    test("themes that can't be read fall back to Kanso's own", () async {
+      when(() => themes.fit('gone', 'gone', 'gone')).thenAnswer(
+        (_) async => const Left<ApplicationError, ThemeTokens>(_failure),
+      );
+      final bloc = build()
         ..add(
-          PreviewEvent.started(
-            mockOpenNote.id,
-            'nord',
-            font: 'Lora',
-            mono: 'IBM Plex Mono',
-            size: 23,
-          ),
+          PreviewEvent.started(mockOpenNote.id, (
+            ui: 'gone',
+            syntax: 'gone',
+            preview: 'gone',
+            dark: true,
+          )),
         );
       addTearDown(bloc.close);
-      final state = await bloc.stream.firstWhere((value) => value.html != null);
-      expect(state.html, contains('data:font/ttf;base64,AQID'));
-      expect(state.html, contains("font-family:'Lora'"));
+      await bloc.stream.firstWhere((state) => state.blocks != null);
+      verify(
+        () => themes.fit('kanso-dark', 'kanso-dark', 'kanso-dark'),
+      ).called(1);
+    });
+
+    test('a new text size draws the note again at that size', () async {
+      final bloc = await started();
+      bloc.add(const PreviewEvent.styleChanged(size: 23));
+      await bloc.stream.firstWhere((state) => _shown(state) == 'page 2');
       final options =
           verify(
-                () => renderer.previewPage(
-                  mockOpenNote.id,
-                  _tokens.palette,
-                  captureAny(),
-                ),
-              ).captured.single
+                () => renderer.previewBlocks(any(), any(), captureAny()),
+              ).captured.last
               as PreviewOptions;
-      expect(options.font, 'Lora');
-      expect(options.mono, 'IBM Plex Mono');
       expect(options.size, 23);
-    });
-
-    test('embeds a bundled family, which the web view cannot see', () async {
-      final bloc =
-          build(
-            googleFonts: FakePreviewGoogleFonts(cached: const <String>{}),
-            bundledFonts: FakePreviewBundledFonts(),
-          )..add(
-            PreviewEvent.started(mockOpenNote.id, 'nord', font: 'Inter'),
-          );
-      addTearDown(bloc.close);
-      final state = await bloc.stream.firstWhere((value) => value.html != null);
-      expect(state.html, contains("font-family:'Inter'"));
-      expect(state.html, contains('data:font/ttf;base64,BAUG'));
-      expect(state.html, contains('font-weight:100 900;'));
-    });
-
-    test('a downloaded family is embedded before a bundled one', () async {
-      final bloc =
-          build(
-            googleFonts: FakePreviewGoogleFonts(
-              cached: const <String>{'Inter'},
-            ),
-            bundledFonts: FakePreviewBundledFonts(),
-          )..add(
-            PreviewEvent.started(mockOpenNote.id, 'nord', font: 'Inter'),
-          );
-      addTearDown(bloc.close);
-      final state = await bloc.stream.firstWhere((value) => value.html != null);
-      expect(state.html, contains('data:font/ttf;base64,AQID'));
-      expect(state.html, isNot(contains('BAUG')));
-    });
-
-    test('a family with no file leaves the page as drawn', () async {
-      final bloc =
-          build(
-            googleFonts: FakePreviewGoogleFonts(cached: const <String>{}),
-            bundledFonts: FakePreviewBundledFonts(),
-          )..add(
-            PreviewEvent.started(mockOpenNote.id, 'nord', font: 'Unknown'),
-          );
-      addTearDown(bloc.close);
-      final state = await bloc.stream.firstWhere((value) => value.html != null);
-      expect(state.html, '<p>page 1</p>');
+      // The tokens fitted once are kept.
+      verify(() => themes.fit(any(), any(), any())).called(1);
     });
 
     test('draws it again when the library changes', () async {
       final bloc = await started();
       changes.add(<String>['note:other']);
-      await bloc.stream.firstWhere((state) => state.html == '<p>page 2</p>');
+      await bloc.stream.firstWhere((state) => _shown(state) == 'page 2');
     });
 
-    test('a page that cannot be drawn says why', () async {
-      when(() => renderer.previewPage(any(), any(), any())).thenAnswer(
-        (_) async => const Left<ApplicationError, String>(_failure),
+    test('a note that cannot be drawn says why', () async {
+      when(() => renderer.previewBlocks(any(), any(), any())).thenAnswer(
+        (_) async => const Left<ApplicationError, List<PreviewBlock>>(_failure),
       );
-      final bloc = build()..add(PreviewEvent.started(mockOpenNote.id, 'nord'));
+      final bloc = build()..add(PreviewEvent.started(mockOpenNote.id, _nord));
       addTearDown(bloc.close);
       final state = await bloc.stream.firstWhere((s) => s.error != null);
       expect(state.error, _failure);
-      expect(state.html, isNull);
+      expect(state.blocks, isNull);
     });
 
     test('a note link opens the note', () async {
@@ -316,7 +294,7 @@ void main() {
       expect(state.action, const PreviewAction.copyCode(0, 'let x = 1;'));
     });
 
-    test('a ticked box is one write against the page, with Undo', () async {
+    test('a ticked box is one write against the blocks, with Undo', () async {
       final bloc = await started();
       answer('kanso-task:2', const PreviewLink.task(index: 2));
       when(
@@ -331,7 +309,7 @@ void main() {
         ),
       );
       bloc.add(const PreviewEvent.linkTapped('kanso-task:2'));
-      await bloc.stream.firstWhere((s) => s.html == '<p>page 2</p>');
+      await bloc.stream.firstWhere((s) => _shown(s) == 'page 2');
       verify(
         () => library.toggleTaskAt(
           noteId: mockOpenNote.id,
@@ -346,7 +324,7 @@ void main() {
       ).called(1);
     });
 
-    test('a box on a page older than the note draws the page again', () async {
+    test('a box on blocks older than the note draws them again', () async {
       final bloc = await started();
       answer('kanso-task:0', const PreviewLink.task(index: 0));
       when(
@@ -361,7 +339,7 @@ void main() {
         ),
       );
       bloc.add(const PreviewEvent.linkTapped('kanso-task:0'));
-      await bloc.stream.firstWhere((s) => s.html == '<p>page 2</p>');
+      await bloc.stream.firstWhere((s) => _shown(s) == 'page 2');
       expect(bloc.state.notice, isNull);
       verifyNever(() => undoNotice.add(any()));
     });

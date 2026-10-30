@@ -1777,6 +1777,22 @@
   "@previewFailed": {
     "description": "Shown instead of a note's rendered page when it could not be made."
   },
+  "previewCopyCode": "Copy code",
+  "@previewCopyCode": {
+    "description": "Read by a screen reader for the button that copies a code block in a note's preview."
+  },
+  "previewEmptyDrawing": "An empty drawing",
+  "@previewEmptyDrawing": {
+    "description": "Shown in a note's preview for a drawing with nothing in it yet."
+  },
+  "previewQueryEmpty": "No notes match.",
+  "@previewQueryEmpty": {
+    "description": "Shown under a query view's headings in a note's preview when no note matches it."
+  },
+  "previewQueryBadge": "Query",
+  "@previewQueryBadge": {
+    "description": "The badge over a query view's text in a note's preview when the query can't be read."
+  },
   "previewLinkFailed": "That link couldn't be opened.",
   "@previewLinkFailed": {
     "description": "Said when a tap on a link in the preview did nothing."

@@ -1,0 +1,164 @@
+// Kanso — preview_blocks.dart
+// Created 2026-10-30.
+// Licensed under AGPL-3.0-or-later (see LICENSE).
+
+import 'dart:math' as math;
+
+import 'package:flutter/widgets.dart';
+
+import '../../../../core/bridge/api/types.dart';
+import 'preview_code.dart';
+import 'preview_figure.dart';
+import 'preview_list.dart';
+import 'preview_style.dart';
+import 'preview_table.dart';
+import 'preview_text.dart';
+
+/// Blocks of a note one below the other, spaced as the page spaces them:
+/// the room between two blocks is the larger of the first's below and the
+/// second's above, as margins fold together on the page. In a [tight] list
+/// item, paragraphs have no room below them.
+class PreviewBlocks extends StatelessWidget {
+  const PreviewBlocks(this.blocks, {this.tight = false, super.key});
+
+  final List<PreviewBlock> blocks;
+  final bool tight;
+
+  /// The room above [block] and below it, in points.
+  static (double above, double below) margins(
+    PreviewBlock block,
+    PreviewStyle style, {
+    bool tight = false,
+  }) {
+    final size = style.size;
+    return switch (block) {
+      PreviewBlock_Heading(:final level) => () {
+        final (ratio, gap) = PreviewStyle.headingMetrics(level);
+        return (gap * ratio * size, 0.35 * ratio * size);
+      }(),
+      PreviewBlock_Rule() => (1.6 * size, 1.6 * size),
+      PreviewBlock_Paragraph() || PreviewBlock_Html() when tight => (0.0, 0.0),
+      PreviewBlock_Figure(kind: PreviewFigureKind.math) => (
+        0.4 * size,
+        math.max(0.4 * size, style.gap),
+      ),
+      _ => (0.0, style.gap),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = PreviewScope.of(context).style;
+    final children = <Widget>[];
+    for (var at = 0; at < blocks.length; at++) {
+      final block = blocks[at];
+      if (at > 0) {
+        final before = blocks[at - 1];
+        final (_, below) = margins(before, style, tight: tight);
+        var (above, _) = margins(block, style, tight: tight);
+        if (before is PreviewBlock_Heading && block is PreviewBlock_Heading) {
+          final (ratio, _) = PreviewStyle.headingMetrics(block.level);
+          above = 0.25 * ratio * style.size;
+        }
+        final room = math.max(above, below);
+        if (room > 0) {
+          children.add(SizedBox(height: room));
+        }
+      }
+      children.add(PreviewBlockView(block, tight: tight));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
+  }
+}
+
+/// One block of a note.
+class PreviewBlockView extends StatelessWidget {
+  const PreviewBlockView(this.block, {this.tight = false, super.key});
+
+  final PreviewBlock block;
+  final bool tight;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = PreviewScope.of(context);
+    final style = scope.style;
+    return switch (block) {
+      PreviewBlock_Heading(:final level, :final id, :final inlines) =>
+        Semantics(
+          header: true,
+          child: PreviewText(
+            inlines,
+            key: scope.headingKey(id),
+            style: style.heading(level),
+          ),
+        ),
+      PreviewBlock_Paragraph(:final inlines) => PreviewText(inlines),
+      PreviewBlock_List(
+        :final ordered,
+        :final start,
+        :final tight,
+        :final items,
+      ) =>
+        PreviewList(ordered: ordered, start: start, tight: tight, items: items),
+      PreviewBlock_Quote(:final blocks) => _Quote(blocks),
+      PreviewBlock_Code(:final language, :final runs, :final copy) =>
+        PreviewCode(language: language, runs: runs, copy: copy),
+      PreviewBlock_Rule() => Container(height: 1, color: style.border),
+      PreviewBlock_Table(:final aligns, :final head, :final rows) =>
+        PreviewTable(aligns: aligns, head: head, rows: rows),
+      PreviewBlock_Figure(:final kind, :final svg) => PreviewFigure(
+        kind: kind,
+        svg: svg,
+      ),
+      PreviewBlock_EmptyDrawing() => const PreviewEmptyDrawing(),
+      PreviewBlock_Failed(
+        :final badge,
+        :final detail,
+        :final language,
+        :final code,
+        :final copy,
+      ) =>
+        PreviewFailed(
+          badge: badge,
+          detail: detail,
+          language: language,
+          code: code,
+          copy: copy,
+        ),
+      PreviewBlock_Query(:final columns, :final rows) => PreviewQuery(
+        columns: columns,
+        rows: rows,
+      ),
+      PreviewBlock_QueryInvalid(:final code, :final message) =>
+        PreviewQueryInvalid(code: code, message: message),
+      PreviewBlock_Html(:final text) => Text(text, style: style.body),
+    };
+  }
+}
+
+/// A quote: its blocks beside a bar, in the quote colour.
+class _Quote extends StatelessWidget {
+  const _Quote(this.blocks);
+
+  final List<PreviewBlock> blocks;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = PreviewScope.of(context).style;
+    return Container(
+      padding: const EdgeInsets.only(left: 14),
+      decoration: BoxDecoration(
+        border: Border(left: BorderSide(color: style.quoteBar, width: 3)),
+      ),
+      child: PreviewScope.nested(
+        context,
+        style: style.withText(style.quote),
+        child: PreviewBlocks(blocks),
+      ),
+    );
+  }
+}

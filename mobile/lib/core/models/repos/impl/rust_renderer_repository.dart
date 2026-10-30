@@ -36,6 +36,15 @@ class RustRendererRepository implements RendererRepository {
   );
 
   @override
+  Future<Either<ApplicationError, List<PreviewBlock>>> previewBlocks(
+    String id,
+    PaletteDto palette,
+    PreviewOptions options,
+  ) => attempt(
+    () => _renderer.previewBlocks(id: id, palette: palette, options: options),
+  );
+
+  @override
   Future<Either<ApplicationError, ExportedPage>> pagePdf(
     String id,
     PaletteDto palette,

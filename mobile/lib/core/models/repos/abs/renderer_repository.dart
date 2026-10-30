@@ -28,6 +28,16 @@ abstract interface class RendererRepository {
     PreviewOptions options,
   );
 
+  /// The note [id] as the blocks the app draws its preview from: the same
+  /// note, link addresses, task boxes and copy numbers as [previewPage].
+  /// [palette] colours its math and diagrams. Locked while the note is
+  /// locked and closed.
+  Future<Either<ApplicationError, List<PreviewBlock>>> previewBlocks(
+    String id,
+    PaletteDto palette,
+    PreviewOptions options,
+  );
+
   /// The note [id] as the page the desktop exports, to print: one
   /// self-contained file whose links anyone who opens it can follow, and the
   /// name a file of it gets, which names a PDF. Locked while the note is

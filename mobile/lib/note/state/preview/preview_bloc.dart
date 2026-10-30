@@ -3,7 +3,6 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:bloc/bloc.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
@@ -14,11 +13,10 @@ import 'package:injectable/injectable.dart';
 
 import '../../../core/bridge/api/types.dart';
 import '../../../core/models/data/application_error.dart';
-import '../../../core/models/repos/abs/bundled_font_repository.dart';
-import '../../../core/models/repos/abs/google_font_repository.dart';
 import '../../../core/models/repos/abs/haptics_repository.dart';
 import '../../../core/models/repos/abs/library_repository.dart';
 import '../../../core/models/repos/abs/renderer_repository.dart';
+import '../../../core/models/repos/abs/themes_repository.dart';
 import '../../../core/state/undo_notice/undo_notice_bloc.dart';
 import '../../../editor/models/repos/abs/web_link_repository.dart';
 import '../../models/data/preview_action.dart';
@@ -34,25 +32,31 @@ const double previewBaseTextSize = 18;
 /// appearance preferences.
 const double previewTextSize = previewBaseTextSize;
 
-/// A note's preview page, and what a tap in it does.
+/// The themes a preview is drawn in: the interface, syntax and preview
+/// themes in force, and whether they are the dark slot's. The core fits the
+/// three together, as the app's own colours are.
+typedef PreviewThemes = ({String ui, String syntax, String preview, bool dark});
+
+/// A note's preview, as the blocks the app draws, and what a tap in it does.
 ///
-/// The page is the core's (`previewPage`): it decides what every link is
-/// and keeps the rest out. A tap is handed back to the core (`linkTarget`),
-/// and only its answer is acted on: a box is ticked here, in one write with
-/// the Undo notice; a note to make is made here; the rest goes to the
-/// screen as a [PreviewAction]. The page is drawn again when anything in
-/// the library changes, since a query view or a link can show any note.
+/// The blocks are the core's (`previewBlocks`): it decides what every link
+/// is and keeps the rest out. A tap is handed back to the core
+/// (`linkTarget`), and only its answer is acted on: a box is ticked here, in
+/// one write with the Undo notice; a note to make is made here; the rest
+/// goes to the screen as a [PreviewAction]. The blocks are drawn again when
+/// anything in the library changes, since a query view or a link can show
+/// any note, and when the themes change, since code and drawings are
+/// coloured by them.
 @injectable
 class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
   PreviewBloc(
     this._library,
     this._renderer,
+    this._themes,
     this._links,
     this._undoNotice,
-    this._haptics, {
-    this._googleFonts,
-    this._bundledFonts,
-  }) : super(const PreviewState()) {
+    this._haptics,
+  ) : super(const PreviewState()) {
     on<PreviewStartedEvent>(_onStarted, transformer: restartable());
     on<PreviewThemeChangedEvent>(_onThemeChanged, transformer: restartable());
     on<PreviewStyleChangedEvent>(_onStyleChanged, transformer: restartable());
@@ -68,15 +72,14 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
 
   final LibraryRepository _library;
   final RendererRepository _renderer;
+  final ThemesRepository _themes;
   final WebLinkRepository _links;
   final UndoNoticeBloc _undoNotice;
   final HapticsRepository _haptics;
-  final GoogleFontRepository? _googleFonts;
-  final BundledFontRepository? _bundledFonts;
 
-  /// The `@font-face` rules of each family embedded so far, so that a page
-  /// drawn again doesn't encode the same files again.
-  final Map<String, String> _faces = <String, String>{};
+  /// The tokens last fitted, and the themes they were fitted for, so that a
+  /// note drawn again doesn't fit the same themes again.
+  (PreviewThemes, ThemeTokens)? _fitted;
   StreamSubscription<List<String>>? _changes;
 
   Future<void> _onStarted(
@@ -86,9 +89,7 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     emit(
       PreviewState(
         noteId: event.noteId,
-        themeId: event.themeId,
-        font: event.font,
-        mono: event.mono,
+        themes: event.themes,
         size: event.size,
       ),
     );
@@ -103,10 +104,10 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     PreviewThemeChangedEvent event,
     Emitter<PreviewState> emit,
   ) async {
-    if (event.themeId == state.themeId) {
+    if (event.themes == state.themes) {
       return;
     }
-    emit(state.copyWith(themeId: event.themeId));
+    emit(state.copyWith(themes: event.themes));
     await _draw(emit);
   }
 
@@ -114,12 +115,10 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     PreviewStyleChangedEvent event,
     Emitter<PreviewState> emit,
   ) async {
-    if (event.font == state.font &&
-        event.mono == state.mono &&
-        event.size == state.size) {
+    if (event.size == state.size) {
       return;
     }
-    emit(state.copyWith(font: event.font, mono: event.mono, size: event.size));
+    emit(state.copyWith(size: event.size));
     await _draw(emit);
   }
 
@@ -128,37 +127,51 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     Emitter<PreviewState> emit,
   ) => _draw(emit);
 
-  /// Draws the page in the theme's palette, with its code colours, and
-  /// keeps the revision it was drawn from.
+  /// The tokens of [themes], fitted together as the app's colours are; Kanso's
+  /// own light or dark theme when they can't be read, as the app falls back.
+  Future<Either<ApplicationError, ThemeTokens>> _tokens(
+    PreviewThemes themes,
+  ) async {
+    if (_fitted case (final known, final tokens) when known == themes) {
+      return Right<ApplicationError, ThemeTokens>(tokens);
+    }
+    var fitted = await _themes.fit(themes.ui, themes.syntax, themes.preview);
+    if (fitted.isLeft()) {
+      final own = themes.dark ? 'kanso-dark' : 'kanso-light';
+      fitted = await _themes.fit(own, own, own);
+    }
+    fitted.fold((_) {}, (tokens) => _fitted = (themes, tokens));
+    return fitted;
+  }
+
+  /// Draws the note's blocks with the fitted preview palette and code
+  /// colours, and keeps the revision they were drawn from.
   Future<void> _draw(Emitter<PreviewState> emit) async {
     final noteId = state.noteId;
-    final tokens = await _renderer.builtinThemeTokens(state.themeId);
+    final tokens = await _tokens(state.themes);
     final note = await _library.note(noteId);
     if (emit.isDone) {
       return;
     }
     final drawn = await tokens.fold(
-      (error) async => Left<ApplicationError, (String, String)>(error),
+      (error) async => Left<ApplicationError, (List<PreviewBlock>, String)>(
+        error,
+      ),
       (tokens) => note.fold(
-        (error) async => Left<ApplicationError, (String, String)>(error),
+        (error) async => Left<ApplicationError, (List<PreviewBlock>, String)>(
+          error,
+        ),
         (note) async {
-          final page = await _renderer.previewPage(
+          final blocks = await _renderer.previewBlocks(
             noteId,
             tokens.palette,
             PreviewOptions(
-              font: state.font,
-              mono: state.mono,
               size: state.size,
               utcOffsetSecs: clock.now().timeZoneOffset.inSeconds,
               code: tokens.syntax,
             ),
           );
-          return page.fold<Future<Either<ApplicationError, (String, String)>>>(
-            (error) async => Left<ApplicationError, (String, String)>(error),
-            (html) async => Right<ApplicationError, (String, String)>(
-              (await _withFonts(html), note.rev),
-            ),
-          );
+          return blocks.map((blocks) => (blocks, note.rev));
         },
       ),
     );
@@ -168,53 +181,9 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     emit(
       drawn.fold(
         (error) => state.copyWith(error: error),
-        (page) => state.copyWith(html: page.$1, rev: page.$2, error: null),
+        (drawn) => state.copyWith(blocks: drawn.$1, rev: drawn.$2, error: null),
       ),
     );
-  }
-
-  /// [html] with the fonts its text and code are set in embedded, since
-  /// the web view cannot see the fonts the app registered: a downloaded
-  /// Google Font from its cached file, a bundled family from the app's
-  /// assets. The device's font needs nothing.
-  Future<String> _withFonts(String html) async {
-    final faces = StringBuffer();
-    for (final family in <String>{?state.font, ?state.mono}) {
-      final rules = _faces[family] ?? await _facesOf(family);
-      if (rules.isNotEmpty) {
-        faces.write(_faces[family] = rules);
-      }
-    }
-    if (faces.isEmpty) {
-      return html;
-    }
-    final style = '<style>$faces</style>';
-    final head = html.indexOf('</head>');
-    return head < 0
-        ? '$style$html'
-        : '${html.substring(0, head)}$style${html.substring(head)}';
-  }
-
-  /// The `@font-face` rules for [family], or none when it has no file.
-  Future<String> _facesOf(String family) async {
-    final safeFamily = family.replaceAll("'", r"\'");
-    String face(List<int> bytes, {String? weight}) =>
-        "@font-face{font-family:'$safeFamily';"
-        'src:url(data:font/ttf;base64,${base64Encode(bytes)}) '
-        "format('truetype');"
-        '${weight == null ? '' : 'font-weight:$weight;'}}';
-    try {
-      if (await _googleFonts?.cachedBytes(family) case final bytes?) {
-        return face(bytes);
-      }
-    } on Object {
-      // A cache that can't be read is a font the page goes without.
-    }
-    final bundled =
-        await _bundledFonts?.faces(family) ?? const <BundledFontFace>[];
-    return <String>[
-      for (final each in bundled) face(each.bytes, weight: each.weight),
-    ].join();
   }
 
   Future<void> _onLinkTapped(
@@ -276,8 +245,8 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     }
   }
 
-  /// Ticks the [index]-th box against the page shown: one write, with the
-  /// Undo notice. A page older than the note is drawn again instead.
+  /// Ticks the [index]-th box against the blocks shown: one write, with the
+  /// Undo notice. Blocks older than the note are drawn again instead.
   Future<void> _tick(int index, Emitter<PreviewState> emit) async {
     final result = await _library.toggleTaskAt(
       noteId: state.noteId,

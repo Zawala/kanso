@@ -1365,6 +1365,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get previewFailed => 'The preview couldn\'t be drawn.';
 
   @override
+  String get previewCopyCode => 'Copy code';
+
+  @override
+  String get previewEmptyDrawing => 'An empty drawing';
+
+  @override
+  String get previewQueryEmpty => 'No notes match.';
+
+  @override
+  String get previewQueryBadge => 'Query';
+
+  @override
   String get previewLinkFailed => 'That link couldn\'t be opened.';
 
   @override
