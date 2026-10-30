@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/models/data/application_error.dart';
 import '../../../core/models/repos/abs/renderer_repository.dart';
+import '../../../core/services/preview_theme_fitter.dart';
 import '../preview/preview_bloc.dart';
 
 /// The folder a page is written in before it is shared.
@@ -21,26 +22,29 @@ typedef HtmlFolder = Future<Directory> Function();
 /// Writes a note as a web page: the page the desktop's "Export as web page"
 /// saves, in the theme the note is drawn in. One self-contained file, with
 /// its math, diagrams and drawings inline as SVG and its images as data
-/// URIs, and no scripts.
+/// URIs, and no scripts. The theme is the preview's: the interface, syntax
+/// and preview themes fitted together, or Kanso's own when they can't be
+/// read.
 ///
 /// The folder is a seam so the part that needs a device can be stood in for
 /// in tests.
 class NoteHtmlExporter {
-  NoteHtmlExporter(this._renderer, {HtmlFolder? folder})
+  NoteHtmlExporter(this._renderer, this._fitter, {HtmlFolder? folder})
     : _folder = folder ?? getTemporaryDirectory;
 
   final RendererRepository _renderer;
+  final PreviewThemeFitter _fitter;
   final HtmlFolder _folder;
 
-  /// The note [noteId], drawn in [themeId], written as a web page.
+  /// The note [noteId], drawn in [themes], written as a web page.
   ///
   /// Answers the path it was written to, for [shareHtml]. A note that is
   /// locked and closed comes back as [LockedError].
   Future<Either<ApplicationError, String>> export({
     required String noteId,
-    required String themeId,
+    required PreviewThemes themes,
   }) async {
-    final tokens = await _renderer.builtinThemeTokens(themeId);
+    final tokens = await _fitter.tokens(themes);
     if (tokens case Left(value: final error)) {
       return Left<ApplicationError, String>(error);
     }
