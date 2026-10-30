@@ -2373,3 +2373,103 @@ fn a_file_opened_with_no_window_opens_the_window(cx: &mut TestAppContext) {
     assert!(shown_note(cx).1.contains("body"));
     assert_eq!(store.counts().unwrap()[&DocType::Note], 1);
 }
+
+/// Live mode hides the Markdown marks on the lines the caret is off, draws
+/// headings larger, and reveals a line's marks once the caret is on it;
+/// another mode draws the plain source again.
+#[gpui_kit::test]
+fn live_mode_hides_the_marks_off_the_caret_line(cx: &mut TestAppContext) {
+    use crate::config::ViewMode;
+    use kanso_engine::live::heading_scale;
+
+    let f = setup(cx);
+    f.select(cx, &f.notes[0]);
+    f.window
+        .update(cx, |_, _, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                workspace.set_view_mode_for_test(ViewMode::Live, cx)
+            })
+        })
+        .unwrap();
+    let text = "# Title\n\nSome **bold** text\n";
+    let stars = text.find("**").unwrap();
+    f.type_body(cx, text);
+    f.draw(cx);
+    // The caret starts on the heading: its `# ` shows, the stars don't.
+    let (shown, live) = f.editor(cx, |e, cx| e.live_for_test(cx));
+    assert!(live);
+    assert_eq!(shown.line_scales, vec![(0, heading_scale(1))]);
+    assert!(shown.concealed.contains(&(stars..stars + 2)), "{shown:?}");
+    assert!(
+        shown.concealed.iter().all(|range| range.start >= 8),
+        "{shown:?}"
+    );
+
+    // On the bold text's line its stars show, and the heading's `# ` hides.
+    f.update_editor(cx, |editor, _, cx| {
+        editor.select_for_test(stars + 4..stars + 4, cx)
+    });
+    f.draw(cx);
+    let (shown, _) = f.editor(cx, |e, cx| e.live_for_test(cx));
+    assert!(shown.concealed.contains(&(0..2)), "{shown:?}");
+    assert!(
+        shown.concealed.iter().all(|range| range.end <= 8),
+        "{shown:?}"
+    );
+    // The heading keeps its size whichever line the caret is on.
+    assert_eq!(shown.line_scales, vec![(0, heading_scale(1))]);
+
+    // Typed text is drawn at once: a new heading below is larger too.
+    f.update_editor(cx, |editor, window, cx| editor.focus_body(window, cx));
+    f.update_editor(cx, |editor, _, cx| {
+        editor.select_for_test(text.len()..text.len(), cx)
+    });
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    vcx.simulate_input("\n## Next\n");
+    f.draw(&mut vcx);
+    let (shown, _) = f.editor(&mut vcx, |e, cx| e.live_for_test(cx));
+    assert_eq!(
+        shown.line_scales,
+        vec![(0, heading_scale(1)), (4, heading_scale(2))]
+    );
+
+    // Edit mode draws the source as written.
+    f.window
+        .update(&mut vcx, |_, _, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                workspace.set_view_mode_for_test(ViewMode::Edit, cx)
+            })
+        })
+        .unwrap();
+    f.draw(&mut vcx);
+    let (shown, live) = f.editor(&mut vcx, |e, cx| e.live_for_test(cx));
+    assert!(!live);
+    assert!(shown.is_empty(), "{shown:?}");
+}
+
+/// ⌘4 and the toolbar's Live segment switch to Live mode, which is kept.
+#[gpui_kit::test]
+fn live_mode_is_chosen_with_its_key_and_kept(cx: &mut TestAppContext) {
+    use crate::config::ViewMode;
+
+    let f = setup(cx);
+    f.select(cx, &f.notes[0]);
+    f.type_body(cx, "## Plan\n\n- [ ] **Ship** it\n");
+    f.draw(cx);
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    vcx.simulate_keystrokes("cmd-4");
+    f.draw(&mut vcx);
+    assert_eq!(f.editor(&mut vcx, |e, _| e.view_mode), ViewMode::Live);
+    assert_eq!(f.saved_config().appearance.view_mode, ViewMode::Live);
+    let (shown, live) = f.editor(&mut vcx, |e, cx| e.live_for_test(cx));
+    assert!(live);
+    assert_eq!(shown.line_scales.len(), 1, "{shown:?}");
+    // Live shows the source alone: no preview beside it.
+    assert!(vcx.debug_bounds("preview-pane").is_none());
+
+    vcx.simulate_keystrokes("cmd-2");
+    f.draw(&mut vcx);
+    assert_eq!(f.editor(&mut vcx, |e, _| e.view_mode), ViewMode::Split);
+    let (shown, live) = f.editor(&mut vcx, |e, cx| e.live_for_test(cx));
+    assert!(!live && shown.is_empty());
+}

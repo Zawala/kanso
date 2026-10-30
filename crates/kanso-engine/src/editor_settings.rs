@@ -8,24 +8,44 @@
 
 use serde::{Deserialize, Serialize};
 
-/// How a note is shown: the source, both side by side, or the preview.
+/// How a note is shown: the source, the source drawn in place (Live),
+/// both side by side, or the preview.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ViewMode {
     /// The source alone.
     Edit,
-    /// Source and preview side by side.
-    #[default]
-    Split,
+    /// The source alone, its Markdown drawn in place: marks hidden off the
+    /// caret's lines and headings larger (see [`crate::live`]).
+    Live,
     /// The preview alone.
     Preview,
+    /// Source and preview side by side; also what a mode this version
+    /// doesn't know reads as, so a newer app's file still loads. (Serde
+    /// wants the catch-all last.)
+    #[default]
+    #[serde(other)]
+    Split,
+}
+
+impl ViewMode {
+    /// Whether the mode shows the preview, alone or beside the source.
+    pub fn shows_preview(self) -> bool {
+        matches!(self, ViewMode::Split | ViewMode::Preview)
+    }
+
+    /// Whether the mode shows the source on its own (Edit and Live).
+    pub fn source_alone(self) -> bool {
+        matches!(self, ViewMode::Edit | ViewMode::Live)
+    }
 }
 
 /// The editor's typeface.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum EditorFont {
-    /// Proportional for writing, monospace beside the preview.
+    /// Proportional for writing (Edit and Live), monospace beside the
+    /// preview.
     #[default]
     Auto,
     /// Proportional everywhere.
@@ -231,7 +251,7 @@ mod tests {
         #[test]
         fn prop_fonts_and_modes_keep_their_names(
             font in prop::sample::select(vec![EditorFont::Auto, EditorFont::Sans, EditorFont::Mono]),
-            mode in prop::sample::select(vec![ViewMode::Edit, ViewMode::Split, ViewMode::Preview]),
+            mode in prop::sample::select(vec![ViewMode::Edit, ViewMode::Live, ViewMode::Split, ViewMode::Preview]),
         ) {
             let font_name = match font {
                 EditorFont::Auto => "auto",
@@ -240,6 +260,7 @@ mod tests {
             };
             let mode_name = match mode {
                 ViewMode::Edit => "edit",
+                ViewMode::Live => "live",
                 ViewMode::Split => "split",
                 ViewMode::Preview => "preview",
             };
@@ -254,7 +275,7 @@ mod tests {
         #[test]
         fn prop_line_numbers_come_with_the_monospace_face(
             font in prop::sample::select(vec![EditorFont::Auto, EditorFont::Sans, EditorFont::Mono]),
-            mode in prop::sample::select(vec![ViewMode::Edit, ViewMode::Split, ViewMode::Preview]),
+            mode in prop::sample::select(vec![ViewMode::Edit, ViewMode::Live, ViewMode::Split, ViewMode::Preview]),
             allowed in any::<bool>(),
         ) {
             let face = font.face(mode);
@@ -283,6 +304,41 @@ mod tests {
         assert_eq!(ViewMode::default(), ViewMode::Split);
         assert_eq!(EditorFont::default(), EditorFont::Auto);
         assert_eq!(DEFAULT_SPLIT_RATIO, 0.5);
+    }
+
+    #[test]
+    fn modes_show_the_source_or_the_preview() {
+        use ViewMode::{Edit, Live, Preview, Split};
+        for mode in [Edit, Live, Split, Preview] {
+            assert_eq!(mode.source_alone(), matches!(mode, Edit | Live));
+            assert_eq!(mode.shows_preview(), matches!(mode, Split | Preview));
+            // A mode either has the preview or shows the source alone.
+            assert!(mode.source_alone() != mode.shows_preview());
+        }
+    }
+
+    /// Live sets its text like Edit: proportional unless the user picks
+    /// monospace.
+    #[test]
+    fn live_sets_its_text_like_edit() {
+        for font in [EditorFont::Auto, EditorFont::Sans, EditorFont::Mono] {
+            assert_eq!(font.face(ViewMode::Live), font.face(ViewMode::Edit));
+        }
+        assert!(!EditorFont::Auto.face(ViewMode::Live).mono);
+    }
+
+    /// A view mode this version doesn't know opens beside the preview
+    /// rather than failing the whole file.
+    #[test]
+    fn an_unknown_view_mode_reads_as_split() {
+        assert_eq!(
+            serde_json::from_value::<ViewMode>(json!("outline")).unwrap(),
+            ViewMode::Split
+        );
+        assert_eq!(
+            serde_json::from_value::<ViewMode>(json!("live")).unwrap(),
+            ViewMode::Live
+        );
     }
 
     #[test]

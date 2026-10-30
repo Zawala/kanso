@@ -1129,7 +1129,12 @@ mod tests {
     }
 
     fn gen_mode() -> impl Strategy<Value = ViewMode> {
-        prop::sample::select(vec![ViewMode::Edit, ViewMode::Split, ViewMode::Preview])
+        prop::sample::select(vec![
+            ViewMode::Edit,
+            ViewMode::Live,
+            ViewMode::Split,
+            ViewMode::Preview,
+        ])
     }
 
     proptest! {
@@ -1268,20 +1273,22 @@ mod tests {
         }
     }
 
-    /// Auto writes in the proportional face and switches to monospace with
-    /// line numbers beside the preview; the fixed choices hold in every mode.
+    /// Auto writes in the proportional face (Live too) and switches to
+    /// monospace with line numbers beside the preview; the fixed choices
+    /// hold in every mode.
     #[test]
     fn editor_faces() {
-        use ViewMode::{Edit, Preview, Split};
+        use ViewMode::{Edit, Live, Preview, Split};
         let face = |font: EditorFont, mode| {
             let face = font.face(mode);
             assert_eq!(face.line_numbers, face.mono);
             face.mono
         };
         assert!(!face(EditorFont::Auto, Edit));
+        assert!(!face(EditorFont::Auto, Live));
         assert!(face(EditorFont::Auto, Split));
         assert!(!face(EditorFont::Auto, Preview));
-        for mode in [Edit, Split, Preview] {
+        for mode in [Edit, Live, Split, Preview] {
             assert!(!face(EditorFont::Sans, mode));
             assert!(face(EditorFont::Mono, mode));
         }
@@ -1465,6 +1472,27 @@ mod tests {
             value["ai"]["provider"], "openAi",
             "the provider is written by name"
         );
+    }
+
+    /// Live mode is kept by name, and a mode this version doesn't know
+    /// opens beside the preview instead of failing the file.
+    #[test]
+    fn view_modes_load_by_name() {
+        let mode = |name: &str| {
+            let json = format!(r#"{{"appearance": {{"viewMode": "{name}"}}}}"#);
+            serde_json::from_str::<AppConfig>(&json)
+                .unwrap()
+                .appearance
+                .view_mode
+        };
+        assert_eq!(mode("live"), ViewMode::Live);
+        assert_eq!(mode("edit"), ViewMode::Edit);
+        assert_eq!(mode("preview"), ViewMode::Preview);
+        assert_eq!(mode("somethingNewer"), ViewMode::Split);
+        let mut config = AppConfig::default();
+        config.appearance.view_mode = ViewMode::Live;
+        let value = serde_json::to_value(&config).unwrap();
+        assert_eq!(value["appearance"]["viewMode"], "live");
     }
 
     #[test]

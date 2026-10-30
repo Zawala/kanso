@@ -324,7 +324,12 @@ fn run(bytes: usize, place: &str, keys: Option<bool>) {
         bench.draw(false);
     }
     if std::env::var_os("KANSO_BENCH_REDRAW").is_some() {
-        for mode in [ViewMode::Edit, ViewMode::Preview, ViewMode::Split] {
+        for mode in [
+            ViewMode::Edit,
+            ViewMode::Live,
+            ViewMode::Preview,
+            ViewMode::Split,
+        ] {
             bench.set_mode(mode);
             let mut took = Vec::new();
             for _ in 0..4 {

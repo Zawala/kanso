@@ -25,6 +25,8 @@ A local-first Markdown notes app for macOS, with Windows and Linux builds, built
 - Nested tags (`work/clients`) shown as a tree, with `#` completion in the editor.
 
 **Preview**
+- Live preview (⌘4): headings drawn larger and the Markdown marks hidden, except on the line
+  you're on.
 - Mermaid diagrams, math, and Excalidraw drawings, drawn in the note's theme.
 - Images resize from the preview or with `![alt|300](image.png)`.
 
@@ -335,7 +337,7 @@ of ⌥.
 | ↑ ↓ or J K in the list, Return | Move through notes, edit the selected one |
 | ⇧⌘L | Back to the note list |
 | ⌥⌘↓ / ⌥⌘↑ | Next / previous note from anywhere |
-| ⌘1 / ⌘2 / ⌘3 | Edit / split (drag the divider) / preview |
+| ⌘1 / ⌘2 / ⌘3 / ⌘4 | Edit / split (drag the divider) / preview / live preview |
 | ⇧⌘D | Focus mode: only the note; Escape leaves it |
 | ⌘\ | Fold the sidebar to icons, or open it again |
 | ⌥⌘I | Outline and backlinks beside the note |

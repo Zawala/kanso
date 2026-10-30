@@ -54,6 +54,7 @@ actions!(
         ShowEditor,
         ShowSplit,
         ShowPreview,
+        ShowLive,
         TogglePinned,
         TrashNote,
         SaveNote,
@@ -167,6 +168,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-1", ShowEditor, None),
         KeyBinding::new("secondary-2", ShowSplit, None),
         KeyBinding::new("secondary-3", ShowPreview, None),
+        KeyBinding::new("secondary-4", ShowLive, None),
         KeyBinding::new("secondary-s", SaveNote, None),
         KeyBinding::new("secondary-shift-p", TogglePinned, None),
         KeyBinding::new("secondary-shift-a", AskYourNotes, None),
@@ -229,6 +231,7 @@ fn view_menu(cx: &App) -> Vec<MenuItem> {
         MenuItem::action("Editor Only", ShowEditor),
         MenuItem::action("Editor and Preview", ShowSplit),
         MenuItem::action("Preview Only", ShowPreview),
+        MenuItem::action("Live Preview", ShowLive),
         MenuItem::separator(),
         MenuItem::action("Toggle Sidebar", ToggleSidebar),
         MenuItem::action("Outline and Backlinks", ToggleInspector),
@@ -2428,6 +2431,10 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &ShowPreview, window, cx| {
                 this.close_settings(window, cx);
                 this.set_view_mode(ViewMode::Preview, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ShowLive, window, cx| {
+                this.close_settings(window, cx);
+                this.set_view_mode(ViewMode::Live, cx)
             }))
             .on_action(cx.listener(|this, _: &SaveNote, _, cx| this.flush(cx)))
             .on_action(cx.listener(|this, _: &TogglePinned, window, cx| {

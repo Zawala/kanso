@@ -480,6 +480,17 @@ pub static COMMANDS: &[Command] = &[
         needs: Needs::Nothing,
     },
     Command {
+        id: "live-mode",
+        label: "Live preview mode",
+        toggled: None,
+        description: "Shows the Markdown source formatted as you write: headings larger, and the marks hidden except on the line you're on.",
+        icon: "book-open",
+        keywords: &["live", "inline", "wysiwyg", "rendered", "typora"],
+        group: Group::View,
+        picker: None,
+        needs: Needs::Nothing,
+    },
+    Command {
         id: "split-mode",
         label: "Split mode",
         toggled: None,

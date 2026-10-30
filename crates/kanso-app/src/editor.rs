@@ -312,6 +312,8 @@ pub struct NoteEditor {
     due_marks: crate::due::DueMarks,
     /// The underlines under misspelled words in the text.
     spell_marks: SpellMarks,
+    /// Live mode's hidden marks, larger headings and styles in the text.
+    live_marks: crate::live_marks::LiveMarks,
     /// The shared note open, attached to the engine (`editor_collab.rs`).
     shared: Option<crate::collab_model::OpenShare>,
     /// Effective read-only state for the title and text inputs.
@@ -466,6 +468,7 @@ impl NoteEditor {
                         cx,
                     );
                     this.check_spelling(spellcheck::CHECK_DELAY, cx);
+                    this.refresh_live(cx);
                 }
             }),
             // The text editor notifies when the wheel scrolls it (and when
@@ -474,6 +477,8 @@ impl NoteEditor {
             cx.observe(&body, |this, body, cx| {
                 this.follow_source_scroll(cx);
                 this.collab_caret(cx);
+                // The caret moving to other lines reveals them.
+                this.refresh_live(cx);
                 let me = cx.entity().downgrade();
                 this.spell_marks.follow_scroll(
                     body,
@@ -543,6 +548,7 @@ impl NoteEditor {
             inline: None,
             due_marks: Default::default(),
             spell_marks: Default::default(),
+            live_marks: Default::default(),
             shared: None,
             text_read_only: false,
             account_read_only: false,
@@ -584,6 +590,18 @@ impl NoteEditor {
         self.check_spelling(Duration::ZERO, cx);
         self.update_footer_goal(cx);
         cx.notify();
+    }
+
+    /// Draws the text in Live mode as it now stands, with the caret's
+    /// lines revealed, or as plain source in any other mode.
+    // no-prop-test: glue; `live_marks` has the properties and the Live
+    // mode UI tests drive it.
+    fn refresh_live(&mut self, cx: &mut Context<Self>) {
+        if self.view_mode == ViewMode::Live && self.note.is_some() {
+            self.live_marks.refresh(&self.body, self.text_version, cx);
+        } else {
+            self.live_marks.clear(&self.body, cx);
+        }
     }
 
     /// Checks the spelling of the text in view after `delay`.
@@ -920,6 +938,7 @@ impl NoteEditor {
         // the same length.
         self.source_lines = None;
         self.text_version += 1;
+        self.refresh_live(cx);
         let text = self.preview_source(body.into());
         self.preview_stale = false;
         let shown = self.note_id().map(str::to_owned);
@@ -1116,7 +1135,7 @@ impl NoteEditor {
     /// then at most every [`PREVIEW_INTERVAL`] while changes keep coming,
     /// and once more after the last, so it never lags a pause.
     fn schedule_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.view_mode == ViewMode::Edit {
+        if !self.view_mode.shows_preview() {
             return;
         }
         self.preview_stale = true;
@@ -1180,7 +1199,7 @@ impl NoteEditor {
                     return;
                 }
                 *this.wiki.borrow_mut() = Arc::new(WikiIndex::new(titles));
-                if this.view_mode != ViewMode::Edit && this.note.is_some() {
+                if this.view_mode.shows_preview() && this.note.is_some() {
                     this.refresh_preview(cx);
                 }
                 cx.notify();
@@ -1992,9 +2011,10 @@ impl NoteEditor {
 
     pub fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         self.view_mode = mode;
-        if mode != ViewMode::Edit {
+        if mode.shows_preview() {
             self.refresh_preview(cx);
         }
+        self.refresh_live(cx);
         self.footer.update(cx, |footer, cx| {
             footer.set_show_cursor(mode != ViewMode::Preview, cx)
         });
@@ -2809,6 +2829,8 @@ impl NoteEditor {
         self.body
             .update(cx, |state, cx| state.set_value(body.clone(), window, cx));
         self.source_lines = None;
+        self.text_version += 1;
+        self.refresh_live(cx);
         let text = self.preview_source(body.into());
         self.preview
             .update(cx, |preview, cx| preview.set_text(text, cx));
@@ -2986,6 +3008,7 @@ impl NoteEditor {
 
         let modes = [
             ("mode-edit", "Edit", ViewMode::Edit),
+            ("mode-live", "Live", ViewMode::Live),
             ("mode-preview", "Preview", ViewMode::Preview),
             ("mode-split", "Split", ViewMode::Split),
         ];
@@ -4128,7 +4151,7 @@ impl Render for NoteEditor {
         // Alone, the source keeps to a readable measure for its face and
         // size, starting under the title, unless the setting lets it fill the
         // pane; beside the preview it takes its side of the divider.
-        let measure = (mode == ViewMode::Edit && self.readable_width).then(|| {
+        let measure = (mode.source_alone() && self.readable_width).then(|| {
             let numbers = if face.line_numbers {
                 LINE_NUMBER_COLUMN
             } else {
@@ -4169,7 +4192,7 @@ impl Render for NoteEditor {
                 el.child(v_flex().flex_none().child(self.render_meta(&note, cx)))
             })
             .when(
-                mode == ViewMode::Edit && !trashed && !focus_mode && !self.lock.is_closed(),
+                mode.source_alone() && !trashed && !focus_mode && !self.lock.is_closed(),
                 |el| el.child(v_flex().flex_none().child(self.render_format_bar(cx))),
             );
 
@@ -4260,7 +4283,9 @@ impl Render for NoteEditor {
             );
         let body = match mode {
             _ if self.lock.is_closed() => self.render_locked(cx),
-            ViewMode::Edit => h_flex().size_full().child(source).into_any_element(),
+            ViewMode::Edit | ViewMode::Live => {
+                h_flex().size_full().child(source).into_any_element()
+            }
             ViewMode::Preview => h_flex().size_full().child(preview).into_any_element(),
             ViewMode::Split => {
                 self.place_split(window, cx);
@@ -4398,6 +4423,15 @@ impl NoteEditor {
         self.spelling_items(cx)
     }
 
+    /// The presentation the text editor draws now, and whether Live mode
+    /// put one there.
+    pub fn live_for_test(&self, cx: &App) -> (gpui_kit::base::input::EditorPresentation, bool) {
+        (
+            self.body.read(cx).editor_presentation(),
+            self.live_marks.is_shown(),
+        )
+    }
+
     /// How many due dates the text has tinted.
     pub fn due_marks_for_test(&self) -> usize {
         self.due_marks.count()
@@ -4438,6 +4472,7 @@ impl NoteEditor {
     pub fn edit_for_test(&mut self, body: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.body
             .update(cx, |state, cx| state.set_value(body.to_owned(), window, cx));
+        self.refresh_live(cx);
         self.schedule_autosave(cx);
     }
 

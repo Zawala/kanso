@@ -26,7 +26,7 @@ use crate::workspace::{
     ExportNote, ExportPdf, FocusNoteList, FocusSearch, FormatTable, GoBack, GoForward,
     ImportLibrary, NewNote, NewNotebook, NewRecoveryKey, NextNote, OpenFile, OpenNotePicker,
     OpenSettings, PreviousNote, Quit, SaveNote, SearchAllNotes, ShowBacklinks, ShowCreateAccount,
-    ShowEditor, ShowHistory, ShowOutline, ShowPreview, ShowSignIn, ShowSplit, SignOut,
+    ShowEditor, ShowHistory, ShowLive, ShowOutline, ShowPreview, ShowSignIn, ShowSplit, SignOut,
     SummarizeNote, SyncNow, ToggleFocusMode, ToggleInspector, TogglePinned, ToggleSidebar,
     TrashNote,
 };
@@ -663,6 +663,17 @@ static COMMANDS: &[Command] = &[
         keywords: &["editor", "markdown", "source", "write"],
         group: Group::View,
         run: action!(ShowEditor),
+        needs: Needs::Nothing,
+    },
+    Command {
+        id: "live-mode",
+        label: "Live preview mode",
+        label_when_pinned: None,
+        description: "Shows the Markdown source formatted as you write: headings larger, and the marks hidden except on the line you're on.",
+        icon: IconName::BookOpen,
+        keywords: &["live", "inline", "wysiwyg", "rendered", "typora"],
+        group: Group::View,
+        run: action!(ShowLive),
         needs: Needs::Nothing,
     },
     Command {
