@@ -7,7 +7,7 @@ import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:clock/clock.dart';
-import 'package:dartz/dartz.dart' show Either, Left, Right;
+import 'package:dartz/dartz.dart' show Left;
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:injectable/injectable.dart';
 
@@ -17,9 +17,12 @@ import '../../../core/models/repos/abs/haptics_repository.dart';
 import '../../../core/models/repos/abs/library_repository.dart';
 import '../../../core/models/repos/abs/renderer_repository.dart';
 import '../../../core/models/repos/abs/themes_repository.dart';
+import '../../../core/services/preview_theme_fitter.dart';
 import '../../../core/state/undo_notice/undo_notice_bloc.dart';
 import '../../../editor/models/repos/abs/web_link_repository.dart';
 import '../../models/data/preview_action.dart';
+
+export '../../../core/models/data/preview_themes.dart';
 
 part 'preview_bloc.freezed.dart';
 part 'preview_event.dart';
@@ -31,11 +34,6 @@ const double previewBaseTextSize = 18;
 /// The rendered page size retained by exports that do not receive
 /// appearance preferences.
 const double previewTextSize = previewBaseTextSize;
-
-/// The themes a preview is drawn in: the interface, syntax and preview
-/// themes in force, and whether they are the dark slot's. The core fits the
-/// three together, as the app's own colours are.
-typedef PreviewThemes = ({String ui, String syntax, String preview, bool dark});
 
 /// A note's preview, as the blocks the app draws, and what a tap in it does.
 ///
@@ -52,11 +50,12 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
   PreviewBloc(
     this._library,
     this._renderer,
-    this._themes,
+    ThemesRepository themes,
     this._links,
     this._undoNotice,
     this._haptics,
-  ) : super(const PreviewState()) {
+  ) : _fitter = PreviewThemeFitter(themes),
+      super(const PreviewState()) {
     on<PreviewStartedEvent>(_onStarted, transformer: restartable());
     on<PreviewThemeChangedEvent>(_onThemeChanged, transformer: restartable());
     on<PreviewStyleChangedEvent>(_onStyleChanged, transformer: restartable());
@@ -72,16 +71,13 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
 
   final LibraryRepository _library;
   final RendererRepository _renderer;
-  final ThemesRepository _themes;
   final WebLinkRepository _links;
   final UndoNoticeBloc _undoNotice;
   final HapticsRepository _haptics;
 
-  /// The tokens last fitted, and the themes they were fitted for, so that a
-  /// note drawn again doesn't fit the same themes again. Kanso's own tokens,
-  /// used when the themes can't be read, are never kept, so the next draw
-  /// tries the themes again.
-  (PreviewThemes, ThemeTokens)? _fitted;
+  /// Fits the themes the note is drawn in, as its exports are, and keeps the
+  /// last fit so the same themes aren't fitted again.
+  final PreviewThemeFitter _fitter;
 
   /// The number of the last draw begun: a draw only shows its blocks while
   /// no later one has begun, so an older draw that ends late can't replace
@@ -138,27 +134,6 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     Emitter<PreviewState> emit,
   ) => _draw(emit);
 
-  /// The tokens of [themes], fitted together as the app's colours are; Kanso's
-  /// own light or dark theme when they can't be read, as the app falls back.
-  Future<Either<ApplicationError, ThemeTokens>> _tokens(
-    PreviewThemes themes,
-  ) async {
-    if (_fitted case (final known, final tokens) when known == themes) {
-      return Right<ApplicationError, ThemeTokens>(tokens);
-    }
-    final fitted = await _themes.fit(
-      themes.ui,
-      themes.syntax,
-      themes.preview,
-    );
-    if (fitted case Right(value: final tokens)) {
-      _fitted = (themes, tokens);
-      return fitted;
-    }
-    final own = themes.dark ? 'kanso-dark' : 'kanso-light';
-    return _themes.fit(own, own, own);
-  }
-
   /// Draws the note's blocks with the fitted preview palette and code
   /// colours, and keeps the revision they were drawn from. Only the latest
   /// draw begun shows what it drew.
@@ -167,7 +142,7 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     final noteId = state.noteId;
     final themes = state.themes;
     final size = state.size;
-    final tokens = await _tokens(themes);
+    final tokens = await _fitter.tokens(themes);
     final note = await _library.note(noteId);
     if (emit.isDone || draw != _draws) {
       return;

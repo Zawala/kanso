@@ -121,7 +121,8 @@ class _PreviewInputsState extends State<_PreviewInputs> {
 }
 
 /// The blocks of [PreviewBloc], drawn natively, and what the screen does for
-/// a tap in them. It is a sliver.
+/// a tap in them. It is a sliver, built lazily; a [SelectionArea] round the
+/// scroll it is in lets its text be selected across blocks.
 class PreviewPage extends StatefulWidget {
   const PreviewPage({
     required this.palette,
@@ -223,15 +224,13 @@ class _PreviewPageState extends State<PreviewPage> {
             }
             return widget.source;
           }
-          return SliverToBoxAdapter(
-            child: NativePreview(
-              key: _preview,
-              blocks: blocks,
-              palette: widget.palette,
-              onEdit: widget.onEdit,
-              onLink: (url) =>
-                  context.read<PreviewBloc>().add(PreviewEvent.linkTapped(url)),
-            ),
+          return NativePreview(
+            key: _preview,
+            blocks: blocks,
+            palette: widget.palette,
+            onEdit: widget.onEdit,
+            onLink: (url) =>
+                context.read<PreviewBloc>().add(PreviewEvent.linkTapped(url)),
           );
         },
       ),
