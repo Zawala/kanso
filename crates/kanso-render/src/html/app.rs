@@ -142,7 +142,7 @@ pub(super) fn failed_html(
 
 /// What an Excalidraw drawing with nothing in it shows: a quiet dashed
 /// canvas that says so.
-pub(super) const EMPTY_DRAWING: &str =
+pub(crate) const EMPTY_DRAWING: &str =
     "<div class=\"kanso-empty-drawing\"><span>An empty drawing</span></div>";
 
 /// Whether a drawing's JSON is a scene with nothing in it yet: what "New
@@ -222,7 +222,7 @@ fn unique_slugs(texts: &[String]) -> Vec<String> {
 
 /// What the Markdown syntax tree says the page needs: headings and task
 /// boxes, in document order.
-pub(super) struct Facts {
+pub(crate) struct Facts {
     headings: Vec<(u8, String)>,
     /// Each task item.
     tasks: Vec<TaskNode>,
@@ -243,12 +243,12 @@ struct TaskNode {
 impl Facts {
     /// Where each code block starts, in order: its place in the list is its
     /// copy link's number.
-    pub(super) fn code_offsets(&self) -> Vec<usize> {
+    pub(crate) fn code_offsets(&self) -> Vec<usize> {
         self.codes.iter().map(|(at, _)| *at).collect()
     }
 }
 
-pub(super) fn facts(root: &Node) -> Facts {
+pub(crate) fn facts(root: &Node) -> Facts {
     fn walk(node: &Node, facts: &mut Facts) {
         match node {
             Node::Heading(heading) => {
@@ -305,17 +305,27 @@ pub fn headings(markdown: &str) -> Vec<HeadingId> {
     let Ok(root) = crate::markdown_safe::to_mdast(markdown, &super::parse_options()) else {
         return Vec::new();
     };
-    let found = facts(&root).headings;
+    heading_ids(&facts(&root))
+}
+
+/// The headings of `facts` with the `id`s the page gives them, in order.
+pub(crate) fn heading_ids(facts: &Facts) -> Vec<HeadingId> {
     let ids = unique_slugs(
-        &found
+        &facts
+            .headings
             .iter()
             .map(|(_, text)| text.clone())
             .collect::<Vec<_>>(),
     );
-    found
-        .into_iter()
+    facts
+        .headings
+        .iter()
         .zip(ids)
-        .map(|((level, text), id)| HeadingId { level, text, id })
+        .map(|((level, text), id)| HeadingId {
+            level: *level,
+            text: text.clone(),
+            id,
+        })
         .collect()
 }
 
@@ -374,12 +384,26 @@ pub fn percent_decode(text: &str) -> String {
 
 /// `&amp;`, `&quot;`, `&lt;`, `&gt;` and `&#39;` as the characters; any other
 /// reference is left as it is. Pure.
-fn unescape(text: &str) -> String {
+pub(crate) fn unescape(text: &str) -> String {
     text.replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
         .replace("&amp;", "&")
+}
+
+/// The `id` of the heading a link to `#wanted` (percent-decoded) reaches:
+/// the heading with that `id`, else the one with those words (any case and
+/// spacing). Pure.
+pub(crate) fn fragment_target<'a>(wanted: &str, found: &'a [HeadingId]) -> Option<&'a str> {
+    found
+        .iter()
+        .find(|heading| heading.id == wanted)
+        .or_else(|| {
+            let words = normalized(wanted);
+            found.iter().find(|h| normalized(&h.text) == words)
+        })
+        .map(|heading| heading.id.as_str())
 }
 
 /// Links to a place in the page (`<a href="#…">`) point at a heading's `id`:
@@ -397,15 +421,7 @@ fn resolve_fragments(html: &str, found: &[HeadingId]) -> String {
             return out;
         };
         let wanted = percent_decode(&unescape(&after[..end]));
-        let id = found
-            .iter()
-            .find(|heading| heading.id == wanted)
-            .or_else(|| {
-                let words = normalized(&wanted);
-                found.iter().find(|h| normalized(&h.text) == words)
-            })
-            .map(|heading| heading.id.as_str());
-        match id {
+        match fragment_target(&wanted, found) {
             Some(id) => {
                 let _ = write!(out, "{OPEN}{}\"", escape(id));
             }
@@ -422,7 +438,7 @@ fn resolve_fragments(html: &str, found: &[HeadingId]) -> String {
 /// Whether the text has a carriage return that isn't half of a line break:
 /// Markdown counts it as a line end and Rust's `lines` does not, so the
 /// lines of the tree and of the task list could differ.
-pub(super) fn has_lone_cr(text: &str) -> bool {
+pub(crate) fn has_lone_cr(text: &str) -> bool {
     let bytes = text.as_bytes();
     bytes
         .iter()
@@ -571,7 +587,7 @@ fn draw_due_chips(html: &str, chip: &dyn Fn(&str) -> Option<DueChip>) -> String 
 
 /// Whether a fence's language names a query view: the first word is `query`
 /// in any case (`kanso_core::query_view::is_query_fence`).
-pub(super) fn is_query_fence(lang: Option<&str>) -> bool {
+pub(crate) fn is_query_fence(lang: Option<&str>) -> bool {
     lang.and_then(|lang| lang.split_whitespace().next())
         .is_some_and(|lang| lang.eq_ignore_ascii_case("query"))
 }
@@ -644,25 +660,7 @@ pub(super) fn finish(
 ) -> String {
     let mut html = html;
     if let Some(facts) = facts {
-        let found: Vec<HeadingId> = {
-            let ids = unique_slugs(
-                &facts
-                    .headings
-                    .iter()
-                    .map(|(_, text)| text.clone())
-                    .collect::<Vec<_>>(),
-            );
-            facts
-                .headings
-                .iter()
-                .zip(ids)
-                .map(|((level, text), id)| HeadingId {
-                    level: *level,
-                    text: text.clone(),
-                    id,
-                })
-                .collect()
-        };
+        let found = heading_ids(facts);
         html = give_heading_ids(&html, &found);
         html = resolve_fragments(&html, &found);
         if !has_lone_cr(source) {

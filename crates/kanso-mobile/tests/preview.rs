@@ -6,7 +6,8 @@ mod common;
 use common::*;
 use kanso_core::DocType;
 use kanso_mobile::{
-    DiagramRenderer, KansoError, PaletteDto, PreviewLink, PreviewOptions, Renderer, Ticked,
+    DiagramRenderer, KansoError, PaletteDto, PreviewBlock, PreviewInline, PreviewLink,
+    PreviewOptions, Renderer, Ticked,
 };
 use kanso_store::{Origin, Put};
 use proptest::prelude::*;
@@ -246,6 +247,117 @@ fn ticking_a_task_by_place() {
             .body
             .unwrap()
             .ends_with("- [ ] c\n")
+    );
+}
+
+/// Every address a block carries: links, due chips, query rows, task boxes
+/// (`kanso-task:`) and copy buttons (`kanso-copy:`).
+fn block_addresses(blocks: &[PreviewBlock], found: &mut Vec<String>) {
+    fn inlines(list: &[PreviewInline], found: &mut Vec<String>) {
+        for inline in list {
+            match inline {
+                PreviewInline::Link {
+                    url,
+                    inlines: inner,
+                } => {
+                    found.push(url.clone());
+                    inlines(inner, found);
+                }
+                PreviewInline::Due { url, .. } => found.push(url.clone()),
+                _ => {}
+            }
+        }
+    }
+    for block in blocks {
+        match block {
+            PreviewBlock::Heading { inlines: list, .. }
+            | PreviewBlock::Paragraph { inlines: list } => inlines(list, found),
+            PreviewBlock::List { items, .. } => {
+                for item in items {
+                    if let Some(index) = item.task.and_then(|task| task.index) {
+                        found.push(format!("kanso-task:{index}"));
+                    }
+                    block_addresses(&item.blocks, found);
+                }
+            }
+            PreviewBlock::Quote { blocks } => block_addresses(blocks, found),
+            PreviewBlock::Code { copy, .. } => found.push(format!("kanso-copy:{copy}")),
+            PreviewBlock::Failed {
+                copy: Some(copy), ..
+            } => found.push(format!("kanso-copy:{copy}")),
+            PreviewBlock::Query { rows, .. } => {
+                found.extend(rows.iter().map(|row| row.url.clone()))
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn the_blocks_keep_the_pages_addresses() {
+    let phone = lone_phone();
+    let library = &phone.library;
+    let other = note(library, "Other", "# Plan\n\ntext\n");
+    let body = "# Home\n\n[[Other#Plan]] and [[Missing]] #work/clients [up](#home)\n\n- [ ] one\n- [x] two @2020-01-01\n\n```rust\nfn main() {}\n```\n\n```query\nfrom: all\n```\n\n[web](https://example.com) [bad](javascript:alert(1))\n";
+    let id = note(library, "Home", body);
+    let renderer = library.renderer();
+    let options = PreviewOptions {
+        code: keyword_styles(),
+        ..PreviewOptions::default()
+    };
+    let page = renderer
+        .preview_html_with(&id, palette(), options.clone())
+        .unwrap();
+    let blocks = renderer.preview_blocks(&id, palette(), options).unwrap();
+    let mut found = Vec::new();
+    block_addresses(&blocks, &mut found);
+    assert!(found.contains(&format!("inkdrop://note/{}#Plan", bare(&other))));
+    assert!(found.contains(&"#home".to_owned()), "{found:?}");
+    assert!(found.contains(&"kanso-task:0".to_owned()));
+    assert!(found.contains(&"kanso-task:1".to_owned()));
+    assert!(found.contains(&"kanso-copy:0".to_owned()));
+    assert!(found.iter().any(|url| url.starts_with("kanso-due:")));
+    assert!(!found.iter().any(|url| url.contains("javascript")));
+    // Each address is one the page carries, and each reads as a target.
+    for url in &found {
+        assert!(
+            page.contains(&format!("href=\"{url}\"")),
+            "{url} not in {page}"
+        );
+        assert_ne!(
+            renderer.link_target(&id, url).unwrap(),
+            PreviewLink::Nothing,
+            "{url}"
+        );
+    }
+    // Code is colored as the page colors it.
+    assert!(blocks.iter().any(|block| matches!(
+        block,
+        PreviewBlock::Code { runs, .. } if runs.iter().any(|run| run.color == Some(0xaa0000))
+    )));
+}
+
+#[test]
+fn a_locked_note_has_no_blocks_while_closed() {
+    let phone = lone_phone();
+    let library = &phone.library;
+    let id = note(library, "Secret", "# Hidden\n");
+    library
+        .locks()
+        .lock_note(&id, LOCK_PASSWORD.into())
+        .unwrap();
+    assert!(
+        library
+            .renderer()
+            .preview_blocks(&id, palette(), PreviewOptions::default())
+            .is_ok()
+    );
+    library.locks().lock().unwrap();
+    assert_eq!(
+        library
+            .renderer()
+            .preview_blocks(&id, palette(), PreviewOptions::default()),
+        Err(KansoError::Locked)
     );
 }
 

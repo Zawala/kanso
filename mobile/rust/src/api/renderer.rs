@@ -3,7 +3,8 @@
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
     BuiltinTheme, DiagramKind, DiagramRenderer, ExportedPage, IconThemeRow, KansoError, PaletteDto,
-    PreviewLink, PreviewOptions, Renderer, SpanRow, StyledRun, SvgRow, ThemeTokens, ThemedIcon,
+    PreviewBlock, PreviewLink, PreviewOptions, Renderer, SpanRow, StyledRun, SvgRow, ThemeTokens,
+    ThemedIcon,
 };
 
 #[frb(opaque)]
@@ -25,6 +26,17 @@ impl KansoRenderer {
         options: PreviewOptions,
     ) -> Result<String, KansoError> {
         self.0.preview_html_with(&id, palette, options)
+    }
+
+    /// The note as the blocks the app draws its preview from: the same
+    /// note, links, task boxes and copy buttons as [`Self::preview_html_with`].
+    pub fn preview_blocks(
+        &self,
+        id: String,
+        palette: PaletteDto,
+        options: PreviewOptions,
+    ) -> Result<Vec<PreviewBlock>, KansoError> {
+        self.0.preview_blocks(&id, palette, options)
     }
 
     /// The note as the page the desktop exports, to print or keep: no app

@@ -12,7 +12,4 @@ abstract interface class GoogleFontRepository {
   /// Loads [family] from the cache or downloads it and registers it with the
   /// current Flutter engine. Returns the normalized family name.
   Future<Either<ApplicationError, String>> load(String family);
-
-  /// Reads a previously downloaded font file for a WebView preview.
-  Future<List<int>?> cachedBytes(String family);
 }

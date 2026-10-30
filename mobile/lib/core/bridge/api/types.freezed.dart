@@ -7493,6 +7493,1760 @@ as PersonRow,
 }
 
 /// @nodoc
+mixin _$PreviewBlock {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'PreviewBlock()';
+}
+
+
+}
+
+/// @nodoc
+class $PreviewBlockCopyWith<$Res>  {
+$PreviewBlockCopyWith(PreviewBlock _, $Res Function(PreviewBlock) __);
+}
+
+
+/// Adds pattern-matching-related methods to [PreviewBlock].
+extension PreviewBlockPatterns on PreviewBlock {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PreviewBlock_Heading value)?  heading,TResult Function( PreviewBlock_Paragraph value)?  paragraph,TResult Function( PreviewBlock_List value)?  list,TResult Function( PreviewBlock_Quote value)?  quote,TResult Function( PreviewBlock_Code value)?  code,TResult Function( PreviewBlock_Rule value)?  rule,TResult Function( PreviewBlock_Table value)?  table,TResult Function( PreviewBlock_Figure value)?  figure,TResult Function( PreviewBlock_EmptyDrawing value)?  emptyDrawing,TResult Function( PreviewBlock_Failed value)?  failed,TResult Function( PreviewBlock_Query value)?  query,TResult Function( PreviewBlock_QueryInvalid value)?  queryInvalid,TResult Function( PreviewBlock_Html value)?  html,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case PreviewBlock_Heading() when heading != null:
+return heading(_that);case PreviewBlock_Paragraph() when paragraph != null:
+return paragraph(_that);case PreviewBlock_List() when list != null:
+return list(_that);case PreviewBlock_Quote() when quote != null:
+return quote(_that);case PreviewBlock_Code() when code != null:
+return code(_that);case PreviewBlock_Rule() when rule != null:
+return rule(_that);case PreviewBlock_Table() when table != null:
+return table(_that);case PreviewBlock_Figure() when figure != null:
+return figure(_that);case PreviewBlock_EmptyDrawing() when emptyDrawing != null:
+return emptyDrawing(_that);case PreviewBlock_Failed() when failed != null:
+return failed(_that);case PreviewBlock_Query() when query != null:
+return query(_that);case PreviewBlock_QueryInvalid() when queryInvalid != null:
+return queryInvalid(_that);case PreviewBlock_Html() when html != null:
+return html(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PreviewBlock_Heading value)  heading,required TResult Function( PreviewBlock_Paragraph value)  paragraph,required TResult Function( PreviewBlock_List value)  list,required TResult Function( PreviewBlock_Quote value)  quote,required TResult Function( PreviewBlock_Code value)  code,required TResult Function( PreviewBlock_Rule value)  rule,required TResult Function( PreviewBlock_Table value)  table,required TResult Function( PreviewBlock_Figure value)  figure,required TResult Function( PreviewBlock_EmptyDrawing value)  emptyDrawing,required TResult Function( PreviewBlock_Failed value)  failed,required TResult Function( PreviewBlock_Query value)  query,required TResult Function( PreviewBlock_QueryInvalid value)  queryInvalid,required TResult Function( PreviewBlock_Html value)  html,}){
+final _that = this;
+switch (_that) {
+case PreviewBlock_Heading():
+return heading(_that);case PreviewBlock_Paragraph():
+return paragraph(_that);case PreviewBlock_List():
+return list(_that);case PreviewBlock_Quote():
+return quote(_that);case PreviewBlock_Code():
+return code(_that);case PreviewBlock_Rule():
+return rule(_that);case PreviewBlock_Table():
+return table(_that);case PreviewBlock_Figure():
+return figure(_that);case PreviewBlock_EmptyDrawing():
+return emptyDrawing(_that);case PreviewBlock_Failed():
+return failed(_that);case PreviewBlock_Query():
+return query(_that);case PreviewBlock_QueryInvalid():
+return queryInvalid(_that);case PreviewBlock_Html():
+return html(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PreviewBlock_Heading value)?  heading,TResult? Function( PreviewBlock_Paragraph value)?  paragraph,TResult? Function( PreviewBlock_List value)?  list,TResult? Function( PreviewBlock_Quote value)?  quote,TResult? Function( PreviewBlock_Code value)?  code,TResult? Function( PreviewBlock_Rule value)?  rule,TResult? Function( PreviewBlock_Table value)?  table,TResult? Function( PreviewBlock_Figure value)?  figure,TResult? Function( PreviewBlock_EmptyDrawing value)?  emptyDrawing,TResult? Function( PreviewBlock_Failed value)?  failed,TResult? Function( PreviewBlock_Query value)?  query,TResult? Function( PreviewBlock_QueryInvalid value)?  queryInvalid,TResult? Function( PreviewBlock_Html value)?  html,}){
+final _that = this;
+switch (_that) {
+case PreviewBlock_Heading() when heading != null:
+return heading(_that);case PreviewBlock_Paragraph() when paragraph != null:
+return paragraph(_that);case PreviewBlock_List() when list != null:
+return list(_that);case PreviewBlock_Quote() when quote != null:
+return quote(_that);case PreviewBlock_Code() when code != null:
+return code(_that);case PreviewBlock_Rule() when rule != null:
+return rule(_that);case PreviewBlock_Table() when table != null:
+return table(_that);case PreviewBlock_Figure() when figure != null:
+return figure(_that);case PreviewBlock_EmptyDrawing() when emptyDrawing != null:
+return emptyDrawing(_that);case PreviewBlock_Failed() when failed != null:
+return failed(_that);case PreviewBlock_Query() when query != null:
+return query(_that);case PreviewBlock_QueryInvalid() when queryInvalid != null:
+return queryInvalid(_that);case PreviewBlock_Html() when html != null:
+return html(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( int level,  String id,  List<PreviewInline> inlines)?  heading,TResult Function( List<PreviewInline> inlines)?  paragraph,TResult Function( bool ordered,  int start,  bool tight,  List<PreviewListItem> items)?  list,TResult Function( List<PreviewBlock> blocks)?  quote,TResult Function( String? language,  List<PreviewCodeRun> runs,  int copy)?  code,TResult Function()?  rule,TResult Function( List<PreviewAlign> aligns,  List<PreviewCell> head,  List<PreviewRow> rows)?  table,TResult Function( PreviewFigureKind kind,  PreviewSvg svg)?  figure,TResult Function()?  emptyDrawing,TResult Function( String badge,  String detail,  String? language,  String code,  int? copy)?  failed,TResult Function( List<String> columns,  List<PreviewQueryRow> rows)?  query,TResult Function( String code,  String message)?  queryInvalid,TResult Function( String text)?  html,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case PreviewBlock_Heading() when heading != null:
+return heading(_that.level,_that.id,_that.inlines);case PreviewBlock_Paragraph() when paragraph != null:
+return paragraph(_that.inlines);case PreviewBlock_List() when list != null:
+return list(_that.ordered,_that.start,_that.tight,_that.items);case PreviewBlock_Quote() when quote != null:
+return quote(_that.blocks);case PreviewBlock_Code() when code != null:
+return code(_that.language,_that.runs,_that.copy);case PreviewBlock_Rule() when rule != null:
+return rule();case PreviewBlock_Table() when table != null:
+return table(_that.aligns,_that.head,_that.rows);case PreviewBlock_Figure() when figure != null:
+return figure(_that.kind,_that.svg);case PreviewBlock_EmptyDrawing() when emptyDrawing != null:
+return emptyDrawing();case PreviewBlock_Failed() when failed != null:
+return failed(_that.badge,_that.detail,_that.language,_that.code,_that.copy);case PreviewBlock_Query() when query != null:
+return query(_that.columns,_that.rows);case PreviewBlock_QueryInvalid() when queryInvalid != null:
+return queryInvalid(_that.code,_that.message);case PreviewBlock_Html() when html != null:
+return html(_that.text);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( int level,  String id,  List<PreviewInline> inlines)  heading,required TResult Function( List<PreviewInline> inlines)  paragraph,required TResult Function( bool ordered,  int start,  bool tight,  List<PreviewListItem> items)  list,required TResult Function( List<PreviewBlock> blocks)  quote,required TResult Function( String? language,  List<PreviewCodeRun> runs,  int copy)  code,required TResult Function()  rule,required TResult Function( List<PreviewAlign> aligns,  List<PreviewCell> head,  List<PreviewRow> rows)  table,required TResult Function( PreviewFigureKind kind,  PreviewSvg svg)  figure,required TResult Function()  emptyDrawing,required TResult Function( String badge,  String detail,  String? language,  String code,  int? copy)  failed,required TResult Function( List<String> columns,  List<PreviewQueryRow> rows)  query,required TResult Function( String code,  String message)  queryInvalid,required TResult Function( String text)  html,}) {final _that = this;
+switch (_that) {
+case PreviewBlock_Heading():
+return heading(_that.level,_that.id,_that.inlines);case PreviewBlock_Paragraph():
+return paragraph(_that.inlines);case PreviewBlock_List():
+return list(_that.ordered,_that.start,_that.tight,_that.items);case PreviewBlock_Quote():
+return quote(_that.blocks);case PreviewBlock_Code():
+return code(_that.language,_that.runs,_that.copy);case PreviewBlock_Rule():
+return rule();case PreviewBlock_Table():
+return table(_that.aligns,_that.head,_that.rows);case PreviewBlock_Figure():
+return figure(_that.kind,_that.svg);case PreviewBlock_EmptyDrawing():
+return emptyDrawing();case PreviewBlock_Failed():
+return failed(_that.badge,_that.detail,_that.language,_that.code,_that.copy);case PreviewBlock_Query():
+return query(_that.columns,_that.rows);case PreviewBlock_QueryInvalid():
+return queryInvalid(_that.code,_that.message);case PreviewBlock_Html():
+return html(_that.text);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( int level,  String id,  List<PreviewInline> inlines)?  heading,TResult? Function( List<PreviewInline> inlines)?  paragraph,TResult? Function( bool ordered,  int start,  bool tight,  List<PreviewListItem> items)?  list,TResult? Function( List<PreviewBlock> blocks)?  quote,TResult? Function( String? language,  List<PreviewCodeRun> runs,  int copy)?  code,TResult? Function()?  rule,TResult? Function( List<PreviewAlign> aligns,  List<PreviewCell> head,  List<PreviewRow> rows)?  table,TResult? Function( PreviewFigureKind kind,  PreviewSvg svg)?  figure,TResult? Function()?  emptyDrawing,TResult? Function( String badge,  String detail,  String? language,  String code,  int? copy)?  failed,TResult? Function( List<String> columns,  List<PreviewQueryRow> rows)?  query,TResult? Function( String code,  String message)?  queryInvalid,TResult? Function( String text)?  html,}) {final _that = this;
+switch (_that) {
+case PreviewBlock_Heading() when heading != null:
+return heading(_that.level,_that.id,_that.inlines);case PreviewBlock_Paragraph() when paragraph != null:
+return paragraph(_that.inlines);case PreviewBlock_List() when list != null:
+return list(_that.ordered,_that.start,_that.tight,_that.items);case PreviewBlock_Quote() when quote != null:
+return quote(_that.blocks);case PreviewBlock_Code() when code != null:
+return code(_that.language,_that.runs,_that.copy);case PreviewBlock_Rule() when rule != null:
+return rule();case PreviewBlock_Table() when table != null:
+return table(_that.aligns,_that.head,_that.rows);case PreviewBlock_Figure() when figure != null:
+return figure(_that.kind,_that.svg);case PreviewBlock_EmptyDrawing() when emptyDrawing != null:
+return emptyDrawing();case PreviewBlock_Failed() when failed != null:
+return failed(_that.badge,_that.detail,_that.language,_that.code,_that.copy);case PreviewBlock_Query() when query != null:
+return query(_that.columns,_that.rows);case PreviewBlock_QueryInvalid() when queryInvalid != null:
+return queryInvalid(_that.code,_that.message);case PreviewBlock_Html() when html != null:
+return html(_that.text);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_Heading extends PreviewBlock {
+  const PreviewBlock_Heading({required this.level, required this.id, required final  List<PreviewInline> inlines}): _inlines = inlines,super._();
+  
+
+ final  int level;
+ final  String id;
+ final  List<PreviewInline> _inlines;
+ List<PreviewInline> get inlines {
+  if (_inlines is EqualUnmodifiableListView) return _inlines;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_inlines);
+}
+
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_HeadingCopyWith<PreviewBlock_Heading> get copyWith => _$PreviewBlock_HeadingCopyWithImpl<PreviewBlock_Heading>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_Heading&&(identical(other.level, level) || other.level == level)&&(identical(other.id, id) || other.id == id)&&const DeepCollectionEquality().equals(other._inlines, _inlines));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,level,id,const DeepCollectionEquality().hash(_inlines));
+
+@override
+String toString() {
+  return 'PreviewBlock.heading(level: $level, id: $id, inlines: $inlines)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_HeadingCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_HeadingCopyWith(PreviewBlock_Heading value, $Res Function(PreviewBlock_Heading) _then) = _$PreviewBlock_HeadingCopyWithImpl;
+@useResult
+$Res call({
+ int level, String id, List<PreviewInline> inlines
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_HeadingCopyWithImpl<$Res>
+    implements $PreviewBlock_HeadingCopyWith<$Res> {
+  _$PreviewBlock_HeadingCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_Heading _self;
+  final $Res Function(PreviewBlock_Heading) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? level = null,Object? id = null,Object? inlines = null,}) {
+  return _then(PreviewBlock_Heading(
+level: null == level ? _self.level : level // ignore: cast_nullable_to_non_nullable
+as int,id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as String,inlines: null == inlines ? _self._inlines : inlines // ignore: cast_nullable_to_non_nullable
+as List<PreviewInline>,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_Paragraph extends PreviewBlock {
+  const PreviewBlock_Paragraph({required final  List<PreviewInline> inlines}): _inlines = inlines,super._();
+  
+
+ final  List<PreviewInline> _inlines;
+ List<PreviewInline> get inlines {
+  if (_inlines is EqualUnmodifiableListView) return _inlines;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_inlines);
+}
+
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_ParagraphCopyWith<PreviewBlock_Paragraph> get copyWith => _$PreviewBlock_ParagraphCopyWithImpl<PreviewBlock_Paragraph>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_Paragraph&&const DeepCollectionEquality().equals(other._inlines, _inlines));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_inlines));
+
+@override
+String toString() {
+  return 'PreviewBlock.paragraph(inlines: $inlines)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_ParagraphCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_ParagraphCopyWith(PreviewBlock_Paragraph value, $Res Function(PreviewBlock_Paragraph) _then) = _$PreviewBlock_ParagraphCopyWithImpl;
+@useResult
+$Res call({
+ List<PreviewInline> inlines
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_ParagraphCopyWithImpl<$Res>
+    implements $PreviewBlock_ParagraphCopyWith<$Res> {
+  _$PreviewBlock_ParagraphCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_Paragraph _self;
+  final $Res Function(PreviewBlock_Paragraph) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? inlines = null,}) {
+  return _then(PreviewBlock_Paragraph(
+inlines: null == inlines ? _self._inlines : inlines // ignore: cast_nullable_to_non_nullable
+as List<PreviewInline>,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_List extends PreviewBlock {
+  const PreviewBlock_List({required this.ordered, required this.start, required this.tight, required final  List<PreviewListItem> items}): _items = items,super._();
+  
+
+ final  bool ordered;
+ final  int start;
+ final  bool tight;
+ final  List<PreviewListItem> _items;
+ List<PreviewListItem> get items {
+  if (_items is EqualUnmodifiableListView) return _items;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_items);
+}
+
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_ListCopyWith<PreviewBlock_List> get copyWith => _$PreviewBlock_ListCopyWithImpl<PreviewBlock_List>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_List&&(identical(other.ordered, ordered) || other.ordered == ordered)&&(identical(other.start, start) || other.start == start)&&(identical(other.tight, tight) || other.tight == tight)&&const DeepCollectionEquality().equals(other._items, _items));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,ordered,start,tight,const DeepCollectionEquality().hash(_items));
+
+@override
+String toString() {
+  return 'PreviewBlock.list(ordered: $ordered, start: $start, tight: $tight, items: $items)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_ListCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_ListCopyWith(PreviewBlock_List value, $Res Function(PreviewBlock_List) _then) = _$PreviewBlock_ListCopyWithImpl;
+@useResult
+$Res call({
+ bool ordered, int start, bool tight, List<PreviewListItem> items
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_ListCopyWithImpl<$Res>
+    implements $PreviewBlock_ListCopyWith<$Res> {
+  _$PreviewBlock_ListCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_List _self;
+  final $Res Function(PreviewBlock_List) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? ordered = null,Object? start = null,Object? tight = null,Object? items = null,}) {
+  return _then(PreviewBlock_List(
+ordered: null == ordered ? _self.ordered : ordered // ignore: cast_nullable_to_non_nullable
+as bool,start: null == start ? _self.start : start // ignore: cast_nullable_to_non_nullable
+as int,tight: null == tight ? _self.tight : tight // ignore: cast_nullable_to_non_nullable
+as bool,items: null == items ? _self._items : items // ignore: cast_nullable_to_non_nullable
+as List<PreviewListItem>,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_Quote extends PreviewBlock {
+  const PreviewBlock_Quote({required final  List<PreviewBlock> blocks}): _blocks = blocks,super._();
+  
+
+ final  List<PreviewBlock> _blocks;
+ List<PreviewBlock> get blocks {
+  if (_blocks is EqualUnmodifiableListView) return _blocks;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_blocks);
+}
+
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_QuoteCopyWith<PreviewBlock_Quote> get copyWith => _$PreviewBlock_QuoteCopyWithImpl<PreviewBlock_Quote>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_Quote&&const DeepCollectionEquality().equals(other._blocks, _blocks));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_blocks));
+
+@override
+String toString() {
+  return 'PreviewBlock.quote(blocks: $blocks)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_QuoteCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_QuoteCopyWith(PreviewBlock_Quote value, $Res Function(PreviewBlock_Quote) _then) = _$PreviewBlock_QuoteCopyWithImpl;
+@useResult
+$Res call({
+ List<PreviewBlock> blocks
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_QuoteCopyWithImpl<$Res>
+    implements $PreviewBlock_QuoteCopyWith<$Res> {
+  _$PreviewBlock_QuoteCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_Quote _self;
+  final $Res Function(PreviewBlock_Quote) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? blocks = null,}) {
+  return _then(PreviewBlock_Quote(
+blocks: null == blocks ? _self._blocks : blocks // ignore: cast_nullable_to_non_nullable
+as List<PreviewBlock>,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_Code extends PreviewBlock {
+  const PreviewBlock_Code({this.language, required final  List<PreviewCodeRun> runs, required this.copy}): _runs = runs,super._();
+  
+
+ final  String? language;
+ final  List<PreviewCodeRun> _runs;
+ List<PreviewCodeRun> get runs {
+  if (_runs is EqualUnmodifiableListView) return _runs;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_runs);
+}
+
+ final  int copy;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_CodeCopyWith<PreviewBlock_Code> get copyWith => _$PreviewBlock_CodeCopyWithImpl<PreviewBlock_Code>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_Code&&(identical(other.language, language) || other.language == language)&&const DeepCollectionEquality().equals(other._runs, _runs)&&(identical(other.copy, copy) || other.copy == copy));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,language,const DeepCollectionEquality().hash(_runs),copy);
+
+@override
+String toString() {
+  return 'PreviewBlock.code(language: $language, runs: $runs, copy: $copy)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_CodeCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_CodeCopyWith(PreviewBlock_Code value, $Res Function(PreviewBlock_Code) _then) = _$PreviewBlock_CodeCopyWithImpl;
+@useResult
+$Res call({
+ String? language, List<PreviewCodeRun> runs, int copy
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_CodeCopyWithImpl<$Res>
+    implements $PreviewBlock_CodeCopyWith<$Res> {
+  _$PreviewBlock_CodeCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_Code _self;
+  final $Res Function(PreviewBlock_Code) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? language = freezed,Object? runs = null,Object? copy = null,}) {
+  return _then(PreviewBlock_Code(
+language: freezed == language ? _self.language : language // ignore: cast_nullable_to_non_nullable
+as String?,runs: null == runs ? _self._runs : runs // ignore: cast_nullable_to_non_nullable
+as List<PreviewCodeRun>,copy: null == copy ? _self.copy : copy // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_Rule extends PreviewBlock {
+  const PreviewBlock_Rule(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_Rule);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'PreviewBlock.rule()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class PreviewBlock_Table extends PreviewBlock {
+  const PreviewBlock_Table({required final  List<PreviewAlign> aligns, required final  List<PreviewCell> head, required final  List<PreviewRow> rows}): _aligns = aligns,_head = head,_rows = rows,super._();
+  
+
+ final  List<PreviewAlign> _aligns;
+ List<PreviewAlign> get aligns {
+  if (_aligns is EqualUnmodifiableListView) return _aligns;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_aligns);
+}
+
+ final  List<PreviewCell> _head;
+ List<PreviewCell> get head {
+  if (_head is EqualUnmodifiableListView) return _head;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_head);
+}
+
+ final  List<PreviewRow> _rows;
+ List<PreviewRow> get rows {
+  if (_rows is EqualUnmodifiableListView) return _rows;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_rows);
+}
+
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_TableCopyWith<PreviewBlock_Table> get copyWith => _$PreviewBlock_TableCopyWithImpl<PreviewBlock_Table>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_Table&&const DeepCollectionEquality().equals(other._aligns, _aligns)&&const DeepCollectionEquality().equals(other._head, _head)&&const DeepCollectionEquality().equals(other._rows, _rows));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_aligns),const DeepCollectionEquality().hash(_head),const DeepCollectionEquality().hash(_rows));
+
+@override
+String toString() {
+  return 'PreviewBlock.table(aligns: $aligns, head: $head, rows: $rows)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_TableCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_TableCopyWith(PreviewBlock_Table value, $Res Function(PreviewBlock_Table) _then) = _$PreviewBlock_TableCopyWithImpl;
+@useResult
+$Res call({
+ List<PreviewAlign> aligns, List<PreviewCell> head, List<PreviewRow> rows
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_TableCopyWithImpl<$Res>
+    implements $PreviewBlock_TableCopyWith<$Res> {
+  _$PreviewBlock_TableCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_Table _self;
+  final $Res Function(PreviewBlock_Table) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? aligns = null,Object? head = null,Object? rows = null,}) {
+  return _then(PreviewBlock_Table(
+aligns: null == aligns ? _self._aligns : aligns // ignore: cast_nullable_to_non_nullable
+as List<PreviewAlign>,head: null == head ? _self._head : head // ignore: cast_nullable_to_non_nullable
+as List<PreviewCell>,rows: null == rows ? _self._rows : rows // ignore: cast_nullable_to_non_nullable
+as List<PreviewRow>,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_Figure extends PreviewBlock {
+  const PreviewBlock_Figure({required this.kind, required this.svg}): super._();
+  
+
+ final  PreviewFigureKind kind;
+ final  PreviewSvg svg;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_FigureCopyWith<PreviewBlock_Figure> get copyWith => _$PreviewBlock_FigureCopyWithImpl<PreviewBlock_Figure>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_Figure&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.svg, svg) || other.svg == svg));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,kind,svg);
+
+@override
+String toString() {
+  return 'PreviewBlock.figure(kind: $kind, svg: $svg)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_FigureCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_FigureCopyWith(PreviewBlock_Figure value, $Res Function(PreviewBlock_Figure) _then) = _$PreviewBlock_FigureCopyWithImpl;
+@useResult
+$Res call({
+ PreviewFigureKind kind, PreviewSvg svg
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_FigureCopyWithImpl<$Res>
+    implements $PreviewBlock_FigureCopyWith<$Res> {
+  _$PreviewBlock_FigureCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_Figure _self;
+  final $Res Function(PreviewBlock_Figure) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? kind = null,Object? svg = null,}) {
+  return _then(PreviewBlock_Figure(
+kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
+as PreviewFigureKind,svg: null == svg ? _self.svg : svg // ignore: cast_nullable_to_non_nullable
+as PreviewSvg,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_EmptyDrawing extends PreviewBlock {
+  const PreviewBlock_EmptyDrawing(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_EmptyDrawing);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'PreviewBlock.emptyDrawing()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class PreviewBlock_Failed extends PreviewBlock {
+  const PreviewBlock_Failed({required this.badge, required this.detail, this.language, required this.code, this.copy}): super._();
+  
+
+ final  String badge;
+ final  String detail;
+ final  String? language;
+ final  String code;
+ final  int? copy;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_FailedCopyWith<PreviewBlock_Failed> get copyWith => _$PreviewBlock_FailedCopyWithImpl<PreviewBlock_Failed>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_Failed&&(identical(other.badge, badge) || other.badge == badge)&&(identical(other.detail, detail) || other.detail == detail)&&(identical(other.language, language) || other.language == language)&&(identical(other.code, code) || other.code == code)&&(identical(other.copy, copy) || other.copy == copy));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,badge,detail,language,code,copy);
+
+@override
+String toString() {
+  return 'PreviewBlock.failed(badge: $badge, detail: $detail, language: $language, code: $code, copy: $copy)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_FailedCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_FailedCopyWith(PreviewBlock_Failed value, $Res Function(PreviewBlock_Failed) _then) = _$PreviewBlock_FailedCopyWithImpl;
+@useResult
+$Res call({
+ String badge, String detail, String? language, String code, int? copy
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_FailedCopyWithImpl<$Res>
+    implements $PreviewBlock_FailedCopyWith<$Res> {
+  _$PreviewBlock_FailedCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_Failed _self;
+  final $Res Function(PreviewBlock_Failed) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? badge = null,Object? detail = null,Object? language = freezed,Object? code = null,Object? copy = freezed,}) {
+  return _then(PreviewBlock_Failed(
+badge: null == badge ? _self.badge : badge // ignore: cast_nullable_to_non_nullable
+as String,detail: null == detail ? _self.detail : detail // ignore: cast_nullable_to_non_nullable
+as String,language: freezed == language ? _self.language : language // ignore: cast_nullable_to_non_nullable
+as String?,code: null == code ? _self.code : code // ignore: cast_nullable_to_non_nullable
+as String,copy: freezed == copy ? _self.copy : copy // ignore: cast_nullable_to_non_nullable
+as int?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_Query extends PreviewBlock {
+  const PreviewBlock_Query({required final  List<String> columns, required final  List<PreviewQueryRow> rows}): _columns = columns,_rows = rows,super._();
+  
+
+ final  List<String> _columns;
+ List<String> get columns {
+  if (_columns is EqualUnmodifiableListView) return _columns;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_columns);
+}
+
+ final  List<PreviewQueryRow> _rows;
+ List<PreviewQueryRow> get rows {
+  if (_rows is EqualUnmodifiableListView) return _rows;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_rows);
+}
+
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_QueryCopyWith<PreviewBlock_Query> get copyWith => _$PreviewBlock_QueryCopyWithImpl<PreviewBlock_Query>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_Query&&const DeepCollectionEquality().equals(other._columns, _columns)&&const DeepCollectionEquality().equals(other._rows, _rows));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_columns),const DeepCollectionEquality().hash(_rows));
+
+@override
+String toString() {
+  return 'PreviewBlock.query(columns: $columns, rows: $rows)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_QueryCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_QueryCopyWith(PreviewBlock_Query value, $Res Function(PreviewBlock_Query) _then) = _$PreviewBlock_QueryCopyWithImpl;
+@useResult
+$Res call({
+ List<String> columns, List<PreviewQueryRow> rows
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_QueryCopyWithImpl<$Res>
+    implements $PreviewBlock_QueryCopyWith<$Res> {
+  _$PreviewBlock_QueryCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_Query _self;
+  final $Res Function(PreviewBlock_Query) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? columns = null,Object? rows = null,}) {
+  return _then(PreviewBlock_Query(
+columns: null == columns ? _self._columns : columns // ignore: cast_nullable_to_non_nullable
+as List<String>,rows: null == rows ? _self._rows : rows // ignore: cast_nullable_to_non_nullable
+as List<PreviewQueryRow>,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_QueryInvalid extends PreviewBlock {
+  const PreviewBlock_QueryInvalid({required this.code, required this.message}): super._();
+  
+
+ final  String code;
+ final  String message;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_QueryInvalidCopyWith<PreviewBlock_QueryInvalid> get copyWith => _$PreviewBlock_QueryInvalidCopyWithImpl<PreviewBlock_QueryInvalid>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_QueryInvalid&&(identical(other.code, code) || other.code == code)&&(identical(other.message, message) || other.message == message));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,code,message);
+
+@override
+String toString() {
+  return 'PreviewBlock.queryInvalid(code: $code, message: $message)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_QueryInvalidCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_QueryInvalidCopyWith(PreviewBlock_QueryInvalid value, $Res Function(PreviewBlock_QueryInvalid) _then) = _$PreviewBlock_QueryInvalidCopyWithImpl;
+@useResult
+$Res call({
+ String code, String message
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_QueryInvalidCopyWithImpl<$Res>
+    implements $PreviewBlock_QueryInvalidCopyWith<$Res> {
+  _$PreviewBlock_QueryInvalidCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_QueryInvalid _self;
+  final $Res Function(PreviewBlock_QueryInvalid) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? code = null,Object? message = null,}) {
+  return _then(PreviewBlock_QueryInvalid(
+code: null == code ? _self.code : code // ignore: cast_nullable_to_non_nullable
+as String,message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewBlock_Html extends PreviewBlock {
+  const PreviewBlock_Html({required this.text}): super._();
+  
+
+ final  String text;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewBlock_HtmlCopyWith<PreviewBlock_Html> get copyWith => _$PreviewBlock_HtmlCopyWithImpl<PreviewBlock_Html>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewBlock_Html&&(identical(other.text, text) || other.text == text));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,text);
+
+@override
+String toString() {
+  return 'PreviewBlock.html(text: $text)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewBlock_HtmlCopyWith<$Res> implements $PreviewBlockCopyWith<$Res> {
+  factory $PreviewBlock_HtmlCopyWith(PreviewBlock_Html value, $Res Function(PreviewBlock_Html) _then) = _$PreviewBlock_HtmlCopyWithImpl;
+@useResult
+$Res call({
+ String text
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewBlock_HtmlCopyWithImpl<$Res>
+    implements $PreviewBlock_HtmlCopyWith<$Res> {
+  _$PreviewBlock_HtmlCopyWithImpl(this._self, this._then);
+
+  final PreviewBlock_Html _self;
+  final $Res Function(PreviewBlock_Html) _then;
+
+/// Create a copy of PreviewBlock
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? text = null,}) {
+  return _then(PreviewBlock_Html(
+text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+mixin _$PreviewInline {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewInline);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'PreviewInline()';
+}
+
+
+}
+
+/// @nodoc
+class $PreviewInlineCopyWith<$Res>  {
+$PreviewInlineCopyWith(PreviewInline _, $Res Function(PreviewInline) __);
+}
+
+
+/// Adds pattern-matching-related methods to [PreviewInline].
+extension PreviewInlinePatterns on PreviewInline {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PreviewInline_Text value)?  text,TResult Function( PreviewInline_Link value)?  link,TResult Function( PreviewInline_Due value)?  due,TResult Function( PreviewInline_Math value)?  math,TResult Function( PreviewInline_Image value)?  image,TResult Function( PreviewInline_Missing value)?  missing,TResult Function( PreviewInline_Break value)?  break_,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case PreviewInline_Text() when text != null:
+return text(_that);case PreviewInline_Link() when link != null:
+return link(_that);case PreviewInline_Due() when due != null:
+return due(_that);case PreviewInline_Math() when math != null:
+return math(_that);case PreviewInline_Image() when image != null:
+return image(_that);case PreviewInline_Missing() when missing != null:
+return missing(_that);case PreviewInline_Break() when break_ != null:
+return break_(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PreviewInline_Text value)  text,required TResult Function( PreviewInline_Link value)  link,required TResult Function( PreviewInline_Due value)  due,required TResult Function( PreviewInline_Math value)  math,required TResult Function( PreviewInline_Image value)  image,required TResult Function( PreviewInline_Missing value)  missing,required TResult Function( PreviewInline_Break value)  break_,}){
+final _that = this;
+switch (_that) {
+case PreviewInline_Text():
+return text(_that);case PreviewInline_Link():
+return link(_that);case PreviewInline_Due():
+return due(_that);case PreviewInline_Math():
+return math(_that);case PreviewInline_Image():
+return image(_that);case PreviewInline_Missing():
+return missing(_that);case PreviewInline_Break():
+return break_(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PreviewInline_Text value)?  text,TResult? Function( PreviewInline_Link value)?  link,TResult? Function( PreviewInline_Due value)?  due,TResult? Function( PreviewInline_Math value)?  math,TResult? Function( PreviewInline_Image value)?  image,TResult? Function( PreviewInline_Missing value)?  missing,TResult? Function( PreviewInline_Break value)?  break_,}){
+final _that = this;
+switch (_that) {
+case PreviewInline_Text() when text != null:
+return text(_that);case PreviewInline_Link() when link != null:
+return link(_that);case PreviewInline_Due() when due != null:
+return due(_that);case PreviewInline_Math() when math != null:
+return math(_that);case PreviewInline_Image() when image != null:
+return image(_that);case PreviewInline_Missing() when missing != null:
+return missing(_that);case PreviewInline_Break() when break_ != null:
+return break_(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String text,  bool bold,  bool italic,  bool strike,  bool code)?  text,TResult Function( String url,  List<PreviewInline> inlines)?  link,TResult Function( String url,  String label,  String title,  DueTone tone)?  due,TResult Function( PreviewSvg svg)?  math,TResult Function( String contentType,  Uint8List bytes,  String alt,  int? width)?  image,TResult Function( String text)?  missing,TResult Function()?  break_,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case PreviewInline_Text() when text != null:
+return text(_that.text,_that.bold,_that.italic,_that.strike,_that.code);case PreviewInline_Link() when link != null:
+return link(_that.url,_that.inlines);case PreviewInline_Due() when due != null:
+return due(_that.url,_that.label,_that.title,_that.tone);case PreviewInline_Math() when math != null:
+return math(_that.svg);case PreviewInline_Image() when image != null:
+return image(_that.contentType,_that.bytes,_that.alt,_that.width);case PreviewInline_Missing() when missing != null:
+return missing(_that.text);case PreviewInline_Break() when break_ != null:
+return break_();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String text,  bool bold,  bool italic,  bool strike,  bool code)  text,required TResult Function( String url,  List<PreviewInline> inlines)  link,required TResult Function( String url,  String label,  String title,  DueTone tone)  due,required TResult Function( PreviewSvg svg)  math,required TResult Function( String contentType,  Uint8List bytes,  String alt,  int? width)  image,required TResult Function( String text)  missing,required TResult Function()  break_,}) {final _that = this;
+switch (_that) {
+case PreviewInline_Text():
+return text(_that.text,_that.bold,_that.italic,_that.strike,_that.code);case PreviewInline_Link():
+return link(_that.url,_that.inlines);case PreviewInline_Due():
+return due(_that.url,_that.label,_that.title,_that.tone);case PreviewInline_Math():
+return math(_that.svg);case PreviewInline_Image():
+return image(_that.contentType,_that.bytes,_that.alt,_that.width);case PreviewInline_Missing():
+return missing(_that.text);case PreviewInline_Break():
+return break_();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String text,  bool bold,  bool italic,  bool strike,  bool code)?  text,TResult? Function( String url,  List<PreviewInline> inlines)?  link,TResult? Function( String url,  String label,  String title,  DueTone tone)?  due,TResult? Function( PreviewSvg svg)?  math,TResult? Function( String contentType,  Uint8List bytes,  String alt,  int? width)?  image,TResult? Function( String text)?  missing,TResult? Function()?  break_,}) {final _that = this;
+switch (_that) {
+case PreviewInline_Text() when text != null:
+return text(_that.text,_that.bold,_that.italic,_that.strike,_that.code);case PreviewInline_Link() when link != null:
+return link(_that.url,_that.inlines);case PreviewInline_Due() when due != null:
+return due(_that.url,_that.label,_that.title,_that.tone);case PreviewInline_Math() when math != null:
+return math(_that.svg);case PreviewInline_Image() when image != null:
+return image(_that.contentType,_that.bytes,_that.alt,_that.width);case PreviewInline_Missing() when missing != null:
+return missing(_that.text);case PreviewInline_Break() when break_ != null:
+return break_();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class PreviewInline_Text extends PreviewInline {
+  const PreviewInline_Text({required this.text, required this.bold, required this.italic, required this.strike, required this.code}): super._();
+  
+
+ final  String text;
+ final  bool bold;
+ final  bool italic;
+ final  bool strike;
+ final  bool code;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewInline_TextCopyWith<PreviewInline_Text> get copyWith => _$PreviewInline_TextCopyWithImpl<PreviewInline_Text>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewInline_Text&&(identical(other.text, text) || other.text == text)&&(identical(other.bold, bold) || other.bold == bold)&&(identical(other.italic, italic) || other.italic == italic)&&(identical(other.strike, strike) || other.strike == strike)&&(identical(other.code, code) || other.code == code));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,text,bold,italic,strike,code);
+
+@override
+String toString() {
+  return 'PreviewInline.text(text: $text, bold: $bold, italic: $italic, strike: $strike, code: $code)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewInline_TextCopyWith<$Res> implements $PreviewInlineCopyWith<$Res> {
+  factory $PreviewInline_TextCopyWith(PreviewInline_Text value, $Res Function(PreviewInline_Text) _then) = _$PreviewInline_TextCopyWithImpl;
+@useResult
+$Res call({
+ String text, bool bold, bool italic, bool strike, bool code
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewInline_TextCopyWithImpl<$Res>
+    implements $PreviewInline_TextCopyWith<$Res> {
+  _$PreviewInline_TextCopyWithImpl(this._self, this._then);
+
+  final PreviewInline_Text _self;
+  final $Res Function(PreviewInline_Text) _then;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? text = null,Object? bold = null,Object? italic = null,Object? strike = null,Object? code = null,}) {
+  return _then(PreviewInline_Text(
+text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
+as String,bold: null == bold ? _self.bold : bold // ignore: cast_nullable_to_non_nullable
+as bool,italic: null == italic ? _self.italic : italic // ignore: cast_nullable_to_non_nullable
+as bool,strike: null == strike ? _self.strike : strike // ignore: cast_nullable_to_non_nullable
+as bool,code: null == code ? _self.code : code // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewInline_Link extends PreviewInline {
+  const PreviewInline_Link({required this.url, required final  List<PreviewInline> inlines}): _inlines = inlines,super._();
+  
+
+ final  String url;
+ final  List<PreviewInline> _inlines;
+ List<PreviewInline> get inlines {
+  if (_inlines is EqualUnmodifiableListView) return _inlines;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_inlines);
+}
+
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewInline_LinkCopyWith<PreviewInline_Link> get copyWith => _$PreviewInline_LinkCopyWithImpl<PreviewInline_Link>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewInline_Link&&(identical(other.url, url) || other.url == url)&&const DeepCollectionEquality().equals(other._inlines, _inlines));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,url,const DeepCollectionEquality().hash(_inlines));
+
+@override
+String toString() {
+  return 'PreviewInline.link(url: $url, inlines: $inlines)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewInline_LinkCopyWith<$Res> implements $PreviewInlineCopyWith<$Res> {
+  factory $PreviewInline_LinkCopyWith(PreviewInline_Link value, $Res Function(PreviewInline_Link) _then) = _$PreviewInline_LinkCopyWithImpl;
+@useResult
+$Res call({
+ String url, List<PreviewInline> inlines
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewInline_LinkCopyWithImpl<$Res>
+    implements $PreviewInline_LinkCopyWith<$Res> {
+  _$PreviewInline_LinkCopyWithImpl(this._self, this._then);
+
+  final PreviewInline_Link _self;
+  final $Res Function(PreviewInline_Link) _then;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? url = null,Object? inlines = null,}) {
+  return _then(PreviewInline_Link(
+url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
+as String,inlines: null == inlines ? _self._inlines : inlines // ignore: cast_nullable_to_non_nullable
+as List<PreviewInline>,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewInline_Due extends PreviewInline {
+  const PreviewInline_Due({required this.url, required this.label, required this.title, required this.tone}): super._();
+  
+
+ final  String url;
+ final  String label;
+ final  String title;
+ final  DueTone tone;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewInline_DueCopyWith<PreviewInline_Due> get copyWith => _$PreviewInline_DueCopyWithImpl<PreviewInline_Due>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewInline_Due&&(identical(other.url, url) || other.url == url)&&(identical(other.label, label) || other.label == label)&&(identical(other.title, title) || other.title == title)&&(identical(other.tone, tone) || other.tone == tone));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,url,label,title,tone);
+
+@override
+String toString() {
+  return 'PreviewInline.due(url: $url, label: $label, title: $title, tone: $tone)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewInline_DueCopyWith<$Res> implements $PreviewInlineCopyWith<$Res> {
+  factory $PreviewInline_DueCopyWith(PreviewInline_Due value, $Res Function(PreviewInline_Due) _then) = _$PreviewInline_DueCopyWithImpl;
+@useResult
+$Res call({
+ String url, String label, String title, DueTone tone
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewInline_DueCopyWithImpl<$Res>
+    implements $PreviewInline_DueCopyWith<$Res> {
+  _$PreviewInline_DueCopyWithImpl(this._self, this._then);
+
+  final PreviewInline_Due _self;
+  final $Res Function(PreviewInline_Due) _then;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? url = null,Object? label = null,Object? title = null,Object? tone = null,}) {
+  return _then(PreviewInline_Due(
+url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
+as String,label: null == label ? _self.label : label // ignore: cast_nullable_to_non_nullable
+as String,title: null == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
+as String,tone: null == tone ? _self.tone : tone // ignore: cast_nullable_to_non_nullable
+as DueTone,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewInline_Math extends PreviewInline {
+  const PreviewInline_Math({required this.svg}): super._();
+  
+
+ final  PreviewSvg svg;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewInline_MathCopyWith<PreviewInline_Math> get copyWith => _$PreviewInline_MathCopyWithImpl<PreviewInline_Math>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewInline_Math&&(identical(other.svg, svg) || other.svg == svg));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,svg);
+
+@override
+String toString() {
+  return 'PreviewInline.math(svg: $svg)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewInline_MathCopyWith<$Res> implements $PreviewInlineCopyWith<$Res> {
+  factory $PreviewInline_MathCopyWith(PreviewInline_Math value, $Res Function(PreviewInline_Math) _then) = _$PreviewInline_MathCopyWithImpl;
+@useResult
+$Res call({
+ PreviewSvg svg
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewInline_MathCopyWithImpl<$Res>
+    implements $PreviewInline_MathCopyWith<$Res> {
+  _$PreviewInline_MathCopyWithImpl(this._self, this._then);
+
+  final PreviewInline_Math _self;
+  final $Res Function(PreviewInline_Math) _then;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? svg = null,}) {
+  return _then(PreviewInline_Math(
+svg: null == svg ? _self.svg : svg // ignore: cast_nullable_to_non_nullable
+as PreviewSvg,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewInline_Image extends PreviewInline {
+  const PreviewInline_Image({required this.contentType, required this.bytes, required this.alt, this.width}): super._();
+  
+
+ final  String contentType;
+ final  Uint8List bytes;
+ final  String alt;
+ final  int? width;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewInline_ImageCopyWith<PreviewInline_Image> get copyWith => _$PreviewInline_ImageCopyWithImpl<PreviewInline_Image>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewInline_Image&&(identical(other.contentType, contentType) || other.contentType == contentType)&&const DeepCollectionEquality().equals(other.bytes, bytes)&&(identical(other.alt, alt) || other.alt == alt)&&(identical(other.width, width) || other.width == width));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,contentType,const DeepCollectionEquality().hash(bytes),alt,width);
+
+@override
+String toString() {
+  return 'PreviewInline.image(contentType: $contentType, bytes: $bytes, alt: $alt, width: $width)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewInline_ImageCopyWith<$Res> implements $PreviewInlineCopyWith<$Res> {
+  factory $PreviewInline_ImageCopyWith(PreviewInline_Image value, $Res Function(PreviewInline_Image) _then) = _$PreviewInline_ImageCopyWithImpl;
+@useResult
+$Res call({
+ String contentType, Uint8List bytes, String alt, int? width
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewInline_ImageCopyWithImpl<$Res>
+    implements $PreviewInline_ImageCopyWith<$Res> {
+  _$PreviewInline_ImageCopyWithImpl(this._self, this._then);
+
+  final PreviewInline_Image _self;
+  final $Res Function(PreviewInline_Image) _then;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? contentType = null,Object? bytes = null,Object? alt = null,Object? width = freezed,}) {
+  return _then(PreviewInline_Image(
+contentType: null == contentType ? _self.contentType : contentType // ignore: cast_nullable_to_non_nullable
+as String,bytes: null == bytes ? _self.bytes : bytes // ignore: cast_nullable_to_non_nullable
+as Uint8List,alt: null == alt ? _self.alt : alt // ignore: cast_nullable_to_non_nullable
+as String,width: freezed == width ? _self.width : width // ignore: cast_nullable_to_non_nullable
+as int?,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewInline_Missing extends PreviewInline {
+  const PreviewInline_Missing({required this.text}): super._();
+  
+
+ final  String text;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PreviewInline_MissingCopyWith<PreviewInline_Missing> get copyWith => _$PreviewInline_MissingCopyWithImpl<PreviewInline_Missing>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewInline_Missing&&(identical(other.text, text) || other.text == text));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,text);
+
+@override
+String toString() {
+  return 'PreviewInline.missing(text: $text)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PreviewInline_MissingCopyWith<$Res> implements $PreviewInlineCopyWith<$Res> {
+  factory $PreviewInline_MissingCopyWith(PreviewInline_Missing value, $Res Function(PreviewInline_Missing) _then) = _$PreviewInline_MissingCopyWithImpl;
+@useResult
+$Res call({
+ String text
+});
+
+
+
+
+}
+/// @nodoc
+class _$PreviewInline_MissingCopyWithImpl<$Res>
+    implements $PreviewInline_MissingCopyWith<$Res> {
+  _$PreviewInline_MissingCopyWithImpl(this._self, this._then);
+
+  final PreviewInline_Missing _self;
+  final $Res Function(PreviewInline_Missing) _then;
+
+/// Create a copy of PreviewInline
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? text = null,}) {
+  return _then(PreviewInline_Missing(
+text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PreviewInline_Break extends PreviewInline {
+  const PreviewInline_Break(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PreviewInline_Break);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+  return 'PreviewInline.break_()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
 mixin _$PreviewLink {
 
 

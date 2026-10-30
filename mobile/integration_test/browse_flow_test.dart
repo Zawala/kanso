@@ -6,9 +6,9 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:kanso/core/views/widgets/kanso_note_row.dart';
+import 'package:kanso/note/views/widgets/preview/native_preview.dart';
 import 'package:kanso/note_list/views/widgets/move_sheet.dart';
 import 'package:kanso/shell/views/widgets/library_navigation.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import 'helpers/flow_driver.dart';
 import 'helpers/seed_library.dart';
@@ -87,12 +87,22 @@ void main() {
     expect(inList('Weekly review'), findsNothing);
 
     // A note opens with its title, notebook and preview, and closes. The
-    // preview is a WebView, so its body is not in the Flutter widget tree.
+    // preview is drawn by the app, so its body is in the widget tree.
     await tester.tap(inList('Sprint plan'));
-    await pumpUntil(tester, find.byType(WebViewWidget));
+    await pumpUntil(tester, find.byType(NativePreview));
     expect(find.text('Work'), findsWidgets);
     expect(find.text('Sprint plan'), findsWidgets);
-    expect(find.byType(WebViewWidget), findsOneWidget);
+    expect(find.byType(NativePreview), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(NativePreview),
+        matching: find.textContaining(
+          'Ship the beta build to testers.',
+          findRichText: true,
+        ),
+      ),
+      findsOneWidget,
+    );
     await leaveNote(tester);
     expect(inList('Standup notes'), findsOneWidget);
 

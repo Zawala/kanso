@@ -81,6 +81,14 @@ abstract class KansoRenderer implements RustOpaqueInterface {
     required PreviewOptions options,
   });
 
+  /// The note as the blocks the app draws its preview from: the same
+  /// note, links, task boxes and copy buttons as [`Self::preview_html_with`].
+  Future<List<PreviewBlock>> previewBlocks({
+    required String id,
+    required PaletteDto palette,
+    required PreviewOptions options,
+  });
+
   Future<String> previewHtml({required String id, required PaletteDto palette});
 
   Future<String> previewHtmlWith({

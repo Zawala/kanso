@@ -1,5 +1,8 @@
-//! The note's preview in the app (#48 step 7): the page the WebView shows,
-//! what a tap on it means, and the writes a tap makes.
+//! The note's preview in the app (#48 step 7): the blocks the app draws it
+//! from ([`Renderer::preview_blocks`]), what a tap on it means, and the
+//! writes a tap makes. The same note as an HTML page
+//! ([`Renderer::preview_html_with`]) is kept for HTML output such as
+//! export; the app's preview no longer shows a page.
 //!
 //! The page is `kanso-render`'s in-app mode ([`html::AppMode`]): the same page
 //! that is published, with the addresses the app understands kept on its
@@ -38,8 +41,8 @@ use crate::boundary::{guard, held};
 use crate::errors::KansoError;
 use crate::library::Library;
 use crate::model::{
-    AttachmentFile, ExportedPage, NewNote, PaletteDto, PreviewLink, PreviewOptions, Saved,
-    SyntaxStyleRow, Ticked,
+    AttachmentFile, ExportedPage, NewNote, PaletteDto, PreviewBlock, PreviewLink, PreviewOptions,
+    Saved, SyntaxStyleRow, Ticked,
 };
 use crate::renderer::{Renderer, palette_of};
 
@@ -51,8 +54,9 @@ const DUE: &str = html::app::DUE_LINK_PREFIX;
 const NEW: &str = html::app::NEW_NOTE_PREFIX;
 
 impl Renderer {
-    /// A note as a standalone page for the app's WebView, in `palette`'s
-    /// colors and `options`' faces and size.
+    /// A note as a standalone HTML page, in `palette`'s colors and
+    /// `options`' faces and size: the form HTML output such as export uses.
+    /// The app's preview draws [`Renderer::preview_blocks`] instead.
     ///
     /// - Its links keep the addresses [`Renderer::link_target`] reads: a
     ///   note (a wiki-link to a heading keeps it), a note to make, a tag, an
@@ -73,55 +77,104 @@ impl Renderer {
         options: PreviewOptions,
     ) -> Result<String, KansoError> {
         guard(|| {
-            let library = self.library();
-            let (note, text) = library.readable_text(id)?.ok_or(KansoError::Locked)?;
-            let page_text = library.prepared(&text)?;
-            let mut resolved_attachments = BTreeMap::new();
-            for file in linked_file_ids(&text) {
-                match library.attachment(&file) {
-                    Ok(attachment) => {
-                        resolved_attachments
-                            .insert(file, (attachment.content_type, attachment.bytes));
-                    }
-                    Err(KansoError::NotFound) => {}
-                    Err(error) => return Err(error),
-                }
-            }
-            let tasks: Vec<TaskSlot> = task_items(&text)
-                .iter()
-                .map(|item| TaskSlot {
-                    line: item.line,
-                    checked: item.checked,
-                })
-                .collect();
-            let views = Views {
-                library: &library,
-                note_id: id,
-                notes: OnceLock::new(),
-            };
-            let offset = i64::from(options.utc_offset_secs);
-            let chip = move |url: &str| due_chip(url, now_ms() + offset * 1000);
-            let colors = CodeColors::new(&options.code);
-            let mode = AppMode {
-                tasks: &tasks,
-                query: Some(&views),
-                due: Some(&chip),
-            };
-            let attachments = |file: &str| resolved_attachments.get(file).cloned();
-            Ok(html::page_with(
-                &note.title,
-                &page_text,
-                &palette_of(palette),
-                &attachments,
-                &PageOptions {
-                    font: options.font.as_deref(),
-                    mono: options.mono.as_deref(),
-                    size: options.size,
-                    highlight: colors.as_ref().map(|colors| colors as &dyn Highlighter),
-                    app: Some(&mode),
-                },
-            ))
+            self.with_preview(id, &options, |page| {
+                html::page_with(
+                    page.title,
+                    page.text,
+                    &palette_of(palette),
+                    page.attachments,
+                    &PageOptions {
+                        font: options.font.as_deref(),
+                        mono: options.mono.as_deref(),
+                        size: options.size,
+                        highlight: page.highlight,
+                        app: Some(page.mode),
+                    },
+                )
+            })
         })
+    }
+
+    /// A note as the blocks the app draws its preview from: the same note
+    /// [`Self::preview_html_with`] makes a page of, with the same addresses
+    /// on its links, task boxes and copy buttons, so
+    /// [`Renderer::link_target`] reads a tap on either the same way. Math,
+    /// diagrams and drawings come as SVG, attached images as their bytes,
+    /// code in colored runs when `options.code` has styles.
+    ///
+    /// [`KansoError::Locked`] while the note is locked and closed.
+    pub fn preview_blocks(
+        &self,
+        id: &str,
+        palette: PaletteDto,
+        options: PreviewOptions,
+    ) -> Result<Vec<PreviewBlock>, KansoError> {
+        guard(|| {
+            self.with_preview(id, &options, |page| {
+                kanso_render::blocks::blocks(
+                    page.text,
+                    page.attachments,
+                    &palette_of(palette),
+                    page.mode,
+                    page.highlight,
+                )
+                .into_iter()
+                .map(PreviewBlock::from)
+                .collect()
+            })
+        })
+    }
+
+    /// Runs `draw` with what the preview of note `id` is made from: its
+    /// prepared text, its attachments, its task list, query views and due
+    /// chips, and its code colors.
+    fn with_preview<R>(
+        &self,
+        id: &str,
+        options: &PreviewOptions,
+        draw: impl FnOnce(&PreviewSource<'_>) -> R,
+    ) -> Result<R, KansoError> {
+        let library = self.library();
+        let (note, text) = library.readable_text(id)?.ok_or(KansoError::Locked)?;
+        let page_text = library.prepared(&text)?;
+        let mut resolved_attachments = BTreeMap::new();
+        for file in linked_file_ids(&text) {
+            match library.attachment(&file) {
+                Ok(attachment) => {
+                    resolved_attachments.insert(file, (attachment.content_type, attachment.bytes));
+                }
+                Err(KansoError::NotFound) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        let tasks: Vec<TaskSlot> = task_items(&text)
+            .iter()
+            .map(|item| TaskSlot {
+                line: item.line,
+                checked: item.checked,
+            })
+            .collect();
+        let views = Views {
+            library: &library,
+            note_id: id,
+            notes: OnceLock::new(),
+        };
+        let offset = i64::from(options.utc_offset_secs);
+        let chip = move |url: &str| due_chip(url, now_ms() + offset * 1000);
+        let colors = CodeColors::new(&options.code);
+        let mode = AppMode {
+            tasks: &tasks,
+            query: Some(&views),
+            due: Some(&chip),
+        };
+        let attachments = |file: &str| resolved_attachments.get(file).cloned();
+        Ok(draw(&PreviewSource {
+            title: &note.title,
+            text: &page_text,
+            attachments: &attachments,
+            mode: &mode,
+            highlight: colors.as_ref().map(|colors| colors as &dyn Highlighter),
+        }))
     }
 
     /// A note as the page the desktop exports: one self-contained file, in
@@ -486,6 +539,16 @@ impl Library {
             _ => PreviewLink::Nothing,
         })
     }
+}
+
+/// What the preview of a note is made from (see [`Renderer::with_preview`]).
+struct PreviewSource<'a> {
+    title: &'a str,
+    /// The note's text, prepared ([`Library::prepared`]).
+    text: &'a str,
+    attachments: html::Attachments<'a>,
+    mode: &'a AppMode<'a>,
+    highlight: Option<&'a dyn Highlighter>,
 }
 
 /// `make(n)` for a whole number, [`PreviewLink::Nothing`] for anything else.

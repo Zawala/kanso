@@ -1474,6 +1474,405 @@ pub enum PreviewLink {
     Nothing,
 }
 
+/// A block of a note's preview, as the app draws it (the core's
+/// `kanso_render::blocks::Block`): the same note, links and numbers as the
+/// preview page. A tap hands the address it carries to
+/// `Renderer::link_target`: a link's `url`, a task box's `kanso-task:<index>`,
+/// a copy button's `kanso-copy:<copy>`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PreviewBlock {
+    /// `level` 1 to 6; `id` is what a `#id` link scrolls to.
+    Heading {
+        level: u32,
+        id: String,
+        inlines: Vec<PreviewInline>,
+    },
+    Paragraph {
+        inlines: Vec<PreviewInline>,
+    },
+    /// `start` is an ordered list's first number (1 for a bullet list); a
+    /// tight list has no gaps between its items.
+    List {
+        ordered: bool,
+        start: u32,
+        tight: bool,
+        items: Vec<PreviewListItem>,
+    },
+    Quote {
+        blocks: Vec<PreviewBlock>,
+    },
+    /// Code in runs that cover all of it, in order; `copy` is its copy
+    /// button's number.
+    Code {
+        language: Option<String>,
+        runs: Vec<PreviewCodeRun>,
+        copy: u32,
+    },
+    Rule,
+    /// A table: each column's alignment, the header row and the rows.
+    Table {
+        aligns: Vec<PreviewAlign>,
+        head: Vec<PreviewCell>,
+        rows: Vec<PreviewRow>,
+    },
+    /// Math, a diagram or a drawing, set on its own.
+    Figure {
+        kind: PreviewFigureKind,
+        svg: PreviewSvg,
+    },
+    /// An Excalidraw drawing with nothing in it yet.
+    EmptyDrawing,
+    /// A source that couldn't be drawn: its code with a badge saying why
+    /// (`detail` for a tooltip, maybe empty), and its copy button's number
+    /// when it is a fence.
+    Failed {
+        badge: String,
+        detail: String,
+        language: Option<String>,
+        code: String,
+        copy: Option<u32>,
+    },
+    /// A `query` fence's table of notes; no rows is "No notes match."
+    Query {
+        columns: Vec<String>,
+        rows: Vec<PreviewQueryRow>,
+    },
+    /// A `query` fence that can't be read: its text and why.
+    QueryInvalid {
+        code: String,
+        message: String,
+    },
+    /// Raw HTML, shown as the text it is.
+    Html {
+        text: String,
+    },
+}
+
+/// A piece of a line of a note's preview.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PreviewInline {
+    /// Text in its styles; `code` is inline code.
+    Text {
+        text: String,
+        bold: bool,
+        italic: bool,
+        strike: bool,
+        code: bool,
+    },
+    /// A link: the address to hand to `Renderer::link_target`.
+    Link {
+        url: String,
+        inlines: Vec<PreviewInline>,
+    },
+    /// A due date as a chip: its words, its longer words and its tone; `url`
+    /// is its address.
+    Due {
+        url: String,
+        label: String,
+        title: String,
+        tone: DueTone,
+    },
+    /// Inline math, set on the line by its baseline.
+    Math { svg: PreviewSvg },
+    /// An attached image: its type and bytes; `width` in points when the
+    /// note gives one.
+    Image {
+        content_type: String,
+        bytes: Vec<u8>,
+        alt: String,
+        width: Option<u32>,
+    },
+    /// What can't be shown: an image that isn't attached (its alt text) or
+    /// a wiki-link to nothing (its label).
+    Missing { text: String },
+    /// A hard line break.
+    Break,
+}
+
+/// An item of a list in the preview: its task box when it is a task, and
+/// its blocks.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewListItem {
+    pub task: Option<PreviewTaskBox>,
+    pub blocks: Vec<PreviewBlock>,
+}
+
+/// A task box: ticked or not, and its place in the note's task list
+/// (`kanso-task:<index>`); `None` for a box that can't be ticked from here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PreviewTaskBox {
+    pub checked: bool,
+    pub index: Option<u32>,
+}
+
+/// A run of code in one style: `color` is `0xRRGGBB`, `None` for the
+/// code's own color.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewCodeRun {
+    pub text: String,
+    pub color: Option<u32>,
+    pub bold: bool,
+    pub italic: bool,
+}
+
+/// A table cell's text.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewCell {
+    pub inlines: Vec<PreviewInline>,
+}
+
+/// A table row's cells.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewRow {
+    pub cells: Vec<PreviewCell>,
+}
+
+/// A drawing: a standalone SVG document, its size in points (for text at
+/// 16 points), and for inline math how far below its top the baseline is.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewSvg {
+    pub markup: String,
+    pub width: f32,
+    pub height: f32,
+    pub baseline: Option<f32>,
+}
+
+/// What a figure is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreviewFigureKind {
+    Math,
+    Diagram,
+    Drawing,
+    /// Drawn by a plugin.
+    Plugin,
+}
+
+/// How a table column is aligned.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreviewAlign {
+    None,
+    Left,
+    Center,
+    Right,
+}
+
+/// A row of a query view: the note's address, its title ("Untitled" when it
+/// has none) and a cell for each column after the title.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewQueryRow {
+    pub url: String,
+    pub title: String,
+    pub cells: Vec<String>,
+}
+
+mod preview_blocks {
+    use kanso_render::blocks::{Align, Block, CodeRun, FigureKind, Inline, ListItem};
+    use kanso_render::html::DueTone as Tone;
+
+    use super::*;
+
+    fn inlines(list: Vec<Inline>) -> Vec<PreviewInline> {
+        list.into_iter().map(PreviewInline::from).collect()
+    }
+
+    fn blocks(list: Vec<Block>) -> Vec<PreviewBlock> {
+        list.into_iter().map(PreviewBlock::from).collect()
+    }
+
+    fn cell(list: Vec<Inline>) -> PreviewCell {
+        PreviewCell {
+            inlines: inlines(list),
+        }
+    }
+
+    impl From<kanso_render::Svg> for PreviewSvg {
+        fn from(svg: kanso_render::Svg) -> Self {
+            PreviewSvg {
+                markup: svg.markup,
+                width: svg.width,
+                height: svg.height,
+                baseline: svg.baseline,
+            }
+        }
+    }
+
+    impl From<Inline> for PreviewInline {
+        fn from(inline: Inline) -> Self {
+            match inline {
+                Inline::Text {
+                    text,
+                    bold,
+                    italic,
+                    strike,
+                    code,
+                } => PreviewInline::Text {
+                    text,
+                    bold,
+                    italic,
+                    strike,
+                    code,
+                },
+                Inline::Link { url, inlines: list } => PreviewInline::Link {
+                    url,
+                    inlines: inlines(list),
+                },
+                Inline::Due {
+                    url,
+                    label,
+                    title,
+                    tone,
+                } => PreviewInline::Due {
+                    url,
+                    label,
+                    title,
+                    tone: match tone {
+                        Tone::Plain => DueTone::Plain,
+                        Tone::Today => DueTone::Today,
+                        Tone::Overdue => DueTone::Overdue,
+                        Tone::Done => DueTone::Done,
+                    },
+                },
+                Inline::Math { svg } => PreviewInline::Math { svg: svg.into() },
+                Inline::Image {
+                    content_type,
+                    bytes,
+                    alt,
+                    width,
+                } => PreviewInline::Image {
+                    content_type,
+                    bytes,
+                    alt,
+                    width,
+                },
+                Inline::Missing { text } => PreviewInline::Missing { text },
+                Inline::Break => PreviewInline::Break,
+            }
+        }
+    }
+
+    impl From<ListItem> for PreviewListItem {
+        fn from(item: ListItem) -> Self {
+            PreviewListItem {
+                task: item.task.map(|task| PreviewTaskBox {
+                    checked: task.checked,
+                    index: task.index,
+                }),
+                blocks: blocks(item.blocks),
+            }
+        }
+    }
+
+    impl From<CodeRun> for PreviewCodeRun {
+        fn from(run: CodeRun) -> Self {
+            PreviewCodeRun {
+                text: run.text,
+                color: run.color,
+                bold: run.bold,
+                italic: run.italic,
+            }
+        }
+    }
+
+    impl From<Block> for PreviewBlock {
+        fn from(block: Block) -> Self {
+            match block {
+                Block::Heading {
+                    level,
+                    id,
+                    inlines: list,
+                } => PreviewBlock::Heading {
+                    level: u32::from(level),
+                    id,
+                    inlines: inlines(list),
+                },
+                Block::Paragraph { inlines: list } => PreviewBlock::Paragraph {
+                    inlines: inlines(list),
+                },
+                Block::List {
+                    ordered,
+                    start,
+                    tight,
+                    items,
+                } => PreviewBlock::List {
+                    ordered,
+                    start,
+                    tight,
+                    items: items.into_iter().map(PreviewListItem::from).collect(),
+                },
+                Block::Quote { blocks: list } => PreviewBlock::Quote {
+                    blocks: blocks(list),
+                },
+                Block::Code {
+                    language,
+                    runs,
+                    copy,
+                } => PreviewBlock::Code {
+                    language,
+                    runs: runs.into_iter().map(PreviewCodeRun::from).collect(),
+                    copy,
+                },
+                Block::Rule => PreviewBlock::Rule,
+                Block::Table { aligns, head, rows } => PreviewBlock::Table {
+                    aligns: aligns
+                        .into_iter()
+                        .map(|align| match align {
+                            Align::None => PreviewAlign::None,
+                            Align::Left => PreviewAlign::Left,
+                            Align::Center => PreviewAlign::Center,
+                            Align::Right => PreviewAlign::Right,
+                        })
+                        .collect(),
+                    head: head.into_iter().map(cell).collect(),
+                    rows: rows
+                        .into_iter()
+                        .map(|row| PreviewRow {
+                            cells: row.into_iter().map(cell).collect(),
+                        })
+                        .collect(),
+                },
+                Block::Figure { kind, svg } => PreviewBlock::Figure {
+                    kind: match kind {
+                        FigureKind::Math => PreviewFigureKind::Math,
+                        FigureKind::Diagram => PreviewFigureKind::Diagram,
+                        FigureKind::Drawing => PreviewFigureKind::Drawing,
+                        FigureKind::Plugin => PreviewFigureKind::Plugin,
+                    },
+                    svg: svg.into(),
+                },
+                Block::EmptyDrawing => PreviewBlock::EmptyDrawing,
+                Block::Failed {
+                    badge,
+                    detail,
+                    language,
+                    code,
+                    copy,
+                } => PreviewBlock::Failed {
+                    badge,
+                    detail,
+                    language,
+                    code,
+                    copy,
+                },
+                Block::Query { columns, rows } => PreviewBlock::Query {
+                    columns,
+                    rows: rows
+                        .into_iter()
+                        .map(|row| PreviewQueryRow {
+                            url: row.url,
+                            title: row.title,
+                            cells: row.cells,
+                        })
+                        .collect(),
+                },
+                Block::QueryInvalid { code, message } => {
+                    PreviewBlock::QueryInvalid { code, message }
+                }
+                Block::Html { text } => PreviewBlock::Html { text },
+            }
+        }
+    }
+}
+
 /// An attachment's name, type and bytes, for a viewer or the share sheet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttachmentFile {

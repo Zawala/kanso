@@ -458,7 +458,6 @@ Every dependency is MIT, BSD or Apache licensed.
 | `shorebird_code_push` | Reads the number of the Shorebird patch the app runs (Settings › About and crash reports); it does not download patches | MIT |
 | `share_plus` | Hands an attachment tapped in a preview to the system's share sheet | BSD-3-Clause |
 | `url_launcher` | Opens the website from Settings › About | BSD-3-Clause |
-| `webview_flutter` | Shows a note's preview page, with every tapped address handed to the Rust core | BSD-3-Clause |
 | `kanso_push` (`plugins/kanso_push`, ours) | Registers for push and wakes the app | AGPL-3.0-or-later |
 | `com.google.firebase:firebase-messaging` (Android, native library of `kanso_push`) | The FCM token and data messages | Apache-2.0 |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` (Android, `kanso_push`) | The plugin's channel calls Dart with suspend functions | Apache-2.0 |

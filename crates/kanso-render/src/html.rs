@@ -81,7 +81,7 @@ pub trait Highlighter: Send + Sync {
 }
 
 /// The parse options the preview uses, with math.
-fn parse_options() -> markdown::ParseOptions {
+pub fn parse_options() -> markdown::ParseOptions {
     let mut options = markdown::ParseOptions::gfm();
     options.constructs.frontmatter = false;
     options.constructs.math_text = true;
@@ -260,7 +260,7 @@ fn wiki_title(inner: &str) -> String {
 
 /// The wiki-link at the start of `html` (which starts `[[`): its label,
 /// the title it names and how long it is. Pure.
-fn wiki_link_at(html: &str) -> Option<(String, String, usize)> {
+pub(crate) fn wiki_link_at(html: &str) -> Option<(String, String, usize)> {
     let close = html.get(2..)?.find("]]")? + 2;
     let inner = &html[2..close];
     if inner.contains('\n') || inner.contains("[[") {
@@ -333,7 +333,7 @@ pub fn wiki_links_in(html: &str, site: Option<&Site>) -> String {
 }
 
 /// Whether a fence's info string names `want`.
-fn fence_is(lang: &Option<String>, want: &str) -> bool {
+pub(crate) fn fence_is(lang: &Option<String>, want: &str) -> bool {
     lang.as_deref()
         .is_some_and(|l| l.trim().eq_ignore_ascii_case(want))
 }
@@ -369,7 +369,7 @@ pub fn display_math_paragraph<'a>(node: &'a Node, markdown: &str) -> Option<&'a 
         .then_some(math.value.as_str())
 }
 
-fn node_text(nodes: &[Node]) -> String {
+pub(crate) fn node_text(nodes: &[Node]) -> String {
     nodes.iter().map(Node::to_string).collect()
 }
 
@@ -762,6 +762,39 @@ fn code_html(lang: Option<&str>, code: &str, spans: &[CodeSpan], copy: Option<us
         out.push_str(&app::copy_link(n));
     }
     out.push_str("<code>");
+    for (range, span) in code_pieces(code, spans) {
+        let text = escape(&code[range]);
+        let mut style = String::new();
+        if let Some(span) = span {
+            if let Some(color) = span.color {
+                let _ = write!(style, "color:#{:06x};", color & 0xFF_FFFF);
+            }
+            if span.italic {
+                style.push_str("font-style:italic;");
+            }
+            if span.bold {
+                style.push_str("font-weight:bold;");
+            }
+        }
+        if style.is_empty() {
+            out.push_str(&text);
+        } else {
+            let _ = write!(out, "<span style=\"{style}\">{text}</span>");
+        }
+    }
+    out.push_str("</code></pre>");
+    out
+}
+
+/// `code` cut where `spans` style it, in order and all of it: each piece's
+/// byte range and the span that styles it, `None` for the text between
+/// spans. Spans that overlap one before them are cut short, and ranges keep
+/// to character boundaries. Pure.
+pub(crate) fn code_pieces<'s>(
+    code: &str,
+    spans: &'s [CodeSpan],
+) -> Vec<(std::ops::Range<usize>, Option<&'s CodeSpan>)> {
+    let mut pieces = Vec::with_capacity(spans.len() * 2 + 1);
     let mut at = 0;
     for span in spans {
         let start = boundary(code, span.start.max(at).min(code.len()));
@@ -770,29 +803,15 @@ fn code_html(lang: Option<&str>, code: &str, spans: &[CodeSpan], copy: Option<us
             continue;
         }
         if start > at {
-            out.push_str(&escape(&code[at..start]));
+            pieces.push((at..start, None));
         }
-        let mut style = String::new();
-        if let Some(color) = span.color {
-            let _ = write!(style, "color:#{:06x};", color & 0xFF_FFFF);
-        }
-        if span.italic {
-            style.push_str("font-style:italic;");
-        }
-        if span.bold {
-            style.push_str("font-weight:bold;");
-        }
-        let text = escape(&code[start..end]);
-        if style.is_empty() {
-            out.push_str(&text);
-        } else {
-            let _ = write!(out, "<span style=\"{style}\">{text}</span>");
-        }
+        pieces.push((start..end, Some(span)));
         at = end;
     }
-    out.push_str(&escape(&code[at..]));
-    out.push_str("</code></pre>");
-    out
+    if at < code.len() || pieces.is_empty() {
+        pieces.push((at..code.len(), None));
+    }
+    pieces
 }
 
 /// `at`, moved left to the nearest character boundary.
