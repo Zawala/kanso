@@ -23,18 +23,19 @@ pub use kanso_mobile::{
     LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MadeNote, MeaningResult,
     MemberRow, MentionSpan, MonthGrid, NewNote, NoteChange, NoteList, NoteMeaning, NoteRow,
     NoteView, NotebookRole, NotebookRow, OpenedDocuments, OpenedFile, PaletteDto, PasskeyFailure,
-    PasskeyRequest, PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow, PreviewLink,
-    PreviewOptions, PromptState, Property, PropertyKind, ProviderEvent, ProviderKind,
-    PushEnvironmentKind, PushPlatformKind, QuotaLimit, Range16, RecoveryKeyText, RelatedRow,
-    RelatedState, RelatedStatus, ReminderAnswer, ReminderNote, ReminderPlan, Replacement, RunBatch,
-    SaveState, Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo,
-    ShareLinkRow, ShareRole, SharedEvent, ShortcutEntry, ShortcutPlace, ShortcutSection,
-    SignOutReasonKind, SignedUp, SortKey, SpanRow, StatusChoice, StatusCount, StyledRun,
-    SuggestedTag, SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table,
-    TableRow, TagPlaces, TagRow, TagTreeRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery,
-    TaskPlace, TaskSection, TemplateRow, TextChange, ThemeTokens, ThemedIcon, Ticked, TwinRow,
-    VisibleNotebook,
+    PasskeyRequest, PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow, PreviewAlign,
+    PreviewBlock, PreviewCell, PreviewCodeRun, PreviewFigureKind, PreviewInline, PreviewLink,
+    PreviewListItem, PreviewOptions, PreviewQueryRow, PreviewRow, PreviewSvg, PreviewTaskBox,
+    PromptState, Property, PropertyKind, ProviderEvent, ProviderKind, PushEnvironmentKind,
+    PushPlatformKind, QuotaLimit, Range16, RecoveryKeyText, RelatedRow, RelatedState,
+    RelatedStatus, ReminderAnswer, ReminderNote, ReminderPlan, Replacement, RunBatch, SaveState,
+    Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo, ShareLinkRow,
+    ShareRole, SharedEvent, ShortcutEntry, ShortcutPlace, ShortcutSection, SignOutReasonKind,
+    SignedUp, SortKey, SpanRow, StatusChoice, StatusCount, StyledRun, SuggestedTag, SvgRow,
+    SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow,
+    SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table, TableRow, TagPlaces, TagRow,
+    TagTreeRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery, TaskPlace, TaskSection,
+    TemplateRow, TextChange, ThemeTokens, ThemedIcon, Ticked, TwinRow, VisibleNotebook,
 };
 pub use kanso_mobile::{
     IconThemeImport, InstalledIconThemeRow, ThemeImport, ThemeNotice, ThemeOrigin, ThemeRow,
@@ -1419,6 +1420,156 @@ pub enum _PreviewLink {
     },
     Due,
     Nothing,
+}
+
+#[frb(mirror(PreviewBlock))]
+pub enum _PreviewBlock {
+    Heading {
+        level: u32,
+        id: String,
+        inlines: Vec<PreviewInline>,
+    },
+    Paragraph {
+        inlines: Vec<PreviewInline>,
+    },
+    List {
+        ordered: bool,
+        start: u32,
+        tight: bool,
+        items: Vec<PreviewListItem>,
+    },
+    Quote {
+        blocks: Vec<PreviewBlock>,
+    },
+    Code {
+        language: Option<String>,
+        runs: Vec<PreviewCodeRun>,
+        copy: u32,
+    },
+    Rule,
+    Table {
+        aligns: Vec<PreviewAlign>,
+        head: Vec<PreviewCell>,
+        rows: Vec<PreviewRow>,
+    },
+    Figure {
+        kind: PreviewFigureKind,
+        svg: PreviewSvg,
+    },
+    EmptyDrawing,
+    Failed {
+        badge: String,
+        detail: String,
+        language: Option<String>,
+        code: String,
+        copy: Option<u32>,
+    },
+    Query {
+        columns: Vec<String>,
+        rows: Vec<PreviewQueryRow>,
+    },
+    QueryInvalid {
+        code: String,
+        message: String,
+    },
+    Html {
+        text: String,
+    },
+}
+
+#[frb(mirror(PreviewInline))]
+pub enum _PreviewInline {
+    Text {
+        text: String,
+        bold: bool,
+        italic: bool,
+        strike: bool,
+        code: bool,
+    },
+    Link {
+        url: String,
+        inlines: Vec<PreviewInline>,
+    },
+    Due {
+        url: String,
+        label: String,
+        title: String,
+        tone: DueTone,
+    },
+    Math {
+        svg: PreviewSvg,
+    },
+    Image {
+        content_type: String,
+        bytes: Vec<u8>,
+        alt: String,
+        width: Option<u32>,
+    },
+    Missing {
+        text: String,
+    },
+    Break,
+}
+
+#[frb(mirror(PreviewListItem))]
+pub struct _PreviewListItem {
+    pub task: Option<PreviewTaskBox>,
+    pub blocks: Vec<PreviewBlock>,
+}
+
+#[frb(mirror(PreviewTaskBox))]
+pub struct _PreviewTaskBox {
+    pub checked: bool,
+    pub index: Option<u32>,
+}
+
+#[frb(mirror(PreviewCodeRun))]
+pub struct _PreviewCodeRun {
+    pub text: String,
+    pub color: Option<u32>,
+    pub bold: bool,
+    pub italic: bool,
+}
+
+#[frb(mirror(PreviewCell))]
+pub struct _PreviewCell {
+    pub inlines: Vec<PreviewInline>,
+}
+
+#[frb(mirror(PreviewRow))]
+pub struct _PreviewRow {
+    pub cells: Vec<PreviewCell>,
+}
+
+#[frb(mirror(PreviewSvg))]
+pub struct _PreviewSvg {
+    pub markup: String,
+    pub width: f32,
+    pub height: f32,
+    pub baseline: Option<f32>,
+}
+
+#[frb(mirror(PreviewFigureKind))]
+pub enum _PreviewFigureKind {
+    Math,
+    Diagram,
+    Drawing,
+    Plugin,
+}
+
+#[frb(mirror(PreviewAlign))]
+pub enum _PreviewAlign {
+    None,
+    Left,
+    Center,
+    Right,
+}
+
+#[frb(mirror(PreviewQueryRow))]
+pub struct _PreviewQueryRow {
+    pub url: String,
+    pub title: String,
+    pub cells: Vec<String>,
 }
 
 #[frb(mirror(AttachmentFile))]

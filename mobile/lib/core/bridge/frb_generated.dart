@@ -90,7 +90,7 @@ class KansoCore
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1374418310;
+  int get rustContentHash => 1759572831;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -1256,6 +1256,13 @@ abstract class KansoCoreApi extends BaseApi {
   });
 
   Future<ExportedPage> crateApiRendererKansoRendererPagePdf({
+    required KansoRenderer that,
+    required String id,
+    required PaletteDto palette,
+    required PreviewOptions options,
+  });
+
+  Future<List<PreviewBlock>> crateApiRendererKansoRendererPreviewBlocks({
     required KansoRenderer that,
     required String id,
     required PaletteDto palette,
@@ -10880,6 +10887,48 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       );
 
   @override
+  Future<List<PreviewBlock>> crateApiRendererKansoRendererPreviewBlocks({
+    required KansoRenderer that,
+    required String id,
+    required PaletteDto palette,
+    required PreviewOptions options,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerKansoRenderer(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          sse_encode_box_autoadd_palette_dto(palette, serializer);
+          sse_encode_box_autoadd_preview_options(options, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 242,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_preview_block,
+          decodeErrorData: sse_decode_kanso_error,
+        ),
+        constMeta: kCrateApiRendererKansoRendererPreviewBlocksConstMeta,
+        argValues: [that, id, palette, options],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiRendererKansoRendererPreviewBlocksConstMeta =>
+      const TaskConstMeta(
+        debugName: "KansoRenderer_preview_blocks",
+        argNames: ["that", "id", "palette", "options"],
+      );
+
+  @override
   Future<String> crateApiRendererKansoRendererPreviewHtml({
     required KansoRenderer that,
     required String id,
@@ -10898,7 +10947,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 242,
+            funcId: 243,
             port: port_,
           );
         },
@@ -10940,7 +10989,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 243,
+            funcId: 244,
             port: port_,
           );
         },
@@ -10973,7 +11022,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 244,
+            funcId: 245,
             port: port_,
           );
         },
@@ -11006,7 +11055,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 245,
+            funcId: 246,
             port: port_,
           );
         },
@@ -11045,7 +11094,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 246,
+            funcId: 247,
             port: port_,
           );
         },
@@ -11078,7 +11127,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 247,
+            funcId: 248,
             port: port_,
           );
         },
@@ -11116,7 +11165,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 248,
+            funcId: 249,
             port: port_,
           );
         },
@@ -11156,7 +11205,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 249,
+            funcId: 250,
             port: port_,
           );
         },
@@ -11200,7 +11249,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 250,
+            funcId: 251,
             port: port_,
           );
         },
@@ -11240,7 +11289,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 251,
+            funcId: 252,
             port: port_,
           );
         },
@@ -11278,7 +11327,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 252,
+            funcId: 253,
             port: port_,
           );
         },
@@ -11318,7 +11367,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 253,
+            funcId: 254,
             port: port_,
           );
         },
@@ -11356,7 +11405,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 254,
+            funcId: 255,
             port: port_,
           );
         },
@@ -11394,7 +11443,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 255,
+            funcId: 256,
             port: port_,
           );
         },
@@ -11432,7 +11481,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 256,
+            funcId: 257,
             port: port_,
           );
         },
@@ -11474,7 +11523,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 257,
+            funcId: 258,
             port: port_,
           );
         },
@@ -11512,7 +11561,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 258,
+            funcId: 259,
             port: port_,
           );
         },
@@ -11552,7 +11601,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 259,
+            funcId: 260,
             port: port_,
           );
         },
@@ -11592,7 +11641,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 260,
+            funcId: 261,
             port: port_,
           );
         },
@@ -11630,7 +11679,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 261,
+            funcId: 262,
             port: port_,
           );
         },
@@ -11672,7 +11721,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 262,
+            funcId: 263,
             port: port_,
           );
         },
@@ -11711,7 +11760,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 263,
+              funcId: 264,
               port: port_,
             );
           },
@@ -11751,7 +11800,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 264,
+            funcId: 265,
             port: port_,
           );
         },
@@ -11787,7 +11836,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 265,
+            funcId: 266,
             port: port_,
           );
         },
@@ -11829,7 +11878,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 266,
+            funcId: 267,
             port: port_,
           );
         },
@@ -11867,7 +11916,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 267,
+            funcId: 268,
             port: port_,
           );
         },
@@ -11905,7 +11954,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 268,
+            funcId: 269,
             port: port_,
           );
         },
@@ -11943,7 +11992,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 269,
+            funcId: 270,
             port: port_,
           );
         },
@@ -11981,7 +12030,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 270,
+            funcId: 271,
             port: port_,
           );
         },
@@ -12019,7 +12068,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 271,
+            funcId: 272,
             port: port_,
           );
         },
@@ -12057,7 +12106,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 272,
+            funcId: 273,
             port: port_,
           );
         },
@@ -12097,7 +12146,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 273,
+            funcId: 274,
             port: port_,
           );
         },
@@ -12139,7 +12188,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 274,
+            funcId: 275,
             port: port_,
           );
         },
@@ -12181,7 +12230,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 275,
+            funcId: 276,
             port: port_,
           );
         },
@@ -12221,7 +12270,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 276,
+            funcId: 277,
             port: port_,
           );
         },
@@ -12259,7 +12308,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 277,
+            funcId: 278,
             port: port_,
           );
         },
@@ -12295,7 +12344,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 278,
+            funcId: 279,
             port: port_,
           );
         },
@@ -12333,7 +12382,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 279,
+            funcId: 280,
             port: port_,
           );
         },
@@ -12371,7 +12420,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 280,
+            funcId: 281,
             port: port_,
           );
         },
@@ -12401,7 +12450,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 281,
+            funcId: 282,
             port: port_,
           );
         },
@@ -12432,7 +12481,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 282,
+            funcId: 283,
           )!;
         },
         codec: SseCodec(
@@ -12461,7 +12510,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 283,
+            funcId: 284,
           )!;
         },
         codec: SseCodec(
@@ -12491,7 +12540,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 284,
+            funcId: 285,
           )!;
         },
         codec: SseCodec(
@@ -12524,7 +12573,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 285,
+            funcId: 286,
             port: port_,
           );
         },
@@ -12558,7 +12607,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 286,
+            funcId: 287,
             port: port_,
           );
         },
@@ -12596,7 +12645,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 287,
+            funcId: 288,
             port: port_,
           );
         },
@@ -12634,7 +12683,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 288,
+            funcId: 289,
             port: port_,
           );
         },
@@ -12676,7 +12725,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 289,
+            funcId: 290,
             port: port_,
           );
         },
@@ -12716,7 +12765,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 290,
+            funcId: 291,
             port: port_,
           );
         },
@@ -12752,7 +12801,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 291,
+            funcId: 292,
             port: port_,
           );
         },
@@ -12796,7 +12845,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 292,
+            funcId: 293,
             port: port_,
           );
         },
@@ -12830,7 +12879,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 293,
+            funcId: 294,
             port: port_,
           );
         },
@@ -12864,7 +12913,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 294,
+            funcId: 295,
             port: port_,
           );
         },
@@ -12903,7 +12952,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 295,
+            funcId: 296,
           )!;
         },
         codec: SseCodec(
@@ -12941,7 +12990,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 296,
+              funcId: 297,
               port: port_,
             );
           },
@@ -12979,7 +13028,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 297,
+            funcId: 298,
             port: port_,
           );
         },
@@ -13021,7 +13070,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 298,
+            funcId: 299,
             port: port_,
           );
         },
@@ -13057,7 +13106,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 299,
+            funcId: 300,
             port: port_,
           );
         },
@@ -13095,7 +13144,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 300,
+            funcId: 301,
             port: port_,
           );
         },
@@ -13133,7 +13182,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 301,
+            funcId: 302,
             port: port_,
           );
         },
@@ -13169,7 +13218,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 302,
+            funcId: 303,
             port: port_,
           );
         },
@@ -13205,7 +13254,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 303,
+            funcId: 304,
             port: port_,
           );
         },
@@ -13251,7 +13300,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 304,
+            funcId: 305,
             port: port_,
           );
         },
@@ -13282,7 +13331,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 305,
+            funcId: 306,
             port: port_,
           );
         },
@@ -13312,7 +13361,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 306,
+            funcId: 307,
           )!;
         },
         codec: SseCodec(
@@ -13350,7 +13399,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 307,
+            funcId: 308,
           )!;
         },
         codec: SseCodec(
@@ -13379,7 +13428,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 308,
+            funcId: 309,
           )!;
         },
         codec: SseCodec(
@@ -13408,7 +13457,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 309,
+            funcId: 310,
           )!;
         },
         codec: SseCodec(
@@ -13437,7 +13486,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 310,
+            funcId: 311,
           )!;
         },
         codec: SseCodec(
@@ -13467,7 +13516,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 311,
+            funcId: 312,
           )!;
         },
         codec: SseCodec(
@@ -13497,7 +13546,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 312,
+            funcId: 313,
             port: port_,
           );
         },
@@ -13532,7 +13581,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 313,
+            funcId: 314,
           )!;
         },
         codec: SseCodec(
@@ -13561,7 +13610,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 314,
+            funcId: 315,
             port: port_,
           );
         },
@@ -13591,7 +13640,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 315,
+            funcId: 316,
           )!;
         },
         codec: SseCodec(
@@ -13620,7 +13669,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 316,
+            funcId: 317,
             port: port_,
           );
         },
@@ -13650,7 +13699,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 317,
+            funcId: 318,
             port: port_,
           );
         },
@@ -13680,7 +13729,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 318,
+            funcId: 319,
           )!;
         },
         codec: SseCodec(
@@ -13714,7 +13763,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 319,
+            funcId: 320,
           )!;
         },
         codec: SseCodec(
@@ -13744,7 +13793,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 320,
+            funcId: 321,
           )!;
         },
         codec: SseCodec(
@@ -13773,7 +13822,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 321,
+            funcId: 322,
           )!;
         },
         codec: SseCodec(
@@ -13807,7 +13856,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 322,
+            funcId: 323,
           )!;
         },
         codec: SseCodec(
@@ -13837,7 +13886,7 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 323,
+            funcId: 324,
           )!;
         },
         codec: SseCodec(
@@ -15213,6 +15262,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   PreviewOptions dco_decode_box_autoadd_preview_options(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_preview_options(raw);
+  }
+
+  @protected
+  PreviewSvg dco_decode_box_autoadd_preview_svg(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_preview_svg(raw);
+  }
+
+  @protected
+  PreviewTaskBox dco_decode_box_autoadd_preview_task_box(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_preview_task_box(raw);
   }
 
   @protected
@@ -16650,6 +16711,54 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<PreviewAlign> dco_decode_list_preview_align(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_preview_align).toList();
+  }
+
+  @protected
+  List<PreviewBlock> dco_decode_list_preview_block(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_preview_block).toList();
+  }
+
+  @protected
+  List<PreviewCell> dco_decode_list_preview_cell(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_preview_cell).toList();
+  }
+
+  @protected
+  List<PreviewCodeRun> dco_decode_list_preview_code_run(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_preview_code_run).toList();
+  }
+
+  @protected
+  List<PreviewInline> dco_decode_list_preview_inline(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_preview_inline).toList();
+  }
+
+  @protected
+  List<PreviewListItem> dco_decode_list_preview_list_item(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_preview_list_item).toList();
+  }
+
+  @protected
+  List<PreviewQueryRow> dco_decode_list_preview_query_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_preview_query_row).toList();
+  }
+
+  @protected
+  List<PreviewRow> dco_decode_list_preview_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_preview_row).toList();
+  }
+
+  @protected
   Uint32List dco_decode_list_prim_u_32_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint32List;
@@ -17388,6 +17497,12 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PreviewTaskBox? dco_decode_opt_box_autoadd_preview_task_box(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_preview_task_box(raw);
+  }
+
+  @protected
   PublishLink? dco_decode_opt_box_autoadd_publish_link(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_publish_link(raw);
@@ -17704,6 +17819,162 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PreviewAlign dco_decode_preview_align(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return PreviewAlign.values[raw as int];
+  }
+
+  @protected
+  PreviewBlock dco_decode_preview_block(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return PreviewBlock_Heading(
+          level: dco_decode_u_32(raw[1]),
+          id: dco_decode_String(raw[2]),
+          inlines: dco_decode_list_preview_inline(raw[3]),
+        );
+      case 1:
+        return PreviewBlock_Paragraph(
+          inlines: dco_decode_list_preview_inline(raw[1]),
+        );
+      case 2:
+        return PreviewBlock_List(
+          ordered: dco_decode_bool(raw[1]),
+          start: dco_decode_u_32(raw[2]),
+          tight: dco_decode_bool(raw[3]),
+          items: dco_decode_list_preview_list_item(raw[4]),
+        );
+      case 3:
+        return PreviewBlock_Quote(
+          blocks: dco_decode_list_preview_block(raw[1]),
+        );
+      case 4:
+        return PreviewBlock_Code(
+          language: dco_decode_opt_String(raw[1]),
+          runs: dco_decode_list_preview_code_run(raw[2]),
+          copy: dco_decode_u_32(raw[3]),
+        );
+      case 5:
+        return PreviewBlock_Rule();
+      case 6:
+        return PreviewBlock_Table(
+          aligns: dco_decode_list_preview_align(raw[1]),
+          head: dco_decode_list_preview_cell(raw[2]),
+          rows: dco_decode_list_preview_row(raw[3]),
+        );
+      case 7:
+        return PreviewBlock_Figure(
+          kind: dco_decode_preview_figure_kind(raw[1]),
+          svg: dco_decode_box_autoadd_preview_svg(raw[2]),
+        );
+      case 8:
+        return PreviewBlock_EmptyDrawing();
+      case 9:
+        return PreviewBlock_Failed(
+          badge: dco_decode_String(raw[1]),
+          detail: dco_decode_String(raw[2]),
+          language: dco_decode_opt_String(raw[3]),
+          code: dco_decode_String(raw[4]),
+          copy: dco_decode_opt_box_autoadd_u_32(raw[5]),
+        );
+      case 10:
+        return PreviewBlock_Query(
+          columns: dco_decode_list_String(raw[1]),
+          rows: dco_decode_list_preview_query_row(raw[2]),
+        );
+      case 11:
+        return PreviewBlock_QueryInvalid(
+          code: dco_decode_String(raw[1]),
+          message: dco_decode_String(raw[2]),
+        );
+      case 12:
+        return PreviewBlock_Html(
+          text: dco_decode_String(raw[1]),
+        );
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  PreviewCell dco_decode_preview_cell(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 1)
+      throw Exception('unexpected arr length: expect 1 but see ${arr.length}');
+    return PreviewCell(
+      inlines: dco_decode_list_preview_inline(arr[0]),
+    );
+  }
+
+  @protected
+  PreviewCodeRun dco_decode_preview_code_run(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return PreviewCodeRun(
+      text: dco_decode_String(arr[0]),
+      color: dco_decode_opt_box_autoadd_u_32(arr[1]),
+      bold: dco_decode_bool(arr[2]),
+      italic: dco_decode_bool(arr[3]),
+    );
+  }
+
+  @protected
+  PreviewFigureKind dco_decode_preview_figure_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return PreviewFigureKind.values[raw as int];
+  }
+
+  @protected
+  PreviewInline dco_decode_preview_inline(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return PreviewInline_Text(
+          text: dco_decode_String(raw[1]),
+          bold: dco_decode_bool(raw[2]),
+          italic: dco_decode_bool(raw[3]),
+          strike: dco_decode_bool(raw[4]),
+          code: dco_decode_bool(raw[5]),
+        );
+      case 1:
+        return PreviewInline_Link(
+          url: dco_decode_String(raw[1]),
+          inlines: dco_decode_list_preview_inline(raw[2]),
+        );
+      case 2:
+        return PreviewInline_Due(
+          url: dco_decode_String(raw[1]),
+          label: dco_decode_String(raw[2]),
+          title: dco_decode_String(raw[3]),
+          tone: dco_decode_due_tone(raw[4]),
+        );
+      case 3:
+        return PreviewInline_Math(
+          svg: dco_decode_box_autoadd_preview_svg(raw[1]),
+        );
+      case 4:
+        return PreviewInline_Image(
+          contentType: dco_decode_String(raw[1]),
+          bytes: dco_decode_list_prim_u_8_strict(raw[2]),
+          alt: dco_decode_String(raw[3]),
+          width: dco_decode_opt_box_autoadd_u_32(raw[4]),
+        );
+      case 5:
+        return PreviewInline_Missing(
+          text: dco_decode_String(raw[1]),
+        );
+      case 6:
+        return PreviewInline_Break();
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
   PreviewLink dco_decode_preview_link(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     switch (raw[0]) {
@@ -17754,6 +18025,18 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PreviewListItem dco_decode_preview_list_item(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return PreviewListItem(
+      task: dco_decode_opt_box_autoadd_preview_task_box(arr[0]),
+      blocks: dco_decode_list_preview_block(arr[1]),
+    );
+  }
+
+  @protected
   PreviewOptions dco_decode_preview_options(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -17765,6 +18048,56 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       size: dco_decode_f_32(arr[2]),
       utcOffsetSecs: dco_decode_i_32(arr[3]),
       code: dco_decode_list_syntax_style_row(arr[4]),
+    );
+  }
+
+  @protected
+  PreviewQueryRow dco_decode_preview_query_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return PreviewQueryRow(
+      url: dco_decode_String(arr[0]),
+      title: dco_decode_String(arr[1]),
+      cells: dco_decode_list_String(arr[2]),
+    );
+  }
+
+  @protected
+  PreviewRow dco_decode_preview_row(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 1)
+      throw Exception('unexpected arr length: expect 1 but see ${arr.length}');
+    return PreviewRow(
+      cells: dco_decode_list_preview_cell(arr[0]),
+    );
+  }
+
+  @protected
+  PreviewSvg dco_decode_preview_svg(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return PreviewSvg(
+      markup: dco_decode_String(arr[0]),
+      width: dco_decode_f_32(arr[1]),
+      height: dco_decode_f_32(arr[2]),
+      baseline: dco_decode_opt_box_autoadd_f_32(arr[3]),
+    );
+  }
+
+  @protected
+  PreviewTaskBox dco_decode_preview_task_box(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return PreviewTaskBox(
+      checked: dco_decode_bool(arr[0]),
+      index: dco_decode_opt_box_autoadd_u_32(arr[1]),
     );
   }
 
@@ -20353,6 +20686,20 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PreviewSvg sse_decode_box_autoadd_preview_svg(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_preview_svg(deserializer));
+  }
+
+  @protected
+  PreviewTaskBox sse_decode_box_autoadd_preview_task_box(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_preview_task_box(deserializer));
+  }
+
+  @protected
   PublishLink sse_decode_box_autoadd_publish_link(
     SseDeserializer deserializer,
   ) {
@@ -22133,6 +22480,114 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  List<PreviewAlign> sse_decode_list_preview_align(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PreviewAlign>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_preview_align(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PreviewBlock> sse_decode_list_preview_block(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PreviewBlock>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_preview_block(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PreviewCell> sse_decode_list_preview_cell(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PreviewCell>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_preview_cell(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PreviewCodeRun> sse_decode_list_preview_code_run(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PreviewCodeRun>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_preview_code_run(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PreviewInline> sse_decode_list_preview_inline(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PreviewInline>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_preview_inline(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PreviewListItem> sse_decode_list_preview_list_item(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PreviewListItem>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_preview_list_item(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PreviewQueryRow> sse_decode_list_preview_query_row(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PreviewQueryRow>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_preview_query_row(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PreviewRow> sse_decode_list_preview_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PreviewRow>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_preview_row(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -23250,6 +23705,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PreviewTaskBox? sse_decode_opt_box_autoadd_preview_task_box(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_preview_task_box(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   PublishLink? sse_decode_opt_box_autoadd_publish_link(
     SseDeserializer deserializer,
   ) {
@@ -23665,6 +24133,189 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PreviewAlign sse_decode_preview_align(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return PreviewAlign.values[inner];
+  }
+
+  @protected
+  PreviewBlock sse_decode_preview_block(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_level = sse_decode_u_32(deserializer);
+        var var_id = sse_decode_String(deserializer);
+        var var_inlines = sse_decode_list_preview_inline(deserializer);
+        return PreviewBlock_Heading(
+          level: var_level,
+          id: var_id,
+          inlines: var_inlines,
+        );
+      case 1:
+        var var_inlines = sse_decode_list_preview_inline(deserializer);
+        return PreviewBlock_Paragraph(inlines: var_inlines);
+      case 2:
+        var var_ordered = sse_decode_bool(deserializer);
+        var var_start = sse_decode_u_32(deserializer);
+        var var_tight = sse_decode_bool(deserializer);
+        var var_items = sse_decode_list_preview_list_item(deserializer);
+        return PreviewBlock_List(
+          ordered: var_ordered,
+          start: var_start,
+          tight: var_tight,
+          items: var_items,
+        );
+      case 3:
+        var var_blocks = sse_decode_list_preview_block(deserializer);
+        return PreviewBlock_Quote(blocks: var_blocks);
+      case 4:
+        var var_language = sse_decode_opt_String(deserializer);
+        var var_runs = sse_decode_list_preview_code_run(deserializer);
+        var var_copy = sse_decode_u_32(deserializer);
+        return PreviewBlock_Code(
+          language: var_language,
+          runs: var_runs,
+          copy: var_copy,
+        );
+      case 5:
+        return PreviewBlock_Rule();
+      case 6:
+        var var_aligns = sse_decode_list_preview_align(deserializer);
+        var var_head = sse_decode_list_preview_cell(deserializer);
+        var var_rows = sse_decode_list_preview_row(deserializer);
+        return PreviewBlock_Table(
+          aligns: var_aligns,
+          head: var_head,
+          rows: var_rows,
+        );
+      case 7:
+        var var_kind = sse_decode_preview_figure_kind(deserializer);
+        var var_svg = sse_decode_box_autoadd_preview_svg(deserializer);
+        return PreviewBlock_Figure(kind: var_kind, svg: var_svg);
+      case 8:
+        return PreviewBlock_EmptyDrawing();
+      case 9:
+        var var_badge = sse_decode_String(deserializer);
+        var var_detail = sse_decode_String(deserializer);
+        var var_language = sse_decode_opt_String(deserializer);
+        var var_code = sse_decode_String(deserializer);
+        var var_copy = sse_decode_opt_box_autoadd_u_32(deserializer);
+        return PreviewBlock_Failed(
+          badge: var_badge,
+          detail: var_detail,
+          language: var_language,
+          code: var_code,
+          copy: var_copy,
+        );
+      case 10:
+        var var_columns = sse_decode_list_String(deserializer);
+        var var_rows = sse_decode_list_preview_query_row(deserializer);
+        return PreviewBlock_Query(columns: var_columns, rows: var_rows);
+      case 11:
+        var var_code = sse_decode_String(deserializer);
+        var var_message = sse_decode_String(deserializer);
+        return PreviewBlock_QueryInvalid(code: var_code, message: var_message);
+      case 12:
+        var var_text = sse_decode_String(deserializer);
+        return PreviewBlock_Html(text: var_text);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  PreviewCell sse_decode_preview_cell(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_inlines = sse_decode_list_preview_inline(deserializer);
+    return PreviewCell(inlines: var_inlines);
+  }
+
+  @protected
+  PreviewCodeRun sse_decode_preview_code_run(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_text = sse_decode_String(deserializer);
+    var var_color = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_bold = sse_decode_bool(deserializer);
+    var var_italic = sse_decode_bool(deserializer);
+    return PreviewCodeRun(
+      text: var_text,
+      color: var_color,
+      bold: var_bold,
+      italic: var_italic,
+    );
+  }
+
+  @protected
+  PreviewFigureKind sse_decode_preview_figure_kind(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return PreviewFigureKind.values[inner];
+  }
+
+  @protected
+  PreviewInline sse_decode_preview_inline(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_text = sse_decode_String(deserializer);
+        var var_bold = sse_decode_bool(deserializer);
+        var var_italic = sse_decode_bool(deserializer);
+        var var_strike = sse_decode_bool(deserializer);
+        var var_code = sse_decode_bool(deserializer);
+        return PreviewInline_Text(
+          text: var_text,
+          bold: var_bold,
+          italic: var_italic,
+          strike: var_strike,
+          code: var_code,
+        );
+      case 1:
+        var var_url = sse_decode_String(deserializer);
+        var var_inlines = sse_decode_list_preview_inline(deserializer);
+        return PreviewInline_Link(url: var_url, inlines: var_inlines);
+      case 2:
+        var var_url = sse_decode_String(deserializer);
+        var var_label = sse_decode_String(deserializer);
+        var var_title = sse_decode_String(deserializer);
+        var var_tone = sse_decode_due_tone(deserializer);
+        return PreviewInline_Due(
+          url: var_url,
+          label: var_label,
+          title: var_title,
+          tone: var_tone,
+        );
+      case 3:
+        var var_svg = sse_decode_box_autoadd_preview_svg(deserializer);
+        return PreviewInline_Math(svg: var_svg);
+      case 4:
+        var var_contentType = sse_decode_String(deserializer);
+        var var_bytes = sse_decode_list_prim_u_8_strict(deserializer);
+        var var_alt = sse_decode_String(deserializer);
+        var var_width = sse_decode_opt_box_autoadd_u_32(deserializer);
+        return PreviewInline_Image(
+          contentType: var_contentType,
+          bytes: var_bytes,
+          alt: var_alt,
+          width: var_width,
+        );
+      case 5:
+        var var_text = sse_decode_String(deserializer);
+        return PreviewInline_Missing(text: var_text);
+      case 6:
+        return PreviewInline_Break();
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
   PreviewLink sse_decode_preview_link(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -23718,6 +24369,14 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  PreviewListItem sse_decode_preview_list_item(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_task = sse_decode_opt_box_autoadd_preview_task_box(deserializer);
+    var var_blocks = sse_decode_list_preview_block(deserializer);
+    return PreviewListItem(task: var_task, blocks: var_blocks);
+  }
+
+  @protected
   PreviewOptions sse_decode_preview_options(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_font = sse_decode_opt_String(deserializer);
@@ -23732,6 +24391,45 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
       utcOffsetSecs: var_utcOffsetSecs,
       code: var_code,
     );
+  }
+
+  @protected
+  PreviewQueryRow sse_decode_preview_query_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_url = sse_decode_String(deserializer);
+    var var_title = sse_decode_String(deserializer);
+    var var_cells = sse_decode_list_String(deserializer);
+    return PreviewQueryRow(url: var_url, title: var_title, cells: var_cells);
+  }
+
+  @protected
+  PreviewRow sse_decode_preview_row(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_cells = sse_decode_list_preview_cell(deserializer);
+    return PreviewRow(cells: var_cells);
+  }
+
+  @protected
+  PreviewSvg sse_decode_preview_svg(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_markup = sse_decode_String(deserializer);
+    var var_width = sse_decode_f_32(deserializer);
+    var var_height = sse_decode_f_32(deserializer);
+    var var_baseline = sse_decode_opt_box_autoadd_f_32(deserializer);
+    return PreviewSvg(
+      markup: var_markup,
+      width: var_width,
+      height: var_height,
+      baseline: var_baseline,
+    );
+  }
+
+  @protected
+  PreviewTaskBox sse_decode_preview_task_box(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_checked = sse_decode_bool(deserializer);
+    var var_index = sse_decode_opt_box_autoadd_u_32(deserializer);
+    return PreviewTaskBox(checked: var_checked, index: var_index);
   }
 
   @protected
@@ -26468,6 +27166,24 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_box_autoadd_preview_svg(
+    PreviewSvg self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_preview_svg(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_preview_task_box(
+    PreviewTaskBox self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_preview_task_box(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_publish_link(
     PublishLink self,
     SseSerializer serializer,
@@ -27956,6 +28672,102 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_list_preview_align(
+    List<PreviewAlign> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_preview_align(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_preview_block(
+    List<PreviewBlock> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_preview_block(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_preview_cell(
+    List<PreviewCell> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_preview_cell(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_preview_code_run(
+    List<PreviewCodeRun> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_preview_code_run(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_preview_inline(
+    List<PreviewInline> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_preview_inline(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_preview_list_item(
+    List<PreviewListItem> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_preview_list_item(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_preview_query_row(
+    List<PreviewQueryRow> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_preview_query_row(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_preview_row(
+    List<PreviewRow> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_preview_row(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_prim_u_32_strict(
     Uint32List self,
     SseSerializer serializer,
@@ -28905,6 +29717,19 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_preview_task_box(
+    PreviewTaskBox? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_preview_task_box(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_publish_link(
     PublishLink? self,
     SseSerializer serializer,
@@ -29258,6 +30083,176 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_preview_align(PreviewAlign self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_preview_block(PreviewBlock self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case PreviewBlock_Heading(
+        level: final level,
+        id: final id,
+        inlines: final inlines,
+      ):
+        sse_encode_i_32(0, serializer);
+        sse_encode_u_32(level, serializer);
+        sse_encode_String(id, serializer);
+        sse_encode_list_preview_inline(inlines, serializer);
+      case PreviewBlock_Paragraph(inlines: final inlines):
+        sse_encode_i_32(1, serializer);
+        sse_encode_list_preview_inline(inlines, serializer);
+      case PreviewBlock_List(
+        ordered: final ordered,
+        start: final start,
+        tight: final tight,
+        items: final items,
+      ):
+        sse_encode_i_32(2, serializer);
+        sse_encode_bool(ordered, serializer);
+        sse_encode_u_32(start, serializer);
+        sse_encode_bool(tight, serializer);
+        sse_encode_list_preview_list_item(items, serializer);
+      case PreviewBlock_Quote(blocks: final blocks):
+        sse_encode_i_32(3, serializer);
+        sse_encode_list_preview_block(blocks, serializer);
+      case PreviewBlock_Code(
+        language: final language,
+        runs: final runs,
+        copy: final copy,
+      ):
+        sse_encode_i_32(4, serializer);
+        sse_encode_opt_String(language, serializer);
+        sse_encode_list_preview_code_run(runs, serializer);
+        sse_encode_u_32(copy, serializer);
+      case PreviewBlock_Rule():
+        sse_encode_i_32(5, serializer);
+      case PreviewBlock_Table(
+        aligns: final aligns,
+        head: final head,
+        rows: final rows,
+      ):
+        sse_encode_i_32(6, serializer);
+        sse_encode_list_preview_align(aligns, serializer);
+        sse_encode_list_preview_cell(head, serializer);
+        sse_encode_list_preview_row(rows, serializer);
+      case PreviewBlock_Figure(kind: final kind, svg: final svg):
+        sse_encode_i_32(7, serializer);
+        sse_encode_preview_figure_kind(kind, serializer);
+        sse_encode_box_autoadd_preview_svg(svg, serializer);
+      case PreviewBlock_EmptyDrawing():
+        sse_encode_i_32(8, serializer);
+      case PreviewBlock_Failed(
+        badge: final badge,
+        detail: final detail,
+        language: final language,
+        code: final code,
+        copy: final copy,
+      ):
+        sse_encode_i_32(9, serializer);
+        sse_encode_String(badge, serializer);
+        sse_encode_String(detail, serializer);
+        sse_encode_opt_String(language, serializer);
+        sse_encode_String(code, serializer);
+        sse_encode_opt_box_autoadd_u_32(copy, serializer);
+      case PreviewBlock_Query(columns: final columns, rows: final rows):
+        sse_encode_i_32(10, serializer);
+        sse_encode_list_String(columns, serializer);
+        sse_encode_list_preview_query_row(rows, serializer);
+      case PreviewBlock_QueryInvalid(code: final code, message: final message):
+        sse_encode_i_32(11, serializer);
+        sse_encode_String(code, serializer);
+        sse_encode_String(message, serializer);
+      case PreviewBlock_Html(text: final text):
+        sse_encode_i_32(12, serializer);
+        sse_encode_String(text, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_preview_cell(PreviewCell self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_preview_inline(self.inlines, serializer);
+  }
+
+  @protected
+  void sse_encode_preview_code_run(
+    PreviewCodeRun self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.text, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.color, serializer);
+    sse_encode_bool(self.bold, serializer);
+    sse_encode_bool(self.italic, serializer);
+  }
+
+  @protected
+  void sse_encode_preview_figure_kind(
+    PreviewFigureKind self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_preview_inline(PreviewInline self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case PreviewInline_Text(
+        text: final text,
+        bold: final bold,
+        italic: final italic,
+        strike: final strike,
+        code: final code,
+      ):
+        sse_encode_i_32(0, serializer);
+        sse_encode_String(text, serializer);
+        sse_encode_bool(bold, serializer);
+        sse_encode_bool(italic, serializer);
+        sse_encode_bool(strike, serializer);
+        sse_encode_bool(code, serializer);
+      case PreviewInline_Link(url: final url, inlines: final inlines):
+        sse_encode_i_32(1, serializer);
+        sse_encode_String(url, serializer);
+        sse_encode_list_preview_inline(inlines, serializer);
+      case PreviewInline_Due(
+        url: final url,
+        label: final label,
+        title: final title,
+        tone: final tone,
+      ):
+        sse_encode_i_32(2, serializer);
+        sse_encode_String(url, serializer);
+        sse_encode_String(label, serializer);
+        sse_encode_String(title, serializer);
+        sse_encode_due_tone(tone, serializer);
+      case PreviewInline_Math(svg: final svg):
+        sse_encode_i_32(3, serializer);
+        sse_encode_box_autoadd_preview_svg(svg, serializer);
+      case PreviewInline_Image(
+        contentType: final contentType,
+        bytes: final bytes,
+        alt: final alt,
+        width: final width,
+      ):
+        sse_encode_i_32(4, serializer);
+        sse_encode_String(contentType, serializer);
+        sse_encode_list_prim_u_8_strict(bytes, serializer);
+        sse_encode_String(alt, serializer);
+        sse_encode_opt_box_autoadd_u_32(width, serializer);
+      case PreviewInline_Missing(text: final text):
+        sse_encode_i_32(5, serializer);
+        sse_encode_String(text, serializer);
+      case PreviewInline_Break():
+        sse_encode_i_32(6, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_preview_link(PreviewLink self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     switch (self) {
@@ -29307,6 +30302,16 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
   }
 
   @protected
+  void sse_encode_preview_list_item(
+    PreviewListItem self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_opt_box_autoadd_preview_task_box(self.task, serializer);
+    sse_encode_list_preview_block(self.blocks, serializer);
+  }
+
+  @protected
   void sse_encode_preview_options(
     PreviewOptions self,
     SseSerializer serializer,
@@ -29317,6 +30322,42 @@ class KansoCoreApiImpl extends KansoCoreApiImplPlatform
     sse_encode_f_32(self.size, serializer);
     sse_encode_i_32(self.utcOffsetSecs, serializer);
     sse_encode_list_syntax_style_row(self.code, serializer);
+  }
+
+  @protected
+  void sse_encode_preview_query_row(
+    PreviewQueryRow self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.url, serializer);
+    sse_encode_String(self.title, serializer);
+    sse_encode_list_String(self.cells, serializer);
+  }
+
+  @protected
+  void sse_encode_preview_row(PreviewRow self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_preview_cell(self.cells, serializer);
+  }
+
+  @protected
+  void sse_encode_preview_svg(PreviewSvg self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.markup, serializer);
+    sse_encode_f_32(self.width, serializer);
+    sse_encode_f_32(self.height, serializer);
+    sse_encode_opt_box_autoadd_f_32(self.baseline, serializer);
+  }
+
+  @protected
+  void sse_encode_preview_task_box(
+    PreviewTaskBox self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.checked, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.index, serializer);
   }
 
   @protected
@@ -32011,6 +33052,19 @@ class KansoRendererImpl extends RustOpaque implements KansoRenderer {
     required PaletteDto palette,
     required PreviewOptions options,
   }) => KansoCore.instance.api.crateApiRendererKansoRendererPagePdf(
+    that: this,
+    id: id,
+    palette: palette,
+    options: options,
+  );
+
+  /// The note as the blocks the app draws its preview from: the same
+  /// note, links, task boxes and copy buttons as [`Self::preview_html_with`].
+  Future<List<PreviewBlock>> previewBlocks({
+    required String id,
+    required PaletteDto palette,
+    required PreviewOptions options,
+  }) => KansoCore.instance.api.crateApiRendererKansoRendererPreviewBlocks(
     that: this,
     id: id,
     palette: palette,
