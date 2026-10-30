@@ -708,6 +708,74 @@ fn focus_mode_leaves_the_note_alone_and_is_kept(cx: &mut TestAppContext) {
     assert!(vcx.debug_bounds("list-pane").is_some());
 }
 
+/// With Live Preview in focus mode on, ⌘⇧D shows the note in Live and
+/// leaving shows the mode from before; the view mode kept for next time
+/// never changes. A mode picked in focus mode stands when it ends, and with
+/// the setting off focus mode leaves the mode alone.
+// no-prop-test: drives one window through keystrokes; `FocusLive` has the
+// properties.
+#[gpui_kit::test]
+fn focus_mode_shows_live_preview_when_asked(cx: &mut TestAppContext) {
+    use crate::config::ViewMode;
+
+    let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
+    f.window
+        .update(cx, |_, window, _| window.activate_window())
+        .unwrap();
+    f.select(cx, &f.notes[0]);
+    f.draw(cx);
+    let saved = f.saved_config().appearance.view_mode;
+    assert_eq!(f.editor(cx, |e, _| e.view_mode), ViewMode::Split);
+    let live_in_focus = |on: bool| crate::config::EditorSettings {
+        live_preview_in_focus: on,
+        ..Default::default()
+    };
+    f.update_editor(cx, |editor, _, cx| {
+        editor.set_settings(live_in_focus(true), cx)
+    });
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.focus_mode));
+    assert_eq!(f.editor(&mut vcx, |e, _| e.view_mode), ViewMode::Live);
+    assert_eq!(f.saved_config().appearance.view_mode, saved);
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert!(!f.workspace(&mut vcx, |w, _| w.focus_mode));
+    assert_eq!(f.editor(&mut vcx, |e, _| e.view_mode), ViewMode::Split);
+    assert_eq!(f.saved_config().appearance.view_mode, saved);
+
+    // A mode picked in focus mode is the one shown after it.
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert_eq!(f.editor(&mut vcx, |e, _| e.view_mode), ViewMode::Live);
+    vcx.update(|_, cx| {
+        f.workspace.update(cx, |workspace, cx| {
+            workspace.set_view_mode_for_test(ViewMode::Edit, cx)
+        })
+    });
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert!(!f.workspace(&mut vcx, |w, _| w.focus_mode));
+    assert_eq!(f.editor(&mut vcx, |e, _| e.view_mode), ViewMode::Edit);
+    assert_eq!(f.saved_config().appearance.view_mode, ViewMode::Edit);
+
+    // With the setting off, focus mode keeps the mode.
+    f.update_editor(&mut vcx, |editor, _, cx| {
+        editor.set_settings(live_in_focus(false), cx)
+    });
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert!(f.workspace(&mut vcx, |w, _| w.focus_mode));
+    assert_eq!(f.editor(&mut vcx, |e, _| e.view_mode), ViewMode::Edit);
+    vcx.simulate_keystrokes("cmd-shift-d");
+    f.draw(&mut vcx);
+    assert_eq!(f.editor(&mut vcx, |e, _| e.view_mode), ViewMode::Edit);
+    assert_eq!(f.saved_config().appearance.view_mode, ViewMode::Edit);
+}
+
 /// Escape leaves focus mode only once nothing else wants it: the first
 /// Escape with the palette open closes the palette; the next, from the
 /// text, leaves focus mode.

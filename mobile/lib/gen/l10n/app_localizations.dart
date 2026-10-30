@@ -6826,6 +6826,18 @@ abstract class AppLocalizations {
   /// **'Notes without their own goal use this. A note’s progress appears in its editor footer.'**
   String get editorDefaultWordGoalDetail;
 
+  /// Turns on showing the open note in Live while focus mode is on.
+  ///
+  /// In en, this message translates to:
+  /// **'Live Preview in focus mode'**
+  String get editorFocusLivePreview;
+
+  /// Explains that the switch to Live lasts only while focus mode is on.
+  ///
+  /// In en, this message translates to:
+  /// **'Focus mode shows the note in Live, and leaving it goes back to the mode you were in.'**
+  String get editorFocusLivePreviewDetail;
+
   /// No description provided for @editorWordGoalNone.
   ///
   /// In en, this message translates to:

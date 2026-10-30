@@ -1,10 +1,10 @@
 //! How the editor is set up, as Settings › Editor and the view modes keep it
 //! (`config.json`'s `appearance` and `editor` objects): the typeface and
 //! which view mode sets it in monospace, when the caret's line stays
-//! centred, and the writing aids that are on. The desktop app reads and
-//! writes them in its config file; the mobile app keeps the same values and
-//! hands them to the engine, so the two agree on every default and every
-//! name in the file.
+//! centred, whether focus mode shows notes in Live, and the writing aids
+//! that are on. The desktop app reads and writes them in its config file;
+//! the mobile app keeps the same values and hands them to the engine, so
+//! the two agree on every default and every name in the file.
 
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +37,44 @@ impl ViewMode {
     /// Whether the mode shows the source on its own (Edit and Live).
     pub fn source_alone(self) -> bool {
         matches!(self, ViewMode::Edit | ViewMode::Live)
+    }
+}
+
+/// The view mode focus mode set aside to show Live, with
+/// [`EditorSettings::live_preview_in_focus`] on, to go back to on leaving.
+/// The switch is the editor's alone: the view mode kept for next time
+/// doesn't change.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FocusLive {
+    before: Option<ViewMode>,
+}
+
+impl FocusLive {
+    /// Focus mode starts while `mode` shows: the mode to show now, Live
+    /// when `live` (the setting) is on.
+    pub fn enter(&mut self, mode: ViewMode, live: bool) -> ViewMode {
+        if live && mode != ViewMode::Live {
+            self.before = Some(mode);
+            ViewMode::Live
+        } else {
+            self.before = None;
+            mode
+        }
+    }
+
+    /// Focus mode ends while `mode` shows: the mode it was in before, if
+    /// focus mode switched to Live and Live still shows; otherwise `mode`.
+    pub fn leave(&mut self, mode: ViewMode) -> ViewMode {
+        match self.before.take() {
+            Some(before) if mode == ViewMode::Live => before,
+            _ => mode,
+        }
+    }
+
+    /// The person picked a view mode: it stands, and leaving focus mode
+    /// keeps it.
+    pub fn chosen(&mut self) {
+        self.before = None;
     }
 }
 
@@ -139,6 +177,10 @@ pub struct EditorSettings {
     /// Misspelled words in the note's text are underlined (`spellcheck`).
     /// On unless turned off, also for files from before the setting.
     pub spellcheck: bool,
+    /// Focus mode shows the note in Live while it is on, then goes back to
+    /// the mode it was in, without changing the view mode kept for next
+    /// time. Off unless turned on.
+    pub live_preview_in_focus: bool,
 }
 
 impl Default for EditorSettings {
@@ -152,6 +194,7 @@ impl Default for EditorSettings {
             inline_tags: false,
             vim: false,
             spellcheck: true,
+            live_preview_in_focus: false,
         }
     }
 }
@@ -172,7 +215,7 @@ mod tests {
 
     fn gen_settings() -> impl Strategy<Value = EditorSettings> {
         (
-            any::<[bool; 5]>(),
+            any::<[bool; 6]>(),
             prop::sample::select(vec![
                 Typewriter::Off,
                 Typewriter::FocusMode,
@@ -182,7 +225,14 @@ mod tests {
         )
             .prop_map(
                 |(
-                    [auto_pair, format_tables, smart_paste, inline_tags, vim],
+                    [
+                        auto_pair,
+                        format_tables,
+                        smart_paste,
+                        inline_tags,
+                        vim,
+                        live_preview_in_focus,
+                    ],
                     typewriter,
                     word_goal,
                 )| {
@@ -195,6 +245,7 @@ mod tests {
                         inline_tags,
                         vim,
                         spellcheck: !vim,
+                        live_preview_in_focus,
                     }
                 },
             )
@@ -216,6 +267,7 @@ mod tests {
             "inlineTags": settings.inline_tags,
             "vim": settings.vim,
             "spellcheck": settings.spellcheck,
+            "livePreviewInFocus": settings.live_preview_in_focus,
         })
     }
 
@@ -236,7 +288,7 @@ mod tests {
         /// Defaults: a key missing from an older file is the default for it,
         /// and the others are kept.
         #[test]
-        fn prop_missing_keys_take_their_defaults(settings in gen_settings(), drop in 0usize..8) {
+        fn prop_missing_keys_take_their_defaults(settings in gen_settings(), drop in 0usize..9) {
             let mut old = written(&settings);
             let object = old.as_object_mut().unwrap();
             let key = object.keys().nth(drop).unwrap().clone();
@@ -286,6 +338,63 @@ mod tests {
         }
     }
 
+    fn gen_mode() -> impl Strategy<Value = ViewMode> {
+        prop::sample::select(vec![
+            ViewMode::Edit,
+            ViewMode::Live,
+            ViewMode::Split,
+            ViewMode::Preview,
+        ])
+    }
+
+    proptest! {
+        #![proptest_config(config())]
+
+        /// Focus mode with the setting off leaves the mode alone, going in
+        /// and coming out.
+        #[test]
+        fn prop_focus_mode_keeps_the_mode_with_the_setting_off(mode in gen_mode()) {
+            let mut focus = FocusLive::default();
+            prop_assert_eq!(focus.enter(mode, false), mode);
+            prop_assert_eq!(focus.leave(mode), mode);
+        }
+
+        /// With the setting on, focus mode shows Live and leaving it shows
+        /// the mode from before, once.
+        #[test]
+        fn prop_focus_mode_shows_live_and_goes_back(mode in gen_mode()) {
+            let mut focus = FocusLive::default();
+            prop_assert_eq!(focus.enter(mode, true), ViewMode::Live);
+            prop_assert_eq!(focus.leave(ViewMode::Live), mode);
+            // Nothing is left to go back to.
+            prop_assert_eq!(focus.leave(ViewMode::Live), ViewMode::Live);
+        }
+
+        /// A mode picked while in focus mode stands when it ends, whether
+        /// it is Live or another.
+        #[test]
+        fn prop_a_mode_picked_in_focus_mode_stands(
+            mode in gen_mode(),
+            picked in gen_mode(),
+            live in any::<bool>(),
+        ) {
+            let mut focus = FocusLive::default();
+            focus.enter(mode, live);
+            focus.chosen();
+            prop_assert_eq!(focus.leave(picked), picked);
+        }
+
+        /// A mode left some other way than picking it (Live gone from
+        /// under focus mode) isn't overridden on leaving.
+        #[test]
+        fn prop_focus_mode_only_undoes_its_own_live(mode in gen_mode(), now in gen_mode()) {
+            prop_assume!(now != ViewMode::Live);
+            let mut focus = FocusLive::default();
+            focus.enter(mode, true);
+            prop_assert_eq!(focus.leave(now), now);
+        }
+    }
+
     #[test]
     fn the_defaults_are_the_apps() {
         let settings = EditorSettings::default();
@@ -294,7 +403,7 @@ mod tests {
             json!({
                 "autoPair": true, "formatTables": true, "smartPaste": true,
                 "typewriter": "focusMode", "wordGoal": null, "inlineTags": false,
-                "vim": false, "spellcheck": true,
+                "vim": false, "spellcheck": true, "livePreviewInFocus": false,
             })
         );
         assert_eq!(

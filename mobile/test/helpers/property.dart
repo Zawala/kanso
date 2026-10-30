@@ -167,13 +167,20 @@ extension KansoThemeSelectionAny on Any {
       choose(DiagramRenderer.values);
 
   /// Any preferences.
-  Generator<Preferences> get preferences => combine3(
+  Generator<Preferences> get preferences => combine4(
     appearanceAndLists,
     choose(<String>['lucide', 'phosphor', 'material-icon-theme', 'x']),
     this.bool,
-    (Preferences before, String iconTheme, bool focusMode) => before.copyWith(
+    this.bool,
+    (
+      Preferences before,
+      String iconTheme,
+      bool focusMode,
+      bool livePreviewInFocus,
+    ) => before.copyWith(
       iconTheme: iconTheme,
       focusMode: focusMode,
+      livePreviewInFocus: livePreviewInFocus,
     ),
   );
 

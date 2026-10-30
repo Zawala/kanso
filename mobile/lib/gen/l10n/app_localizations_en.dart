@@ -3985,6 +3985,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Notes without their own goal use this. A note’s progress appears in its editor footer.';
 
   @override
+  String get editorFocusLivePreview => 'Live Preview in focus mode';
+
+  @override
+  String get editorFocusLivePreviewDetail =>
+      'Focus mode shows the note in Live, and leaving it goes back to the mode you were in.';
+
+  @override
   String get editorWordGoalNone => 'None';
 
   @override

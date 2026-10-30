@@ -32,6 +32,7 @@ import '../../models/data/note_mode.dart';
 import '../../models/data/note_screen_status.dart';
 import '../../state/note/note_bloc.dart';
 import '../../state/note_discovery/note_discovery_bloc.dart';
+import 'focus_live_preview_sync.dart';
 import 'note_bottom_bar.dart';
 import 'note_info_sheet.dart';
 import 'note_lock_menu_button.dart';
@@ -60,9 +61,12 @@ class NotePane extends StatelessWidget {
     if (focus == null) {
       return _build(context, focusActive: false);
     }
-    return BlocBuilder<FocusModeBloc, FocusModeState>(
-      buildWhen: (before, after) => before.active != after.active,
-      builder: (context, state) => _build(context, focusActive: state.active),
+    return FocusLivePreviewSync(
+      child: BlocBuilder<FocusModeBloc, FocusModeState>(
+        buildWhen: (before, after) => before.active != after.active,
+        builder: (context, state) =>
+            _build(context, focusActive: state.active),
+      ),
     );
   }
 

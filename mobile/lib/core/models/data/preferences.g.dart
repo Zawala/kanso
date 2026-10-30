@@ -48,6 +48,7 @@ _Preferences _$PreferencesFromJson(Map<String, dynamic> json) => _Preferences(
   searchImageText: json['searchImageText'] as bool? ?? false,
   remindersEnabled: json['remindersEnabled'] as bool? ?? true,
   focusMode: json['focusMode'] as bool? ?? false,
+  livePreviewInFocus: json['livePreviewInFocus'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$PreferencesToJson(_Preferences instance) =>
@@ -69,6 +70,7 @@ Map<String, dynamic> _$PreferencesToJson(_Preferences instance) =>
       'searchImageText': instance.searchImageText,
       'remindersEnabled': instance.remindersEnabled,
       'focusMode': instance.focusMode,
+      'livePreviewInFocus': instance.livePreviewInFocus,
     };
 
 const _$DiagramRendererEnumMap = {

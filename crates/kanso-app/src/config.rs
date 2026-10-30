@@ -782,6 +782,7 @@ mod tests {
             any::<bool>(),
             any::<bool>(),
             any::<bool>(),
+            any::<bool>(),
         )
             .prop_map(
                 |(
@@ -793,6 +794,7 @@ mod tests {
                     inline_tags,
                     vim,
                     spellcheck,
+                    live_preview_in_focus,
                 )| {
                     EditorSettings {
                         auto_pair,
@@ -803,6 +805,7 @@ mod tests {
                         inline_tags,
                         vim,
                         spellcheck,
+                        live_preview_in_focus,
                     }
                 },
             )
@@ -1558,6 +1561,8 @@ mod tests {
         assert!(editor.auto_pair && editor.format_tables && editor.smart_paste);
         assert_eq!(editor.typewriter, Typewriter::FocusMode);
         assert_eq!(editor.word_goal, None);
+        // Focus mode keeps the view mode unless Live is asked for.
+        assert!(!editor.live_preview_in_focus);
         assert!(Typewriter::FocusMode.centres(true) && !Typewriter::FocusMode.centres(false));
         assert!(Typewriter::Always.centres(false) && !Typewriter::Off.centres(true));
     }

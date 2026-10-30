@@ -38,6 +38,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_core::model::TRASH_BOOK_ID;
 use kanso_core::{DocType, Note, NoteStatus};
+use kanso_engine::editor_settings::FocusLive;
 use kanso_engine::saving::{AUTOSAVE_DELAY, same_content};
 use kanso_store::{Backlink, Change, Origin, Put, Store, StoreError};
 
@@ -282,6 +283,8 @@ pub struct NoteEditor {
     pub(crate) empty_focus: FocusHandle,
     /// The note alone, centred, with its header shown on hover.
     focus_mode: bool,
+    /// The view mode focus mode set aside to show Live, to go back to.
+    focus_live: FocusLive,
     /// The source's share of the editor in Split mode, as last dragged.
     split_ratio: f32,
     pub(crate) split: Entity<ResizableState>,
@@ -535,6 +538,7 @@ impl NoteEditor {
             inspector_open: false,
             empty_focus: cx.focus_handle(),
             focus_mode: false,
+            focus_live: FocusLive::default(),
             split_ratio,
             split,
             split_placed_for: px(0.),
@@ -684,10 +688,22 @@ impl NoteEditor {
             .update(cx, |footer, cx| footer.set_goal(goal, default, cx));
     }
 
-    /// Focus mode on or off, as the workspace has it.
+    /// Focus mode on or off, as the workspace has it. With Live Preview in
+    /// focus mode turned on, going in shows the note in Live and coming out
+    /// shows the mode from before, unless another was picked meanwhile; the
+    /// view mode kept for next time stays as it was.
     pub fn set_focus_mode(&mut self, on: bool, cx: &mut Context<Self>) {
         if self.focus_mode != on {
             self.focus_mode = on;
+            let mode = if on {
+                self.focus_live
+                    .enter(self.view_mode, self.settings.live_preview_in_focus)
+            } else {
+                self.focus_live.leave(self.view_mode)
+            };
+            if mode != self.view_mode {
+                self.show_view_mode(mode, cx);
+            }
             self.footer
                 .update(cx, |footer, cx| footer.set_quiet(on, cx));
             cx.notify();
@@ -2009,7 +2025,14 @@ impl NoteEditor {
         true
     }
 
+    /// Shows the note in `mode`, as picked: leaving focus mode keeps it.
     pub fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
+        self.focus_live.chosen();
+        self.show_view_mode(mode, cx);
+    }
+
+    /// Shows the note in `mode`.
+    fn show_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         self.view_mode = mode;
         if mode.shows_preview() {
             self.refresh_preview(cx);
