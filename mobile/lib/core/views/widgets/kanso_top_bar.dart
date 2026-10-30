@@ -77,7 +77,7 @@ class KansoTopBar extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                   horizontal: KansoSpacing.xxs,
                 ),
-                child: NavigationToolbar(
+                child: _TopBarRow(
                   leading: leading,
                   middle: name == null
                       ? null
@@ -102,11 +102,19 @@ class KansoTopBar extends StatelessWidget {
                             ],
                           ),
                         ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: trailing,
-                  ),
-                  middleSpacing: 0,
+                  // More actions than the bar has room for beside [leading]
+                  // are drawn a little smaller, all of them in reach, rather
+                  // than run under it and off the edge.
+                  trailing: trailing.isEmpty
+                      ? null
+                      : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: trailing,
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -134,4 +142,100 @@ class KansoTopBar extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _Slot { leading, middle, trailing }
+
+/// [leading] at the start, [trailing] at the end, and [middle] centred on
+/// the bar where it fits between them, as [NavigationToolbar] lays them
+/// out; but [trailing] has only the room [leading] leaves, so it never runs
+/// under it.
+class _TopBarRow extends StatelessWidget {
+  const _TopBarRow({this.leading, this.middle, this.trailing});
+
+  final Widget? leading;
+  final Widget? middle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomMultiChildLayout(
+      delegate: _TopBarLayout(Directionality.of(context)),
+      children: <Widget>[
+        if (leading case final leading?)
+          LayoutId(id: _Slot.leading, child: leading),
+        if (middle case final middle?)
+          LayoutId(id: _Slot.middle, child: middle),
+        if (trailing case final trailing?)
+          LayoutId(id: _Slot.trailing, child: trailing),
+      ],
+    );
+  }
+}
+
+class _TopBarLayout extends MultiChildLayoutDelegate {
+  _TopBarLayout(this.textDirection);
+
+  final TextDirection textDirection;
+
+  @override
+  void performLayout(Size size) {
+    final rtl = textDirection == TextDirection.rtl;
+    var leadingWidth = 0.0;
+    var trailingWidth = 0.0;
+    if (hasChild(_Slot.leading)) {
+      leadingWidth = layoutChild(
+        _Slot.leading,
+        BoxConstraints(
+          maxWidth: size.width,
+          minHeight: size.height,
+          maxHeight: size.height,
+        ),
+      ).width;
+      positionChild(
+        _Slot.leading,
+        Offset(rtl ? size.width - leadingWidth : 0, 0),
+      );
+    }
+    if (hasChild(_Slot.trailing)) {
+      final trailing = layoutChild(
+        _Slot.trailing,
+        BoxConstraints.loose(
+          size,
+        ).copyWith(maxWidth: math.max(size.width - leadingWidth, 0)),
+      );
+      trailingWidth = trailing.width;
+      positionChild(
+        _Slot.trailing,
+        Offset(
+          rtl ? 0 : size.width - trailingWidth,
+          (size.height - trailing.height) / 2,
+        ),
+      );
+    }
+    if (hasChild(_Slot.middle)) {
+      final middle = layoutChild(
+        _Slot.middle,
+        BoxConstraints.loose(size).copyWith(
+          maxWidth: math.max(size.width - leadingWidth - trailingWidth, 0),
+        ),
+      );
+      // Centred on the bar, unless that would put it under either side.
+      final start = math.min(
+        math.max((size.width - middle.width) / 2, leadingWidth),
+        math.max(leadingWidth, size.width - trailingWidth - middle.width),
+      );
+      positionChild(
+        _Slot.middle,
+        Offset(
+          rtl ? size.width - middle.width - start : start,
+          (size.height - middle.height) / 2,
+        ),
+      );
+    }
+  }
+
+  @override
+  bool shouldRelayout(_TopBarLayout oldDelegate) =>
+      oldDelegate.textDirection != textDirection;
 }

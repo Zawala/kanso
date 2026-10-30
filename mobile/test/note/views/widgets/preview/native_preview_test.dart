@@ -8,19 +8,23 @@ import 'dart:ui' show CheckedState, SemanticsAction;
 import 'package:dartz/dartz.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show SelectedContent;
+import 'package:flutter/rendering.dart' show RenderParagraph, SelectedContent;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart' hide Table, TableRow;
+import 'package:kanso/core/configs/kanso_palette.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/state/library_index/library_index_bloc.dart';
 import 'package:kanso/injection.dart';
 import 'package:kanso/note/state/preview/preview_bloc.dart';
+import 'package:kanso/note/views/widgets/note_body.dart';
 import 'package:kanso/note/views/widgets/note_preview.dart';
 import 'package:kanso/note/views/widgets/preview/native_preview.dart';
 import 'package:kanso/note/views/widgets/preview/preview_blocks.dart';
+import 'package:kanso/note/views/widgets/preview/preview_code.dart';
 import 'package:kanso/note/views/widgets/preview/preview_list.dart';
 import 'package:mocktail/mocktail.dart';
 
@@ -127,6 +131,7 @@ void main() {
     GlobalKey<NativePreviewState>? previewKey,
     TextScaler? textScaler,
     ValueChanged<SelectedContent?>? onSelectionChanged,
+    ScrollController? controller,
   }) async {
     final key = previewKey ?? GlobalKey<NativePreviewState>();
     await tester.pumpWidget(
@@ -140,6 +145,7 @@ void main() {
         home: SelectionArea(
           onSelectionChanged: onSelectionChanged,
           child: CustomScrollView(
+            controller: controller,
             slivers: <Widget>[
               NativePreview(
                 key: key,
@@ -574,6 +580,23 @@ void main() {
       expect(wide2.width, closeTo(width, 0.5));
     });
 
+    testWidgets("what is selected is drawn in the preview's accent", (
+      tester,
+    ) async {
+      await pump(tester, <PreviewBlock>[
+        _paragraph(<PreviewInline>[_text('Some text to select')]),
+      ]);
+      final text = find.text('Some text to select', findRichText: true);
+      final accent = _rgb(_palette.accent);
+      final style = DefaultSelectionStyle.of(tester.element(text));
+      expect(style.selectionColor, accent.withValues(alpha: 0.3));
+      expect(style.cursorColor, accent);
+      expect(
+        tester.renderObject<RenderParagraph>(text).selectionColor,
+        accent.withValues(alpha: 0.3),
+      );
+    });
+
     testWidgets('a double tap asks to edit', (tester) async {
       await pump(tester, <PreviewBlock>[
         _paragraph(<PreviewInline>[_text('Some text to read')]),
@@ -664,6 +687,66 @@ void main() {
       }
     });
 
+    testWidgets('the last heading is scrolled to at once, and the first '
+        'again', (tester) async {
+      // Room below, so the last heading can come to the top.
+      final key = await pump(tester, long(), below: 1000);
+      final state = key.currentState!;
+      Future<Duration> scrollTo(String anchor) async {
+        final watch = Stopwatch()..start();
+        unawaited(state.scrollTo(anchor));
+        await tester.pumpAndSettle();
+        watch.stop();
+        final heading = state.headingKey(anchor)!;
+        expect(heading.currentContext, isNotNull, reason: anchor);
+        expect(
+          tester.getTopLeft(find.byKey(heading)).dy,
+          closeTo(0, 1),
+          reason: anchor,
+        );
+        return watch.elapsed;
+      }
+
+      final down = await scrollTo('h4990');
+      final up = await scrollTo('h0');
+      debugPrint('Scrolled to h4990 in $down, back to h0 in $up');
+      // Laying out every block on the way took three to five seconds.
+      expect(down, lessThan(const Duration(seconds: 1)));
+      expect(up, lessThan(const Duration(seconds: 1)));
+    });
+
+    testWidgets('a jump far down builds only the blocks where it lands', (
+      tester,
+    ) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      await pump(tester, long(), controller: controller);
+      NativePreview.debugBlockBuilds = 0;
+      final watch = Stopwatch()..start();
+      controller.jumpTo(controller.position.maxScrollExtent / 2);
+      await tester.pump();
+      watch.stop();
+      debugPrint(
+        'Jumped half way down in ${watch.elapsed}, building '
+        '${NativePreview.debugBlockBuilds} blocks',
+      );
+      expect(NativePreview.debugBlockBuilds, greaterThan(0));
+      expect(NativePreview.debugBlockBuilds, lessThan(100));
+      expect(
+        find.text('Paragraph 1, some words', findRichText: true),
+        findsNothing,
+      );
+      final shown = find.textContaining(
+        RegExp('^Paragraph [0-9]+,'),
+        findRichText: true,
+      );
+      expect(shown, findsWidgets);
+      final first = tester.widget<RichText>(shown.first).text.toPlainText();
+      final at = int.parse(RegExp('[0-9]+').firstMatch(first)![0]!);
+      expect(at, greaterThan(1000));
+      expect(at, lessThan(4000));
+    });
+
     testWidgets('a heading that becomes a repeat loses its key safely', (
       tester,
     ) async {
@@ -710,6 +793,172 @@ void main() {
       await tester.pumpAndSettle();
       expect(selected?.plainText, contains('First block'));
       expect(selected?.plainText, contains('Second block'));
+    });
+  });
+
+  group('NativePreview, a long code block', () {
+    /// A code block of [lines] lines, `let aN = N;`, its first line wide.
+    PreviewBlock code(int lines) => PreviewBlock.code(
+      language: 'rust',
+      runs: <PreviewCodeRun>[
+        PreviewCodeRun(
+          text: '// ${'wide ' * 60}\n',
+          color: 0x8C8FA1,
+          bold: false,
+          italic: true,
+        ),
+        for (var line = 1; line < lines; line++) ...<PreviewCodeRun>[
+          const PreviewCodeRun(text: 'let', bold: true, italic: false),
+          PreviewCodeRun(
+            text: ' a$line = $line;${line + 1 < lines ? '\n' : ''}',
+            bold: false,
+            italic: false,
+          ),
+        ],
+      ],
+      copy: 7,
+    );
+
+    final chunks = find.byType(PreviewCodeChunk);
+
+    /// Scrolls the note so that the first two pieces meet mid-screen.
+    Future<void> showJoin(
+      WidgetTester tester,
+      ScrollController controller,
+    ) async {
+      final join = tester.getBottomLeft(chunks.first).dy;
+      controller.jumpTo(controller.offset + join - 300);
+      await tester.pump();
+      // The pieces are widened to the widest after the frame they are laid
+      // out in.
+      await tester.pump();
+      expect(chunks, findsAtLeastNWidgets(2));
+    }
+
+    testWidgets('is built a piece at a time, as one box that copies whole', (
+      tester,
+    ) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      await pump(tester, <PreviewBlock>[
+        _paragraph(<PreviewInline>[_text('Before')]),
+        code(1000),
+        _paragraph(<PreviewInline>[_text('After')]),
+      ], controller: controller);
+      final built = find.byType(PreviewCodeChunk, skipOffstage: false);
+      expect(built, findsAtLeastNWidgets(1));
+      expect(built.evaluate().length, lessThanOrEqualTo(3));
+      expect(find.text('After', findRichText: true), findsNothing);
+      expect(find.text('rust'), findsOneWidget);
+      final semantics = tester.ensureSemantics();
+      expect(find.bySemanticsLabel('Copy code'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('Copy code'));
+      semantics.dispose();
+      expect(tapped, <String>['kanso-copy:7']);
+
+      await showJoin(tester, controller);
+      final first = tester.getRect(chunks.at(0));
+      final second = tester.getRect(chunks.at(1));
+      expect(second.top, closeTo(first.bottom, 0.01));
+      expect(second.left, first.left);
+      expect(second.width, first.width);
+      // Only the first piece has the language and the copy button; only
+      // the first has a top edge, and neither a bottom one.
+      final boxes = tester
+          .widgetList<PreviewCodeBox>(find.byType(PreviewCodeBox))
+          .toList();
+      expect(boxes[0].top, isTrue);
+      expect(boxes[0].bottom, isFalse);
+      expect(boxes[0].copy, 7);
+      expect(boxes[1].top, isFalse);
+      expect(boxes[1].bottom, isFalse);
+      expect(boxes[1].copy, isNull);
+      expect(boxes[1].language, isNull);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('its last piece closes the box, and its lines are all there', (
+      tester,
+    ) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      await pump(tester, <PreviewBlock>[code(260)], controller: controller);
+      // The heights guessed are measured as the pieces are laid out, so the
+      // end moves until it is reached.
+      final end = find.textContaining('a259 = 259;', findRichText: true);
+      for (var tries = 0; tries < 5 && end.evaluate().isEmpty; tries++) {
+        controller.jumpTo(controller.position.maxScrollExtent);
+        await tester.pumpAndSettle();
+      }
+      final last = tester
+          .widgetList<PreviewCodeBox>(find.byType(PreviewCodeBox))
+          .last;
+      expect(last.bottom, isTrue);
+      expect(last.top, isFalse);
+      // 260 lines: five pieces of 50 and one of 10.
+      expect(end, findsOneWidget);
+      final lines = tester.widget<RichText>(end).text.toPlainText();
+      expect(lines.split('\n'), hasLength(10));
+      expect(lines, startsWith('let a250 = 250;'));
+    });
+
+    testWidgets('its pieces scroll sideways together', (tester) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      await pump(tester, <PreviewBlock>[code(1000)], controller: controller);
+      await showJoin(tester, controller);
+      ScrollPosition sideways(int at) => tester
+          .state<ScrollableState>(
+            find.descendant(
+              of: chunks.at(at),
+              matching: find.byType(Scrollable),
+            ),
+          )
+          .position;
+      // The second piece's lines are short, but it scrolls as far as the
+      // first's wide line.
+      expect(
+        sideways(1).maxScrollExtent,
+        closeTo(sideways(0).maxScrollExtent, 0.5),
+      );
+      expect(sideways(1).maxScrollExtent, greaterThan(100));
+      // Either side of where the pieces meet, mid-screen.
+      final join = tester.getBottomLeft(chunks.first) + const Offset(200, 0);
+      await tester.dragFrom(join + const Offset(0, 100), const Offset(-200, 0));
+      await tester.pumpAndSettle();
+      expect(sideways(1).pixels, greaterThan(100));
+      expect(sideways(0).pixels, sideways(1).pixels);
+      await tester.dragFrom(join - const Offset(0, 100), const Offset(80, 0));
+      await tester.pumpAndSettle();
+      expect(sideways(0).pixels, lessThan(sideways(1).maxScrollExtent - 100));
+      expect(sideways(1).pixels, sideways(0).pixels);
+    });
+
+    testWidgets('selected across two pieces, its lines keep their break', (
+      tester,
+    ) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      SelectedContent? selected;
+      await pump(
+        tester,
+        <PreviewBlock>[code(1000)],
+        controller: controller,
+        onSelectionChanged: (content) => selected = content,
+      );
+      await showJoin(tester, controller);
+      // From the last line of the first piece to the first of the second.
+      final join = tester.getBottomLeft(chunks.first);
+      final gesture = await tester.startGesture(
+        join + const Offset(1 + 16 + 30, -10),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveTo(join + const Offset(1 + 16 + 120, 10));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(selected?.plainText, contains('a49 = 49;\nlet a5'));
     });
   });
 
@@ -798,5 +1047,46 @@ void main() {
         verifyNever(() => renderer.builtinThemeTokens(any()));
       },
     );
+  });
+
+  group('NoteBody', () {
+    testWidgets("selects in the preview theme's accent, handles too", (
+      tester,
+    ) async {
+      final appearance = SeededAppearanceBloc(
+        AppearanceState(
+          light: KansoPalette.kansoLight.copyWith(preview: _palette),
+        ),
+      );
+      addTearDown(appearance.close);
+      await tester.pumpWidget(
+        KansoTestApp(
+          home: BlocProvider<AppearanceBloc>.value(
+            value: appearance,
+            child: NoteBody(
+              note: mockOpenNote,
+              lines: const [],
+              index: const LibraryIndexState(),
+              gutter: 16,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final accent = _rgb(_palette.accent);
+      // Not the app's own accent, which a selection would otherwise be in.
+      expect(KansoPalette.kansoLight.colors.accent, isNot(accent));
+      final region = tester.element(find.byType(SelectableRegion));
+      expect(TextSelectionTheme.of(region).selectionHandleColor, accent);
+      expect(
+        DefaultSelectionStyle.of(region).selectionColor,
+        accent.withValues(alpha: 0.3),
+      );
+      final title = find.text(mockOpenNote.title, findRichText: true);
+      expect(
+        tester.renderObject<RenderParagraph>(title.first).selectionColor,
+        accent.withValues(alpha: 0.3),
+      );
+    });
   });
 }
