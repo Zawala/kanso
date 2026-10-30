@@ -2170,6 +2170,292 @@ class LiveBatch {
           lines == other.lines;
 }
 
+class LiveDocBlock {
+  final LiveDocBlockKind kind;
+  final int level;
+  final String? language;
+  final int firstLine;
+  final int endLine;
+  final Range16 source;
+  final int listDepth;
+  final int quoteDepth;
+  final bool itemStart;
+  final int? top;
+  final bool revealed;
+
+  const LiveDocBlock({
+    required this.kind,
+    required this.level,
+    this.language,
+    required this.firstLine,
+    required this.endLine,
+    required this.source,
+    required this.listDepth,
+    required this.quoteDepth,
+    required this.itemStart,
+    this.top,
+    required this.revealed,
+  });
+
+  @override
+  int get hashCode =>
+      kind.hashCode ^
+      level.hashCode ^
+      language.hashCode ^
+      firstLine.hashCode ^
+      endLine.hashCode ^
+      source.hashCode ^
+      listDepth.hashCode ^
+      quoteDepth.hashCode ^
+      itemStart.hashCode ^
+      top.hashCode ^
+      revealed.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveDocBlock &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          level == other.level &&
+          language == other.language &&
+          firstLine == other.firstLine &&
+          endLine == other.endLine &&
+          source == other.source &&
+          listDepth == other.listDepth &&
+          quoteDepth == other.quoteDepth &&
+          itemStart == other.itemStart &&
+          top == other.top &&
+          revealed == other.revealed;
+}
+
+enum LiveDocBlockKind {
+  paragraph,
+  heading,
+  rule,
+  code,
+  table,
+  math,
+  html,
+  frontMatter,
+  image,
+  definition,
+  blank,
+}
+
+class LiveDocLink {
+  final Range16 range;
+  final Range16 text;
+  final LiveDocLinkKind kind;
+  final String target;
+  final String? heading;
+  final bool missing;
+
+  const LiveDocLink({
+    required this.range,
+    required this.text,
+    required this.kind,
+    required this.target,
+    this.heading,
+    required this.missing,
+  });
+
+  @override
+  int get hashCode =>
+      range.hashCode ^
+      text.hashCode ^
+      kind.hashCode ^
+      target.hashCode ^
+      heading.hashCode ^
+      missing.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveDocLink &&
+          runtimeType == other.runtimeType &&
+          range == other.range &&
+          text == other.text &&
+          kind == other.kind &&
+          target == other.target &&
+          heading == other.heading &&
+          missing == other.missing;
+}
+
+enum LiveDocLinkKind {
+  url,
+  reference,
+  wiki,
+}
+
+class LiveDocMarker {
+  final Range16 range;
+  final int line;
+  final LiveDocMarkerKind kind;
+  final int depth;
+  final String text;
+  final bool checked;
+
+  const LiveDocMarker({
+    required this.range,
+    required this.line,
+    required this.kind,
+    required this.depth,
+    required this.text,
+    required this.checked,
+  });
+
+  @override
+  int get hashCode =>
+      range.hashCode ^
+      line.hashCode ^
+      kind.hashCode ^
+      depth.hashCode ^
+      text.hashCode ^
+      checked.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveDocMarker &&
+          runtimeType == other.runtimeType &&
+          range == other.range &&
+          line == other.line &&
+          kind == other.kind &&
+          depth == other.depth &&
+          text == other.text &&
+          checked == other.checked;
+}
+
+enum LiveDocMarkerKind {
+  bullet,
+  number,
+  task,
+  hidden,
+  quote,
+  indent,
+  rule,
+  underline,
+}
+
+class LiveDocStyle {
+  final Range16 range;
+  final LiveDocStyleKind kind;
+  final int level;
+
+  const LiveDocStyle({
+    required this.range,
+    required this.kind,
+    required this.level,
+  });
+
+  @override
+  int get hashCode => range.hashCode ^ kind.hashCode ^ level.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveDocStyle &&
+          runtimeType == other.runtimeType &&
+          range == other.range &&
+          kind == other.kind &&
+          level == other.level;
+}
+
+enum LiveDocStyleKind {
+  strong,
+  emphasis,
+  strikethrough,
+  code,
+  link,
+  heading,
+  inlineMath,
+  quote,
+  taskDone,
+}
+
+class LiveDocWidget {
+  final LiveDocBlockKind kind;
+  final String? language;
+  final int firstLine;
+  final int endLine;
+  final Range16 lines;
+  final Range16 source;
+
+  const LiveDocWidget({
+    required this.kind,
+    this.language,
+    required this.firstLine,
+    required this.endLine,
+    required this.lines,
+    required this.source,
+  });
+
+  @override
+  int get hashCode =>
+      kind.hashCode ^
+      language.hashCode ^
+      firstLine.hashCode ^
+      endLine.hashCode ^
+      lines.hashCode ^
+      source.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveDocWidget &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          language == other.language &&
+          firstLine == other.firstLine &&
+          endLine == other.endLine &&
+          lines == other.lines &&
+          source == other.source;
+}
+
+class LiveDocument {
+  final int version;
+  final List<Range16> conceal;
+  final List<LiveDocBlock> blocks;
+  final List<LiveDocMarker> markers;
+  final List<LiveDocStyle> styles;
+  final List<LiveDocLink> links;
+  final List<LiveDocWidget> widgets;
+
+  const LiveDocument({
+    required this.version,
+    required this.conceal,
+    required this.blocks,
+    required this.markers,
+    required this.styles,
+    required this.links,
+    required this.widgets,
+  });
+
+  @override
+  int get hashCode =>
+      version.hashCode ^
+      conceal.hashCode ^
+      blocks.hashCode ^
+      markers.hashCode ^
+      styles.hashCode ^
+      links.hashCode ^
+      widgets.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveDocument &&
+          runtimeType == other.runtimeType &&
+          version == other.version &&
+          conceal == other.conceal &&
+          blocks == other.blocks &&
+          markers == other.markers &&
+          styles == other.styles &&
+          links == other.links &&
+          widgets == other.widgets;
+}
+
 enum LiveKind {
   strong,
   emphasis,
@@ -3432,6 +3718,34 @@ class PreviewRow {
       other is PreviewRow &&
           runtimeType == other.runtimeType &&
           cells == other.cells;
+}
+
+class PreviewSourcedBlock {
+  final PreviewBlock block;
+  final int? firstLine;
+  final int? endLine;
+  final Range16? lines;
+
+  const PreviewSourcedBlock({
+    required this.block,
+    this.firstLine,
+    this.endLine,
+    this.lines,
+  });
+
+  @override
+  int get hashCode =>
+      block.hashCode ^ firstLine.hashCode ^ endLine.hashCode ^ lines.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewSourcedBlock &&
+          runtimeType == other.runtimeType &&
+          block == other.block &&
+          firstLine == other.firstLine &&
+          endLine == other.endLine &&
+          lines == other.lines;
 }
 
 class PreviewSvg {

@@ -54,7 +54,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1929450997;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1349128822;
 
 // Section: executor
 
@@ -4351,6 +4351,59 @@ fn wire__crate__api__editor__KansoEditor_link_at_impl(
                     let api_that_guard = api_that_guard.unwrap();
                     let output_ok =
                         crate::api::editor::KansoEditor::link_at(&*api_that_guard, api_offset)?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__editor__KansoEditor_live_document_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoEditor_live_document",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoEditor>,
+            >>::sse_decode(&mut deserializer);
+            let api_reveal = <Vec<crate::api::types::Range16>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::editor::KansoEditor::live_document(
+                        &*api_that_guard,
+                        api_reveal,
+                    )?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -12503,6 +12556,65 @@ fn wire__crate__api__renderer__KansoRenderer_preview_blocks_impl(
         },
     )
 }
+fn wire__crate__api__renderer__KansoRenderer_preview_blocks_for_text_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoRenderer_preview_blocks_for_text",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoRenderer>,
+            >>::sse_decode(&mut deserializer);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            let api_text = <String>::sse_decode(&mut deserializer);
+            let api_palette = <crate::api::types::PaletteDto>::sse_decode(&mut deserializer);
+            let api_options = <crate::api::types::PreviewOptions>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::renderer::KansoRenderer::preview_blocks_for_text(
+                        &*api_that_guard,
+                        api_id,
+                        api_text,
+                        api_palette,
+                        api_options,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__renderer__KansoRenderer_preview_html_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -16905,6 +17017,63 @@ const _: fn() = || {
         let _: Vec<crate::api::types::LiveLine> = LiveBatch.lines;
     }
     {
+        let LiveDocBlock = None::<crate::api::types::LiveDocBlock>.unwrap();
+        let _: crate::api::types::LiveDocBlockKind = LiveDocBlock.kind;
+        let _: u8 = LiveDocBlock.level;
+        let _: Option<String> = LiveDocBlock.language;
+        let _: u32 = LiveDocBlock.first_line;
+        let _: u32 = LiveDocBlock.end_line;
+        let _: crate::api::types::Range16 = LiveDocBlock.source;
+        let _: u32 = LiveDocBlock.list_depth;
+        let _: u32 = LiveDocBlock.quote_depth;
+        let _: bool = LiveDocBlock.item_start;
+        let _: Option<u32> = LiveDocBlock.top;
+        let _: bool = LiveDocBlock.revealed;
+    }
+    {
+        let LiveDocLink = None::<crate::api::types::LiveDocLink>.unwrap();
+        let _: crate::api::types::Range16 = LiveDocLink.range;
+        let _: crate::api::types::Range16 = LiveDocLink.text;
+        let _: crate::api::types::LiveDocLinkKind = LiveDocLink.kind;
+        let _: String = LiveDocLink.target;
+        let _: Option<String> = LiveDocLink.heading;
+        let _: bool = LiveDocLink.missing;
+    }
+    {
+        let LiveDocMarker = None::<crate::api::types::LiveDocMarker>.unwrap();
+        let _: crate::api::types::Range16 = LiveDocMarker.range;
+        let _: u32 = LiveDocMarker.line;
+        let _: crate::api::types::LiveDocMarkerKind = LiveDocMarker.kind;
+        let _: u32 = LiveDocMarker.depth;
+        let _: String = LiveDocMarker.text;
+        let _: bool = LiveDocMarker.checked;
+    }
+    {
+        let LiveDocStyle = None::<crate::api::types::LiveDocStyle>.unwrap();
+        let _: crate::api::types::Range16 = LiveDocStyle.range;
+        let _: crate::api::types::LiveDocStyleKind = LiveDocStyle.kind;
+        let _: u8 = LiveDocStyle.level;
+    }
+    {
+        let LiveDocWidget = None::<crate::api::types::LiveDocWidget>.unwrap();
+        let _: crate::api::types::LiveDocBlockKind = LiveDocWidget.kind;
+        let _: Option<String> = LiveDocWidget.language;
+        let _: u32 = LiveDocWidget.first_line;
+        let _: u32 = LiveDocWidget.end_line;
+        let _: crate::api::types::Range16 = LiveDocWidget.lines;
+        let _: crate::api::types::Range16 = LiveDocWidget.source;
+    }
+    {
+        let LiveDocument = None::<crate::api::types::LiveDocument>.unwrap();
+        let _: u64 = LiveDocument.version;
+        let _: Vec<crate::api::types::Range16> = LiveDocument.conceal;
+        let _: Vec<crate::api::types::LiveDocBlock> = LiveDocument.blocks;
+        let _: Vec<crate::api::types::LiveDocMarker> = LiveDocument.markers;
+        let _: Vec<crate::api::types::LiveDocStyle> = LiveDocument.styles;
+        let _: Vec<crate::api::types::LiveDocLink> = LiveDocument.links;
+        let _: Vec<crate::api::types::LiveDocWidget> = LiveDocument.widgets;
+    }
+    {
         let LiveLine = None::<crate::api::types::LiveLine>.unwrap();
         let _: crate::api::types::Range16 = LiveLine.range;
         let _: u8 = LiveLine.level;
@@ -17415,6 +17584,13 @@ const _: fn() = || {
     {
         let PreviewRow = None::<crate::api::types::PreviewRow>.unwrap();
         let _: Vec<crate::api::types::PreviewCell> = PreviewRow.cells;
+    }
+    {
+        let PreviewSourcedBlock = None::<crate::api::types::PreviewSourcedBlock>.unwrap();
+        let _: crate::api::types::PreviewBlock = PreviewSourcedBlock.block;
+        let _: Option<u32> = PreviewSourcedBlock.first_line;
+        let _: Option<u32> = PreviewSourcedBlock.end_line;
+        let _: Option<crate::api::types::Range16> = PreviewSourcedBlock.lines;
     }
     {
         let PreviewSvg = None::<crate::api::types::PreviewSvg>.unwrap();
@@ -20623,6 +20799,66 @@ impl SseDecode for Vec<Vec<u8>> {
     }
 }
 
+impl SseDecode for Vec<crate::api::types::LiveDocBlock> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::LiveDocBlock>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::LiveDocLink> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::LiveDocLink>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::LiveDocMarker> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::LiveDocMarker>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::LiveDocStyle> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::LiveDocStyle>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::LiveDocWidget> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::LiveDocWidget>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::types::LiveLine> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -20934,6 +21170,20 @@ impl SseDecode for Vec<crate::api::types::PreviewRow> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::types::PreviewRow>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::PreviewSourcedBlock> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::PreviewSourcedBlock>::sse_decode(
+                deserializer,
+            ));
         }
         return ans_;
     }
@@ -21367,6 +21617,203 @@ impl SseDecode for crate::api::types::LiveBatch {
             conceal: var_conceal,
             runs: var_runs,
             lines: var_lines,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::LiveDocBlock {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_kind = <crate::api::types::LiveDocBlockKind>::sse_decode(deserializer);
+        let mut var_level = <u8>::sse_decode(deserializer);
+        let mut var_language = <Option<String>>::sse_decode(deserializer);
+        let mut var_firstLine = <u32>::sse_decode(deserializer);
+        let mut var_endLine = <u32>::sse_decode(deserializer);
+        let mut var_source = <crate::api::types::Range16>::sse_decode(deserializer);
+        let mut var_listDepth = <u32>::sse_decode(deserializer);
+        let mut var_quoteDepth = <u32>::sse_decode(deserializer);
+        let mut var_itemStart = <bool>::sse_decode(deserializer);
+        let mut var_top = <Option<u32>>::sse_decode(deserializer);
+        let mut var_revealed = <bool>::sse_decode(deserializer);
+        return crate::api::types::LiveDocBlock {
+            kind: var_kind,
+            level: var_level,
+            language: var_language,
+            first_line: var_firstLine,
+            end_line: var_endLine,
+            source: var_source,
+            list_depth: var_listDepth,
+            quote_depth: var_quoteDepth,
+            item_start: var_itemStart,
+            top: var_top,
+            revealed: var_revealed,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::LiveDocBlockKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::types::LiveDocBlockKind::Paragraph,
+            1 => crate::api::types::LiveDocBlockKind::Heading,
+            2 => crate::api::types::LiveDocBlockKind::Rule,
+            3 => crate::api::types::LiveDocBlockKind::Code,
+            4 => crate::api::types::LiveDocBlockKind::Table,
+            5 => crate::api::types::LiveDocBlockKind::Math,
+            6 => crate::api::types::LiveDocBlockKind::Html,
+            7 => crate::api::types::LiveDocBlockKind::FrontMatter,
+            8 => crate::api::types::LiveDocBlockKind::Image,
+            9 => crate::api::types::LiveDocBlockKind::Definition,
+            10 => crate::api::types::LiveDocBlockKind::Blank,
+            _ => unreachable!("Invalid variant for LiveDocBlockKind: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::LiveDocLink {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_range = <crate::api::types::Range16>::sse_decode(deserializer);
+        let mut var_text = <crate::api::types::Range16>::sse_decode(deserializer);
+        let mut var_kind = <crate::api::types::LiveDocLinkKind>::sse_decode(deserializer);
+        let mut var_target = <String>::sse_decode(deserializer);
+        let mut var_heading = <Option<String>>::sse_decode(deserializer);
+        let mut var_missing = <bool>::sse_decode(deserializer);
+        return crate::api::types::LiveDocLink {
+            range: var_range,
+            text: var_text,
+            kind: var_kind,
+            target: var_target,
+            heading: var_heading,
+            missing: var_missing,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::LiveDocLinkKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::types::LiveDocLinkKind::Url,
+            1 => crate::api::types::LiveDocLinkKind::Reference,
+            2 => crate::api::types::LiveDocLinkKind::Wiki,
+            _ => unreachable!("Invalid variant for LiveDocLinkKind: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::LiveDocMarker {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_range = <crate::api::types::Range16>::sse_decode(deserializer);
+        let mut var_line = <u32>::sse_decode(deserializer);
+        let mut var_kind = <crate::api::types::LiveDocMarkerKind>::sse_decode(deserializer);
+        let mut var_depth = <u32>::sse_decode(deserializer);
+        let mut var_text = <String>::sse_decode(deserializer);
+        let mut var_checked = <bool>::sse_decode(deserializer);
+        return crate::api::types::LiveDocMarker {
+            range: var_range,
+            line: var_line,
+            kind: var_kind,
+            depth: var_depth,
+            text: var_text,
+            checked: var_checked,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::LiveDocMarkerKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::types::LiveDocMarkerKind::Bullet,
+            1 => crate::api::types::LiveDocMarkerKind::Number,
+            2 => crate::api::types::LiveDocMarkerKind::Task,
+            3 => crate::api::types::LiveDocMarkerKind::Hidden,
+            4 => crate::api::types::LiveDocMarkerKind::Quote,
+            5 => crate::api::types::LiveDocMarkerKind::Indent,
+            6 => crate::api::types::LiveDocMarkerKind::Rule,
+            7 => crate::api::types::LiveDocMarkerKind::Underline,
+            _ => unreachable!("Invalid variant for LiveDocMarkerKind: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::LiveDocStyle {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_range = <crate::api::types::Range16>::sse_decode(deserializer);
+        let mut var_kind = <crate::api::types::LiveDocStyleKind>::sse_decode(deserializer);
+        let mut var_level = <u8>::sse_decode(deserializer);
+        return crate::api::types::LiveDocStyle {
+            range: var_range,
+            kind: var_kind,
+            level: var_level,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::LiveDocStyleKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::types::LiveDocStyleKind::Strong,
+            1 => crate::api::types::LiveDocStyleKind::Emphasis,
+            2 => crate::api::types::LiveDocStyleKind::Strikethrough,
+            3 => crate::api::types::LiveDocStyleKind::Code,
+            4 => crate::api::types::LiveDocStyleKind::Link,
+            5 => crate::api::types::LiveDocStyleKind::Heading,
+            6 => crate::api::types::LiveDocStyleKind::InlineMath,
+            7 => crate::api::types::LiveDocStyleKind::Quote,
+            8 => crate::api::types::LiveDocStyleKind::TaskDone,
+            _ => unreachable!("Invalid variant for LiveDocStyleKind: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::LiveDocWidget {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_kind = <crate::api::types::LiveDocBlockKind>::sse_decode(deserializer);
+        let mut var_language = <Option<String>>::sse_decode(deserializer);
+        let mut var_firstLine = <u32>::sse_decode(deserializer);
+        let mut var_endLine = <u32>::sse_decode(deserializer);
+        let mut var_lines = <crate::api::types::Range16>::sse_decode(deserializer);
+        let mut var_source = <crate::api::types::Range16>::sse_decode(deserializer);
+        return crate::api::types::LiveDocWidget {
+            kind: var_kind,
+            language: var_language,
+            first_line: var_firstLine,
+            end_line: var_endLine,
+            lines: var_lines,
+            source: var_source,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::LiveDocument {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_version = <u64>::sse_decode(deserializer);
+        let mut var_conceal = <Vec<crate::api::types::Range16>>::sse_decode(deserializer);
+        let mut var_blocks = <Vec<crate::api::types::LiveDocBlock>>::sse_decode(deserializer);
+        let mut var_markers = <Vec<crate::api::types::LiveDocMarker>>::sse_decode(deserializer);
+        let mut var_styles = <Vec<crate::api::types::LiveDocStyle>>::sse_decode(deserializer);
+        let mut var_links = <Vec<crate::api::types::LiveDocLink>>::sse_decode(deserializer);
+        let mut var_widgets = <Vec<crate::api::types::LiveDocWidget>>::sse_decode(deserializer);
+        return crate::api::types::LiveDocument {
+            version: var_version,
+            conceal: var_conceal,
+            blocks: var_blocks,
+            markers: var_markers,
+            styles: var_styles,
+            links: var_links,
+            widgets: var_widgets,
         };
     }
 }
@@ -22994,6 +23441,22 @@ impl SseDecode for crate::api::types::PreviewRow {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_cells = <Vec<crate::api::types::PreviewCell>>::sse_decode(deserializer);
         return crate::api::types::PreviewRow { cells: var_cells };
+    }
+}
+
+impl SseDecode for crate::api::types::PreviewSourcedBlock {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_block = <crate::api::types::PreviewBlock>::sse_decode(deserializer);
+        let mut var_firstLine = <Option<u32>>::sse_decode(deserializer);
+        let mut var_endLine = <Option<u32>>::sse_decode(deserializer);
+        let mut var_lines = <Option<crate::api::types::Range16>>::sse_decode(deserializer);
+        return crate::api::types::PreviewSourcedBlock {
+            block: var_block,
+            first_line: var_firstLine,
+            end_line: var_endLine,
+            lines: var_lines,
+        };
     }
 }
 
@@ -24869,936 +25332,948 @@ fn pde_ffi_dispatcher_primary_impl(
             wire__crate__api__editor__KansoEditor_keep_mine_impl(port, ptr, rust_vec_len, data_len)
         }
         81 => wire__crate__api__editor__KansoEditor_link_at_impl(port, ptr, rust_vec_len, data_len),
-        82 => wire__crate__api__editor__KansoEditor_live_layout_impl(
+        82 => wire__crate__api__editor__KansoEditor_live_document_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        84 => wire__crate__api__editor__KansoEditor_remote_cursors_impl(
+        83 => wire__crate__api__editor__KansoEditor_live_layout_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        85 => wire__crate__api__editor__KansoEditor_remove_property_impl(
+        85 => wire__crate__api__editor__KansoEditor_remote_cursors_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        87 => wire__crate__api__editor__KansoEditor_select_comment_impl(
+        86 => wire__crate__api__editor__KansoEditor_remove_property_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        88 => wire__crate__api__editor__KansoEditor_set_property_impl(
+        88 => wire__crate__api__editor__KansoEditor_select_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        90 => wire__crate__api__editor__KansoEditor_set_word_goal_impl(
+        89 => wire__crate__api__editor__KansoEditor_set_property_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        91 => {
+        91 => wire__crate__api__editor__KansoEditor_set_word_goal_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        92 => {
             wire__crate__api__editor__KansoEditor_snapshot_impl(port, ptr, rust_vec_len, data_len)
         }
-        92 => wire__crate__api__editor__KansoEditor_styled_runs_impl(
+        93 => wire__crate__api__editor__KansoEditor_styled_runs_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        94 => {
+        95 => {
             wire__crate__api__editor__KansoEditor_use_theirs_impl(port, ptr, rust_vec_len, data_len)
         }
-        95 => wire__crate__api__gallery__KansoGallery_index_impl(port, ptr, rust_vec_len, data_len),
-        96 => {
+        96 => wire__crate__api__gallery__KansoGallery_index_impl(port, ptr, rust_vec_len, data_len),
+        97 => {
             wire__crate__api__gallery__KansoGallery_install_impl(port, ptr, rust_vec_len, data_len)
         }
-        97 => wire__crate__api__gallery__KansoGallery_installed_theme_tokens_impl(
+        98 => wire__crate__api__gallery__KansoGallery_installed_theme_tokens_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        98 => wire__crate__api__gallery__KansoGallery_installed_themes_impl(
+        99 => wire__crate__api__gallery__KansoGallery_installed_themes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        99 => wire__crate__api__gallery__KansoGallery_uninstall_impl(
+        100 => wire__crate__api__gallery__KansoGallery_uninstall_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        104 => wire__crate__api__library__KansoLibrary_attachment_impl(
+        105 => wire__crate__api__library__KansoLibrary_attachment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        105 => wire__crate__api__library__KansoLibrary_back_up_now_impl(
+        106 => wire__crate__api__library__KansoLibrary_back_up_now_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        106 => wire__crate__api__library__KansoLibrary_backup_if_due_impl(
+        107 => wire__crate__api__library__KansoLibrary_backup_if_due_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        107 => {
+        108 => {
             wire__crate__api__library__KansoLibrary_backups_impl(port, ptr, rust_vec_len, data_len)
         }
-        108 => {
+        109 => {
             wire__crate__api__library__KansoLibrary_board_impl(port, ptr, rust_vec_len, data_len)
         }
-        109 => {
+        110 => {
             wire__crate__api__library__KansoLibrary_capture_impl(port, ptr, rust_vec_len, data_len)
         }
-        110 => {
+        111 => {
             wire__crate__api__library__KansoLibrary_change_impl(port, ptr, rust_vec_len, data_len)
         }
-        111 => {
+        112 => {
             wire__crate__api__library__KansoLibrary_changes_impl(port, ptr, rust_vec_len, data_len)
         }
-        112 => {
+        113 => {
             wire__crate__api__library__KansoLibrary_create_impl(port, ptr, rust_vec_len, data_len)
         }
-        113 => wire__crate__api__library__KansoLibrary_create_linked_note_impl(
+        114 => wire__crate__api__library__KansoLibrary_create_linked_note_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        114 => wire__crate__api__library__KansoLibrary_create_notebook_impl(
+        115 => wire__crate__api__library__KansoLibrary_create_notebook_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        115 => wire__crate__api__library__KansoLibrary_create_tag_impl(
+        116 => wire__crate__api__library__KansoLibrary_create_tag_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        117 => wire__crate__api__library__KansoLibrary_daily_template_impl(
+        118 => wire__crate__api__library__KansoLibrary_daily_template_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        118 => wire__crate__api__library__KansoLibrary_default_word_goal_impl(
+        119 => wire__crate__api__library__KansoLibrary_default_word_goal_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        119 => wire__crate__api__library__KansoLibrary_delete_backup_impl(
+        120 => wire__crate__api__library__KansoLibrary_delete_backup_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        120 => wire__crate__api__library__KansoLibrary_delete_notebook_impl(
+        121 => wire__crate__api__library__KansoLibrary_delete_notebook_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        121 => wire__crate__api__library__KansoLibrary_delete_tag_impl(
+        122 => wire__crate__api__library__KansoLibrary_delete_tag_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        124 => wire__crate__api__library__KansoLibrary_duplicate_impl(
+        125 => wire__crate__api__library__KansoLibrary_duplicate_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        125 => wire__crate__api__library__KansoLibrary_edit_impl(port, ptr, rust_vec_len, data_len),
-        126 => wire__crate__api__library__KansoLibrary_empty_trash_impl(
+        126 => wire__crate__api__library__KansoLibrary_edit_impl(port, ptr, rust_vec_len, data_len),
+        127 => wire__crate__api__library__KansoLibrary_empty_trash_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        128 => {
+        129 => {
             wire__crate__api__library__KansoLibrary_history_impl(port, ptr, rust_vec_len, data_len)
         }
-        129 => wire__crate__api__library__KansoLibrary_history_diff_impl(
+        130 => wire__crate__api__library__KansoLibrary_history_diff_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        130 => {
+        131 => {
             wire__crate__api__library__KansoLibrary_import_impl(port, ptr, rust_vec_len, data_len)
         }
-        131 => wire__crate__api__library__KansoLibrary_import_plan_impl(
+        132 => wire__crate__api__library__KansoLibrary_import_plan_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        132 => wire__crate__api__library__KansoLibrary_journal_month_impl(
+        133 => wire__crate__api__library__KansoLibrary_journal_month_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        133 => wire__crate__api__library__KansoLibrary_journal_open_day_impl(
+        134 => wire__crate__api__library__KansoLibrary_journal_open_day_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        134 => wire__crate__api__library__KansoLibrary_journal_step_impl(
+        135 => wire__crate__api__library__KansoLibrary_journal_step_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        135 => wire__crate__api__library__KansoLibrary_journal_today_impl(
+        136 => wire__crate__api__library__KansoLibrary_journal_today_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        138 => wire__crate__api__library__KansoLibrary_list_impl(port, ptr, rust_vec_len, data_len),
-        140 => wire__crate__api__library__KansoLibrary_move_card_impl(
+        139 => wire__crate__api__library__KansoLibrary_list_impl(port, ptr, rust_vec_len, data_len),
+        141 => wire__crate__api__library__KansoLibrary_move_card_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        141 => wire__crate__api__library__KansoLibrary_new_from_template_impl(
+        142 => wire__crate__api__library__KansoLibrary_new_from_template_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        142 => wire__crate__api__library__KansoLibrary_new_template_impl(
+        143 => wire__crate__api__library__KansoLibrary_new_template_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        143 => wire__crate__api__library__KansoLibrary_note_impl(port, ptr, rust_vec_len, data_len),
-        144 => wire__crate__api__library__KansoLibrary_note_link_impl(
+        144 => wire__crate__api__library__KansoLibrary_note_impl(port, ptr, rust_vec_len, data_len),
+        145 => wire__crate__api__library__KansoLibrary_note_link_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        145 => wire__crate__api__library__KansoLibrary_note_word_goal_impl(
+        146 => wire__crate__api__library__KansoLibrary_note_word_goal_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        148 => wire__crate__api__library__KansoLibrary_notebooks_impl(
+        149 => wire__crate__api__library__KansoLibrary_notebooks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        149 => wire__crate__api__library__KansoLibrary_open_impl(port, ptr, rust_vec_len, data_len),
-        150 => wire__crate__api__library__KansoLibrary_open_documents_impl(
+        150 => wire__crate__api__library__KansoLibrary_open_impl(port, ptr, rust_vec_len, data_len),
+        151 => wire__crate__api__library__KansoLibrary_open_documents_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        151 => wire__crate__api__library__KansoLibrary_overdue_tasks_impl(
+        152 => wire__crate__api__library__KansoLibrary_overdue_tasks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        152 => {
+        153 => {
             wire__crate__api__library__KansoLibrary_overview_impl(port, ptr, rust_vec_len, data_len)
         }
-        154 => wire__crate__api__library__KansoLibrary_properties_impl(
+        155 => wire__crate__api__library__KansoLibrary_properties_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        155 => wire__crate__api__library__KansoLibrary_publisher_impl(
+        156 => wire__crate__api__library__KansoLibrary_publisher_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        156 => wire__crate__api__library__KansoLibrary_query_view_impl(
+        157 => wire__crate__api__library__KansoLibrary_query_view_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        157 => wire__crate__api__library__KansoLibrary_reminder_answer_impl(
+        158 => wire__crate__api__library__KansoLibrary_reminder_answer_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        158 => wire__crate__api__library__KansoLibrary_reminders_forget_impl(
+        159 => wire__crate__api__library__KansoLibrary_reminders_forget_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        159 => wire__crate__api__library__KansoLibrary_reminders_forget_future_impl(
+        160 => wire__crate__api__library__KansoLibrary_reminders_forget_future_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        160 => wire__crate__api__library__KansoLibrary_reminders_plan_impl(
+        161 => wire__crate__api__library__KansoLibrary_reminders_plan_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        161 => wire__crate__api__library__KansoLibrary_rename_notebook_impl(
+        162 => wire__crate__api__library__KansoLibrary_rename_notebook_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        162 => wire__crate__api__library__KansoLibrary_rename_tag_impl(
+        163 => wire__crate__api__library__KansoLibrary_rename_tag_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        164 => wire__crate__api__library__KansoLibrary_replace_apply_impl(
+        165 => wire__crate__api__library__KansoLibrary_replace_apply_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        165 => wire__crate__api__library__KansoLibrary_replace_preview_impl(
+        166 => wire__crate__api__library__KansoLibrary_replace_preview_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        166 => wire__crate__api__library__KansoLibrary_replace_undo_impl(
+        167 => wire__crate__api__library__KansoLibrary_replace_undo_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        167 => wire__crate__api__library__KansoLibrary_restore_version_impl(
+        168 => wire__crate__api__library__KansoLibrary_restore_version_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        168 => wire__crate__api__library__KansoLibrary_save_impl(port, ptr, rust_vec_len, data_len),
-        169 => wire__crate__api__library__KansoLibrary_save_drops_impl(
+        169 => wire__crate__api__library__KansoLibrary_save_impl(port, ptr, rust_vec_len, data_len),
+        170 => wire__crate__api__library__KansoLibrary_save_drops_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        170 => {
+        171 => {
             wire__crate__api__library__KansoLibrary_search_impl(port, ptr, rust_vec_len, data_len)
         }
-        171 => wire__crate__api__library__KansoLibrary_set_daily_template_impl(
+        172 => wire__crate__api__library__KansoLibrary_set_daily_template_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        172 => wire__crate__api__library__KansoLibrary_set_default_word_goal_impl(
+        173 => wire__crate__api__library__KansoLibrary_set_default_word_goal_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        173 => wire__crate__api__library__KansoLibrary_set_note_word_goal_impl(
+        174 => wire__crate__api__library__KansoLibrary_set_note_word_goal_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        174 => wire__crate__api__library__KansoLibrary_set_notebook_color_impl(
+        175 => wire__crate__api__library__KansoLibrary_set_notebook_color_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        175 => wire__crate__api__library__KansoLibrary_set_notebook_icon_impl(
+        176 => wire__crate__api__library__KansoLibrary_set_notebook_icon_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        176 => wire__crate__api__library__KansoLibrary_set_tag_color_impl(
+        177 => wire__crate__api__library__KansoLibrary_set_tag_color_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        177 => {
+        178 => {
             wire__crate__api__library__KansoLibrary_set_task_impl(port, ptr, rust_vec_len, data_len)
         }
-        178 => wire__crate__api__library__KansoLibrary_set_voice_settings_impl(
+        179 => wire__crate__api__library__KansoLibrary_set_voice_settings_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        183 => wire__crate__api__library__KansoLibrary_tag_places_impl(
+        184 => wire__crate__api__library__KansoLibrary_tag_places_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        184 => wire__crate__api__library__KansoLibrary_tags_impl(port, ptr, rust_vec_len, data_len),
-        185 => {
+        185 => wire__crate__api__library__KansoLibrary_tags_impl(port, ptr, rust_vec_len, data_len),
+        186 => {
             wire__crate__api__library__KansoLibrary_tasks_impl(port, ptr, rust_vec_len, data_len)
         }
-        186 => wire__crate__api__library__KansoLibrary_templates_impl(
+        187 => wire__crate__api__library__KansoLibrary_templates_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        188 => wire__crate__api__library__KansoLibrary_today_note_impl(
+        189 => wire__crate__api__library__KansoLibrary_today_note_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        189 => wire__crate__api__library__KansoLibrary_toggle_fold_impl(
+        190 => wire__crate__api__library__KansoLibrary_toggle_fold_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        190 => wire__crate__api__library__KansoLibrary_toggle_task_at_impl(
+        191 => wire__crate__api__library__KansoLibrary_toggle_task_at_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        191 => {
+        192 => {
             wire__crate__api__library__KansoLibrary_trash_impl(port, ptr, rust_vec_len, data_len)
         }
-        192 => wire__crate__api__library__KansoLibrary_undo_impl(port, ptr, rust_vec_len, data_len),
-        193 => wire__crate__api__library__KansoLibrary_visible_notebooks_impl(
+        193 => wire__crate__api__library__KansoLibrary_undo_impl(port, ptr, rust_vec_len, data_len),
+        194 => wire__crate__api__library__KansoLibrary_visible_notebooks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        194 => wire__crate__api__library__KansoLibrary_voice_settings_impl(
+        195 => wire__crate__api__library__KansoLibrary_voice_settings_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        195 => wire__crate__api__library__KansoLibrary_word_goal_presets_impl(
+        196 => wire__crate__api__library__KansoLibrary_word_goal_presets_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        196 => wire__crate__api__linking__KansoLinking_backlinks_impl(
+        197 => wire__crate__api__linking__KansoLinking_backlinks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        198 => wire__crate__api__linking__KansoLinking_link_mention_impl(
+        199 => wire__crate__api__linking__KansoLinking_link_mention_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        200 => {
+        201 => {
             wire__crate__api__linking__KansoLinking_palette_impl(port, ptr, rust_vec_len, data_len)
         }
-        201 => wire__crate__api__linking__KansoLinking_quick_open_impl(
+        202 => wire__crate__api__linking__KansoLinking_quick_open_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        202 => wire__crate__api__linking__KansoLinking_unlinked_mentions_impl(
+        203 => wire__crate__api__linking__KansoLinking_unlinked_mentions_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        203 => wire__crate__api__locks__KansoLocks_begin_biometric_enrollment_impl(
+        204 => wire__crate__api__locks__KansoLocks_begin_biometric_enrollment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        204 => wire__crate__api__locks__KansoLocks_begin_biometric_unlock_impl(
+        205 => wire__crate__api__locks__KansoLocks_begin_biometric_unlock_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        205 => wire__crate__api__locks__KansoLocks_biometrics_on_impl(
+        206 => wire__crate__api__locks__KansoLocks_biometrics_on_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        206 => wire__crate__api__locks__KansoLocks_change_password_impl(
+        207 => wire__crate__api__locks__KansoLocks_change_password_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        207 => wire__crate__api__locks__KansoLocks_is_note_unlocked_impl(
+        208 => wire__crate__api__locks__KansoLocks_is_note_unlocked_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        208 => {
+        209 => {
             wire__crate__api__locks__KansoLocks_is_unlocked_impl(port, ptr, rust_vec_len, data_len)
         }
-        209 => {
+        210 => {
             wire__crate__api__locks__KansoLocks_library_id_impl(port, ptr, rust_vec_len, data_len)
         }
-        210 => wire__crate__api__locks__KansoLocks_lock_impl(port, ptr, rust_vec_len, data_len),
-        211 => {
+        211 => wire__crate__api__locks__KansoLocks_lock_impl(port, ptr, rust_vec_len, data_len),
+        212 => {
             wire__crate__api__locks__KansoLocks_lock_events_impl(port, ptr, rust_vec_len, data_len)
         }
-        212 => wire__crate__api__locks__KansoLocks_lock_for_background_impl(
+        213 => wire__crate__api__locks__KansoLocks_lock_for_background_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        213 => {
+        214 => {
             wire__crate__api__locks__KansoLocks_lock_note_impl(port, ptr, rust_vec_len, data_len)
         }
-        214 => wire__crate__api__locks__KansoLocks_lock_note_with_session_impl(
+        215 => wire__crate__api__locks__KansoLocks_lock_note_with_session_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        215 => wire__crate__api__locks__KansoLocks_lock_notebook_impl(
+        216 => wire__crate__api__locks__KansoLocks_lock_notebook_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        216 => {
+        217 => {
             wire__crate__api__locks__KansoLocks_lock_status_impl(port, ptr, rust_vec_len, data_len)
         }
-        217 => wire__crate__api__locks__KansoLocks_notebook_is_open_impl(
+        218 => wire__crate__api__locks__KansoLocks_notebook_is_open_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        218 => wire__crate__api__locks__KansoLocks_remove_note_lock_impl(
+        219 => wire__crate__api__locks__KansoLocks_remove_note_lock_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        219 => wire__crate__api__locks__KansoLocks_remove_notebook_lock_impl(
+        220 => wire__crate__api__locks__KansoLocks_remove_notebook_lock_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        220 => wire__crate__api__locks__KansoLocks_turn_off_biometrics_impl(
+        221 => wire__crate__api__locks__KansoLocks_turn_off_biometrics_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        221 => wire__crate__api__locks__KansoLocks_unlock_impl(port, ptr, rust_vec_len, data_len),
-        222 => {
+        222 => wire__crate__api__locks__KansoLocks_unlock_impl(port, ptr, rust_vec_len, data_len),
+        223 => {
             wire__crate__api__locks__KansoLocks_unlock_note_impl(port, ptr, rust_vec_len, data_len)
         }
-        223 => wire__crate__api__locks__KansoLocks_unlock_notebook_impl(
+        224 => wire__crate__api__locks__KansoLocks_unlock_notebook_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        224 => wire__crate__api__publish__KansoPublisher_expiry_options_impl(
+        225 => wire__crate__api__publish__KansoPublisher_expiry_options_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        225 => {
+        226 => {
             wire__crate__api__publish__KansoPublisher_note_impl(port, ptr, rust_vec_len, data_len)
         }
-        226 => wire__crate__api__publish__KansoPublisher_notebook_impl(
+        227 => wire__crate__api__publish__KansoPublisher_notebook_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        227 => wire__crate__api__publish__KansoPublisher_publish_note_impl(
+        228 => wire__crate__api__publish__KansoPublisher_publish_note_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        228 => wire__crate__api__publish__KansoPublisher_publish_notebook_impl(
+        229 => wire__crate__api__publish__KansoPublisher_publish_notebook_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        229 => wire__crate__api__publish__KansoPublisher_unpublish_note_impl(
+        230 => wire__crate__api__publish__KansoPublisher_unpublish_note_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        230 => wire__crate__api__publish__KansoPublisher_unpublish_notebook_impl(
+        231 => wire__crate__api__publish__KansoPublisher_unpublish_notebook_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        231 => wire__crate__api__renderer__KansoRenderer_builtin_theme_tokens_impl(
+        232 => wire__crate__api__renderer__KansoRenderer_builtin_theme_tokens_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        232 => wire__crate__api__renderer__KansoRenderer_builtin_themes_impl(
+        233 => wire__crate__api__renderer__KansoRenderer_builtin_themes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        233 => wire__crate__api__renderer__KansoRenderer_code_block_impl(
+        234 => wire__crate__api__renderer__KansoRenderer_code_block_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        234 => wire__crate__api__renderer__KansoRenderer_diagram_renderer_impl(
+        235 => wire__crate__api__renderer__KansoRenderer_diagram_renderer_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        235 => wire__crate__api__renderer__KansoRenderer_diagram_svg_impl(
+        236 => wire__crate__api__renderer__KansoRenderer_diagram_svg_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        236 => wire__crate__api__renderer__KansoRenderer_highlight_impl(
+        237 => wire__crate__api__renderer__KansoRenderer_highlight_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        237 => wire__crate__api__renderer__KansoRenderer_icon_theme_icons_impl(
+        238 => wire__crate__api__renderer__KansoRenderer_icon_theme_icons_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        238 => wire__crate__api__renderer__KansoRenderer_icon_themes_impl(
+        239 => wire__crate__api__renderer__KansoRenderer_icon_themes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        239 => wire__crate__api__renderer__KansoRenderer_link_target_impl(
+        240 => wire__crate__api__renderer__KansoRenderer_link_target_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        240 => wire__crate__api__renderer__KansoRenderer_math_svg_impl(
+        241 => wire__crate__api__renderer__KansoRenderer_math_svg_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        241 => wire__crate__api__renderer__KansoRenderer_page_html_impl(
+        242 => wire__crate__api__renderer__KansoRenderer_page_html_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        242 => wire__crate__api__renderer__KansoRenderer_page_pdf_impl(
+        243 => wire__crate__api__renderer__KansoRenderer_page_pdf_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        243 => wire__crate__api__renderer__KansoRenderer_preview_blocks_impl(
+        244 => wire__crate__api__renderer__KansoRenderer_preview_blocks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        244 => wire__crate__api__renderer__KansoRenderer_preview_html_impl(
+        245 => wire__crate__api__renderer__KansoRenderer_preview_blocks_for_text_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        245 => wire__crate__api__renderer__KansoRenderer_preview_html_with_impl(
+        246 => wire__crate__api__renderer__KansoRenderer_preview_html_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        246 => wire__crate__api__renderer__KansoRenderer_set_diagram_renderer_impl(
+        247 => wire__crate__api__renderer__KansoRenderer_preview_html_with_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        247 => wire__crate__api__renderer__KansoRenderer_set_fonts_impl(
+        248 => wire__crate__api__renderer__KansoRenderer_set_diagram_renderer_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        248 => wire__crate__api__renderer__KansoRenderer_styled_runs_impl(
+        249 => wire__crate__api__renderer__KansoRenderer_set_fonts_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        249 => wire__crate__api__renderer__KansoRenderer_theme_tokens_impl(
+        250 => wire__crate__api__renderer__KansoRenderer_styled_runs_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        250 => wire__crate__api__shared__KansoShared_accept_impl(port, ptr, rust_vec_len, data_len),
-        251 => wire__crate__api__shared__KansoShared_accept_new_key_impl(
+        251 => wire__crate__api__renderer__KansoRenderer_theme_tokens_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        252 => wire__crate__api__shared__KansoShared_add_comment_impl(
+        252 => wire__crate__api__shared__KansoShared_accept_impl(port, ptr, rust_vec_len, data_len),
+        253 => wire__crate__api__shared__KansoShared_accept_new_key_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        253 => wire__crate__api__shared__KansoShared_approve_request_impl(
+        254 => wire__crate__api__shared__KansoShared_add_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        254 => {
-            wire__crate__api__shared__KansoShared_can_share_impl(port, ptr, rust_vec_len, data_len)
-        }
-        255 => wire__crate__api__shared__KansoShared_cancel_link_impl(
+        255 => wire__crate__api__shared__KansoShared_approve_request_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
         256 => {
+            wire__crate__api__shared__KansoShared_can_share_impl(port, ptr, rust_vec_len, data_len)
+        }
+        257 => wire__crate__api__shared__KansoShared_cancel_link_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        258 => {
             wire__crate__api__shared__KansoShared_close_live_impl(port, ptr, rust_vec_len, data_len)
         }
-        257 => {
+        259 => {
             wire__crate__api__shared__KansoShared_comments_impl(port, ptr, rust_vec_len, data_len)
         }
-        258 => wire__crate__api__shared__KansoShared_comments_band_impl(
+        260 => wire__crate__api__shared__KansoShared_comments_band_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        259 => wire__crate__api__shared__KansoShared_create_link_impl(
+        261 => wire__crate__api__shared__KansoShared_create_link_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        260 => {
+        262 => {
             wire__crate__api__shared__KansoShared_decline_impl(port, ptr, rust_vec_len, data_len)
         }
-        261 => wire__crate__api__shared__KansoShared_decline_request_impl(
+        263 => wire__crate__api__shared__KansoShared_decline_request_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        262 => wire__crate__api__shared__KansoShared_delete_comment_impl(
+        264 => wire__crate__api__shared__KansoShared_delete_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        263 => wire__crate__api__shared__KansoShared_dismiss_problems_impl(
+        265 => wire__crate__api__shared__KansoShared_dismiss_problems_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        264 => wire__crate__api__shared__KansoShared_edit_comment_impl(
+        266 => wire__crate__api__shared__KansoShared_edit_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        265 => wire__crate__api__shared__KansoShared_events_impl(port, ptr, rust_vec_len, data_len),
-        266 => wire__crate__api__shared__KansoShared_info_impl(port, ptr, rust_vec_len, data_len),
-        267 => wire__crate__api__shared__KansoShared_invitations_impl(
+        267 => wire__crate__api__shared__KansoShared_events_impl(port, ptr, rust_vec_len, data_len),
+        268 => wire__crate__api__shared__KansoShared_info_impl(port, ptr, rust_vec_len, data_len),
+        269 => wire__crate__api__shared__KansoShared_invitations_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        268 => wire__crate__api__shared__KansoShared_invite_impl(port, ptr, rust_vec_len, data_len),
-        269 => wire__crate__api__shared__KansoShared_join_impl(port, ptr, rust_vec_len, data_len),
-        270 => wire__crate__api__shared__KansoShared_leave_impl(port, ptr, rust_vec_len, data_len),
-        271 => wire__crate__api__shared__KansoShared_live_status_impl(
+        270 => wire__crate__api__shared__KansoShared_invite_impl(port, ptr, rust_vec_len, data_len),
+        271 => wire__crate__api__shared__KansoShared_join_impl(port, ptr, rust_vec_len, data_len),
+        272 => wire__crate__api__shared__KansoShared_leave_impl(port, ptr, rust_vec_len, data_len),
+        273 => wire__crate__api__shared__KansoShared_live_status_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        272 => wire__crate__api__shared__KansoShared_lookup_person_impl(
+        274 => wire__crate__api__shared__KansoShared_lookup_person_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        273 => wire__crate__api__shared__KansoShared_open_comments_impl(
+        275 => wire__crate__api__shared__KansoShared_open_comments_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        274 => {
+        276 => {
             wire__crate__api__shared__KansoShared_open_live_impl(port, ptr, rust_vec_len, data_len)
         }
-        275 => wire__crate__api__shared__KansoShared_remove_impl(port, ptr, rust_vec_len, data_len),
-        276 => wire__crate__api__shared__KansoShared_resolve_comment_impl(
+        277 => wire__crate__api__shared__KansoShared_remove_impl(port, ptr, rust_vec_len, data_len),
+        278 => wire__crate__api__shared__KansoShared_resolve_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        277 => {
+        279 => {
             wire__crate__api__shared__KansoShared_set_role_impl(port, ptr, rust_vec_len, data_len)
         }
-        278 => wire__crate__api__shared__KansoShared_share_impl(port, ptr, rust_vec_len, data_len),
-        279 => wire__crate__api__shared__KansoShared_stop_impl(port, ptr, rust_vec_len, data_len),
-        280 => wire__crate__api__shared__KansoShared_sync_shared_impl(
+        280 => wire__crate__api__shared__KansoShared_share_impl(port, ptr, rust_vec_len, data_len),
+        281 => wire__crate__api__shared__KansoShared_stop_impl(port, ptr, rust_vec_len, data_len),
+        282 => wire__crate__api__shared__KansoShared_sync_shared_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        281 => wire__crate__api__shared__KansoShared_verify_person_impl(
+        283 => wire__crate__api__shared__KansoShared_verify_person_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        282 => {
+        284 => {
             wire__crate__api__sync__KansoSync_check_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        283 => {
+        285 => {
             wire__crate__api__sync__KansoSync_default_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        287 => {
+        289 => {
             wire__crate__api__sync__KansoSync_push_enabled_impl(port, ptr, rust_vec_len, data_len)
         }
-        288 => {
+        290 => {
             wire__crate__api__sync__KansoSync_refresh_push_impl(port, ptr, rust_vec_len, data_len)
         }
-        289 => {
+        291 => {
             wire__crate__api__sync__KansoSync_set_foreground_impl(port, ptr, rust_vec_len, data_len)
         }
-        290 => wire__crate__api__sync__KansoSync_set_push_enabled_impl(
+        292 => wire__crate__api__sync__KansoSync_set_push_enabled_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        291 => {
+        293 => {
             wire__crate__api__sync__KansoSync_set_push_token_impl(port, ptr, rust_vec_len, data_len)
         }
-        292 => {
+        294 => {
             wire__crate__api__sync__KansoSync_set_settings_impl(port, ptr, rust_vec_len, data_len)
         }
-        293 => wire__crate__api__sync__KansoSync_settings_impl(port, ptr, rust_vec_len, data_len),
-        294 => wire__crate__api__sync__KansoSync_sign_in_password_impl(
+        295 => wire__crate__api__sync__KansoSync_settings_impl(port, ptr, rust_vec_len, data_len),
+        296 => wire__crate__api__sync__KansoSync_sign_in_password_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        295 => wire__crate__api__sync__KansoSync_sign_out_impl(port, ptr, rust_vec_len, data_len),
-        296 => wire__crate__api__sync__KansoSync_status_impl(port, ptr, rust_vec_len, data_len),
-        298 => {
+        297 => wire__crate__api__sync__KansoSync_sign_out_impl(port, ptr, rust_vec_len, data_len),
+        298 => wire__crate__api__sync__KansoSync_status_impl(port, ptr, rust_vec_len, data_len),
+        300 => {
             wire__crate__api__sync__KansoSync_status_stream_impl(port, ptr, rust_vec_len, data_len)
         }
-        299 => wire__crate__api__sync__KansoSync_sync_now_impl(port, ptr, rust_vec_len, data_len),
-        300 => wire__crate__api__themes__KansoThemes_fit_impl(port, ptr, rust_vec_len, data_len),
-        301 => wire__crate__api__themes__KansoThemes_icon_themes_impl(
+        301 => wire__crate__api__sync__KansoSync_sync_now_impl(port, ptr, rust_vec_len, data_len),
+        302 => wire__crate__api__themes__KansoThemes_fit_impl(port, ptr, rust_vec_len, data_len),
+        303 => wire__crate__api__themes__KansoThemes_icon_themes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        302 => wire__crate__api__themes__KansoThemes_import_impl(port, ptr, rust_vec_len, data_len),
-        303 => wire__crate__api__themes__KansoThemes_import_icon_theme_impl(
+        304 => wire__crate__api__themes__KansoThemes_import_impl(port, ptr, rust_vec_len, data_len),
+        305 => wire__crate__api__themes__KansoThemes_import_icon_theme_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        304 => wire__crate__api__themes__KansoThemes_list_impl(port, ptr, rust_vec_len, data_len),
-        305 => {
+        306 => wire__crate__api__themes__KansoThemes_list_impl(port, ptr, rust_vec_len, data_len),
+        307 => {
             wire__crate__api__themes__KansoThemes_notices_impl(port, ptr, rust_vec_len, data_len)
         }
-        306 => wire__crate__api__themes__KansoThemes_styled_runs_impl(
+        308 => wire__crate__api__themes__KansoThemes_styled_runs_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        307 => {
+        309 => {
             wire__crate__api__diagnostics__backup_excluded_impl(port, ptr, rust_vec_len, data_len)
         }
-        314 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
-        316 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
-        318 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
-        319 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
+        316 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
+        318 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
+        320 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
+        321 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -25826,74 +26301,74 @@ fn pde_ffi_dispatcher_sync_impl(
         }
         69 => wire__crate__api__editor__KansoEditor_apply_impl(ptr, rust_vec_len, data_len),
         72 => wire__crate__api__editor__KansoEditor_command_impl(ptr, rust_vec_len, data_len),
-        83 => wire__crate__api__editor__KansoEditor_redo_impl(ptr, rust_vec_len, data_len),
-        86 => wire__crate__api__editor__KansoEditor_select_impl(ptr, rust_vec_len, data_len),
-        89 => wire__crate__api__editor__KansoEditor_set_title_impl(ptr, rust_vec_len, data_len),
-        93 => wire__crate__api__editor__KansoEditor_undo_impl(ptr, rust_vec_len, data_len),
-        100 => wire__crate__api__library__KansoLibrary_account_impl(ptr, rust_vec_len, data_len),
-        101 => wire__crate__api__library__KansoLibrary_account_settings_impl(
+        84 => wire__crate__api__editor__KansoEditor_redo_impl(ptr, rust_vec_len, data_len),
+        87 => wire__crate__api__editor__KansoEditor_select_impl(ptr, rust_vec_len, data_len),
+        90 => wire__crate__api__editor__KansoEditor_set_title_impl(ptr, rust_vec_len, data_len),
+        94 => wire__crate__api__editor__KansoEditor_undo_impl(ptr, rust_vec_len, data_len),
+        101 => wire__crate__api__library__KansoLibrary_account_impl(ptr, rust_vec_len, data_len),
+        102 => wire__crate__api__library__KansoLibrary_account_settings_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        102 => wire__crate__api__library__KansoLibrary_ai_impl(ptr, rust_vec_len, data_len),
-        103 => wire__crate__api__library__KansoLibrary_approvals_impl(ptr, rust_vec_len, data_len),
-        116 => {
+        103 => wire__crate__api__library__KansoLibrary_ai_impl(ptr, rust_vec_len, data_len),
+        104 => wire__crate__api__library__KansoLibrary_approvals_impl(ptr, rust_vec_len, data_len),
+        117 => {
             wire__crate__api__library__KansoLibrary_daily_date_of_impl(ptr, rust_vec_len, data_len)
         }
-        122 => wire__crate__api__library__KansoLibrary_discovery_impl(ptr, rust_vec_len, data_len),
-        123 => wire__crate__api__library__KansoLibrary_due_chip_impl(ptr, rust_vec_len, data_len),
-        127 => wire__crate__api__library__KansoLibrary_gallery_impl(ptr, rust_vec_len, data_len),
-        136 => wire__crate__api__library__KansoLibrary_journal_week_start_impl(
+        123 => wire__crate__api__library__KansoLibrary_discovery_impl(ptr, rust_vec_len, data_len),
+        124 => wire__crate__api__library__KansoLibrary_due_chip_impl(ptr, rust_vec_len, data_len),
+        128 => wire__crate__api__library__KansoLibrary_gallery_impl(ptr, rust_vec_len, data_len),
+        137 => wire__crate__api__library__KansoLibrary_journal_week_start_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        137 => wire__crate__api__library__KansoLibrary_linking_impl(ptr, rust_vec_len, data_len),
-        139 => wire__crate__api__library__KansoLibrary_locks_impl(ptr, rust_vec_len, data_len),
-        146 => wire__crate__api__library__KansoLibrary_notebook_colors_impl(
+        138 => wire__crate__api__library__KansoLibrary_linking_impl(ptr, rust_vec_len, data_len),
+        140 => wire__crate__api__library__KansoLibrary_locks_impl(ptr, rust_vec_len, data_len),
+        147 => wire__crate__api__library__KansoLibrary_notebook_colors_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        147 => {
+        148 => {
             wire__crate__api__library__KansoLibrary_notebook_icons_impl(ptr, rust_vec_len, data_len)
         }
-        153 => {
+        154 => {
             wire__crate__api__library__KansoLibrary_parse_color_impl(ptr, rust_vec_len, data_len)
         }
-        163 => wire__crate__api__library__KansoLibrary_renderer_impl(ptr, rust_vec_len, data_len),
-        179 => wire__crate__api__library__KansoLibrary_shared_impl(ptr, rust_vec_len, data_len),
-        180 => wire__crate__api__library__KansoLibrary_statuses_impl(ptr, rust_vec_len, data_len),
-        181 => wire__crate__api__library__KansoLibrary_syncing_impl(ptr, rust_vec_len, data_len),
-        182 => wire__crate__api__library__KansoLibrary_tag_colors_impl(ptr, rust_vec_len, data_len),
-        187 => wire__crate__api__library__KansoLibrary_themes_impl(ptr, rust_vec_len, data_len),
-        197 => wire__crate__api__linking__KansoLinking_current_heading_impl(
+        164 => wire__crate__api__library__KansoLibrary_renderer_impl(ptr, rust_vec_len, data_len),
+        180 => wire__crate__api__library__KansoLibrary_shared_impl(ptr, rust_vec_len, data_len),
+        181 => wire__crate__api__library__KansoLibrary_statuses_impl(ptr, rust_vec_len, data_len),
+        182 => wire__crate__api__library__KansoLibrary_syncing_impl(ptr, rust_vec_len, data_len),
+        183 => wire__crate__api__library__KansoLibrary_tag_colors_impl(ptr, rust_vec_len, data_len),
+        188 => wire__crate__api__library__KansoLibrary_themes_impl(ptr, rust_vec_len, data_len),
+        198 => wire__crate__api__linking__KansoLinking_current_heading_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        199 => wire__crate__api__linking__KansoLinking_outline_impl(ptr, rust_vec_len, data_len),
-        284 => wire__crate__api__sync__KansoSync_interval_label_impl(ptr, rust_vec_len, data_len),
-        285 => wire__crate__api__sync__KansoSync_interval_options_impl(ptr, rust_vec_len, data_len),
-        286 => wire__crate__api__sync__KansoSync_interval_phrase_impl(ptr, rust_vec_len, data_len),
-        297 => wire__crate__api__sync__KansoSync_status_line_impl(ptr, rust_vec_len, data_len),
-        308 => wire__crate__api__library__backups_summary_impl(ptr, rust_vec_len, data_len),
-        309 => wire__crate__api__voice__dictated_impl(ptr, rust_vec_len, data_len),
-        310 => wire__crate__api__import__import_kinds_for_impl(ptr, rust_vec_len, data_len),
-        311 => wire__crate__api__import__import_sources_impl(ptr, rust_vec_len, data_len),
-        312 => wire__crate__api__discovery__meaning_min_chars_impl(ptr, rust_vec_len, data_len),
-        313 => wire__crate__api__discovery__meaning_query_impl(ptr, rust_vec_len, data_len),
-        315 => wire__crate__api__library__replace_apply_label_impl(ptr, rust_vec_len, data_len),
-        317 => wire__crate__api__shortcuts__shortcut_catalog_impl(ptr, rust_vec_len, data_len),
-        320 => {
+        200 => wire__crate__api__linking__KansoLinking_outline_impl(ptr, rust_vec_len, data_len),
+        286 => wire__crate__api__sync__KansoSync_interval_label_impl(ptr, rust_vec_len, data_len),
+        287 => wire__crate__api__sync__KansoSync_interval_options_impl(ptr, rust_vec_len, data_len),
+        288 => wire__crate__api__sync__KansoSync_interval_phrase_impl(ptr, rust_vec_len, data_len),
+        299 => wire__crate__api__sync__KansoSync_status_line_impl(ptr, rust_vec_len, data_len),
+        310 => wire__crate__api__library__backups_summary_impl(ptr, rust_vec_len, data_len),
+        311 => wire__crate__api__voice__dictated_impl(ptr, rust_vec_len, data_len),
+        312 => wire__crate__api__import__import_kinds_for_impl(ptr, rust_vec_len, data_len),
+        313 => wire__crate__api__import__import_sources_impl(ptr, rust_vec_len, data_len),
+        314 => wire__crate__api__discovery__meaning_min_chars_impl(ptr, rust_vec_len, data_len),
+        315 => wire__crate__api__discovery__meaning_query_impl(ptr, rust_vec_len, data_len),
+        317 => wire__crate__api__library__replace_apply_label_impl(ptr, rust_vec_len, data_len),
+        319 => wire__crate__api__shortcuts__shortcut_catalog_impl(ptr, rust_vec_len, data_len),
+        322 => {
             wire__crate__api__word_goal__word_goal_format_count_impl(ptr, rust_vec_len, data_len)
         }
-        321 => wire__crate__api__word_goal__word_goal_label_impl(ptr, rust_vec_len, data_len),
-        322 => wire__crate__api__word_goal__word_goal_parse_impl(ptr, rust_vec_len, data_len),
-        323 => wire__crate__api__word_goal__word_goal_presets_impl(ptr, rust_vec_len, data_len),
-        324 => wire__crate__api__word_goal__word_goal_progress_impl(ptr, rust_vec_len, data_len),
-        325 => wire__crate__api__word_goal__word_goal_word_count_impl(ptr, rust_vec_len, data_len),
+        323 => wire__crate__api__word_goal__word_goal_label_impl(ptr, rust_vec_len, data_len),
+        324 => wire__crate__api__word_goal__word_goal_parse_impl(ptr, rust_vec_len, data_len),
+        325 => wire__crate__api__word_goal__word_goal_presets_impl(ptr, rust_vec_len, data_len),
+        326 => wire__crate__api__word_goal__word_goal_progress_impl(ptr, rust_vec_len, data_len),
+        327 => wire__crate__api__word_goal__word_goal_word_count_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -28477,6 +28952,266 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveBatch>>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveDocBlock> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.kind.into_into_dart().into_dart(),
+            self.0.level.into_into_dart().into_dart(),
+            self.0.language.into_into_dart().into_dart(),
+            self.0.first_line.into_into_dart().into_dart(),
+            self.0.end_line.into_into_dart().into_dart(),
+            self.0.source.into_into_dart().into_dart(),
+            self.0.list_depth.into_into_dart().into_dart(),
+            self.0.quote_depth.into_into_dart().into_dart(),
+            self.0.item_start.into_into_dart().into_dart(),
+            self.0.top.into_into_dart().into_dart(),
+            self.0.revealed.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveDocBlock>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveDocBlock>>
+    for crate::api::types::LiveDocBlock
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveDocBlock> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveDocBlockKind> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::types::LiveDocBlockKind::Paragraph => 0.into_dart(),
+            crate::api::types::LiveDocBlockKind::Heading => 1.into_dart(),
+            crate::api::types::LiveDocBlockKind::Rule => 2.into_dart(),
+            crate::api::types::LiveDocBlockKind::Code => 3.into_dart(),
+            crate::api::types::LiveDocBlockKind::Table => 4.into_dart(),
+            crate::api::types::LiveDocBlockKind::Math => 5.into_dart(),
+            crate::api::types::LiveDocBlockKind::Html => 6.into_dart(),
+            crate::api::types::LiveDocBlockKind::FrontMatter => 7.into_dart(),
+            crate::api::types::LiveDocBlockKind::Image => 8.into_dart(),
+            crate::api::types::LiveDocBlockKind::Definition => 9.into_dart(),
+            crate::api::types::LiveDocBlockKind::Blank => 10.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveDocBlockKind>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveDocBlockKind>>
+    for crate::api::types::LiveDocBlockKind
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveDocBlockKind> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveDocLink> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.range.into_into_dart().into_dart(),
+            self.0.text.into_into_dart().into_dart(),
+            self.0.kind.into_into_dart().into_dart(),
+            self.0.target.into_into_dart().into_dart(),
+            self.0.heading.into_into_dart().into_dart(),
+            self.0.missing.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveDocLink>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveDocLink>>
+    for crate::api::types::LiveDocLink
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveDocLink> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveDocLinkKind> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::types::LiveDocLinkKind::Url => 0.into_dart(),
+            crate::api::types::LiveDocLinkKind::Reference => 1.into_dart(),
+            crate::api::types::LiveDocLinkKind::Wiki => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveDocLinkKind>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveDocLinkKind>>
+    for crate::api::types::LiveDocLinkKind
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveDocLinkKind> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveDocMarker> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.range.into_into_dart().into_dart(),
+            self.0.line.into_into_dart().into_dart(),
+            self.0.kind.into_into_dart().into_dart(),
+            self.0.depth.into_into_dart().into_dart(),
+            self.0.text.into_into_dart().into_dart(),
+            self.0.checked.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveDocMarker>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveDocMarker>>
+    for crate::api::types::LiveDocMarker
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveDocMarker> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveDocMarkerKind> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::types::LiveDocMarkerKind::Bullet => 0.into_dart(),
+            crate::api::types::LiveDocMarkerKind::Number => 1.into_dart(),
+            crate::api::types::LiveDocMarkerKind::Task => 2.into_dart(),
+            crate::api::types::LiveDocMarkerKind::Hidden => 3.into_dart(),
+            crate::api::types::LiveDocMarkerKind::Quote => 4.into_dart(),
+            crate::api::types::LiveDocMarkerKind::Indent => 5.into_dart(),
+            crate::api::types::LiveDocMarkerKind::Rule => 6.into_dart(),
+            crate::api::types::LiveDocMarkerKind::Underline => 7.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveDocMarkerKind>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveDocMarkerKind>>
+    for crate::api::types::LiveDocMarkerKind
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveDocMarkerKind> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveDocStyle> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.range.into_into_dart().into_dart(),
+            self.0.kind.into_into_dart().into_dart(),
+            self.0.level.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveDocStyle>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveDocStyle>>
+    for crate::api::types::LiveDocStyle
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveDocStyle> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveDocStyleKind> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::types::LiveDocStyleKind::Strong => 0.into_dart(),
+            crate::api::types::LiveDocStyleKind::Emphasis => 1.into_dart(),
+            crate::api::types::LiveDocStyleKind::Strikethrough => 2.into_dart(),
+            crate::api::types::LiveDocStyleKind::Code => 3.into_dart(),
+            crate::api::types::LiveDocStyleKind::Link => 4.into_dart(),
+            crate::api::types::LiveDocStyleKind::Heading => 5.into_dart(),
+            crate::api::types::LiveDocStyleKind::InlineMath => 6.into_dart(),
+            crate::api::types::LiveDocStyleKind::Quote => 7.into_dart(),
+            crate::api::types::LiveDocStyleKind::TaskDone => 8.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveDocStyleKind>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveDocStyleKind>>
+    for crate::api::types::LiveDocStyleKind
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveDocStyleKind> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveDocWidget> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.kind.into_into_dart().into_dart(),
+            self.0.language.into_into_dart().into_dart(),
+            self.0.first_line.into_into_dart().into_dart(),
+            self.0.end_line.into_into_dart().into_dart(),
+            self.0.lines.into_into_dart().into_dart(),
+            self.0.source.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveDocWidget>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveDocWidget>>
+    for crate::api::types::LiveDocWidget
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveDocWidget> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveDocument> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.version.into_into_dart().into_dart(),
+            self.0.conceal.into_into_dart().into_dart(),
+            self.0.blocks.into_into_dart().into_dart(),
+            self.0.markers.into_into_dart().into_dart(),
+            self.0.styles.into_into_dart().into_dart(),
+            self.0.links.into_into_dart().into_dart(),
+            self.0.widgets.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::LiveDocument>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::LiveDocument>>
+    for crate::api::types::LiveDocument
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::LiveDocument> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::LiveKind> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
@@ -29948,6 +30683,29 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewRow>
     for crate::api::types::PreviewRow
 {
     fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewRow> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewSourcedBlock> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.block.into_into_dart().into_dart(),
+            self.0.first_line.into_into_dart().into_dart(),
+            self.0.end_line.into_into_dart().into_dart(),
+            self.0.lines.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewSourcedBlock>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewSourcedBlock>>
+    for crate::api::types::PreviewSourcedBlock
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewSourcedBlock> {
         self.into()
     }
 }
@@ -34164,6 +34922,56 @@ impl SseEncode for Vec<Vec<u8>> {
     }
 }
 
+impl SseEncode for Vec<crate::api::types::LiveDocBlock> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::LiveDocBlock>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::LiveDocLink> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::LiveDocLink>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::LiveDocMarker> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::LiveDocMarker>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::LiveDocStyle> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::LiveDocStyle>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::LiveDocWidget> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::LiveDocWidget>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::types::LiveLine> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -34419,6 +35227,16 @@ impl SseEncode for Vec<crate::api::types::PreviewRow> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::types::PreviewRow>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::PreviewSourcedBlock> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::PreviewSourcedBlock>::sse_encode(item, serializer);
         }
     }
 }
@@ -34761,6 +35579,168 @@ impl SseEncode for crate::api::types::LiveBatch {
         <Vec<crate::api::types::Range16>>::sse_encode(self.conceal, serializer);
         <Vec<crate::api::types::LiveRun>>::sse_encode(self.runs, serializer);
         <Vec<crate::api::types::LiveLine>>::sse_encode(self.lines, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::LiveDocBlock {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::types::LiveDocBlockKind>::sse_encode(self.kind, serializer);
+        <u8>::sse_encode(self.level, serializer);
+        <Option<String>>::sse_encode(self.language, serializer);
+        <u32>::sse_encode(self.first_line, serializer);
+        <u32>::sse_encode(self.end_line, serializer);
+        <crate::api::types::Range16>::sse_encode(self.source, serializer);
+        <u32>::sse_encode(self.list_depth, serializer);
+        <u32>::sse_encode(self.quote_depth, serializer);
+        <bool>::sse_encode(self.item_start, serializer);
+        <Option<u32>>::sse_encode(self.top, serializer);
+        <bool>::sse_encode(self.revealed, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::LiveDocBlockKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::types::LiveDocBlockKind::Paragraph => 0,
+                crate::api::types::LiveDocBlockKind::Heading => 1,
+                crate::api::types::LiveDocBlockKind::Rule => 2,
+                crate::api::types::LiveDocBlockKind::Code => 3,
+                crate::api::types::LiveDocBlockKind::Table => 4,
+                crate::api::types::LiveDocBlockKind::Math => 5,
+                crate::api::types::LiveDocBlockKind::Html => 6,
+                crate::api::types::LiveDocBlockKind::FrontMatter => 7,
+                crate::api::types::LiveDocBlockKind::Image => 8,
+                crate::api::types::LiveDocBlockKind::Definition => 9,
+                crate::api::types::LiveDocBlockKind::Blank => 10,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::types::LiveDocLink {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::types::Range16>::sse_encode(self.range, serializer);
+        <crate::api::types::Range16>::sse_encode(self.text, serializer);
+        <crate::api::types::LiveDocLinkKind>::sse_encode(self.kind, serializer);
+        <String>::sse_encode(self.target, serializer);
+        <Option<String>>::sse_encode(self.heading, serializer);
+        <bool>::sse_encode(self.missing, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::LiveDocLinkKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::types::LiveDocLinkKind::Url => 0,
+                crate::api::types::LiveDocLinkKind::Reference => 1,
+                crate::api::types::LiveDocLinkKind::Wiki => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::types::LiveDocMarker {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::types::Range16>::sse_encode(self.range, serializer);
+        <u32>::sse_encode(self.line, serializer);
+        <crate::api::types::LiveDocMarkerKind>::sse_encode(self.kind, serializer);
+        <u32>::sse_encode(self.depth, serializer);
+        <String>::sse_encode(self.text, serializer);
+        <bool>::sse_encode(self.checked, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::LiveDocMarkerKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::types::LiveDocMarkerKind::Bullet => 0,
+                crate::api::types::LiveDocMarkerKind::Number => 1,
+                crate::api::types::LiveDocMarkerKind::Task => 2,
+                crate::api::types::LiveDocMarkerKind::Hidden => 3,
+                crate::api::types::LiveDocMarkerKind::Quote => 4,
+                crate::api::types::LiveDocMarkerKind::Indent => 5,
+                crate::api::types::LiveDocMarkerKind::Rule => 6,
+                crate::api::types::LiveDocMarkerKind::Underline => 7,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::types::LiveDocStyle {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::types::Range16>::sse_encode(self.range, serializer);
+        <crate::api::types::LiveDocStyleKind>::sse_encode(self.kind, serializer);
+        <u8>::sse_encode(self.level, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::LiveDocStyleKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::types::LiveDocStyleKind::Strong => 0,
+                crate::api::types::LiveDocStyleKind::Emphasis => 1,
+                crate::api::types::LiveDocStyleKind::Strikethrough => 2,
+                crate::api::types::LiveDocStyleKind::Code => 3,
+                crate::api::types::LiveDocStyleKind::Link => 4,
+                crate::api::types::LiveDocStyleKind::Heading => 5,
+                crate::api::types::LiveDocStyleKind::InlineMath => 6,
+                crate::api::types::LiveDocStyleKind::Quote => 7,
+                crate::api::types::LiveDocStyleKind::TaskDone => 8,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::types::LiveDocWidget {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::types::LiveDocBlockKind>::sse_encode(self.kind, serializer);
+        <Option<String>>::sse_encode(self.language, serializer);
+        <u32>::sse_encode(self.first_line, serializer);
+        <u32>::sse_encode(self.end_line, serializer);
+        <crate::api::types::Range16>::sse_encode(self.lines, serializer);
+        <crate::api::types::Range16>::sse_encode(self.source, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::LiveDocument {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u64>::sse_encode(self.version, serializer);
+        <Vec<crate::api::types::Range16>>::sse_encode(self.conceal, serializer);
+        <Vec<crate::api::types::LiveDocBlock>>::sse_encode(self.blocks, serializer);
+        <Vec<crate::api::types::LiveDocMarker>>::sse_encode(self.markers, serializer);
+        <Vec<crate::api::types::LiveDocStyle>>::sse_encode(self.styles, serializer);
+        <Vec<crate::api::types::LiveDocLink>>::sse_encode(self.links, serializer);
+        <Vec<crate::api::types::LiveDocWidget>>::sse_encode(self.widgets, serializer);
     }
 }
 
@@ -36073,6 +37053,16 @@ impl SseEncode for crate::api::types::PreviewRow {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <Vec<crate::api::types::PreviewCell>>::sse_encode(self.cells, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::PreviewSourcedBlock {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::types::PreviewBlock>::sse_encode(self.block, serializer);
+        <Option<u32>>::sse_encode(self.first_line, serializer);
+        <Option<u32>>::sse_encode(self.end_line, serializer);
+        <Option<crate::api::types::Range16>>::sse_encode(self.lines, serializer);
     }
 }
 

@@ -1350,6 +1350,203 @@ pub struct LiveBatch {
     pub lines: Vec<LiveLine>,
 }
 
+/// What Live mode draws for the whole text, as of one version of it, with
+/// the marks the caret and selections are at shown: in UTF-16 units of the
+/// whole text, drawn the way the phone's preview draws it (its bullets and
+/// numbers). An editor hides `conceal` and every marker's range (the two
+/// never overlap), draws each marker in its place, and draws each widget's
+/// preview block in place of its lines.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiveDocument {
+    pub version: u64,
+    /// The inline and heading marks not drawn: sorted, disjoint, never
+    /// empty, each within one line.
+    pub conceal: Vec<Range16>,
+    /// Every line in exactly one block, in order.
+    pub blocks: Vec<LiveDocBlock>,
+    /// The block marks hidden and drawn as something else (or nothing):
+    /// sorted, disjoint, never empty, each within one line.
+    pub markers: Vec<LiveDocMarker>,
+    /// The styled spans, sorted by start; they can nest and overlap.
+    pub styles: Vec<LiveDocStyle>,
+    /// The links and wiki-links, in order, shown or not.
+    pub links: Vec<LiveDocLink>,
+    /// The blocks drawn as the preview draws them, in order: none has a
+    /// caret or selection on its lines.
+    pub widgets: Vec<LiveDocWidget>,
+}
+
+/// What a block of the text is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiveDocBlockKind {
+    Paragraph,
+    Heading,
+    /// `---`, `***` or `___`.
+    Rule,
+    /// Fenced or indented code (a diagram, a drawing or a query view too,
+    /// by its language).
+    Code,
+    Table,
+    /// Display math.
+    Math,
+    Html,
+    FrontMatter,
+    /// A paragraph of nothing but images.
+    Image,
+    /// A link reference definition, which the preview leaves out.
+    Definition,
+    /// Lines in no other block.
+    Blank,
+}
+
+/// A block of the text: lines `first_line..end_line` (0-based).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiveDocBlock {
+    pub kind: LiveDocBlockKind,
+    /// A heading's level (1 to 6); 0 for anything else.
+    pub level: u8,
+    /// A fence's language (its info string's first word).
+    pub language: Option<String>,
+    pub first_line: u32,
+    pub end_line: u32,
+    /// Its units, as the parser spans it.
+    pub source: Range16,
+    /// How many list items it is in.
+    pub list_depth: u32,
+    /// How many quotes it is in.
+    pub quote_depth: u32,
+    /// Whether it is the first block of a list item, on the item's mark's
+    /// line.
+    pub item_start: bool,
+    /// Which of the text's top-level blocks it is in; `None` for the lines
+    /// between them.
+    pub top: Option<u32>,
+    /// Whether a caret or selection is on any of its lines.
+    pub revealed: bool,
+}
+
+/// What a hidden block mark is drawn as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiveDocMarkerKind {
+    /// A bullet: the marker's `text`.
+    Bullet,
+    /// An ordered item's number: the marker's `text`.
+    Number,
+    /// A task's box, ticked or not.
+    Task,
+    /// A list mark drawn as nothing (an item right under a task).
+    Hidden,
+    /// A quote's `>`, drawn as a bar.
+    Quote,
+    /// The indent before a block's text, drawn as nothing.
+    Indent,
+    /// A rule's text, drawn as a rule.
+    Rule,
+    /// A Setext heading's underline, drawn as nothing.
+    Underline,
+}
+
+/// A block mark hidden and drawn as something else.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiveDocMarker {
+    /// The units hidden (the indent before a list mark included).
+    pub range: Range16,
+    /// Its line (0-based).
+    pub line: u32,
+    pub kind: LiveDocMarkerKind,
+    /// How many lists deep a list mark is (0 at the top), how many quotes
+    /// deep a quote's `>` is (1 at the top); 0 for the rest.
+    pub depth: u32,
+    /// What the preview draws: a bullet's glyph (`•`, `◦`, `▪` by depth),
+    /// an item's number (`3.`, its list's start plus its place); empty for
+    /// the rest.
+    pub text: String,
+    /// Whether a task is ticked.
+    pub checked: bool,
+}
+
+/// How a styled span is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiveDocStyleKind {
+    Strong,
+    Emphasis,
+    Strikethrough,
+    /// Inline code, without its backticks.
+    Code,
+    /// A link's or a wiki-link's text.
+    Link,
+    /// A heading's text, without its marks: `level` is its level.
+    Heading,
+    /// Inline math, without its `$`s.
+    InlineMath,
+    /// A whole quote: `level` is how many quotes deep.
+    Quote,
+    /// The first block of a ticked task, drawn muted.
+    TaskDone,
+}
+
+/// A span of the text drawn in a style.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LiveDocStyle {
+    pub range: Range16,
+    pub kind: LiveDocStyleKind,
+    /// A heading's level or a quote's depth; 0 for the rest.
+    pub level: u8,
+}
+
+/// Where a link goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiveDocLinkKind {
+    /// An address as the link gives it.
+    Url,
+    /// A reference link's label.
+    Reference,
+    /// A wiki-link's note title.
+    Wiki,
+}
+
+/// A link of the text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiveDocLink {
+    /// All of it, marks included.
+    pub range: Range16,
+    /// The text drawn for it.
+    pub text: Range16,
+    pub kind: LiveDocLinkKind,
+    /// The address, the label or the title.
+    pub target: String,
+    /// A wiki-link's heading, after its `#`.
+    pub heading: Option<String>,
+    /// Whether a wiki-link names a note that doesn't exist.
+    pub missing: bool,
+}
+
+/// A block drawn as the preview draws it, in place of lines
+/// `first_line..end_line`, which hold nothing else.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiveDocWidget {
+    pub kind: LiveDocBlockKind,
+    /// A fence's language.
+    pub language: Option<String>,
+    pub first_line: u32,
+    pub end_line: u32,
+    /// Its whole lines, without the last one's line break.
+    pub lines: Range16,
+    /// Its Markdown, as the parser spans it.
+    pub source: Range16,
+}
+
+/// A block of the preview of a text, with the whole lines of the text it
+/// is drawn from; `None` for the footnotes listed after the note.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PreviewSourcedBlock {
+    pub block: PreviewBlock,
+    pub first_line: Option<u32>,
+    pub end_line: Option<u32>,
+    /// Its whole lines, without the last one's line break.
+    pub lines: Option<Range16>,
+}
+
 /// What a completion completes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompletionKind {

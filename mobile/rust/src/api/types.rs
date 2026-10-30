@@ -20,23 +20,25 @@ pub use kanso_mobile::{
     HistoryState, Hit, IconChoice, IconThemeRow, ImageToRead, ImportEvent, ImportFound,
     ImportPhase, ImportProgress, ImportSource, ImportSummary, InvitationRow, JoinRow, KansoError,
     LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveBatch,
-    LiveKind, LiveLine, LiveRun, LiveStatus, LocalTime, LockEvent, LockReason, LockState,
-    LockStatus, LockedInfo, MadeNote, MeaningResult, MemberRow, MentionSpan, MonthGrid, NewNote,
-    NoteChange, NoteList, NoteMeaning, NoteRow, NoteView, NotebookRole, NotebookRow,
-    OpenedDocuments, OpenedFile, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind,
-    PasskeyRow, PersonLookup, PersonRow, PreviewAlign, PreviewBlock, PreviewCell, PreviewCodeRun,
-    PreviewFigureKind, PreviewInline, PreviewLink, PreviewListItem, PreviewOptions,
-    PreviewQueryRow, PreviewRow, PreviewSvg, PreviewTaskBox, PromptState, Property, PropertyKind,
-    ProviderEvent, ProviderKind, PushEnvironmentKind, PushPlatformKind, QuotaLimit, Range16,
-    RecoveryKeyText, RelatedRow, RelatedState, RelatedStatus, ReminderAnswer, ReminderNote,
-    ReminderPlan, Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo, ServerMethods,
-    Share, ShareFile, ShareInfo, ShareLinkRow, ShareRole, SharedEvent, ShortcutEntry,
-    ShortcutPlace, ShortcutSection, SignOutReasonKind, SignedUp, SortKey, SpanRow, StatusChoice,
-    StatusCount, StyledRun, SuggestedTag, SvgRow, SyncAccount, SyncIntervalOption, SyncPhase,
-    SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone,
-    SyntaxStyleRow, Table, TableRow, TagPlaces, TagRow, TagTreeRow, TaskBoard, TaskGroupKind,
-    TaskItem, TaskListQuery, TaskPlace, TaskSection, TemplateRow, TextChange, ThemeTokens,
-    ThemedIcon, Ticked, TwinRow, VisibleNotebook,
+    LiveDocBlock, LiveDocBlockKind, LiveDocLink, LiveDocLinkKind, LiveDocMarker, LiveDocMarkerKind,
+    LiveDocStyle, LiveDocStyleKind, LiveDocWidget, LiveDocument, LiveKind, LiveLine, LiveRun,
+    LiveStatus, LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MadeNote,
+    MeaningResult, MemberRow, MentionSpan, MonthGrid, NewNote, NoteChange, NoteList, NoteMeaning,
+    NoteRow, NoteView, NotebookRole, NotebookRow, OpenedDocuments, OpenedFile, PaletteDto,
+    PasskeyFailure, PasskeyRequest, PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow,
+    PreviewAlign, PreviewBlock, PreviewCell, PreviewCodeRun, PreviewFigureKind, PreviewInline,
+    PreviewLink, PreviewListItem, PreviewOptions, PreviewQueryRow, PreviewRow, PreviewSourcedBlock,
+    PreviewSvg, PreviewTaskBox, PromptState, Property, PropertyKind, ProviderEvent, ProviderKind,
+    PushEnvironmentKind, PushPlatformKind, QuotaLimit, Range16, RecoveryKeyText, RelatedRow,
+    RelatedState, RelatedStatus, ReminderAnswer, ReminderNote, ReminderPlan, Replacement, RunBatch,
+    SaveState, Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo,
+    ShareLinkRow, ShareRole, SharedEvent, ShortcutEntry, ShortcutPlace, ShortcutSection,
+    SignOutReasonKind, SignedUp, SortKey, SpanRow, StatusChoice, StatusCount, StyledRun,
+    SuggestedTag, SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind,
+    SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table,
+    TableRow, TagPlaces, TagRow, TagTreeRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery,
+    TaskPlace, TaskSection, TemplateRow, TextChange, ThemeTokens, ThemedIcon, Ticked, TwinRow,
+    VisibleNotebook,
 };
 pub use kanso_mobile::{
     IconThemeImport, InstalledIconThemeRow, ThemeImport, ThemeNotice, ThemeOrigin, ThemeRow,
@@ -1381,6 +1383,116 @@ pub struct _LiveBatch {
     pub lines: Vec<LiveLine>,
 }
 
+#[frb(mirror(LiveDocument))]
+pub struct _LiveDocument {
+    pub version: u64,
+    pub conceal: Vec<Range16>,
+    pub blocks: Vec<LiveDocBlock>,
+    pub markers: Vec<LiveDocMarker>,
+    pub styles: Vec<LiveDocStyle>,
+    pub links: Vec<LiveDocLink>,
+    pub widgets: Vec<LiveDocWidget>,
+}
+
+#[frb(mirror(LiveDocBlockKind))]
+pub enum _LiveDocBlockKind {
+    Paragraph,
+    Heading,
+    Rule,
+    Code,
+    Table,
+    Math,
+    Html,
+    FrontMatter,
+    Image,
+    Definition,
+    Blank,
+}
+
+#[frb(mirror(LiveDocBlock))]
+pub struct _LiveDocBlock {
+    pub kind: LiveDocBlockKind,
+    pub level: u8,
+    pub language: Option<String>,
+    pub first_line: u32,
+    pub end_line: u32,
+    pub source: Range16,
+    pub list_depth: u32,
+    pub quote_depth: u32,
+    pub item_start: bool,
+    pub top: Option<u32>,
+    pub revealed: bool,
+}
+
+#[frb(mirror(LiveDocMarkerKind))]
+pub enum _LiveDocMarkerKind {
+    Bullet,
+    Number,
+    Task,
+    Hidden,
+    Quote,
+    Indent,
+    Rule,
+    Underline,
+}
+
+#[frb(mirror(LiveDocMarker))]
+pub struct _LiveDocMarker {
+    pub range: Range16,
+    pub line: u32,
+    pub kind: LiveDocMarkerKind,
+    pub depth: u32,
+    pub text: String,
+    pub checked: bool,
+}
+
+#[frb(mirror(LiveDocStyleKind))]
+pub enum _LiveDocStyleKind {
+    Strong,
+    Emphasis,
+    Strikethrough,
+    Code,
+    Link,
+    Heading,
+    InlineMath,
+    Quote,
+    TaskDone,
+}
+
+#[frb(mirror(LiveDocStyle))]
+pub struct _LiveDocStyle {
+    pub range: Range16,
+    pub kind: LiveDocStyleKind,
+    pub level: u8,
+}
+
+#[frb(mirror(LiveDocLinkKind))]
+pub enum _LiveDocLinkKind {
+    Url,
+    Reference,
+    Wiki,
+}
+
+#[frb(mirror(LiveDocLink))]
+pub struct _LiveDocLink {
+    pub range: Range16,
+    pub text: Range16,
+    pub kind: LiveDocLinkKind,
+    pub target: String,
+    pub heading: Option<String>,
+    pub missing: bool,
+}
+
+#[frb(mirror(LiveDocWidget))]
+pub struct _LiveDocWidget {
+    pub kind: LiveDocBlockKind,
+    pub language: Option<String>,
+    pub first_line: u32,
+    pub end_line: u32,
+    pub lines: Range16,
+    pub source: Range16,
+}
+
 #[frb(mirror(CompletionKind))]
 pub enum _CompletionKind {
     Wiki,
@@ -1547,6 +1659,14 @@ pub enum _PreviewInline {
 pub struct _PreviewListItem {
     pub task: Option<PreviewTaskBox>,
     pub blocks: Vec<PreviewBlock>,
+}
+
+#[frb(mirror(PreviewSourcedBlock))]
+pub struct _PreviewSourcedBlock {
+    pub block: PreviewBlock,
+    pub first_line: Option<u32>,
+    pub end_line: Option<u32>,
+    pub lines: Option<Range16>,
 }
 
 #[frb(mirror(PreviewTaskBox))]

@@ -3,8 +3,8 @@
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
     BuiltinTheme, DiagramKind, DiagramRenderer, ExportedPage, IconThemeRow, KansoError, PaletteDto,
-    PreviewBlock, PreviewLink, PreviewOptions, Renderer, SpanRow, StyledRun, SvgRow, ThemeTokens,
-    ThemedIcon,
+    PreviewBlock, PreviewLink, PreviewOptions, PreviewSourcedBlock, Renderer, SpanRow, StyledRun,
+    SvgRow, ThemeTokens, ThemedIcon,
 };
 
 #[frb(opaque)]
@@ -37,6 +37,18 @@ impl KansoRenderer {
         options: PreviewOptions,
     ) -> Result<Vec<PreviewBlock>, KansoError> {
         self.0.preview_blocks(&id, palette, options)
+    }
+
+    /// The blocks of `text`, note `id`'s text as the editor has it now, each
+    /// top-level one with the whole lines of `text` it is drawn from.
+    pub fn preview_blocks_for_text(
+        &self,
+        id: String,
+        text: String,
+        palette: PaletteDto,
+        options: PreviewOptions,
+    ) -> Result<Vec<PreviewSourcedBlock>, KansoError> {
+        self.0.preview_blocks_for_text(&id, &text, palette, options)
     }
 
     /// The note as the page the desktop exports, to print or keep: no app

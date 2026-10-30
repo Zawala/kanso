@@ -89,6 +89,15 @@ abstract class KansoRenderer implements RustOpaqueInterface {
     required PreviewOptions options,
   });
 
+  /// The blocks of `text`, note `id`'s text as the editor has it now, each
+  /// top-level one with the whole lines of `text` it is drawn from.
+  Future<List<PreviewSourcedBlock>> previewBlocksForText({
+    required String id,
+    required String text,
+    required PaletteDto palette,
+    required PreviewOptions options,
+  });
+
   Future<String> previewHtml({required String id, required PaletteDto palette});
 
   Future<String> previewHtmlWith({

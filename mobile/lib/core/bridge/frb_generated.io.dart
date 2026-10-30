@@ -1067,6 +1067,21 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<LiveDocBlock> dco_decode_list_live_doc_block(dynamic raw);
+
+  @protected
+  List<LiveDocLink> dco_decode_list_live_doc_link(dynamic raw);
+
+  @protected
+  List<LiveDocMarker> dco_decode_list_live_doc_marker(dynamic raw);
+
+  @protected
+  List<LiveDocStyle> dco_decode_list_live_doc_style(dynamic raw);
+
+  @protected
+  List<LiveDocWidget> dco_decode_list_live_doc_widget(dynamic raw);
+
+  @protected
   List<LiveLine> dco_decode_list_live_line(dynamic raw);
 
   @protected
@@ -1134,6 +1149,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<PreviewRow> dco_decode_list_preview_row(dynamic raw);
+
+  @protected
+  List<PreviewSourcedBlock> dco_decode_list_preview_sourced_block(dynamic raw);
 
   @protected
   Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
@@ -1238,6 +1256,36 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   LiveBatch dco_decode_live_batch(dynamic raw);
+
+  @protected
+  LiveDocBlock dco_decode_live_doc_block(dynamic raw);
+
+  @protected
+  LiveDocBlockKind dco_decode_live_doc_block_kind(dynamic raw);
+
+  @protected
+  LiveDocLink dco_decode_live_doc_link(dynamic raw);
+
+  @protected
+  LiveDocLinkKind dco_decode_live_doc_link_kind(dynamic raw);
+
+  @protected
+  LiveDocMarker dco_decode_live_doc_marker(dynamic raw);
+
+  @protected
+  LiveDocMarkerKind dco_decode_live_doc_marker_kind(dynamic raw);
+
+  @protected
+  LiveDocStyle dco_decode_live_doc_style(dynamic raw);
+
+  @protected
+  LiveDocStyleKind dco_decode_live_doc_style_kind(dynamic raw);
+
+  @protected
+  LiveDocWidget dco_decode_live_doc_widget(dynamic raw);
+
+  @protected
+  LiveDocument dco_decode_live_document(dynamic raw);
 
   @protected
   LiveKind dco_decode_live_kind(dynamic raw);
@@ -1513,6 +1561,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PreviewRow dco_decode_preview_row(dynamic raw);
+
+  @protected
+  PreviewSourcedBlock dco_decode_preview_sourced_block(dynamic raw);
 
   @protected
   PreviewSvg dco_decode_preview_svg(dynamic raw);
@@ -2838,6 +2889,29 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  List<LiveDocBlock> sse_decode_list_live_doc_block(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<LiveDocLink> sse_decode_list_live_doc_link(SseDeserializer deserializer);
+
+  @protected
+  List<LiveDocMarker> sse_decode_list_live_doc_marker(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<LiveDocStyle> sse_decode_list_live_doc_style(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<LiveDocWidget> sse_decode_list_live_doc_widget(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<LiveLine> sse_decode_list_live_line(SseDeserializer deserializer);
 
   @protected
@@ -2923,6 +2997,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<PreviewRow> sse_decode_list_preview_row(SseDeserializer deserializer);
+
+  @protected
+  List<PreviewSourcedBlock> sse_decode_list_preview_sourced_block(
+    SseDeserializer deserializer,
+  );
 
   @protected
   Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
@@ -3049,6 +3128,38 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   LiveBatch sse_decode_live_batch(SseDeserializer deserializer);
+
+  @protected
+  LiveDocBlock sse_decode_live_doc_block(SseDeserializer deserializer);
+
+  @protected
+  LiveDocBlockKind sse_decode_live_doc_block_kind(SseDeserializer deserializer);
+
+  @protected
+  LiveDocLink sse_decode_live_doc_link(SseDeserializer deserializer);
+
+  @protected
+  LiveDocLinkKind sse_decode_live_doc_link_kind(SseDeserializer deserializer);
+
+  @protected
+  LiveDocMarker sse_decode_live_doc_marker(SseDeserializer deserializer);
+
+  @protected
+  LiveDocMarkerKind sse_decode_live_doc_marker_kind(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  LiveDocStyle sse_decode_live_doc_style(SseDeserializer deserializer);
+
+  @protected
+  LiveDocStyleKind sse_decode_live_doc_style_kind(SseDeserializer deserializer);
+
+  @protected
+  LiveDocWidget sse_decode_live_doc_widget(SseDeserializer deserializer);
+
+  @protected
+  LiveDocument sse_decode_live_document(SseDeserializer deserializer);
 
   @protected
   LiveKind sse_decode_live_kind(SseDeserializer deserializer);
@@ -3374,6 +3485,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   PreviewRow sse_decode_preview_row(SseDeserializer deserializer);
+
+  @protected
+  PreviewSourcedBlock sse_decode_preview_sourced_block(
+    SseDeserializer deserializer,
+  );
 
   @protected
   PreviewSvg sse_decode_preview_svg(SseDeserializer deserializer);
@@ -4993,6 +5109,36 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_list_live_doc_block(
+    List<LiveDocBlock> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_live_doc_link(
+    List<LiveDocLink> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_live_doc_marker(
+    List<LiveDocMarker> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_live_doc_style(
+    List<LiveDocStyle> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_live_doc_widget(
+    List<LiveDocWidget> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_live_line(List<LiveLine> self, SseSerializer serializer);
 
   @protected
@@ -5112,6 +5258,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   @protected
   void sse_encode_list_preview_row(
     List<PreviewRow> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_preview_sourced_block(
+    List<PreviewSourcedBlock> self,
     SseSerializer serializer,
   );
 
@@ -5288,6 +5440,48 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_live_batch(LiveBatch self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_live_doc_block(LiveDocBlock self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_live_doc_block_kind(
+    LiveDocBlockKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_live_doc_link(LiveDocLink self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_live_doc_link_kind(
+    LiveDocLinkKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_live_doc_marker(LiveDocMarker self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_live_doc_marker_kind(
+    LiveDocMarkerKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_live_doc_style(LiveDocStyle self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_live_doc_style_kind(
+    LiveDocStyleKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_live_doc_widget(LiveDocWidget self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_live_document(LiveDocument self, SseSerializer serializer);
 
   @protected
   void sse_encode_live_kind(LiveKind self, SseSerializer serializer);
@@ -5687,6 +5881,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   void sse_encode_preview_row(PreviewRow self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_sourced_block(
+    PreviewSourcedBlock self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_preview_svg(PreviewSvg self, SseSerializer serializer);

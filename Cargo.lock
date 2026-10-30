@@ -4700,6 +4700,7 @@ dependencies = [
  "kanso-sync",
  "kanso-tls",
  "kanso-update",
+ "markdown",
  "proptest",
  "security-framework 3.7.0",
  "semver",
