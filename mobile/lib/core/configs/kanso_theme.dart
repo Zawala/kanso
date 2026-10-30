@@ -22,9 +22,9 @@ abstract final class KansoTheme {
   static final KansoThemeData dark = build(KansoPalette.kansoDark);
 
   /// The theme drawn in [palette] with note text set in [fonts] at
-  /// [textSize] and [interfaceTextSize]. Only the note styles of
-  /// `KansoTypography` change with the fonts and note sizes; the interface
-  /// keeps Kanso's own font and follows its own scale.
+  /// [textSize] and [interfaceTextSize]. The interface styles of
+  /// `KansoTypography` follow the interface font and its own scale; the
+  /// note styles follow the note fonts and sizes.
   static KansoThemeData build(
     KansoPalette palette, {
     KansoFonts fonts = const KansoFonts(),

@@ -67,10 +67,43 @@ extension KansoFontsAny on Any {
         KansoFonts(editorFont: editor, previewFont: preview, codeFont: code),
   );
 
+  /// Any fonts with Google Fonts: a few downloaded families, and each slot
+  /// on a bundled family or on a Google Font, listed or not (as a build
+  /// that kept no list saved it).
+  Generator<KansoFonts> get fontsWithGoogleFonts => combine3(
+    fonts,
+    listWithLengthInRange<String>(0, 4, choose(_googleFamilies)),
+    listWithLengthInRange<String>(
+      4,
+      5,
+      choose(<String>['', ..._googleFamilies]),
+    ),
+    (KansoFonts base, List<String> downloaded, List<String> slots) {
+      String? slot(int index) => slots[index].isEmpty ? null : slots[index];
+      return base.copyWith(
+        downloadedGoogleFonts: downloaded.toSet().toList(),
+        interfaceGoogleFont: slot(0),
+        editorGoogleFont: slot(1),
+        previewGoogleFont: slot(2),
+        codeGoogleFont: slot(3),
+      );
+    },
+  );
+
+  /// A Google Fonts family, from a few.
+  Generator<String> get googleFamily => choose(_googleFamilies);
+
   /// A text scale a device may set, from 0.5 to 3.5.
   Generator<double> get deviceTextScale =>
       intInRange(50, 351).map((percent) => percent / 100);
 }
+
+const List<String> _googleFamilies = <String>[
+  'Lora',
+  'Nunito Sans',
+  'Fira Code',
+  'Merriweather',
+];
 
 /// The characters Markdown and search care about, plus letters and space.
 const List<String> _markdownAlphabet = <String>[

@@ -654,23 +654,23 @@
   "@fontsTitle": {
     "description": "The title of the page where the fonts of notes are chosen."
   },
-  "googleFontSection": "Google Font",
+  "googleFontSection": "Google Fonts",
   "@googleFontSection": {
-    "description": "The section for downloading a Google Font for notes."
+    "description": "The section for downloading a font from Google Fonts."
   },
-  "googleFontFooter": "Enter a Google Fonts family name. It is saved on this device and works offline after downloading.",
+  "googleFontFooter": "Enter a family from Google Fonts. Once downloaded it is used for writing and reading, shows up in every font list above, and works offline.",
   "@googleFontFooter": {
     "description": "Explains Google Font download and offline cache behavior."
   },
-  "googleFontHint": "For example, Lora or Nunito Sans",
+  "googleFontHint": "A family, like Lora",
   "@googleFontHint": {
     "description": "Example Google Fonts family name."
   },
-  "googleFontDownload": "Download and use",
+  "googleFontDownload": "Download",
   "@googleFontDownload": {
-    "description": "Downloads a Google Font and applies it to notes."
+    "description": "Downloads a Google Font, uses it for notes and adds it to the font lists."
   },
-  "googleFontLoading": "Loading font…",
+  "googleFontLoading": "Downloading…",
   "@googleFontLoading": {
     "description": "Progress label while a Google Font is downloaded or loaded."
   },
@@ -682,14 +682,13 @@
   "@googleFontFailed": {
     "description": "Failure feedback for Google Font download."
   },
-  "googleFontActive": "{family} is in use for writing and reading.",
-  "@googleFontActive": {
-    "description": "Names the active Google Font family.",
-    "placeholders": {
-      "family": {
-        "type": "String"
-      }
-    }
+  "fontsInterfaceSection": "Interface font",
+  "@fontsInterfaceSection": {
+    "description": "The section of fonts for the app's menus, lists and labels."
+  },
+  "fontsInterfaceFooter": "The font of menus, lists, labels and buttons.",
+  "@fontsInterfaceFooter": {
+    "description": "Explains the interface font."
   },
   "fontsEditorSection": "Editor font",
   "@fontsEditorSection": {

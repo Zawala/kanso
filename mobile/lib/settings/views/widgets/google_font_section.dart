@@ -10,10 +10,10 @@ import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_grouped_section.dart';
-import '../../../core/views/widgets/kanso_progress.dart';
-import '../../../core/views/widgets/kanso_text_field.dart';
+import '../../../core/views/widgets/kanso_text_input.dart';
 
-/// Lets someone download a Google Font and use it for note writing and reading.
+/// Lets someone download a Google Font. It is used for writing and reading
+/// at once, and joins every font list so it can be chosen anywhere.
 class GoogleFontSection extends StatefulWidget {
   const GoogleFontSection({super.key});
 
@@ -40,85 +40,66 @@ class GoogleFontSectionState extends State<GoogleFontSection> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return BlocBuilder<AppearanceBloc, AppearanceState>(
+    return BlocConsumer<AppearanceBloc, AppearanceState>(
+      listenWhen: (before, after) =>
+          before.googleFontLoading &&
+          !after.googleFontLoading &&
+          after.googleFontError == null,
+      // The font is downloaded: the field is ready for the next one.
+      listener: (context, state) => controller.clear(),
       buildWhen: (before, after) =>
-          before.fonts != after.fonts ||
           before.googleFontLoading != after.googleFontLoading ||
           before.googleFontError != after.googleFontError ||
           before.googleFontOffline != after.googleFontOffline,
       builder: (context, state) {
-        final active =
-            state.fonts.editorGoogleFont ?? state.fonts.previewGoogleFont;
+        final loading = state.googleFontLoading;
         return KansoGroupedSection(
           title: l10n.googleFontSection,
-          footer: active == null
-              ? l10n.googleFontFooter
-              : l10n.googleFontActive(active),
+          footer: l10n.googleFontFooter,
           children: <Widget>[
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                KansoSpacing.md,
-                KansoSpacing.sm,
-                KansoSpacing.md,
-                KansoSpacing.xs,
-              ),
-              child: KansoTextField(
-                controller: controller,
-                hint: l10n.googleFontHint,
-                semanticLabel: l10n.googleFontHint,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => request(
-                  context,
-                  loading: state.googleFontLoading,
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                KansoSpacing.md,
-                0,
-                KansoSpacing.md,
-                KansoSpacing.sm,
-              ),
-              child: KansoButton(
-                label: state.googleFontLoading
-                    ? l10n.googleFontLoading
-                    : l10n.googleFontDownload,
-                onPressed: state.googleFontLoading
-                    ? null
-                    : () => request(context),
-              ),
-            ),
-            if (state.googleFontLoading)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(
-                  KansoSpacing.md,
-                  0,
-                  KansoSpacing.md,
-                  KansoSpacing.md,
-                ),
-                child: SizedBox.square(
-                  dimension: 16,
-                  child: KansoSpinner(size: 16),
-                ),
-              ),
-            if (state.googleFontError != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  KansoSpacing.md,
-                  0,
-                  KansoSpacing.md,
-                  KansoSpacing.md,
-                ),
-                child: Text(
-                  state.googleFontOffline
-                      ? l10n.googleFontOffline
-                      : l10n.googleFontFailed,
-                  style: context.typography.secondary.copyWith(
-                    color: context.colors.danger,
+              padding: const EdgeInsets.all(KansoSpacing.sm),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: KansoTextInput(
+                          controller: controller,
+                          hint: l10n.googleFontHint,
+                          semanticLabel: l10n.googleFontHint,
+                          autocorrect: false,
+                          enabled: !loading,
+                          textCapitalization: TextCapitalization.words,
+                          onSubmitted: (_) =>
+                              request(context, loading: loading),
+                        ),
+                      ),
+                      const SizedBox(width: KansoSpacing.xs),
+                      KansoButton(
+                        label: loading
+                            ? l10n.googleFontLoading
+                            : l10n.googleFontDownload,
+                        expanded: false,
+                        onPressed: loading ? null : () => request(context),
+                      ),
+                    ],
                   ),
-                ),
+                  if (!loading && state.googleFontError != null) ...<Widget>[
+                    const SizedBox(height: KansoSpacing.xs),
+                    Text(
+                      state.googleFontOffline
+                          ? l10n.googleFontOffline
+                          : l10n.googleFontFailed,
+                      style: context.typography.secondary.copyWith(
+                        color: context.colors.danger,
+                      ),
+                    ),
+                  ],
+                ],
               ),
+            ),
           ],
         );
       },

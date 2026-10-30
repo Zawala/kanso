@@ -1006,34 +1006,34 @@ abstract class AppLocalizations {
   /// **'Fonts'**
   String get fontsTitle;
 
-  /// The section for downloading a Google Font for notes.
+  /// The section for downloading a font from Google Fonts.
   ///
   /// In en, this message translates to:
-  /// **'Google Font'**
+  /// **'Google Fonts'**
   String get googleFontSection;
 
   /// Explains Google Font download and offline cache behavior.
   ///
   /// In en, this message translates to:
-  /// **'Enter a Google Fonts family name. It is saved on this device and works offline after downloading.'**
+  /// **'Enter a family from Google Fonts. Once downloaded it is used for writing and reading, shows up in every font list above, and works offline.'**
   String get googleFontFooter;
 
   /// Example Google Fonts family name.
   ///
   /// In en, this message translates to:
-  /// **'For example, Lora or Nunito Sans'**
+  /// **'A family, like Lora'**
   String get googleFontHint;
 
-  /// Downloads a Google Font and applies it to notes.
+  /// Downloads a Google Font, uses it for notes and adds it to the font lists.
   ///
   /// In en, this message translates to:
-  /// **'Download and use'**
+  /// **'Download'**
   String get googleFontDownload;
 
   /// Progress label while a Google Font is downloaded or loaded.
   ///
   /// In en, this message translates to:
-  /// **'Loading font…'**
+  /// **'Downloading…'**
   String get googleFontLoading;
 
   /// Offline feedback for Google Font download.
@@ -1048,11 +1048,17 @@ abstract class AppLocalizations {
   /// **'This font could not be loaded. Check the family name and try again.'**
   String get googleFontFailed;
 
-  /// Names the active Google Font family.
+  /// The section of fonts for the app's menus, lists and labels.
   ///
   /// In en, this message translates to:
-  /// **'{family} is in use for writing and reading.'**
-  String googleFontActive(String family);
+  /// **'Interface font'**
+  String get fontsInterfaceSection;
+
+  /// Explains the interface font.
+  ///
+  /// In en, this message translates to:
+  /// **'The font of menus, lists, labels and buttons.'**
+  String get fontsInterfaceFooter;
 
   /// The section of fonts to write in.
   ///

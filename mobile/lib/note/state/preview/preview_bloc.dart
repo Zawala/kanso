@@ -166,28 +166,39 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     );
   }
 
+  /// [html] with the downloaded Google Fonts its text and code are set in
+  /// embedded, since the web view cannot see the fonts the app registered.
+  /// A bundled family has no cached file and is left to the page.
   Future<String> _withGoogleFont(String html) async {
-    final family = state.font;
-    if (family == null || _googleFonts == null) {
+    final googleFonts = _googleFonts;
+    if (googleFonts == null) {
       return html;
     }
-    try {
-      final bytes = await _googleFonts.cachedBytes(family);
-      if (bytes == null) {
-        return html;
+    final faces = StringBuffer();
+    for (final family in <String>{?state.font, ?state.mono}) {
+      try {
+        final bytes = await googleFonts.cachedBytes(family);
+        if (bytes == null) {
+          continue;
+        }
+        final safeFamily = family.replaceAll("'", r"\'");
+        faces.write(
+          "@font-face{font-family:'$safeFamily';"
+          'src:url(data:font/ttf;base64,${base64Encode(bytes)}) '
+          "format('truetype');}",
+        );
+      } on Object {
+        continue;
       }
-      final safeFamily = family.replaceAll("'", r"\'");
-      final face = base64Encode(bytes);
-      final style =
-          "<style>@font-face{font-family:'$safeFamily';"
-          "src:url(data:font/ttf;base64,$face) format('truetype');}</style>";
-      final head = html.indexOf('</head>');
-      return head < 0
-          ? '$style$html'
-          : '${html.substring(0, head)}$style${html.substring(head)}';
-    } on Object {
+    }
+    if (faces.isEmpty) {
       return html;
     }
+    final style = '<style>$faces</style>';
+    final head = html.indexOf('</head>');
+    return head < 0
+        ? '$style$html'
+        : '${html.substring(0, head)}$style${html.substring(head)}';
   }
 
   Future<void> _onLinkTapped(

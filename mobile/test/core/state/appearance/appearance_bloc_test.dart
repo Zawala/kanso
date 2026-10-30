@@ -16,6 +16,7 @@ import 'package:kanso/core/models/data/appearance_status.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/installed_theme.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
+import 'package:kanso/core/models/data/kanso_font_slot.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
 import 'package:kanso/core/models/data/kanso_icon_set.dart';
 import 'package:kanso/core/models/data/preferences.dart';
@@ -531,10 +532,12 @@ void main() {
           fonts: KansoFonts(
             editorGoogleFont: 'Lora',
             previewGoogleFont: 'Lora',
+            downloadedGoogleFonts: <String>['Lora'],
           ),
         ),
       ],
       verify: (_) {
+        expect(saved.fonts.downloadedGoogleFonts, <String>['Lora']);
         expect(saved.fonts.editorGoogleFont, 'Lora');
         expect(saved.fonts.previewGoogleFont, 'Lora');
         verify(() => googleFonts.load('Lora')).called(1);
@@ -582,11 +585,80 @@ void main() {
           fonts: KansoFonts(
             editorGoogleFont: 'Lora',
             previewGoogleFont: 'Lora',
+            downloadedGoogleFonts: <String>['Lora'],
           ),
           status: AppearanceStatus.ready,
         ),
       ],
       verify: (_) => verify(() => googleFonts.load('Lora')).called(1),
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'a downloaded font can be chosen for any slot, code and interface too',
+      seed: () => const AppearanceState(
+        fonts: KansoFonts(downloadedGoogleFonts: <String>['Lora']),
+      ),
+      build: build,
+      act: (bloc) => bloc
+        ..add(
+          const AppearanceEvent.googleFontChosen(KansoFontSlot.code, 'Lora'),
+        )
+        ..add(
+          const AppearanceEvent.googleFontChosen(
+            KansoFontSlot.interface,
+            'Lora',
+          ),
+        ),
+      expect: () => const <AppearanceState>[
+        AppearanceState(
+          fonts: KansoFonts(
+            codeGoogleFont: 'Lora',
+            downloadedGoogleFonts: <String>['Lora'],
+          ),
+        ),
+        AppearanceState(
+          fonts: KansoFonts(
+            codeGoogleFont: 'Lora',
+            interfaceGoogleFont: 'Lora',
+            downloadedGoogleFonts: <String>['Lora'],
+          ),
+        ),
+      ],
+      verify: (_) {
+        expect(saved.fonts.codeGoogleFont, 'Lora');
+        expect(saved.fonts.interfaceGoogleFont, 'Lora');
+      },
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'a font that was never downloaded cannot be chosen',
+      build: build,
+      act: (bloc) => bloc.add(
+        const AppearanceEvent.googleFontChosen(KansoFontSlot.editor, 'Lora'),
+      ),
+      expect: () => const <AppearanceState>[],
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'a bundled interface font replaces a downloaded one',
+      seed: () => const AppearanceState(
+        fonts: KansoFonts(
+          interfaceGoogleFont: 'Lora',
+          downloadedGoogleFonts: <String>['Lora'],
+        ),
+      ),
+      build: build,
+      act: (bloc) => bloc.add(
+        const AppearanceEvent.interfaceFontChanged(KansoFontFamily.inter),
+      ),
+      expect: () => const <AppearanceState>[
+        AppearanceState(
+          fonts: KansoFonts(
+            interfaceFont: KansoFontFamily.inter,
+            downloadedGoogleFonts: <String>['Lora'],
+          ),
+        ),
+      ],
     );
 
     blocTest<AppearanceBloc, AppearanceState>(

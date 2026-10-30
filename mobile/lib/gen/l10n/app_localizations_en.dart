@@ -502,20 +502,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fontsTitle => 'Fonts';
 
   @override
-  String get googleFontSection => 'Google Font';
+  String get googleFontSection => 'Google Fonts';
 
   @override
   String get googleFontFooter =>
-      'Enter a Google Fonts family name. It is saved on this device and works offline after downloading.';
+      'Enter a family from Google Fonts. Once downloaded it is used for writing and reading, shows up in every font list above, and works offline.';
 
   @override
-  String get googleFontHint => 'For example, Lora or Nunito Sans';
+  String get googleFontHint => 'A family, like Lora';
 
   @override
-  String get googleFontDownload => 'Download and use';
+  String get googleFontDownload => 'Download';
 
   @override
-  String get googleFontLoading => 'Loading font…';
+  String get googleFontLoading => 'Downloading…';
 
   @override
   String get googleFontOffline =>
@@ -526,9 +526,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'This font could not be loaded. Check the family name and try again.';
 
   @override
-  String googleFontActive(String family) {
-    return '$family is in use for writing and reading.';
-  }
+  String get fontsInterfaceSection => 'Interface font';
+
+  @override
+  String get fontsInterfaceFooter =>
+      'The font of menus, lists, labels and buttons.';
 
   @override
   String get fontsEditorSection => 'Editor font';
