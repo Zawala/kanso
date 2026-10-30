@@ -7,6 +7,9 @@ pub(crate) struct InlineFragment {
     pub(crate) x: Pixels,
     pub(crate) width: Pixels,
     pub(crate) text: Option<ShapedLine>,
+    /// A presentation's replacement: `text` is drawn in place of the source in `range`, which
+    /// the caret treats as one unit, like an element.
+    pub(crate) replaced: bool,
 }
 
 pub(crate) struct InputLine {
@@ -49,10 +52,13 @@ impl InputLine {
                 for f in fragments {
                     if ix < f.range.end {
                         return f.x
-                            + f.text.as_ref().map_or(
-                                if ix <= f.range.start { px(0.) } else { f.width },
-                                |line| line.x_for_index(ix.saturating_sub(f.range.start)),
-                            );
+                            + match &f.text {
+                                // A caret inside a replacement is drawn at its start.
+                                Some(_) if f.replaced => px(0.),
+                                Some(line) => line.x_for_index(ix.saturating_sub(f.range.start)),
+                                None if ix <= f.range.start => px(0.),
+                                None => f.width,
+                            };
                     }
                 }
                 self.width
@@ -65,29 +71,39 @@ impl InputLine {
             Content::Inline(fragments) => {
                 for f in fragments {
                     if x <= f.x + f.width {
-                        return f.text.as_ref().map_or(
+                        return match &f.text {
+                            Some(line) if !f.replaced => {
+                                f.range.start + line.closest_index_for_x(x - f.x)
+                            }
                             // A concealed range has no width to split, so a click at
                             // its point lands after it, past the hidden source.
-                            if f.width > px(0.) && x - f.x < f.width / 2. {
-                                f.range.start
-                            } else {
-                                f.range.end
-                            },
-                            |line| f.range.start + line.closest_index_for_x(x - f.x),
-                        );
+                            _ if f.width > px(0.) && x - f.x < f.width / 2. => f.range.start,
+                            _ => f.range.end,
+                        };
                     }
                 }
                 self.len
             }
         }
     }
-    /// Whether the byte at `ix` is concealed: inside a fragment drawn at zero width.
+    /// Whether the byte at `ix` is concealed: inside a fragment drawn at zero width, or
+    /// drawn as a replacement's text.
     pub(crate) fn is_concealed(&self, ix: usize) -> bool {
         match &self.content {
             Content::Text(_) => false,
+            Content::Inline(fragments) => fragments.iter().any(|f| {
+                ((f.text.is_none() && f.width <= px(0.)) || f.replaced) && f.range.contains(&ix)
+            }),
+        }
+    }
+    /// The row-local source range of the replacement drawn under `x`, if any.
+    pub(crate) fn replacement_at_x(&self, x: Pixels) -> Option<Range<usize>> {
+        match &self.content {
+            Content::Text(_) => None,
             Content::Inline(fragments) => fragments
                 .iter()
-                .any(|f| f.text.is_none() && f.width <= px(0.) && f.range.contains(&ix)),
+                .find(|f| f.replaced && x >= f.x && x < f.x + f.width)
+                .map(|f| f.range.clone()),
         }
     }
     pub(crate) fn index_for_x(&self, x: Pixels) -> Option<usize> {

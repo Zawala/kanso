@@ -4,6 +4,7 @@
 /// - BufferPoint ↔ DisplayPoint conversion
 /// - Fold management (candidates, toggle, query)
 /// - Automatic projection updates on text/layout changes
+use std::collections::HashMap;
 use std::ops::Range;
 
 use gpui::{App, Font, Pixels, px};
@@ -12,11 +13,12 @@ use ropey::Rope;
 use super::fold_map::FoldMap;
 use super::folding::FoldRange;
 pub use super::text_wrapper::WrappingIndent;
-use super::text_wrapper::{LineItem, WrapDisplayPoint};
+use super::text_wrapper::{LineFrame, LineItem, WrapDisplayPoint};
 use super::wrap_map::WrapMap;
 use super::{BufferPoint, DisplayPoint};
 use crate::input::Point as TreeSitterPoint;
 use crate::input::display_map::WrapPoint;
+use crate::input::presentation::{BlockWidget, ValidPresentation, line_value};
 use crate::input::rope_ext::RopeExt as _;
 
 /// DisplayMap is the main interface for Editor/Input coordinate mapping.
@@ -29,19 +31,41 @@ use crate::input::rope_ext::RopeExt as _;
 pub struct DisplayMap {
     wrap_map: WrapMap,
     fold_map: FoldMap,
-    /// Visible display rows of the presentation's scaled lines, sorted, rebuilt with the
-    /// fold projection. Empty without a presentation, which keeps rows uniformly tall.
+    /// Visible display rows of the presentation's lines that are not one line height a row
+    /// (scaled lines, lines with space, block widgets), sorted, rebuilt with the fold
+    /// projection. Empty without such a presentation, which keeps rows uniformly tall.
     scaled_rows: Vec<ScaledRows>,
     /// Sum over `scaled_rows` of `(scale - 1) * rows`, in line heights.
     scaled_extra: f32,
+    /// Sum over `scaled_rows` of their extra height in pixels: their space, and how much
+    /// taller than a line height a widget's row is.
+    scaled_extra_px: Pixels,
+    /// Wrap rows hidden by block widgets, which the scroll height leaves out.
+    block_hidden_rows: usize,
+    /// Measured heights of block widgets by key, which replace the heights they were set with.
+    block_heights: HashMap<u64, Pixels>,
 }
 
-/// The display rows of one scaled buffer line.
+/// The display rows of one buffer line that are not one line height each.
 struct ScaledRows {
     rows: Range<usize>,
+    /// Each row is `scale` line heights plus `fixed` pixels tall.
     scale: f32,
+    fixed: Pixels,
+    /// Space above the first row and below the last.
+    above: Pixels,
+    below: Pixels,
     /// Extra height, in line heights, of the scaled rows above these.
     extra_before: f32,
+    /// Extra height, in pixels, of the rows above these.
+    extra_before_px: Pixels,
+}
+
+impl ScaledRows {
+    /// The height of each row, without the space.
+    fn row_height(&self, line_height: Pixels) -> Pixels {
+        line_height * self.scale + self.fixed
+    }
 }
 
 impl DisplayMap {
@@ -51,6 +75,9 @@ impl DisplayMap {
             fold_map: FoldMap::new(),
             scaled_rows: Vec::new(),
             scaled_extra: 0.,
+            scaled_extra_px: px(0.),
+            block_hidden_rows: 0,
+            block_heights: HashMap::new(),
         }
     }
 
@@ -283,20 +310,29 @@ impl DisplayMap {
 
     // ==================== Presentation ====================
 
-    /// Replace the render-only presentation: byte ranges laid out at zero width and
-    /// per-buffer-line scales. Both must already be validated against the text (see
+    /// Replace the render-only presentation, already validated against the text (see
     /// `EditorPresentation`). Returns whether anything changed.
     pub(crate) fn set_presentation(
         &mut self,
-        concealed: std::rc::Rc<[Range<usize>]>,
-        line_scales: std::rc::Rc<[(usize, f32)]>,
+        presentation: ValidPresentation,
         cx: &mut App,
     ) -> bool {
-        let changed = self.wrap_map.set_presentation(concealed, line_scales, cx);
+        // Measured heights are kept only for the widgets still set.
+        if !self.block_heights.is_empty() {
+            self.block_heights
+                .retain(|key, _| presentation.blocks.iter().any(|b| b.key == *key));
+        }
+        let changed = self.wrap_map.set_presentation(presentation, cx);
         if changed {
             self.rebuild_fold_projection();
         }
         changed
+    }
+
+    /// The validated presentation, carried through any edits since it was set.
+    #[inline]
+    pub(crate) fn presentation(&self) -> &ValidPresentation {
+        self.wrap_map.wrapper().presentation()
     }
 
     /// The concealed byte ranges, sorted and disjoint.
@@ -305,16 +341,16 @@ impl DisplayMap {
         self.wrap_map.wrapper().concealed()
     }
 
-    /// The `(buffer line, scale)` pairs of the presentation, sorted by line.
-    #[inline]
-    pub(crate) fn line_scales(&self) -> &[(usize, f32)] {
-        self.wrap_map.wrapper().line_scales()
-    }
-
-    /// Whether a presentation conceals or scales anything.
+    /// Whether a presentation changes anything.
     #[inline]
     pub(crate) fn has_presentation(&self) -> bool {
-        !self.concealed().is_empty() || !self.line_scales().is_empty()
+        !self.presentation().is_empty()
+    }
+
+    /// Whether some display rows are not one line height tall.
+    #[inline]
+    pub(crate) fn has_uneven_rows(&self) -> bool {
+        !self.scaled_rows.is_empty()
     }
 
     /// The scale of buffer line `line`: `1.0` unless the presentation scales it.
@@ -323,10 +359,77 @@ impl DisplayMap {
         self.wrap_map.wrapper().line_scale(line)
     }
 
+    /// The block widget whose first line is `line`.
+    pub(crate) fn block_at(&self, line: usize) -> Option<&BlockWidget> {
+        let blocks = &self.presentation().blocks;
+        blocks
+            .binary_search_by_key(&line, |b| b.lines.start)
+            .ok()
+            .map(|ix| &blocks[ix])
+    }
+
+    /// The height a block widget is laid out at: its measured one once it has been drawn.
+    pub(crate) fn block_height(&self, block: &BlockWidget) -> Pixels {
+        self.block_heights
+            .get(&block.key)
+            .copied()
+            .unwrap_or(block.height)
+    }
+
+    /// Record the measured height of the widget with `key`. Returns whether the layout
+    /// changed.
+    pub(crate) fn set_block_height(&mut self, key: u64, height: Pixels) -> bool {
+        if !f32::from(height).is_finite() || height <= px(0.) {
+            return false;
+        }
+        let Some(block) = self.presentation().blocks.iter().find(|b| b.key == key) else {
+            return false;
+        };
+        if (self.block_height(block) - height).abs() < px(0.5) {
+            return false;
+        }
+        self.block_heights.insert(key, height);
+        self.rebuild_scaled_rows();
+        true
+    }
+
+    /// The room the presentation gives buffer line `line` around and before its rows.
+    pub(crate) fn line_frame(&self, line: usize) -> LineFrame {
+        let presentation = self.presentation();
+        if presentation.line_space.is_empty()
+            && presentation.line_insets.is_empty()
+            && presentation.blocks.is_empty()
+        {
+            return LineFrame::default();
+        }
+        if let Some(block) = self.block_at(line) {
+            return LineFrame {
+                block: Some(self.block_height(block)),
+                ..LineFrame::default()
+            };
+        }
+        let (above, below) = self.line_space(line);
+        LineFrame {
+            above,
+            below,
+            inset: line_value(&presentation.line_insets, line).unwrap_or(px(0.)),
+            block: None,
+        }
+    }
+
+    /// The space above and below buffer line `line`.
+    fn line_space(&self, line: usize) -> (Pixels, Pixels) {
+        let space = &self.presentation().line_space;
+        space
+            .binary_search_by_key(&line, |(l, _, _)| *l)
+            .map_or((px(0.), px(0.)), |ix| (space[ix].1, space[ix].2))
+    }
+
     /// The y of the top of display row `row`, in content space.
     ///
     /// Rows are `line_height` tall except those of scaled lines, so without a presentation
-    /// this is `line_height * row`.
+    /// this is `line_height * row`. The space above a line belongs to its first row, and the
+    /// space below to its last.
     pub(crate) fn display_row_top(&self, row: usize, line_height: Pixels) -> Pixels {
         if self.scaled_rows.is_empty() {
             return line_height * row;
@@ -336,20 +439,37 @@ impl DisplayMap {
             return line_height * row;
         };
         let inside = row.min(scaled.rows.end) - scaled.rows.start;
+        let space = if row >= scaled.rows.end {
+            scaled.above + scaled.below
+        } else {
+            scaled.above
+        };
         line_height * (row as f32 + scaled.extra_before + (scaled.scale - 1.) * inside as f32)
+            + scaled.extra_before_px
+            + scaled.fixed * inside as f32
+            + space
     }
 
-    /// The height of display row `row`.
+    /// The height of display row `row`, its share of its line's space included.
     pub(crate) fn display_row_height(&self, row: usize, line_height: Pixels) -> Pixels {
         let ix = self.scaled_rows.partition_point(|s| s.rows.end <= row);
         match self.scaled_rows.get(ix) {
-            Some(scaled) if scaled.rows.contains(&row) => line_height * scaled.scale,
+            Some(scaled) if scaled.rows.contains(&row) => {
+                let mut height = scaled.row_height(line_height);
+                if row == scaled.rows.start {
+                    height += scaled.above;
+                }
+                if row + 1 == scaled.rows.end {
+                    height += scaled.below;
+                }
+                height
+            }
             _ => line_height,
         }
     }
 
     /// The display row under content-space `y` (rows past the end continue at
-    /// `line_height`, so the caller clamps).
+    /// `line_height`, so the caller clamps). A line's space maps to its nearest row.
     pub(crate) fn display_row_at_y(&self, y: Pixels, line_height: Pixels) -> usize {
         let y = y.max(px(0.));
         let uniform = |y: Pixels, base: usize| {
@@ -362,23 +482,30 @@ impl DisplayMap {
             return uniform(y, 0);
         };
         let top = self.display_row_top(scaled.rows.start, line_height);
-        let row_height = line_height * scaled.scale;
-        let bottom = top + row_height * scaled.rows.len() as f32;
+        let row_height = scaled.row_height(line_height);
+        let bottom = top + scaled.above + row_height * scaled.rows.len() as f32 + scaled.below;
         if y < bottom {
-            scaled.rows.start + (f32::from(y - top) / f32::from(row_height)).floor() as usize
+            let y = y - top - scaled.above;
+            let local = if y <= px(0.) || row_height <= px(0.) {
+                0
+            } else {
+                (f32::from(y) / f32::from(row_height)).floor() as usize
+            };
+            scaled.rows.start + local.min(scaled.rows.len() - 1)
         } else {
             uniform(y - bottom, scaled.rows.end)
         }
     }
 
     /// The height of every wrap row, for the scroll size: `line_height` each, plus the extra
-    /// of the visible scaled rows.
+    /// of the visible scaled rows, less the rows block widgets hide.
     pub(crate) fn wrap_rows_height(&self, line_height: Pixels) -> Pixels {
         let rows = self.wrap_map.wrap_row_count() as f32;
-        if self.scaled_rows.is_empty() {
+        if self.scaled_rows.is_empty() && self.block_hidden_rows == 0 {
             rows * line_height
         } else {
-            (rows + self.scaled_extra) * line_height
+            (rows - self.block_hidden_rows as f32 + self.scaled_extra) * line_height
+                + self.scaled_extra_px
         }
     }
 
@@ -387,7 +514,23 @@ impl DisplayMap {
     /// Rebuild fold projection after wrap_map or fold state changes
     /// Only rebuilds if there are actually folded ranges
     fn rebuild_fold_projection(&mut self) {
-        if !self.fold_map.folded_ranges().is_empty() {
+        // A block widget hides its lines after the first the way a fold does.
+        let hidden: Vec<Range<usize>> = self
+            .presentation()
+            .blocks
+            .iter()
+            .map(|b| b.lines.start + 1..b.lines.end)
+            .filter(|lines| !lines.is_empty())
+            .collect();
+        self.block_hidden_rows = hidden
+            .iter()
+            .map(|lines| {
+                self.wrap_map.buffer_line_to_first_wrap_row(lines.end)
+                    - self.wrap_map.buffer_line_to_first_wrap_row(lines.start)
+            })
+            .sum();
+        self.fold_map.set_hidden_lines(hidden);
+        if self.fold_map.hides_rows() {
             self.fold_map.rebuild(&self.wrap_map);
         } else {
             // No active folds: identity mapping (wrap_row == display_row).
@@ -398,29 +541,60 @@ impl DisplayMap {
         self.rebuild_scaled_rows();
     }
 
-    /// Recompute the display rows of the scaled lines. A folded line has none, so it adds no
-    /// height.
+    /// Recompute the display rows of the lines that are not one line height a row. A folded
+    /// line has none, so it adds no height.
     fn rebuild_scaled_rows(&mut self) {
         self.scaled_rows.clear();
         self.scaled_extra = 0.;
-        if self.line_scales().is_empty() {
+        self.scaled_extra_px = px(0.);
+        let presentation = self.presentation().clone();
+        if presentation.line_scales.is_empty()
+            && presentation.line_space.is_empty()
+            && presentation.blocks.is_empty()
+        {
             return;
         }
+        let mut lines: Vec<usize> = presentation
+            .line_scales
+            .iter()
+            .map(|(line, _)| *line)
+            .chain(presentation.line_space.iter().map(|(line, _, _)| *line))
+            .chain(presentation.blocks.iter().map(|b| b.lines.start))
+            .collect();
+        lines.sort_unstable();
+        lines.dedup();
         let mut extra = 0.;
-        let mut scaled_rows = Vec::with_capacity(self.line_scales().len());
-        for &(line, scale) in self.line_scales() {
-            if let Some(rows) = self.buffer_line_to_display_row_range(line) {
-                let len = rows.len() as f32;
-                scaled_rows.push(ScaledRows {
-                    rows,
-                    scale,
-                    extra_before: extra,
-                });
-                extra += (scale - 1.) * len;
-            }
+        let mut extra_px = px(0.);
+        let mut scaled_rows = Vec::with_capacity(lines.len());
+        for line in lines {
+            let Some(rows) = self.buffer_line_to_display_row_range(line) else {
+                continue;
+            };
+            let len = rows.len() as f32;
+            let (scale, fixed, above, below) = match self.block_at(line) {
+                // A widget's line is one row as tall as the widget: no line height, all
+                // fixed pixels.
+                Some(block) => (0., self.block_height(block), px(0.), px(0.)),
+                None => {
+                    let (above, below) = self.line_space(line);
+                    (self.line_scale(line), px(0.), above, below)
+                }
+            };
+            scaled_rows.push(ScaledRows {
+                rows,
+                scale,
+                fixed,
+                above,
+                below,
+                extra_before: extra,
+                extra_before_px: extra_px,
+            });
+            extra += (scale - 1.) * len;
+            extra_px += fixed * len + above + below;
         }
         self.scaled_rows = scaled_rows;
         self.scaled_extra = extra;
+        self.scaled_extra_px = extra_px;
     }
 
     // ==================== Wrap Display Point Operations ====================

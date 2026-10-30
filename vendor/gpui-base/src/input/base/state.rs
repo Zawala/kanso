@@ -1017,7 +1017,8 @@ impl<M: InputModeKind> InputBaseState<M> {
             let prev_lines_offset = last_layout.visible_line_byte_offsets[vi];
             let local_offset = offset.saturating_sub(prev_lines_offset);
             if let Some(pos) = line.position_for_index(local_offset, last_layout, false) {
-                let sub_line_index = (pos.y / line.row_height(line_height)) as usize;
+                let sub_line_index =
+                    ((pos.y - line.frame().above) / line.row_height(line_height)) as usize;
                 let adjusted_pos = point(pos.x + last_layout.line_number_width, pos.y + y_offset);
                 return (vi, sub_line_index, Some(adjusted_pos));
             }
@@ -2419,6 +2420,17 @@ impl<M: InputModeKind> InputBaseState<M> {
         if window.default_prevented() {
             return;
         }
+        // A press on a clickable replacement of the presentation is reported, and leaves
+        // the caret where it is.
+        if event.button == MouseButton::Left
+            && event.click_count == 1
+            && !event.modifiers.shift
+            && !event.modifiers.alt
+            && let Some(range) = self.clickable_replacement_at(event.position)
+        {
+            cx.emit(crate::input::EditorPresentationEvent::ReplacementClicked { range });
+            return;
+        }
         self.undo_manager.break_transaction_coalescing();
         // Input has its own text selection; suppress the window-level text
         // selection (Root) so it does not start a drag from here.
@@ -3318,6 +3330,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             .zip(last_layout.visible_line_byte_offsets.last())
             .map(|((line_layout, pos), line_start)| {
                 let last_row_top = (line_layout.size(line_height).height
+                    - line_layout.frame().below
                     - line_layout.row_height(line_height))
                 .max(px(0.));
                 let pos = point(pos.x, last_row_top);

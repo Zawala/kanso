@@ -106,6 +106,7 @@ pub fn presentation(layout: &LiveLayout) -> EditorPresentation {
             .map(|&(line, level)| (line, heading_scale(level)))
             .filter(|&(_, scale)| scale > 1.)
             .collect(),
+        ..Default::default()
     }
 }
 

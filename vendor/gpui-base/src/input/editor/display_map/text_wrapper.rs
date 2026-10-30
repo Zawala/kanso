@@ -15,6 +15,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 use crate::input::{
     Point as TreeSitterPoint, RopeExt,
     layout::{LastLayout, WhitespaceIndicators},
+    presentation::{BlockWidget, Replacement, ValidPresentation, line_value},
 };
 
 /// Controls how soft-wrapped continuation lines are indented.
@@ -228,12 +229,12 @@ pub(crate) struct TextWrapper {
     pub(crate) lines: SumTree<LineItem>,
 
     inline_metrics: Rc<[(Range<usize>, Pixels)]>,
-    /// Byte ranges laid out at zero width (render-only presentation): sorted, disjoint, each
-    /// within one line. Ignored for lines that have inline token metrics.
-    concealed: Rc<[Range<usize>]>,
-    /// `(buffer line, scale)` sorted by line, every scale finite and above 1. A scaled line is
-    /// wrapped at `wrap_width / scale`, so its text fits once it is shaped `scale` times larger.
-    line_scales: Rc<[(usize, f32)]>,
+    /// The render-only presentation, validated. Its concealed ranges wrap at zero width and
+    /// its replacements at the width of their text (both ignored for lines that have inline
+    /// token metrics). A scaled line is wrapped at `wrap_width / scale`, so its text fits once
+    /// it is shaped `scale` times larger, an inset line that much narrower first, and the
+    /// first line of a block widget is never wrapped (it is drawn as one row).
+    presentation: ValidPresentation,
     _initialized: bool,
 }
 
@@ -248,8 +249,7 @@ impl TextWrapper {
             wrapping_indent: WrappingIndent::default(),
             lines: SumTree::new(&()),
             inline_metrics: Rc::from([]),
-            concealed: Rc::from([]),
-            line_scales: Rc::from([]),
+            presentation: ValidPresentation::default(),
             _initialized: false,
         }
     }
@@ -381,7 +381,8 @@ impl TextWrapper {
             .text_system()
             .line_wrapper(self.font.clone(), self.font_size);
         let metrics = self.inline_metrics.clone();
-        let concealed = self.concealed.clone();
+        let concealed = self.presentation.concealed.clone();
+        let replacements = self.presentation.replacements.clone();
         let text_system = gpui::WindowTextSystem::new(cx.text_system().clone());
         let font = self.font.clone();
         let font_size = self.font_size;
@@ -413,12 +414,26 @@ impl TextWrapper {
                     fragments.push(LineFragment::element(*width, range.len()));
                     offset = range.end;
                 }
-                // Concealed text takes no room, so it wraps as a zero-width element. A line
-                // with inline tokens keeps them alone.
+                // Concealed text takes no room, so it wraps as a zero-width element, and a
+                // replacement as an element as wide as its text. A line with inline tokens
+                // keeps them alone.
                 if fragments.is_empty() {
                     let line_end = line_start + line_str.len();
                     let first = concealed.partition_point(|r| r.end <= line_start);
-                    for range in concealed[first..].iter().take_while(|r| r.start < line_end) {
+                    let hidden = concealed[first..]
+                        .iter()
+                        .take_while(|r| r.start < line_end)
+                        .map(|range| (range.clone(), None));
+                    let first = replacements.partition_point(|r| r.range.end <= line_start);
+                    let replaced = replacements[first..]
+                        .iter()
+                        .take_while(|r| r.range.start < line_end)
+                        .map(|r| (r.range.clone(), Some(r)));
+                    let mut items: Vec<_> = hidden.chain(replaced).collect();
+                    if !items.is_empty() {
+                        items.sort_by_key(|(range, _)| range.start);
+                    }
+                    for (range, replacement) in items {
                         if range.start < line_start || range.end > line_end {
                             continue;
                         }
@@ -432,7 +447,30 @@ impl TextWrapper {
                         if offset < range.start {
                             fragments.push(LineFragment::text(&line_str[offset..range.start]));
                         }
-                        fragments.push(LineFragment::element(px(0.), range.len()));
+                        let width = replacement.map_or(px(0.), |replacement| {
+                            let text = replacement.text.clone();
+                            let font = gpui::Font {
+                                weight: replacement.style.font_weight.unwrap_or(font.weight),
+                                style: replacement.style.font_style.unwrap_or(font.style),
+                                ..font.clone()
+                            };
+                            text_system
+                                .layout_line(
+                                    &text,
+                                    font_size,
+                                    &[gpui::TextRun {
+                                        len: text.len(),
+                                        font,
+                                        color: gpui::black(),
+                                        background_color: None,
+                                        underline: None,
+                                        strikethrough: None,
+                                    }],
+                                    None,
+                                )
+                                .width
+                        });
+                        fragments.push(LineFragment::element(width, range.len()));
                         offset = range.end;
                     }
                 }
@@ -547,79 +585,123 @@ impl TextWrapper {
         }
     }
 
+    /// The validated presentation.
+    #[inline]
+    pub(crate) fn presentation(&self) -> &ValidPresentation {
+        &self.presentation
+    }
+
     /// The concealed byte ranges of the presentation.
     #[inline]
     pub(crate) fn concealed(&self) -> &[Range<usize>] {
-        &self.concealed
+        &self.presentation.concealed
     }
 
     /// The `(buffer line, scale)` pairs of the presentation, sorted by line.
     #[inline]
     pub(crate) fn line_scales(&self) -> &[(usize, f32)] {
-        &self.line_scales
+        &self.presentation.line_scales
     }
 
     /// The scale of buffer line `row`, `1.0` unless the presentation scales it.
     #[inline]
     pub(crate) fn line_scale(&self, row: usize) -> f32 {
-        if self.line_scales.is_empty() {
+        if self.presentation.line_scales.is_empty() {
             return 1.;
         }
-        self.line_scales
-            .binary_search_by_key(&row, |(line, _)| *line)
-            .map_or(1., |ix| self.line_scales[ix].1)
+        line_value(&self.presentation.line_scales, row).unwrap_or(1.)
+    }
+
+    /// How much the wrap width of buffer line `row` shrinks, and whether it is wrapped at all.
+    fn line_wrap(presentation: &ValidPresentation, row: usize) -> (f32, Pixels, bool) {
+        let scale = line_value(&presentation.line_scales, row).unwrap_or(1.);
+        let inset = line_value(&presentation.line_insets, row).unwrap_or(px(0.));
+        let block = presentation
+            .blocks
+            .binary_search_by_key(&row, |b| b.lines.start)
+            .is_ok();
+        (scale, inset, block)
     }
 
     /// Replace the render-only presentation, already validated against the text, and rewrap
-    /// the lines whose conceal or scale changed. Returns whether anything changed.
+    /// the lines whose wrapping it changes. Returns whether anything changed.
     pub(crate) fn set_presentation(
         &mut self,
-        concealed: Rc<[Range<usize>]>,
-        line_scales: Rc<[(usize, f32)]>,
+        presentation: ValidPresentation,
         cx: &mut App,
     ) -> bool {
-        if self.concealed == concealed && self.line_scales == line_scales {
+        if self.presentation == presentation {
             return false;
         }
         let text = self.text.clone();
         let row_of = |offset: usize| text.offset_to_point(offset.min(text.len())).row;
         let mut rows: Vec<usize> = Vec::new();
         // Ranges in only one of the two lists, found the way `set_inline_metrics` does.
-        let (mut old, mut new) = (
-            self.concealed.iter().peekable(),
-            concealed.iter().peekable(),
-        );
-        loop {
-            match (old.peek(), new.peek()) {
-                (Some(a), Some(b)) if a == b => {
-                    old.next();
-                    new.next();
+        fn diff<T: PartialEq>(
+            old: &[T],
+            new: &[T],
+            start: impl Fn(&T) -> usize,
+            mut changed: impl FnMut(usize),
+        ) {
+            let (mut old, mut new) = (old.iter().peekable(), new.iter().peekable());
+            loop {
+                match (old.peek(), new.peek()) {
+                    (Some(a), Some(b)) if a == b => {
+                        old.next();
+                        new.next();
+                    }
+                    (Some(a), Some(b)) if start(a) <= start(b) => {
+                        changed(start(a));
+                        old.next();
+                    }
+                    (_, Some(b)) => {
+                        changed(start(b));
+                        new.next();
+                    }
+                    (Some(a), None) => {
+                        changed(start(a));
+                        old.next();
+                    }
+                    (None, None) => break,
                 }
-                (Some(a), Some(b)) if a.start <= b.start => {
-                    rows.push(row_of(a.start));
-                    old.next();
-                }
-                (_, Some(b)) => {
-                    rows.push(row_of(b.start));
-                    new.next();
-                }
-                (Some(a), None) => {
-                    rows.push(row_of(a.start));
-                    old.next();
-                }
-                (None, None) => break,
             }
         }
-        for &(line, _) in self.line_scales.iter().chain(line_scales.iter()) {
-            let new_scale = line_scales
-                .binary_search_by_key(&line, |(line, _)| *line)
-                .map_or(1., |ix| line_scales[ix].1);
-            if self.line_scale(line) != new_scale {
+        let old = &self.presentation;
+        diff(
+            &old.concealed,
+            &presentation.concealed,
+            |r| r.start,
+            |o| rows.push(row_of(o)),
+        );
+        diff(
+            &old.replacements,
+            &presentation.replacements,
+            |r| r.range.start,
+            |o| rows.push(row_of(o)),
+        );
+        let lines = old
+            .line_scales
+            .iter()
+            .chain(presentation.line_scales.iter())
+            .map(|(line, _)| *line)
+            .chain(
+                old.line_insets
+                    .iter()
+                    .chain(presentation.line_insets.iter())
+                    .map(|(line, _)| *line),
+            )
+            .chain(
+                old.blocks
+                    .iter()
+                    .chain(presentation.blocks.iter())
+                    .map(|b| b.lines.start),
+            );
+        for line in lines {
+            if Self::line_wrap(old, line) != Self::line_wrap(&presentation, line) {
                 rows.push(line);
             }
         }
-        self.concealed = concealed;
-        self.line_scales = line_scales;
+        self.presentation = presentation;
         if !self._initialized {
             // The first `prepare_if_need` wraps everything with the new presentation.
             return true;
@@ -643,47 +725,98 @@ impl TextWrapper {
     /// Carry the presentation across an edit of the current text, before the wrapped lines
     /// are updated for it.
     ///
-    /// Concealed ranges the edit touches are dropped and later ones shift with it, the way
-    /// inline metrics do. Scales of the lines the edit spans are dropped and later lines'
-    /// shift by the change in line count, except that an edit within one line keeps that
-    /// line's scale (typing in a heading leaves it a heading). The owner is expected to set a
-    /// fresh presentation after the edit; this only keeps the stale one safe and close.
+    /// Concealed ranges and replacements the edit touches are dropped and later ones shift
+    /// with it, the way inline metrics do. Per-line items (scales, space, insets, ornaments)
+    /// of the lines the edit spans are dropped and later lines' shift by the change in line
+    /// count, except that an edit within one line keeps that line's (typing in a heading
+    /// leaves it a heading). A block widget whose lines the edit touches is dropped, and later
+    /// ones shift. The owner is expected to set a fresh presentation after the edit; this only
+    /// keeps the stale one safe and close.
     pub(crate) fn adjust_presentation_for_edit(&mut self, range: &Range<usize>, new_text: &Rope) {
-        if !self.concealed.is_empty() {
-            let new_len = new_text.len();
-            let shift = new_len as isize - range.len() as isize;
-            self.concealed = self
-                .concealed
+        if self.presentation.is_empty() {
+            return;
+        }
+        let new_len = new_text.len();
+        let shift = new_len as isize - range.len() as isize;
+        let shift_range = |r: &Range<usize>| -> Option<Range<usize>> {
+            if r.start < range.end && range.start < r.end {
+                return None;
+            }
+            if r.start >= range.end {
+                Some(r.start.checked_add_signed(shift)?..r.end.checked_add_signed(shift)?)
+            } else {
+                Some(r.clone())
+            }
+        };
+        let p = &mut self.presentation;
+        if !p.concealed.is_empty() {
+            p.concealed = p.concealed.iter().filter_map(shift_range).collect();
+        }
+        if !p.replacements.is_empty() {
+            p.replacements = p
+                .replacements
                 .iter()
                 .filter_map(|r| {
-                    if r.start < range.end && range.start < r.end {
-                        return None;
-                    }
-                    if r.start >= range.end {
-                        Some(r.start.checked_add_signed(shift)?..r.end.checked_add_signed(shift)?)
-                    } else {
-                        Some(r.clone())
-                    }
+                    Some(Replacement {
+                        range: shift_range(&r.range)?,
+                        ..r.clone()
+                    })
                 })
                 .collect();
         }
-        if !self.line_scales.is_empty() {
-            let len = self.text.len();
-            let start_line = self.text.offset_to_point(range.start.min(len)).row;
-            let end_line = self.text.offset_to_point(range.end.min(len)).row;
-            let new_lines = new_text.lines_len().saturating_sub(1);
-            let delta = new_lines as isize - (end_line - start_line) as isize;
-            let in_place = start_line == end_line && new_lines == 0;
-            self.line_scales = self
-                .line_scales
+
+        let len = self.text.len();
+        let start_line = self.text.offset_to_point(range.start.min(len)).row;
+        let end_line = self.text.offset_to_point(range.end.min(len)).row;
+        let new_lines = new_text.lines_len().saturating_sub(1);
+        let delta = new_lines as isize - (end_line - start_line) as isize;
+        let in_place = start_line == end_line && new_lines == 0;
+        let shift_line = |line: usize| -> Option<usize> {
+            if line < start_line || (in_place && line == start_line) {
+                Some(line)
+            } else if line > end_line {
+                line.checked_add_signed(delta)
+            } else {
+                None
+            }
+        };
+        fn shift_lines<T: Clone>(
+            items: &Rc<[(usize, T)]>,
+            shift_line: impl Fn(usize) -> Option<usize>,
+        ) -> Rc<[(usize, T)]> {
+            if items.is_empty() {
+                return items.clone();
+            }
+            items
                 .iter()
-                .filter_map(|&(line, scale)| {
-                    if line < start_line || (in_place && line == start_line) {
-                        Some((line, scale))
-                    } else if line > end_line {
-                        Some((line.checked_add_signed(delta)?, scale))
-                    } else {
+                .filter_map(|(line, value)| Some((shift_line(*line)?, value.clone())))
+                .collect()
+        }
+        p.line_scales = shift_lines(&p.line_scales, shift_line);
+        p.line_insets = shift_lines(&p.line_insets, shift_line);
+        p.line_ornaments = shift_lines(&p.line_ornaments, shift_line);
+        if !p.line_space.is_empty() {
+            p.line_space = p
+                .line_space
+                .iter()
+                .filter_map(|&(line, above, below)| Some((shift_line(line)?, above, below)))
+                .collect();
+        }
+        if !p.blocks.is_empty() {
+            p.blocks = p
+                .blocks
+                .iter()
+                .filter_map(|b| {
+                    if b.lines.start <= end_line && start_line < b.lines.end {
                         None
+                    } else if b.lines.start > end_line {
+                        Some(BlockWidget {
+                            lines: b.lines.start.checked_add_signed(delta)?
+                                ..b.lines.end.checked_add_signed(delta)?,
+                            ..b.clone()
+                        })
+                    } else {
+                        Some(b.clone())
                     }
                 })
                 .collect();
@@ -692,8 +825,7 @@ impl TextWrapper {
 
     /// Drop the presentation without rewrapping, for a text that replaces the whole buffer.
     pub(crate) fn clear_presentation(&mut self) {
-        self.concealed = Rc::from([]);
-        self.line_scales = Rc::from([]);
+        self.presentation = ValidPresentation::default();
     }
 
     fn _update<F>(
@@ -729,9 +861,16 @@ impl TextWrapper {
             let mut indent_chars = 0;
 
             // If wrap_width is Pixels::MAX, skip wrapping to disable word wrap
-            if let Some(wrap_width) = wrap_width {
-                // A scaled line is shaped larger, so it wraps narrower.
-                let scale = self.line_scale(row);
+            // The first line of a block widget is drawn as one row, so it is not wrapped.
+            let (scale, inset, block) = Self::line_wrap(&self.presentation, row);
+            if let Some(wrap_width) = wrap_width.filter(|_| !block) {
+                // A scaled line is shaped larger, so it wraps narrower, and an inset line
+                // has less room.
+                let wrap_width = if inset > px(0.) {
+                    (wrap_width - inset).max(px(1.))
+                } else {
+                    wrap_width
+                };
                 let wrap_width = if scale != 1. {
                     wrap_width / scale
                 } else {
@@ -940,6 +1079,21 @@ pub(crate) struct LineLayout {
     /// Height of each visual line as a multiple of the editor's line height, `1.0` unless
     /// the presentation scales this line.
     scale: f32,
+    /// What the presentation adds around the line, zero without one.
+    frame: LineFrame,
+}
+
+/// The room a presentation gives one buffer line beyond its rows.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct LineFrame {
+    /// Space above the first visual row.
+    pub(crate) above: Pixels,
+    /// Space below the last visual row.
+    pub(crate) below: Pixels,
+    /// How far right every visual row starts.
+    pub(crate) inset: Pixels,
+    /// For the first line of a block widget: the height of its one row, which is not painted.
+    pub(crate) block: Option<Pixels>,
 }
 
 impl LineLayout {
@@ -953,7 +1107,26 @@ impl LineLayout {
             whitespace_indicators: None,
             has_background: false,
             scale: 1.,
+            frame: LineFrame::default(),
         }
+    }
+
+    /// Set the room the presentation gives the line around and before its rows.
+    pub(crate) fn with_frame(mut self, frame: LineFrame) -> Self {
+        self.frame = frame;
+        self
+    }
+
+    /// The room the presentation gives the line.
+    #[inline]
+    pub(crate) fn frame(&self) -> &LineFrame {
+        &self.frame
+    }
+
+    /// The top of visual row `ix`, relative to the top of the line (its space included).
+    #[inline]
+    pub(crate) fn row_top(&self, ix: usize, line_height: Pixels) -> Pixels {
+        self.frame.above + ix * self.row_height(line_height)
     }
 
     /// Set the line's scale: each visual line is `line_height * scale` tall.
@@ -965,7 +1138,10 @@ impl LineLayout {
     /// The height of one visual line of this layout.
     #[inline]
     pub(crate) fn row_height(&self, line_height: Pixels) -> Pixels {
-        line_height * self.scale
+        match self.frame.block {
+            Some(height) => height,
+            None => line_height * self.scale,
+        }
     }
 
     /// Record whether any run of this line carries a background color.
@@ -981,13 +1157,14 @@ impl LineLayout {
     }
 
     /// The pixel indent applied to the given visual line, relative to the line's
-    /// leading text. Only continuation lines (index > 0) are indented.
+    /// leading text. Only continuation lines (index > 0) are indented, past the inset that a
+    /// presentation gives every row.
     #[inline]
-    fn line_indent(&self, line_index: usize) -> Pixels {
+    pub(crate) fn line_indent(&self, line_index: usize) -> Pixels {
         if line_index == 0 {
-            px(0.)
+            self.frame.inset
         } else {
-            self.wrap_indent
+            self.frame.inset + self.wrap_indent
         }
     }
 
@@ -1064,7 +1241,7 @@ impl LineLayout {
         line_end_affinity: bool,
     ) -> Option<Point<Pixels>> {
         let mut acc_len = 0;
-        let mut offset_y = px(0.);
+        let mut offset_y = self.frame.above;
 
         let x_offset = last_layout.alignment_offset(self.longest_width);
 
@@ -1129,7 +1306,7 @@ impl LineLayout {
         last_layout: &LastLayout,
     ) -> Option<(usize, usize, Pixels)> {
         let mut offset = 0;
-        let mut line_top = px(0.);
+        let mut line_top = self.frame.above;
         let x_offset = last_layout.alignment_offset(self.longest_width);
 
         for (i, line) in self.wrapped_lines.iter().enumerate() {
@@ -1142,7 +1319,18 @@ impl LineLayout {
             line_top = line_bottom;
         }
 
-        None
+        // The space a presentation gives the line belongs to its nearest row.
+        let in_space_above = pos.y >= px(0.) && pos.y < self.frame.above;
+        let in_space_below = pos.y >= line_top && pos.y < line_top + self.frame.below;
+        let last = self.wrapped_lines.len().checked_sub(1)?;
+        if in_space_above {
+            Some((0, 0, pos.x - x_offset - self.line_indent(0)))
+        } else if in_space_below {
+            let offset = offset - self.wrapped_lines[last].len;
+            Some((last, offset, pos.x - x_offset - self.line_indent(last)))
+        } else {
+            None
+        }
     }
 
     /// Get the index for the given position (x, y) in this line layout.
@@ -1199,6 +1387,24 @@ impl LineLayout {
         (past_end / last_layout.space_width).round() as usize
     }
 
+    /// The source range, local to this line layout, of the replacement drawn under `pos`.
+    ///
+    /// The `pos` is relative to the top-left corner of this line layout, start from (0, 0).
+    pub(crate) fn replacement_at_position(
+        &self,
+        pos: Point<Pixels>,
+        last_layout: &LastLayout,
+    ) -> Option<Range<usize>> {
+        // Only the rows, not the space around them.
+        let rows_bottom = self.row_top(self.wrapped_lines.len(), last_layout.line_height);
+        if pos.y < self.frame.above || pos.y >= rows_bottom {
+            return None;
+        }
+        let (i, offset, x) = self.wrapped_line_at(pos, last_layout)?;
+        let range = self.wrapped_lines[i].replacement_at_x(x)?;
+        Some(offset + range.start..offset + range.end)
+    }
+
     pub(crate) fn index_for_position(
         &self,
         pos: Point<Pixels>,
@@ -1219,7 +1425,9 @@ impl LineLayout {
             .unwrap_or(self.longest_width);
         size(
             width,
-            self.wrapped_lines.len() * self.row_height(line_height),
+            self.frame.above
+                + self.wrapped_lines.len() * self.row_height(line_height)
+                + self.frame.below,
         )
     }
 
@@ -1238,11 +1446,12 @@ impl LineLayout {
     ) {
         // Painting a background walks every glyph and pushes a scene layer, so skip the
         // whole pass for lines that have no background color to paint.
-        if !self.has_background {
+        if !self.has_background || self.frame.block.is_some() {
             return;
         }
 
         let line_height = self.row_height(line_height);
+        let pos = pos + point(px(0.), self.frame.above);
         for (ix, line) in self.wrapped_lines.iter().enumerate() {
             _ = line.paint_background(
                 pos + point(self.line_indent(ix), ix * line_height),
@@ -1264,7 +1473,12 @@ impl LineLayout {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // A block widget's element is drawn in place of its first line.
+        if self.frame.block.is_some() {
+            return;
+        }
         let line_height = self.row_height(line_height);
+        let pos = pos + point(px(0.), self.frame.above);
         for (ix, line) in self.wrapped_lines.iter().enumerate() {
             _ = line.paint(
                 pos + point(self.line_indent(ix), ix * line_height),
