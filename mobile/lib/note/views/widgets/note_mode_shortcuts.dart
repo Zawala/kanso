@@ -9,8 +9,8 @@ import '../../../shell/models/data/kanso_intent.dart';
 import '../../models/data/note_mode.dart';
 import '../../state/note/note_bloc.dart';
 
-/// Answers the shortcuts that switch the open note between reading and
-/// editing (see `kansoShortcutBindings`), for the `NoteBloc` above it.
+/// Answers the shortcuts that switch the open note between reading, editing
+/// and Live (see `kansoShortcutBindings`), for the `NoteBloc` above it.
 ///
 /// The shortcuts are found from the focus, so it takes the focus when the
 /// note opens, unless a text field holds it (the editor's own, or the list's
@@ -67,6 +67,12 @@ class _NoteModeShortcutsState extends State<NoteModeShortcuts> {
         PreviewNoteIntent: CallbackAction<PreviewNoteIntent>(
           onInvoke: (_) {
             bloc.add(const NoteEvent.modeChanged(NoteMode.preview));
+            return null;
+          },
+        ),
+        LiveNoteIntent: CallbackAction<LiveNoteIntent>(
+          onInvoke: (_) {
+            bloc.add(const NoteEvent.modeChanged(NoteMode.live));
             return null;
           },
         ),

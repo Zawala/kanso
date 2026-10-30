@@ -1305,6 +1305,51 @@ pub struct RunBatch {
     pub runs: Vec<EditorRun>,
 }
 
+/// How a span of the text is drawn in Live mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiveKind {
+    Strong,
+    Emphasis,
+    Strikethrough,
+    /// Inline code, without its backticks.
+    Code,
+    /// A link's or a wiki-link's text.
+    Link,
+    /// A heading's text, without its `#`s.
+    Heading,
+}
+
+/// A span of the text drawn in a Live mode style.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LiveRun {
+    pub range: Range16,
+    pub kind: LiveKind,
+}
+
+/// A heading's line, drawn `scale` times the size of body text.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LiveLine {
+    /// The line without its line break.
+    pub range: Range16,
+    pub level: u8,
+    pub scale: f64,
+}
+
+/// What Live mode draws for a range of the text, as of one version of it,
+/// in UTF-16 units from the start of that range. The marks are those of
+/// every line: the field shows them again on the lines its caret or
+/// selection touch, so a caret that moves needs no new batch.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LiveBatch {
+    pub version: u64,
+    /// The units not drawn: sorted, disjoint, each within one line.
+    pub conceal: Vec<Range16>,
+    /// The styled spans, sorted by start; they can nest.
+    pub runs: Vec<LiveRun>,
+    /// The heading lines, in order.
+    pub lines: Vec<LiveLine>,
+}
+
 /// What a completion completes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompletionKind {

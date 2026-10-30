@@ -37,9 +37,9 @@ const Duration noteDebounce = Duration(milliseconds: 100);
 /// A note that is locked and closed is its title and its lock: its text is
 /// never highlighted, cut or kept, whatever the library handed over.
 ///
-/// While the note is edited ([NoteMode.edit]) the editor has the text; the
-/// library's writes (the editor's own saves) are not read again until the
-/// note is read again, in Preview.
+/// While the note is edited ([NoteMode.edit] or [NoteMode.live]) the editor
+/// has the text; the library's writes (the editor's own saves) are not read
+/// again until the note is read again, in Preview.
 @injectable
 class NoteBloc extends Bloc<NoteEvent, NoteState> {
   NoteBloc(this._library, this._renderer, this._places)
@@ -108,7 +108,7 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
     NoteChangesReceivedEvent event,
     Emitter<NoteState> emit,
   ) async {
-    if (state.mode == NoteMode.edit) {
+    if (state.mode.isEditing) {
       _stale = true;
       return;
     }
@@ -119,7 +119,12 @@ class NoteBloc extends Bloc<NoteEvent, NoteState> {
     NoteModeChangedEvent event,
     Emitter<NoteState> emit,
   ) async {
-    final editing = event.mode == NoteMode.edit;
+    final editing = event.mode.isEditing;
+    if (editing && state.mode.isEditing && event.bodyCaret == null) {
+      // Edit to Live and back: the same editor, drawn another way.
+      emit(state.copyWith(mode: event.mode));
+      return;
+    }
     final tapped = event.bodyCaret;
     final place = editing ? _places.placeOf(state.noteId) : null;
     emit(

@@ -114,6 +114,10 @@
   "@noteEdit": {
     "description": "Shows the note as text to edit."
   },
+  "noteLive": "Live",
+  "@noteLive": {
+    "description": "Shows the note as text to edit, drawn in place: headings larger and the Markdown marks hidden off the line being edited."
+  },
   "noteInfo": "Note info",
   "@noteInfo": {
     "description": "Shows the note's details."

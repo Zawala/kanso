@@ -103,6 +103,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noteEdit => 'Edit';
 
   @override
+  String get noteLive => 'Live';
+
+  @override
   String get noteInfo => 'Note info';
 
   @override

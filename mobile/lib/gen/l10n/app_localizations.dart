@@ -250,6 +250,12 @@ abstract class AppLocalizations {
   /// **'Edit'**
   String get noteEdit;
 
+  /// Shows the note as text to edit, drawn in place: headings larger and the Markdown marks hidden off the line being edited.
+  ///
+  /// In en, this message translates to:
+  /// **'Live'**
+  String get noteLive;
+
   /// Shows the note's details.
   ///
   /// In en, this message translates to:

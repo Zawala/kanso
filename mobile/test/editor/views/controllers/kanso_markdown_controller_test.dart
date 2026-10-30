@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
+import 'package:kanso/editor/utils/editor_spans.dart';
 
 import '../../../helpers/editor_harness.dart';
 
@@ -201,6 +202,49 @@ void main() {
         expect(editor.controller.runs, isNotEmpty);
       },
     );
+
+    testWidgets('in Live mode hides the marks off the line the caret is on', (
+      tester,
+    ) async {
+      const text = '# Head\n\nsome **bold**';
+      final editor = await pumpEditor(tester, text: text, caret: 0);
+      editor.controller.live = true;
+      await editor.settle(tester);
+      final layer = editor.controller.liveLayer;
+      expect(layer.lines.single.$2, 1.6);
+      expect(editor.controller.caretScale.value, 1.6);
+      TextStyle? styleAt(int offset) {
+        final span = editor.controller.spanFor(
+          style: const TextStyle(fontSize: 10),
+          withComposing: false,
+        );
+        expect(span.toPlainText(), text);
+        var at = 0;
+        for (final child in span.children!.cast<TextSpan>()) {
+          at += child.text!.length;
+          if (offset < at) {
+            return child.style;
+          }
+        }
+        return null;
+      }
+
+      // The caret is on the heading: its marks show; the bold's do not.
+      expect(styleAt(0)?.fontSize, 16);
+      expect(styleAt(13)?.fontSize, liveHiddenSize);
+      expect(styleAt(15)?.fontWeight, FontWeight.bold);
+      editor.controller.selection = const TextSelection.collapsed(
+        offset: text.length,
+      );
+      await tester.pump();
+      expect(styleAt(0)?.fontSize, liveHiddenSize);
+      expect(styleAt(13)?.fontSize, isNot(liveHiddenSize));
+      expect(editor.controller.caretScale.value, 1);
+
+      editor.controller.live = false;
+      expect(editor.controller.liveLayer.isEmpty, isTrue);
+      expect(editor.controller.caretScale.value, 1);
+    });
 
     testWidgets('a lone surrogate half is never handed to the core', (
       tester,

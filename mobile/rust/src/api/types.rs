@@ -19,22 +19,22 @@ pub use kanso_mobile::{
     GalleryKind, GoalSetting, GraphEdgeRow, GraphFilter, GraphLayout, GraphNodeRow, GraphRequest,
     HistoryState, Hit, IconChoice, IconThemeRow, ImageToRead, ImportEvent, ImportFound,
     ImportPhase, ImportProgress, ImportSource, ImportSummary, InvitationRow, JoinRow, KansoError,
-    LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveStatus,
-    LocalTime, LockEvent, LockReason, LockState, LockStatus, LockedInfo, MadeNote, MeaningResult,
-    MemberRow, MentionSpan, MonthGrid, NewNote, NoteChange, NoteList, NoteMeaning, NoteRow,
-    NoteView, NotebookRole, NotebookRow, OpenedDocuments, OpenedFile, PaletteDto, PasskeyFailure,
-    PasskeyRequest, PasskeyRequestKind, PasskeyRow, PersonLookup, PersonRow, PreviewLink,
-    PreviewOptions, PromptState, Property, PropertyKind, ProviderEvent, ProviderKind,
-    PushEnvironmentKind, PushPlatformKind, QuotaLimit, Range16, RecoveryKeyText, RelatedRow,
-    RelatedState, RelatedStatus, ReminderAnswer, ReminderNote, ReminderPlan, Replacement, RunBatch,
-    SaveState, Saved, SearchScope, ServerInfo, ServerMethods, Share, ShareFile, ShareInfo,
-    ShareLinkRow, ShareRole, SharedEvent, ShortcutEntry, ShortcutPlace, ShortcutSection,
-    SignOutReasonKind, SignedUp, SortKey, SpanRow, StatusChoice, StatusCount, StyledRun,
-    SuggestedTag, SvgRow, SyncAccount, SyncIntervalOption, SyncPhase, SyncProblemKind,
-    SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine, SyncTone, SyntaxStyleRow, Table,
-    TableRow, TagPlaces, TagRow, TagTreeRow, TaskBoard, TaskGroupKind, TaskItem, TaskListQuery,
-    TaskPlace, TaskSection, TemplateRow, TextChange, ThemeTokens, ThemedIcon, Ticked, TwinRow,
-    VisibleNotebook,
+    LibraryOverview, LinkTarget, LinkedProviderRow, ListPlace, ListQuery, ListShape, LiveBatch,
+    LiveKind, LiveLine, LiveRun, LiveStatus, LocalTime, LockEvent, LockReason, LockState,
+    LockStatus, LockedInfo, MadeNote, MeaningResult, MemberRow, MentionSpan, MonthGrid, NewNote,
+    NoteChange, NoteList, NoteMeaning, NoteRow, NoteView, NotebookRole, NotebookRow,
+    OpenedDocuments, OpenedFile, PaletteDto, PasskeyFailure, PasskeyRequest, PasskeyRequestKind,
+    PasskeyRow, PersonLookup, PersonRow, PreviewLink, PreviewOptions, PromptState, Property,
+    PropertyKind, ProviderEvent, ProviderKind, PushEnvironmentKind, PushPlatformKind, QuotaLimit,
+    Range16, RecoveryKeyText, RelatedRow, RelatedState, RelatedStatus, ReminderAnswer,
+    ReminderNote, ReminderPlan, Replacement, RunBatch, SaveState, Saved, SearchScope, ServerInfo,
+    ServerMethods, Share, ShareFile, ShareInfo, ShareLinkRow, ShareRole, SharedEvent,
+    ShortcutEntry, ShortcutPlace, ShortcutSection, SignOutReasonKind, SignedUp, SortKey, SpanRow,
+    StatusChoice, StatusCount, StyledRun, SuggestedTag, SvgRow, SyncAccount, SyncIntervalOption,
+    SyncPhase, SyncProblemKind, SyncReportRow, SyncSettingsRow, SyncStatus, SyncStatusLine,
+    SyncTone, SyntaxStyleRow, Table, TableRow, TagPlaces, TagRow, TagTreeRow, TaskBoard,
+    TaskGroupKind, TaskItem, TaskListQuery, TaskPlace, TaskSection, TemplateRow, TextChange,
+    ThemeTokens, ThemedIcon, Ticked, TwinRow, VisibleNotebook,
 };
 pub use kanso_mobile::{
     IconThemeImport, InstalledIconThemeRow, ThemeImport, ThemeNotice, ThemeOrigin, ThemeRow,
@@ -1346,6 +1346,37 @@ pub struct _EditorRun {
 pub struct _RunBatch {
     pub version: u64,
     pub runs: Vec<EditorRun>,
+}
+
+#[frb(mirror(LiveKind))]
+pub enum _LiveKind {
+    Strong,
+    Emphasis,
+    Strikethrough,
+    Code,
+    Link,
+    Heading,
+}
+
+#[frb(mirror(LiveRun))]
+pub struct _LiveRun {
+    pub range: Range16,
+    pub kind: LiveKind,
+}
+
+#[frb(mirror(LiveLine))]
+pub struct _LiveLine {
+    pub range: Range16,
+    pub level: u8,
+    pub scale: f64,
+}
+
+#[frb(mirror(LiveBatch))]
+pub struct _LiveBatch {
+    pub version: u64,
+    pub conceal: Vec<Range16>,
+    pub runs: Vec<LiveRun>,
+    pub lines: Vec<LiveLine>,
 }
 
 #[frb(mirror(CompletionKind))]

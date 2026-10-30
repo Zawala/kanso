@@ -111,7 +111,7 @@ class NotePane extends StatelessWidget {
           final note = shown.note;
           final readable =
               shown.status == NoteScreenStatus.ready && note != null;
-          final editing = readable && shown.mode == NoteMode.edit;
+          final editing = readable && shown.mode.isEditing;
           // The keyboard has the foot of the screen: the bar of the page
           // gives way to it and the editor's own bar.
           final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;

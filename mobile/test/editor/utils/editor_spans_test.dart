@@ -17,6 +17,7 @@ import 'package:glados/glados.dart'
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/editor/utils/diff_values.dart';
 import 'package:kanso/editor/utils/editor_spans.dart';
+import 'package:kanso/editor/utils/live_layer.dart';
 
 import '../../helpers/property.dart';
 
@@ -190,6 +191,81 @@ void main() {
       ]);
     });
 
+    test('Live mode hides the marks, keeping them in the text', () {
+      final span = editorSpans(
+        text: 'a **b** c',
+        runs: const <EditorRun>[],
+        base: _base,
+        live: const LiveLayer(
+          conceal: <TextRange>[
+            TextRange(start: 2, end: 4),
+            TextRange(start: 5, end: 7),
+          ],
+          runs: <(TextRange, LiveKind)>[
+            (TextRange(start: 4, end: 5), LiveKind.strong),
+          ],
+        ),
+      );
+      expect(span.toPlainText(), 'a **b** c');
+      final styles = <String, TextStyle?>{
+        for (final child in span.children!.cast<TextSpan>())
+          child.text!: child.style,
+      };
+      expect(styles['**']?.fontSize, liveHiddenSize);
+      expect(styles['**']?.color, const Color(0x00000000));
+      expect(styles['b']?.fontWeight, FontWeight.bold);
+      expect(styles['b']?.fontSize, isNull);
+      expect(styles['a ']?.fontSize, isNull);
+    });
+
+    test('Live mode draws a heading line larger', () {
+      final span = editorSpans(
+        text: '# Big\nsmall',
+        runs: const <EditorRun>[],
+        base: _base,
+        live: const LiveLayer(
+          conceal: <TextRange>[TextRange(start: 0, end: 2)],
+          runs: <(TextRange, LiveKind)>[
+            (TextRange(start: 2, end: 5), LiveKind.heading),
+          ],
+          lines: <(TextRange, double)>[(TextRange(start: 0, end: 5), 1.6)],
+        ),
+      );
+      final pieces = span.children!.cast<TextSpan>().toList();
+      expect(_pieces(span), <String>['# ', 'Big', '\nsmall']);
+      expect(pieces[0].style?.fontSize, liveHiddenSize);
+      expect(pieces[1].style?.fontSize, 15 * 1.6);
+      expect(pieces[1].style?.fontWeight, FontWeight.bold);
+      expect(pieces[2].style?.fontSize, isNull);
+    });
+
+    test('Live mode slants, strikes and colours, under a composition', () {
+      const link = TextStyle(color: Color(0xFF0000FF));
+      final span = editorSpans(
+        text: 'it gone url',
+        runs: const <EditorRun>[],
+        base: _base,
+        composing: const TextRange(start: 3, end: 7),
+        live: const LiveLayer(
+          runs: <(TextRange, LiveKind)>[
+            (TextRange(start: 0, end: 2), LiveKind.emphasis),
+            (TextRange(start: 3, end: 7), LiveKind.strikethrough),
+            (TextRange(start: 8, end: 11), LiveKind.link),
+          ],
+        ),
+        liveLinkStyle: link,
+      );
+      final styles = <String, TextStyle?>{
+        for (final child in span.children!.cast<TextSpan>())
+          child.text!: child.style,
+      };
+      expect(styles['it']?.fontStyle, FontStyle.italic);
+      final struck = styles['gone']!.decoration!;
+      expect(struck.contains(TextDecoration.lineThrough), isTrue);
+      expect(struck.contains(TextDecoration.underline), isTrue);
+      expect(styles['url']?.color, link.color);
+    });
+
     Glados3<String, List<EditorRun>, List<TextRange>>(
       any.written,
       any.someRuns,
@@ -248,6 +324,15 @@ void main() {
         base: _base,
         composing: ranges.isEmpty ? TextRange.empty : ranges.first,
         misspellings: ranges,
+        live: LiveLayer(
+          conceal: ranges,
+          runs: <(TextRange, LiveKind)>[
+            for (final range in ranges) (range, LiveKind.strong),
+          ],
+          lines: <(TextRange, double)>[
+            for (final range in ranges) (range, 1.4),
+          ],
+        ),
       );
       expect(span.toPlainText(), text);
       var at = 0;
