@@ -17,7 +17,6 @@ import 'package:kanso/core/views/widgets/kanso_segment_cell.dart';
 import 'package:kanso/editor/models/data/editor_status.dart';
 import 'package:kanso/editor/models/repos/abs/editor_repository.dart';
 import 'package:kanso/editor/state/editor/editor_bloc.dart';
-import 'package:kanso/editor/views/controllers/kanso_markdown_controller.dart';
 import 'package:kanso/editor/views/widgets/accessory_key.dart';
 import 'package:kanso/editor/views/widgets/completion_popup.dart';
 import 'package:kanso/editor/views/widgets/editor_conflict_strip.dart';
@@ -25,6 +24,7 @@ import 'package:kanso/editor/views/widgets/editor_failure_strip.dart';
 import 'package:kanso/editor/views/widgets/editor_title_field.dart';
 import 'package:kanso/editor/views/widgets/kanso_editable_text.dart';
 import 'package:kanso/editor/views/widgets/keyboard_accessory_bar.dart';
+import 'package:kanso/editor/views/widgets/live_document_editor.dart';
 import 'package:kanso/editor/views/widgets/new_property_row.dart';
 import 'package:kanso/editor/views/widgets/note_editor_pane.dart';
 import 'package:kanso/editor/views/widgets/properties_row.dart';
@@ -221,16 +221,21 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(page.note.state.mode, NoteMode.live);
-      final field = find.byType(KansoEditableText);
-      expect(field, findsOneWidget);
-      final editable = tester.widget<KansoEditableText>(field);
-      final live = editable.controller as KansoMarkdownController;
-      expect(live.live, isTrue);
+      // Live is its own editor, on the same text and controller as Edit's
+      // field, the whole note in it.
+      final drawn = find.byType(LiveDocumentEditor);
+      expect(drawn, findsOneWidget);
+      expect(find.byType(KansoEditableText), findsNothing);
+      final live = tester.widget<LiveDocumentEditor>(drawn).controller;
+      expect(live.unwindowed, isTrue);
       await tester.tap(find.bySemanticsLabel('Edit'));
       await tester.pump();
       expect(page.note.state.mode, NoteMode.edit);
+      final field = find.byType(KansoEditableText);
+      expect(field, findsOneWidget);
+      expect(find.byType(LiveDocumentEditor), findsNothing);
       expect(tester.widget<KansoEditableText>(field).controller, same(live));
-      expect(live.live, isFalse);
+      expect(live.unwindowed, isFalse);
     });
 
     testWidgets('Preview goes back, and saves what was typed', (tester) async {

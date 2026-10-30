@@ -19,8 +19,9 @@ import 'completion_popup.dart';
 class CompletionHost extends StatefulWidget {
   const CompletionHost({
     required this.controller,
-    required this.editableKey,
     required this.child,
+    this.editableKey,
+    this.caretOnScreen,
     this.reservedBottom = 0,
     super.key,
   });
@@ -28,7 +29,11 @@ class CompletionHost extends StatefulWidget {
   final KansoMarkdownController controller;
 
   /// The editable text the caret is in.
-  final GlobalKey<EditableTextState> editableKey;
+  final GlobalKey<EditableTextState>? editableKey;
+
+  /// Where the caret is on the screen, for an editor that is not an
+  /// editable text (Live); used when there is no [editableKey].
+  final Rect? Function()? caretOnScreen;
 
   final Widget child;
 
@@ -103,26 +108,37 @@ class _CompletionHostState extends State<CompletionHost> {
     if (!mounted || !open) {
       return;
     }
-    final editable = widget.editableKey.currentState;
+    final editable = widget.editableKey?.currentState;
     final target = targetKey.currentContext?.findRenderObject();
     final selection = widget.controller.selection;
-    if (editable == null ||
-        target is! RenderBox ||
-        !target.attached ||
-        !selection.isValid) {
+    if (target is! RenderBox || !target.attached || !selection.isValid) {
       return;
     }
-    final render = editable.renderEditable;
-    final rect = render.getLocalRectForCaret(
-      TextPosition(offset: selection.extentOffset),
-    );
-    final local = MatrixUtils.transformRect(
-      render.getTransformTo(target),
-      rect,
-    );
-    final top = render.localToGlobal(rect.topLeft).dy;
-    final bottom = render.localToGlobal(rect.bottomLeft).dy;
-    final next = (local: local, screenTop: top, screenBottom: bottom);
+    final _Caret next;
+    if (editable != null) {
+      final render = editable.renderEditable;
+      final rect = render.getLocalRectForCaret(
+        TextPosition(offset: selection.extentOffset),
+      );
+      final local = MatrixUtils.transformRect(
+        render.getTransformTo(target),
+        rect,
+      );
+      final top = render.localToGlobal(rect.topLeft).dy;
+      final bottom = render.localToGlobal(rect.bottomLeft).dy;
+      next = (local: local, screenTop: top, screenBottom: bottom);
+    } else {
+      final rect = widget.caretOnScreen?.call();
+      if (rect == null) {
+        return;
+      }
+      final topLeft = target.globalToLocal(rect.topLeft);
+      next = (
+        local: Rect.fromLTWH(topLeft.dx, topLeft.dy, rect.width, rect.height),
+        screenTop: rect.top,
+        screenBottom: rect.bottom,
+      );
+    }
     if (caret.value != next) {
       caret.value = next;
     }

@@ -88,6 +88,15 @@ abstract interface class EditorDocument {
     required int end,
   });
 
+  /// What Live mode draws for the whole text with the carets and
+  /// selections [reveal] (a caret is an empty range): the marks to hide,
+  /// the blocks, the block marks drawn as bullets and boxes, the styles, the
+  /// links and the blocks drawn as widgets, in units of the text, as of the
+  /// version it says.
+  Future<Either<ApplicationError, LiveDocument>> liveDocument(
+    List<Range16> reveal,
+  );
+
   /// What the caret completes (`[[` with titles, `#` with tags); null when
   /// it completes nothing. Titles only, never a note's text.
   Future<Either<ApplicationError, Completion?>> completion();
