@@ -20,26 +20,30 @@ import '../../utils/note_menu_actions.dart';
 import 'lock_item_sheet.dart';
 import 'remove_lock_sheet.dart';
 
-/// A note's More menu: Export as PDF, and as far as locks go Lock note…,
-/// Remove lock… (the note is locked and open) and Lock notes now (the notes
-/// are open). The choice closes the menu and then runs.
+/// A note's More menu: first what the note's bar had no room for, then
+/// Export as PDF, and as far as locks go Lock note…, Remove lock… (the note
+/// is locked and open) and Lock notes now (the notes are open). The choice
+/// closes the menu and then runs.
 class NoteMoreSheet extends StatelessWidget {
   const NoteMoreSheet({required this.actions, super.key});
 
   final List<NoteMenuAction> actions;
 
   /// Shows the menu of the note [noteId], whose lock is [lock], and runs
-  /// what is chosen. Nothing is shown when there is nothing to offer.
+  /// what is chosen. [moved] are the actions the note's bar had no room
+  /// for, in order, and what each does. Nothing is shown when there is
+  /// nothing to offer.
   static Future<void> show(
     BuildContext context, {
     required String noteId,
     required LockState lock,
     required LockStatusBloc status,
+    Map<NoteMenuAction, VoidCallback> moved = const {},
   }) async {
-    final actions = noteMenuActions(
-      lock: lock,
-      unlocked: status.state.unlocked,
-    );
+    final actions = <NoteMenuAction>[
+      ...moved.keys,
+      ...noteMenuActions(lock: lock, unlocked: status.state.unlocked),
+    ];
     if (actions.isEmpty) {
       return;
     }
@@ -48,6 +52,10 @@ class NoteMoreSheet extends StatelessWidget {
       builder: (_) => NoteMoreSheet(actions: actions),
     );
     if (chosen == null || !context.mounted) {
+      return;
+    }
+    if (moved[chosen] case final run?) {
+      run();
       return;
     }
     switch (chosen) {
@@ -69,6 +77,14 @@ class NoteMoreSheet extends StatelessWidget {
         );
       case NoteMenuAction.lockNow:
         status.add(const LockStatusEvent.lockedNow());
+      // Run above, from [moved]; only the bar offers them otherwise.
+      case NoteMenuAction.info ||
+          NoteMenuAction.comments ||
+          NoteMenuAction.share ||
+          NoteMenuAction.previousDay ||
+          NoteMenuAction.nextDay ||
+          NoteMenuAction.calendar:
+        break;
     }
   }
 
@@ -99,6 +115,12 @@ class NoteMoreSheet extends StatelessWidget {
                   NoteMenuAction.lockNote => KansoIcons.lock,
                   NoteMenuAction.removeLock => KansoIcons.lockOpen,
                   NoteMenuAction.lockNow => KansoIcons.lock,
+                  NoteMenuAction.info => KansoIcons.info,
+                  NoteMenuAction.comments => KansoIcons.messageSquare,
+                  NoteMenuAction.share => KansoIcons.share,
+                  NoteMenuAction.previousDay => KansoIcons.chevronLeft,
+                  NoteMenuAction.nextDay => KansoIcons.chevronRight,
+                  NoteMenuAction.calendar => KansoIcons.calendar,
                 },
                 label: switch (action) {
                   NoteMenuAction.exportPdf => l10n.noteExportPdf,
@@ -106,6 +128,12 @@ class NoteMoreSheet extends StatelessWidget {
                   NoteMenuAction.lockNote => l10n.lockNoteMenu,
                   NoteMenuAction.removeLock => l10n.lockRemoveNoteMenu,
                   NoteMenuAction.lockNow => l10n.lockNowMenu,
+                  NoteMenuAction.info => l10n.noteInfo,
+                  NoteMenuAction.comments => l10n.commentsTitle,
+                  NoteMenuAction.share => l10n.shareTitle,
+                  NoteMenuAction.previousDay => l10n.journalPreviousDay,
+                  NoteMenuAction.nextDay => l10n.journalNextDay,
+                  NoteMenuAction.calendar => l10n.journalCalendar,
                 },
                 danger: action == NoteMenuAction.removeLock,
                 onTap: () => Navigator.of(context).pop(action),

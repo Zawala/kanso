@@ -17,13 +17,18 @@ import '../../../core/state/navigation_history/navigation_history_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
+import '../../../core/views/widgets/kanso_top_bar.dart';
+import '../../../journal/views/widgets/day_stepper.dart';
 import '../../../journal/views/widgets/journal_opener.dart';
 import '../../../journal/views/widgets/note_journal_actions.dart';
+import '../../../lock/models/data/note_menu_action.dart';
 import '../../../lock/views/widgets/privacy_cover_sync.dart';
 import '../../../sharing/state/comments/comments_bloc.dart';
 import '../../../sharing/state/shared_note_status/shared_note_status_bloc.dart';
 import '../../../sharing/views/widgets/comments_button.dart';
+import '../../../sharing/views/widgets/comments_sheet.dart';
 import '../../../sharing/views/widgets/share_note_button.dart';
+import '../../../sharing/views/widgets/share_note_sheet.dart';
 import '../../../sharing/views/widgets/shared_note_status_strip.dart';
 import '../../../shell/state/focus_mode/focus_mode_bloc.dart';
 import '../../../window/views/widgets/note_window_scope.dart';
@@ -64,8 +69,7 @@ class NotePane extends StatelessWidget {
     return FocusLivePreviewSync(
       child: BlocBuilder<FocusModeBloc, FocusModeState>(
         buildWhen: (before, after) => before.active != after.active,
-        builder: (context, state) =>
-            _build(context, focusActive: state.active),
+        builder: (context, state) => _build(context, focusActive: state.active),
       ),
     );
   }
@@ -119,6 +123,16 @@ class NotePane extends StatelessWidget {
           // The keyboard has the foot of the screen: the bar of the page
           // gives way to it and the editor's own bar.
           final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
+          // Selects a comment's words in the editor: opens it first.
+          void selectComment(String commentId) {
+            if (!editing) {
+              context.read<NoteBloc>().add(
+                const NoteEvent.modeChanged(NoteMode.edit),
+              );
+            }
+            comments?.add(CommentsEvent.selected(commentId));
+          }
+
           // The window intents are found from the focus, which
           // `NoteModeShortcuts` may hold: their actions are above it.
           final body =
@@ -139,7 +153,14 @@ class NotePane extends StatelessWidget {
                           onGoBack: steps.canGoBack ? goBack : null,
                           onGoForward: steps.canGoForward ? goForward : null,
                           trailing: <Widget>[
-                            if (readable) const NoteJournalActions(),
+                            if (readable)
+                              for (final (control, action, priority)
+                                  in _dayControls)
+                                KansoTopBarItem(
+                                  id: action,
+                                  priority: priority,
+                                  child: NoteJournalActions(control: control),
+                                ),
                             if (readable) ...<Widget>[
                               NoteModeToggle(
                                 mode: shown.mode,
@@ -148,49 +169,49 @@ class NotePane extends StatelessWidget {
                                       NoteEvent.modeChanged(mode),
                                     ),
                               ),
-                              KansoIconButton(
-                                icon: KansoIcons.info,
-                                semanticLabel: l10n.noteInfo,
-                                onPressed: () => showKansoBottomSheet<void>(
-                                  context,
-                                  builder: (_) =>
-                                      BlocProvider<AiStatusBloc>.value(
-                                        value: context.read<AiStatusBloc>(),
-                                        child:
-                                            BlocProvider<
-                                              NoteDiscoveryBloc
-                                            >.value(
-                                              value: context
-                                                  .read<NoteDiscoveryBloc>(),
-                                              child: NoteInfoSheet(
-                                                note: note,
-                                                index: context
-                                                    .read<LibraryIndexBloc>()
-                                                    .state,
-                                              ),
-                                            ),
-                                      ),
+                              KansoTopBarItem(
+                                id: NoteMenuAction.info,
+                                priority: 0,
+                                child: KansoIconButton(
+                                  icon: KansoIcons.info,
+                                  semanticLabel: l10n.noteInfo,
+                                  onPressed: () => showInfo(context, note),
                                 ),
                               ),
                             ],
                             if (comments != null && readable)
-                              CommentsButton(
-                                // Select in the editor: open it first.
-                                onSelect: (commentId) {
-                                  if (!editing) {
-                                    context.read<NoteBloc>().add(
-                                      const NoteEvent.modeChanged(
-                                        NoteMode.edit,
-                                      ),
-                                    );
-                                  }
-                                  comments?.add(
-                                    CommentsEvent.selected(commentId),
-                                  );
-                                },
+                              KansoTopBarItem(
+                                id: NoteMenuAction.comments,
+                                priority: 1,
+                                child: CommentsButton(onSelect: selectComment),
                               ),
-                            const ShareNoteButton(),
-                            const NoteLockMenuButton(),
+                            const KansoTopBarItem(
+                              id: NoteMenuAction.share,
+                              priority: 2,
+                              child: ShareNoteButton(),
+                            ),
+                            NoteLockMenuButton(
+                              moved: <NoteMenuAction, VoidCallback>{
+                                for (final (control, action, _) in _dayControls)
+                                  action: () => runDayControl(
+                                    context,
+                                    control,
+                                    openNote: shown.noteId,
+                                  ),
+                                if (note != null)
+                                  NoteMenuAction.info: () =>
+                                      showInfo(context, note),
+                                if (comments case final comments?)
+                                  NoteMenuAction.comments: () =>
+                                      CommentsSheet.show(
+                                        context,
+                                        bloc: comments,
+                                        onSelect: selectComment,
+                                      ),
+                                NoteMenuAction.share: () =>
+                                    ShareNoteSheet.show(context, shown.noteId),
+                              },
+                            ),
                             // Only a device that shows more than one window
                             // has anything to put in this menu.
                             if (windows != null && windows.supported)
@@ -235,6 +256,34 @@ class NotePane extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// The journal's controls in the bar, what each is in the More menu when
+  /// the bar has no room for it, and how soon it gives way: after the
+  /// note's info (0), comments (1) and share (2), the calendar, then the
+  /// day after, then the day before.
+  static const List<(DayControl, NoteMenuAction, int)> _dayControls =
+      <(DayControl, NoteMenuAction, int)>[
+        (DayControl.previous, NoteMenuAction.previousDay, 5),
+        (DayControl.next, NoteMenuAction.nextDay, 4),
+        (DayControl.calendar, NoteMenuAction.calendar, 3),
+      ];
+
+  /// The sheet of facts about [note].
+  void showInfo(BuildContext context, NoteView note) {
+    showKansoBottomSheet<void>(
+      context,
+      builder: (_) => BlocProvider<AiStatusBloc>.value(
+        value: context.read<AiStatusBloc>(),
+        child: BlocProvider<NoteDiscoveryBloc>.value(
+          value: context.read<NoteDiscoveryBloc>(),
+          child: NoteInfoSheet(
+            note: note,
+            index: context.read<LibraryIndexBloc>().state,
+          ),
+        ),
       ),
     );
   }

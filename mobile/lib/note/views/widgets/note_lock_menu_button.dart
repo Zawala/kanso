@@ -8,16 +8,23 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
+import '../../../core/views/widgets/kanso_top_bar.dart';
+import '../../../lock/models/data/note_menu_action.dart';
 import '../../../lock/state/lock_status/lock_status_bloc.dart';
 import '../../../lock/utils/note_menu_actions.dart';
 import '../../../lock/views/widgets/note_more_sheet.dart';
 import '../../state/note/note_bloc.dart';
 
-/// The More button of a note, which opens the menu of its lock actions. It
-/// is not there while the note is not read, or has no lock action to offer
-/// (a locked note that is closed).
+/// The More button of a note, which opens the menu of its lock actions, and
+/// of the actions in [moved] that the bar it is in had no room for (see
+/// `KansoTopBarItem`, whose id is the action). It is not there while the
+/// note is not read, or has no lock action to offer (a locked note that is
+/// closed).
 class NoteLockMenuButton extends StatelessWidget {
-  const NoteLockMenuButton({super.key});
+  const NoteLockMenuButton({this.moved = const {}, super.key});
+
+  /// What each action the bar may have no room for does.
+  final Map<NoteMenuAction, VoidCallback> moved;
 
   @override
   Widget build(BuildContext context) {
@@ -44,11 +51,21 @@ class NoteLockMenuButton extends StatelessWidget {
                 noteId: view.id,
                 lock: view.lock,
                 status: context.read<LockStatusBloc>(),
+                moved: _hidden(context),
               ),
             );
           },
         );
       },
     );
+  }
+
+  /// The actions of [moved] that gave way in the bar, in the bar's order.
+  Map<NoteMenuAction, VoidCallback> _hidden(BuildContext context) {
+    final hidden = KansoTopBar.hiddenOf(context);
+    return <NoteMenuAction, VoidCallback>{
+      for (final MapEntry(:key, :value) in moved.entries)
+        if (hidden.contains(key)) key: value,
+    };
   }
 }

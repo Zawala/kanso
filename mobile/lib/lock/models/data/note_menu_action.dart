@@ -12,4 +12,13 @@ enum NoteMenuAction {
   lockNote,
   removeLock,
   lockNow,
+
+  /// What the note's bar would offer, had it room for it: in the menu when
+  /// the bar gave way (see `KansoTopBar.hiddenOf`).
+  info,
+  comments,
+  share,
+  previousDay,
+  nextDay,
+  calendar,
 }
