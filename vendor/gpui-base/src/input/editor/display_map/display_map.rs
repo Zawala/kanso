@@ -44,6 +44,11 @@ pub struct DisplayMap {
     block_hidden_rows: usize,
     /// Measured heights of block widgets by key, which replace the heights they were set with.
     block_heights: HashMap<u64, Pixels>,
+    /// The window's device pixels per logical pixel, which leaves round to; `0.` until known.
+    device_scale: f32,
+    /// The room below the last line of each of the presentation's leaves that rounds the
+    /// leaf up to whole device pixels, by that line.
+    leaf_pads: HashMap<usize, Pixels>,
 }
 
 /// The display rows of one buffer line that are not one line height each.
@@ -78,6 +83,8 @@ impl DisplayMap {
             scaled_extra_px: px(0.),
             block_hidden_rows: 0,
             block_heights: HashMap::new(),
+            device_scale: 0.,
+            leaf_pads: HashMap::new(),
         }
     }
 
@@ -400,12 +407,27 @@ impl DisplayMap {
         true
     }
 
+    /// Set the window's device pixels per logical pixel, which the presentation's leaves
+    /// round to. Returns whether the layout changed.
+    pub(crate) fn set_device_scale(&mut self, scale: f32) -> bool {
+        if self.device_scale == scale || !scale.is_finite() || scale <= 0. {
+            return false;
+        }
+        self.device_scale = scale;
+        if self.presentation().leaves.is_empty() {
+            return false;
+        }
+        self.rebuild_scaled_rows();
+        true
+    }
+
     /// The room the presentation gives buffer line `line` around and before its rows.
     pub(crate) fn line_frame(&self, line: usize) -> LineFrame {
         let presentation = self.presentation();
         if presentation.line_space.is_empty()
             && presentation.line_insets.is_empty()
             && presentation.blocks.is_empty()
+            && self.leaf_pads.is_empty()
         {
             return LineFrame::default();
         }
@@ -427,9 +449,49 @@ impl DisplayMap {
     /// The space above and below buffer line `line`.
     fn line_space(&self, line: usize) -> (Pixels, Pixels) {
         let space = &self.presentation().line_space;
-        space
+        let (above, below) = space
             .binary_search_by_key(&line, |(l, _, _)| *l)
-            .map_or((px(0.), px(0.)), |ix| (space[ix].1, space[ix].2))
+            .map_or((px(0.), px(0.)), |ix| (space[ix].1, space[ix].2));
+        let pad = self.leaf_pads.get(&line).copied().unwrap_or(px(0.));
+        (above, below + pad)
+    }
+
+    /// Work out the room that rounds each leaf up to whole device pixels: its rows (as
+    /// many as it wraps to now), the space between them and its extra.
+    fn rebuild_leaf_pads(&mut self) {
+        self.leaf_pads.clear();
+        let presentation = self.presentation().clone();
+        let (Some(line_height), scale) = (presentation.line_height, self.device_scale) else {
+            return;
+        };
+        if scale <= 0. {
+            return;
+        }
+        for (lines, extra) in presentation.leaves.iter() {
+            let mut height = *extra;
+            for line in lines.clone() {
+                let Some(rows) = self.buffer_line_to_display_row_range(line) else {
+                    continue;
+                };
+                height += line_height * self.row_scale(line) * rows.len() as f32;
+                let space = &presentation.line_space;
+                if let Ok(ix) = space.binary_search_by_key(&line, |(l, _, _)| *l) {
+                    if line != lines.start {
+                        height += space[ix].1;
+                    }
+                    if line + 1 != lines.end {
+                        height += space[ix].2;
+                    }
+                }
+            }
+            let device = f32::from(height) * scale;
+            // Within a rounding error of a whole device pixel is on it: a scaled row's
+            // height is a product of floats.
+            let pad = px(((device - 1e-3).ceil() - device).max(0.) / scale);
+            if pad > px(0.) {
+                self.leaf_pads.insert(lines.end - 1, pad);
+            }
+        }
     }
 
     /// The y of the top of display row `row`, in content space.
@@ -554,11 +616,13 @@ impl DisplayMap {
         self.scaled_rows.clear();
         self.scaled_extra = 0.;
         self.scaled_extra_px = px(0.);
+        self.rebuild_leaf_pads();
         let presentation = self.presentation().clone();
         if presentation.line_scales.is_empty()
             && presentation.line_space.is_empty()
             && presentation.blocks.is_empty()
             && presentation.line_heights.is_empty()
+            && self.leaf_pads.is_empty()
         {
             return;
         }
@@ -569,6 +633,7 @@ impl DisplayMap {
             .chain(presentation.line_space.iter().map(|(line, _, _)| *line))
             .chain(presentation.blocks.iter().map(|b| b.lines.start))
             .chain(presentation.line_heights.iter().map(|(line, _)| *line))
+            .chain(self.leaf_pads.keys().copied())
             .collect();
         lines.sort_unstable();
         lines.dedup();

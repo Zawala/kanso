@@ -819,6 +819,25 @@ impl TextWrapper {
                 .filter_map(|&(line, above, below)| Some((shift_line(line)?, above, below)))
                 .collect();
         }
+        if !p.leaves.is_empty() {
+            p.leaves = p
+                .leaves
+                .iter()
+                .filter_map(|(lines, extra)| {
+                    if lines.start <= end_line && start_line < lines.end {
+                        None
+                    } else if lines.start > end_line {
+                        Some((
+                            lines.start.checked_add_signed(delta)?
+                                ..lines.end.checked_add_signed(delta)?,
+                            *extra,
+                        ))
+                    } else {
+                        Some((lines.clone(), *extra))
+                    }
+                })
+                .collect();
+        }
         if !p.blocks.is_empty() {
             p.blocks = p
                 .blocks

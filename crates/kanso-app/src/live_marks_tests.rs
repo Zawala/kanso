@@ -19,6 +19,7 @@ const M: LiveMetrics = LiveMetrics {
     zoom: 1.,
     ascent: 14.85,
     descent: 3.77,
+    scale: 0.,
 };
 
 fn palette() -> LivePalette {

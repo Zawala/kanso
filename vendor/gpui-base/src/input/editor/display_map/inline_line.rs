@@ -34,6 +34,10 @@ pub(crate) struct FragmentChip {
     /// The icon's asset, size and colour, and where it starts in the fragment.
     pub(crate) icon: Option<(SharedString, Pixels, Hsla, Pixels)>,
     pub(crate) dashed_bottom: Option<Hsla>,
+    /// Whether it stands for a laid-out element, which sits on whole device pixels.
+    pub(crate) whole_width: bool,
+    /// Where its text's baseline is, below the box's top.
+    pub(crate) text_baseline: Option<Pixels>,
     pub(crate) background: Hsla,
     pub(crate) radius: Pixels,
     /// Its top and height within the row, from the row's height.
@@ -195,10 +199,23 @@ impl InputLine {
                     TextAlign::Center => remaining / 2.,
                     _ => px(0.),
                 };
+                let scale = window.scale_factor();
+                // As the layout snaps a box: to whole device pixels, halves toward zero.
+                // Within a rounding error of a half is a half.
+                let snap = |v: Pixels| {
+                    let device = f32::from(v) * scale;
+                    px((device.abs() - 0.5 - 1e-3).ceil().copysign(device) / scale)
+                };
                 for f in fragments {
-                    if background && let (Some(chip), Some(line)) = (&f.chip, &f.text) {
-                        let (top, chip_height) = match chip.height {
+                    // A chip's box: its top and height in the row.
+                    let geometry = match (&f.chip, &f.text) {
+                        (Some(chip), Some(line)) => Some(match chip.height {
                             crate::input::ChipHeight::Fixed(h) => ((height - h) / 2., h),
+                            crate::input::ChipHeight::Baseline { ascent, descent } => {
+                                let baseline =
+                                    (height - line.ascent - line.descent) / 2. + line.ascent;
+                                (baseline - ascent, ascent + descent)
+                            }
                             crate::input::ChipHeight::CapHeight => {
                                 let baseline = (height - line.ascent - line.descent) / 2.
                                     + line.ascent
@@ -206,11 +223,25 @@ impl InputLine {
                                 let pad = chip.font_size * 0.125 + line.descent / 2.;
                                 (baseline - chip.cap_height - pad, chip.cap_height + pad * 2.)
                             }
-                        };
+                        }),
+                        _ => None,
+                    };
+                    // A chip standing for a laid-out element sits on whole device pixels,
+                    // as the element's box does, and so does everything in it.
+                    let shift = match (&f.chip, geometry) {
+                        (Some(chip), Some((top, _))) if chip.whole_width => {
+                            let origin = pos + point(offset + f.x, top);
+                            point(snap(origin.x) - origin.x, snap(origin.y) - origin.y)
+                        }
+                        _ => point(px(0.), px(0.)),
+                    };
+                    if background
+                        && let (Some(chip), Some((top, chip_height))) = (&f.chip, geometry)
+                    {
                         window.paint_quad(
                             gpui::fill(
                                 Bounds::new(
-                                    pos + point(offset + f.x, top),
+                                    pos + shift + point(offset + f.x, top),
                                     size(f.width, chip_height),
                                 ),
                                 chip.background,
@@ -218,11 +249,14 @@ impl InputLine {
                             .corner_radii(chip.radius),
                         );
                         if let Some(color) = chip.dashed_bottom {
+                            // On whole device pixels, as a laid-out box's border is, so
+                            // its dashes fall the same way.
+                            let origin = pos + shift + point(offset + f.x, top);
+                            let (left, top) = (snap(origin.x), snap(origin.y));
+                            let right = snap(origin.x + f.width);
+                            let bottom = snap(origin.y + chip_height);
                             window.paint_quad(gpui::quad(
-                                Bounds::new(
-                                    pos + point(offset + f.x, px(0.)),
-                                    size(f.width, height),
-                                ),
+                                Bounds::new(point(left, top), size(right - left, bottom - top)),
                                 px(0.),
                                 gpui::transparent_black(),
                                 gpui::Edges {
@@ -241,7 +275,7 @@ impl InputLine {
                         }) = &f.chip
                     {
                         let bounds = Bounds::new(
-                            pos + point(offset + f.x + *x, (height - *side) / 2.),
+                            pos + shift + point(offset + f.x + *x, (height - *side) / 2.),
                             size(*side, *side),
                         );
                         window
@@ -257,11 +291,11 @@ impl InputLine {
                     }
                     if let Some((image, ascent, descent)) = &f.image {
                         if !background {
+                            // An image is a laid-out element: on whole device pixels.
                             let baseline = (height - *ascent - *descent) / 2. + *ascent;
-                            let bounds = Bounds::new(
-                                pos + point(offset + f.x, baseline - image.baseline),
-                                image.size,
-                            );
+                            let origin = pos + point(offset + f.x, baseline - image.baseline);
+                            let bounds =
+                                Bounds::new(point(snap(origin.x), snap(origin.y)), image.size);
                             if let Some(data) = image.image.clone().use_render_image(window, cx) {
                                 window
                                     .paint_image(bounds, bounds, Default::default(), data, 0, false)
@@ -270,10 +304,20 @@ impl InputLine {
                         }
                         continue;
                     }
+                    // Text set in the box, as the element sets it.
+                    let text_y = match (&f.chip, geometry, &f.text) {
+                        (Some(chip), Some((top, _)), Some(line))
+                            if chip.text_baseline.is_some() =>
+                        {
+                            let centred = (height - line.ascent - line.descent) / 2. + line.ascent;
+                            top + chip.text_baseline.unwrap_or_default() - centred
+                        }
+                        _ => f.text_y,
+                    };
                     if let Some(line) = &f.text {
                         paint(
                             line,
-                            pos + point(offset + f.x + f.text_x, f.text_y),
+                            pos + shift + point(offset + f.x + f.text_x, text_y),
                             TextAlign::Left,
                             None,
                             window,

@@ -86,7 +86,11 @@ These files differ from the published `gpui-base` for it:
   height factor per line (`line_heights`, a heading's tighter line height),
   a base row height that is not rounded (`line_height`), scales below 1.0,
   replacements in their own family and size, in columns, on chips or as
-  images, and a check box ornament (`Ornament::Check`).
+  images, and a check box ornament (`Ornament::Check`). It also has
+  `leaves`: runs of lines laid out as one box whose height is rounded up to
+  whole device pixels, as the layout rounds a measured text box. Chips that
+  stand for an inline element sit on whole device pixels, with their text
+  placed in the box as the element places it.
   `src/input/base/element.rs` lays these out and paints them, and clips
   decorations to the visible lines when there is no highlighter (a
   decoration over a line hidden by a block widget shifted every later run).

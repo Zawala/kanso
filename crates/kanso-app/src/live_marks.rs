@@ -73,7 +73,7 @@ const DUE_ICON_GAP: f32 = 4.;
 const DUE_SIZE: f32 = 0.8;
 /// How tall a run of hidden lines is drawn when nothing is to be between
 /// the blocks around it: as good as nothing (a widget must have a height).
-const NO_GAP: f32 = 0.01;
+const NO_GAP: f32 = 0.0001;
 
 /// A heading's line height, relative to its size, as the text view sets it
 /// (`heading_metrics` in `node.rs`): tighter than the body's.
@@ -92,15 +92,83 @@ pub struct LiveMetrics {
     /// baseline is, which a formula sits on.
     pub ascent: f32,
     pub descent: f32,
+    /// The window's device pixels per pixel, which the preview's layout
+    /// rounds its boxes to; `0.` rounds nothing.
+    pub scale: f32,
 }
 
 impl LiveMetrics {
-    /// The height of a row of body text.
-    pub fn line(&self) -> f32 {
-        self.body * typography::LINE_HEIGHT
+    /// `length` as the layout sets an authored length: rounded to whole
+    /// device pixels, halves toward zero.
+    fn snap(&self, length: f32) -> f32 {
+        if self.scale <= 0. {
+            return length;
+        }
+        let device = length * self.scale;
+        (device.abs() - 0.5).ceil().copysign(device) / self.scale
     }
+
+    /// Where a row's baseline is, from its top: the body text centred in it.
+    fn baseline(&self) -> f32 {
+        (self.line() - self.ascent - self.descent) / 2. + self.ascent
+    }
+
+    /// How much taller above its baseline a line holding an inline element
+    /// with `baseline` and `height` is, and below it, as the text view's
+    /// line box grows around one (`inline_flow.rs`, `layout_measured_flow`).
+    fn grows(&self, baseline: f32, height: f32) -> (f32, f32) {
+        let above = self.baseline();
+        let below = self.line() - above;
+        (
+            (baseline - above).max(0.),
+            (height - baseline - below).max(0.),
+        )
+    }
+
+    /// The baseline and height of an element the text view lays out inline
+    /// `height` tall with no baseline of its own: its bottom keeps a plain
+    /// line's room below the baseline, that line as tall as the window's
+    /// (rounded) line height (`MeasuredInlineObject::measure`).
+    fn element_metrics(&self, height: f32) -> (f32, f32) {
+        let rounded = (self.body * typography::LINE_HEIGHT)
+            .round()
+            .max(self.ascent + self.descent);
+        let below = rounded - ((rounded - self.ascent - self.descent) / 2. + self.ascent);
+        ((height - below).max(0.), height)
+    }
+
+    /// Where an inline element's text sits, from its top: centred in the
+    /// window's (rounded) line height, which the element is set in.
+    fn element_text_baseline(&self) -> f32 {
+        let rounded = (self.body * typography::LINE_HEIGHT).round();
+        (rounded - self.ascent - self.descent) / 2. + self.ascent
+    }
+
+    /// Where a due chip's words sit, from its top (`due::DueChip`): a line
+    /// `size * 1.2` tall (snapped as text is), centred in the chip `size *
+    /// 1.55` tall on whole device pixels, the words centred in that line.
+    /// The chip's face is the body's at `size`, so its metrics scale.
+    fn due_text_baseline(&self, size: f32) -> f32 {
+        let ratio = size / self.body;
+        let (ascent, descent) = (self.ascent * ratio, self.descent * ratio);
+        let line = self.snap(size * 1.2);
+        let top = self.snap((self.snap(size * 1.55) - line) / 2.);
+        top + (line - ascent - descent) / 2. + ascent
+    }
+
+    /// The height of a row of body text: the text view's line height,
+    /// snapped to whole device pixels as its text layout snaps it
+    /// (`plain_line_height` in `inline_flow.rs`).
+    pub fn line(&self) -> f32 {
+        self.snap(self.body * typography::LINE_HEIGHT)
+    }
+    /// A list's indent, and the room right of its marker: authored lengths
+    /// of the text view's, so rounded to device pixels apart.
     fn indent(&self) -> f32 {
-        self.body * LIST_INDENT
+        self.snap(self.body * LIST_INDENT)
+    }
+    fn marker_gap(&self) -> f32 {
+        self.snap(self.body * LIST_INDENT * MARKER_GAP)
     }
     fn paragraph_gap(&self) -> f32 {
         self.rem * typography::PARAGRAPH_GAP
@@ -363,19 +431,29 @@ fn bottom(flow: Flow, m: &LiveMetrics) -> f32 {
 /// The room between a block of `prev` and the next, of `next`, in one flow:
 /// the gap below the first, which the room above the second takes in (the
 /// two collapse like CSS margins).
+///
+/// The text view sets the two as padding, each rounded to whole device
+/// pixels as the layout rounds an authored length, so they are rounded
+/// apart here too.
 fn flow_gap(prev: Flow, next: Flow, m: &LiveMetrics) -> f32 {
+    m.snap(bottom(prev, m)) + m.snap(top(prev, next, m))
+}
+
+/// The room above a block of `next` after one of `prev`, past the gap below
+/// that one (`node.rs`, `render_block`).
+fn top(prev: Flow, next: Flow, m: &LiveMetrics) -> f32 {
     match next {
         Flow::Heading(level) => {
             let size = m.heading_size(level);
             let section = size * typography::heading(level).gap;
             match prev {
-                Flow::Heading(_) => bottom(prev, m) + size * HEADING_AFTER_HEADING,
-                Flow::Rule => m.rule_space().max(section),
-                Flow::Other => m.paragraph_gap().max(section),
+                Flow::Heading(_) => size * HEADING_AFTER_HEADING,
+                Flow::Rule => (section - m.rule_space()).max(0.),
+                Flow::Other => (section - m.paragraph_gap()).max(0.),
             }
         }
-        Flow::Rule => bottom(prev, m).max(m.rule_space()),
-        Flow::Other => bottom(prev, m),
+        Flow::Rule => (m.rule_space() - bottom(prev, m)).max(0.),
+        Flow::Other => 0.,
     }
 }
 
@@ -383,7 +461,7 @@ fn flow_gap(prev: Flow, next: Flow, m: &LiveMetrics) -> f32 {
 fn inner_gap(a: &LiveBlock, b: &LiveBlock, m: &LiveMetrics) -> f32 {
     let item = |b: &LiveBlock, a: &LiveBlock| {
         if b.item_start && b.list_depth <= a.list_depth {
-            m.body * ITEM_GAP
+            m.snap(m.body * ITEM_GAP)
         } else {
             0.
         }
@@ -391,7 +469,7 @@ fn inner_gap(a: &LiveBlock, b: &LiveBlock, m: &LiveMetrics) -> f32 {
     if b.quote_depth > a.quote_depth {
         // A quote in the flow: the block before it keeps its gap below.
         return if a.list_depth == 0 {
-            bottom(Flow::of(a), m)
+            m.snap(bottom(Flow::of(a), m))
         } else {
             0.
         };
@@ -406,7 +484,7 @@ fn inner_gap(a: &LiveBlock, b: &LiveBlock, m: &LiveMetrics) -> f32 {
     }
     match (a.list_depth, b.list_depth) {
         (0, 0) => flow_gap(Flow::of(a), Flow::of(b), m),
-        (0, _) => bottom(Flow::of(a), m),
+        (0, _) => m.snap(bottom(Flow::of(a), m)),
         (_, 0) => flow_gap(Flow::Other, Flow::of(b), m),
         _ => item(b, a),
     }
@@ -573,7 +651,8 @@ pub fn plan(
             match b.kind {
                 BlockKind::Heading(level) => {
                     let scale = typography::heading(level).scale;
-                    let factor = heading_line_height(level) / typography::LINE_HEIGHT;
+                    let size = m.heading_size(level);
+                    let factor = m.snap(size * heading_line_height(level)) / (m.line() * scale);
                     for line in b.lines.clone() {
                         let underline = markers
                             .get(&line)
@@ -653,6 +732,9 @@ pub fn plan(
                         },
                         fill: checked.then_some(palette.link),
                         check: checked.then_some(palette.check),
+                        // The preview centres it in a box the window's (rounded)
+                        // line height tall.
+                        row: Some(gpui_kit::px((m.body * typography::LINE_HEIGHT).round())),
                     },
                 ));
             }
@@ -691,10 +773,14 @@ pub fn plan(
                 height: ChipHeight::CapHeight,
                 icon: None,
                 dashed_bottom: None,
+                whole_width: false,
+                text_baseline: None,
             }),
             ..Replacement::new(range.clone(), text[range.clone()].to_owned())
         });
     }
+    // How much taller each line's inline elements make it, above and below.
+    let mut grown: HashMap<usize, (f32, f32)> = HashMap::new();
     // Inline formulas off the caret, typeset; a tall one makes its line
     // taller below, as the preview's line box grows.
     for (range, formula) in math {
@@ -704,19 +790,22 @@ pub fn plan(
         presentation.replacements.push(Replacement {
             image: Some(ReplacementImage {
                 image: formula.image.clone(),
-                size: gpui_kit::size(formula.width, formula.height),
+                // Its size is authored, so laid out on whole device pixels.
+                size: gpui_kit::size(
+                    gpui_kit::px(m.snap(f32::from(formula.width))),
+                    gpui_kit::px(m.snap(f32::from(formula.height))),
+                ),
                 baseline: formula.baseline,
             }),
             ..Replacement::new(range.clone(), "")
         });
-        let above = (m.line() - m.ascent - m.descent) / 2. + m.ascent;
-        let below = m.line() - above;
-        let (baseline, height) = (f32::from(formula.baseline), f32::from(formula.height));
-        let grown = baseline.max(above) + (height - baseline).max(below) - m.line();
-        if grown > 0. {
-            let entry = space.entry(line_of(range.start)).or_default();
-            entry.1 = entry.1.max(grown);
-        }
+        let (above, below) = m.grows(
+            f32::from(formula.baseline),
+            m.snap(f32::from(formula.height)),
+        );
+        let entry = grown.entry(line_of(range.start)).or_default();
+        entry.0 = entry.0.max(above);
+        entry.1 = entry.1.max(below);
     }
     // Wiki-links to no note, off the caret, with a dashed line under them
     // as the preview draws them (`wikilinks::UnresolvedLink`).
@@ -728,15 +817,27 @@ pub fn plan(
         if resolved(title) || !concealed || line_of(link.text.start) != line_of(link.text.end) {
             continue;
         }
+        // The preview's element is a line tall with a border below it.
+        let (baseline, height) = m.element_metrics((m.body * typography::LINE_HEIGHT).round() + 1.);
+        let (above, below) = m.grows(baseline, height);
+        let entry = grown.entry(line_of(link.text.start)).or_default();
+        entry.0 = entry.0.max(above);
+        entry.1 = entry.1.max(below);
         presentation.replacements.push(Replacement {
             style: HighlightStyle::color(palette.over_page(palette.link, UNRESOLVED_TEXT)),
             chip: Some(ReplacementChip {
                 padding: gpui_kit::px(0.),
                 background: gpui_kit::transparent_black(),
                 radius: gpui_kit::px(0.),
-                height: ChipHeight::CapHeight,
+                // The preview's element, its border at its bottom.
+                height: ChipHeight::Baseline {
+                    ascent: gpui_kit::px(baseline),
+                    descent: gpui_kit::px(height - baseline),
+                },
                 icon: None,
                 dashed_bottom: Some(palette.over_page(palette.link, UNRESOLVED_UNDERLINE)),
+                whole_width: true,
+                text_baseline: Some(gpui_kit::px(m.element_text_baseline())),
             }),
             ..Replacement::new(link.text.clone(), text[link.text.clone()].to_owned())
         });
@@ -764,19 +865,48 @@ pub fn plan(
             },
             size: DUE_SIZE,
             chip: Some(ReplacementChip {
-                padding: gpui_kit::px(size * 0.5),
+                padding: gpui_kit::px(m.snap(size * 0.5)),
                 background: chip.fill,
                 radius: gpui_kit::px(size * 0.45),
-                height: ChipHeight::Fixed(gpui_kit::px(size * 1.55)),
+                height: ChipHeight::Fixed(gpui_kit::px(m.snap(size * 1.55))),
                 icon: Some(ChipIcon {
                     path: palette.calendar.clone(),
-                    size: gpui_kit::px(size * 0.95),
-                    gap: gpui_kit::px(DUE_ICON_GAP * m.zoom),
+                    size: gpui_kit::px(m.snap(size * 0.95)),
+                    gap: gpui_kit::px(m.snap(DUE_ICON_GAP * m.zoom)),
                 }),
                 dashed_bottom: None,
+                whole_width: true,
+                text_baseline: Some(gpui_kit::px(m.due_text_baseline(size))),
             }),
             ..Replacement::new(chip.range.clone(), chip.label.clone())
         });
+    }
+    for (&line, &(above, below)) in &grown {
+        let entry = space.entry(line).or_default();
+        entry.0 += above;
+        entry.1 += below;
+    }
+    // Each block of text is a box of the preview's, rounded up to whole device
+    // pixels: its rows and the room its inline elements add.
+    for block in layout.blocks.iter().filter(|b| shown(b)) {
+        let leaf = matches!(block.kind, BlockKind::Paragraph | BlockKind::Heading(_));
+        if !leaf
+            || layout
+                .widgets
+                .iter()
+                .any(|w| w.lines.start == block.lines.start)
+        {
+            continue;
+        }
+        // The room inside it (between its lines) is counted as it is; the
+        // room above its first line and below its last is a gap's, but for
+        // what its elements add.
+        let first = grown.get(&block.lines.start).map_or(0., |g| g.0);
+        let last = grown.get(&(block.lines.end - 1)).map_or(0., |g| g.1);
+        let extra = first + last;
+        presentation
+            .leaves
+            .push((block.lines.clone(), gpui_kit::px(extra)));
     }
     presentation.replacements.sort_by_key(|r| r.range.start);
 
@@ -844,7 +974,7 @@ fn marker_column(
         style: HighlightStyle::color(palette.muted),
         column: Some(ReplacementColumn {
             width: gpui_kit::px(m.indent()),
-            gap: gpui_kit::px(m.indent() * MARKER_GAP),
+            gap: gpui_kit::px(m.marker_gap()),
             hanging: true,
         }),
         ..Replacement::new(range, text)

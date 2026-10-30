@@ -53,6 +53,8 @@ fn diagnostic_highlight_style(
 
 const BOTTOM_MARGIN_ROWS: usize = 3;
 pub(super) const RIGHT_MARGIN: Pixels = px(10.);
+/// A check box's mark, as the text view draws a ticked task's (`text/node.rs`).
+const CHECK_MARK_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path d="m3.25 8.25 3 3 6.5-7" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
 pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(6.);
 const FOLD_ICON_WIDTH: Pixels = px(14.);
 const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
@@ -2445,11 +2447,16 @@ impl<M: InputModeKind> TextElement<M> {
                                 ..
                             })
                         );
-                        let text_y = if centred || replacement.font_size(font_size) == font_size {
-                            px(0.)
-                        } else {
-                            (ascent - descent - shaped.ascent + shaped.descent) / 2.
-                        };
+                        let placed = replacement
+                            .chip
+                            .as_ref()
+                            .is_some_and(|chip| chip.text_baseline.is_some());
+                        let text_y =
+                            if placed || centred || replacement.font_size(font_size) == font_size {
+                                px(0.)
+                            } else {
+                                (ascent - descent - shaped.ascent + shaped.descent) / 2.
+                            };
                         let chip = replacement.chip.as_ref().map(|chip| {
                             let font = window.text_system().resolve_font(&text_style.font());
                             let size = replacement.font_size(font_size);
@@ -2459,6 +2466,8 @@ impl<M: InputModeKind> TextElement<M> {
                                     (icon.path.clone(), icon.size, color, chip.padding)
                                 }),
                                 dashed_bottom: chip.dashed_bottom,
+                                whole_width: chip.whole_width,
+                                text_baseline: chip.text_baseline,
                                 background: chip.background,
                                 radius: chip.radius,
                                 height: chip.height,
@@ -3019,6 +3028,11 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 state.display_map.set_wrapping_indent(wrapping_indent, cx);
             });
         }
+        // A presentation's leaves round to the window's device pixels.
+        let scale_factor = window.scale_factor();
+        self.state.update(cx, |state, _| {
+            state.display_map.set_device_scale(scale_factor);
+        });
 
         let line_height = self.state.read(cx).presented_line_height(window);
         let token_elements = self.measure_tokens(
@@ -3573,9 +3587,19 @@ impl<M: InputModeKind> Element for TextElement<M> {
                             border_color,
                             fill: background,
                             check,
+                            row,
                         } => {
-                            let row = line.row_height(line_height);
+                            // Centred in its row's box, or in the box given, on whole device
+                            // pixels as a laid-out box is.
+                            let row = row.unwrap_or_else(|| line.row_height(line_height));
                             let origin = p + point(x, frame.above + (row - side).half());
+                            let scale = window.scale_factor();
+                            // Within a rounding error of a half is a half.
+                            let snap = |v: Pixels| {
+                                let device = f32::from(v) * scale;
+                                px((device.abs() - 0.5 - 1e-3).ceil().copysign(device) / scale)
+                            };
+                            let origin = point(snap(origin.x), snap(origin.y));
                             let bounds = Bounds::new(origin, size(side, side));
                             window.paint_quad(gpui::quad(
                                 bounds,
@@ -3586,18 +3610,21 @@ impl<M: InputModeKind> Element for TextElement<M> {
                                 gpui::BorderStyle::default(),
                             ));
                             if let Some(color) = check {
-                                // The mark of a 16-unit box, `m3.25 8.25 3 3 6.5-7`, drawn
-                                // in the middle `0.8` of this one.
-                                let unit = side * 0.8 / 16.;
-                                let inner = origin + point(side * 0.1, side * 0.1);
-                                let at = |x: f32, y: f32| inner + point(unit * x, unit * y);
-                                let mut path = gpui::PathBuilder::stroke(unit * 1.8);
-                                path.move_to(at(3.25, 8.25));
-                                path.line_to(at(6.25, 11.25));
-                                path.line_to(at(12.75, 4.25));
-                                if let Ok(path) = path.build() {
-                                    window.paint_path(path, color);
-                                }
+                                // The text view's check mark, in the middle `0.8` of the box.
+                                let mark = Bounds::new(
+                                    origin + point(side * 0.1, side * 0.1),
+                                    size(side * 0.8, side * 0.8),
+                                );
+                                window
+                                    .paint_svg(
+                                        mark,
+                                        "gpui-base-presentation-check.svg".into(),
+                                        Some(CHECK_MARK_SVG),
+                                        gpui::TransformationMatrix::unit(),
+                                        color,
+                                        cx,
+                                    )
+                                    .ok();
                             }
                             continue;
                         }
@@ -5156,6 +5183,35 @@ mod tests {
             assert_close(map.display_row_height(2, lh), px(20.5 * 0.5));
             assert_close(layout.lines[0].size(lh).height, px(20.5 * 1.5));
             assert_close(map.wrap_rows_height(lh), px(20.5 * (1.5 + 1. + 0.5)));
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_leaves_round_up_to_device_pixels(cx: &mut TestAppContext) {
+        let text = "one\ntwo\nthree";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            present_with(
+                &editor,
+                EditorPresentation {
+                    line_height: Some(px(20.3)),
+                    leaves: vec![(0..2, px(0.25)), (2..3, px(0.))],
+                    ..Default::default()
+                },
+                cx,
+            );
+            window.draw(cx).clear(cx);
+            window.draw(cx).clear(cx);
+            let scale = window.scale_factor();
+            let state = editor.read(cx);
+            let lh = state.last_layout.as_ref().unwrap().line_height;
+            let map = &state.display_map;
+            let ceil = |v: f32| (v * scale).ceil() / scale;
+            // Two rows and the extra, rounded up below the second.
+            assert_close(map.display_row_height(0, lh), px(20.3));
+            assert_close(map.display_row_height(1, lh), px(ceil(40.85) - 20.55));
+            assert_close(map.display_row_height(2, lh), px(ceil(20.3)));
         });
     }
 

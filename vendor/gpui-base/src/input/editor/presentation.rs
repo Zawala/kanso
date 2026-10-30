@@ -58,6 +58,12 @@ pub struct EditorPresentation {
     /// (which is rounded to whole pixels), so rows can follow another
     /// renderer's exactly. Must be finite and above zero.
     pub line_height: Option<Pixels>,
+    /// `(buffer lines, extra)`: runs of lines laid out as one box, as a laid-out
+    /// page's text box is: its rows plus `extra` are rounded up to whole device
+    /// pixels, the difference added below its last row. Only with a
+    /// `line_height`; the lines must be in the text, must not overlap an earlier
+    /// run or a block widget, and `extra` must be finite and not negative.
+    pub leaves: Vec<(Range<usize>, Pixels)>,
 }
 
 /// A source range drawn as `text` instead, see [`EditorPresentation::replacements`].
@@ -134,6 +140,11 @@ impl Replacement {
             return (image.size.width, px(0.), px(0.));
         }
         if let Some(chip) = &self.chip {
+            let text_width = if chip.whole_width {
+                text_width.ceil()
+            } else {
+                text_width
+            };
             let padding = chip.padding.max(px(0.));
             let icon = chip
                 .icon
@@ -166,8 +177,14 @@ pub struct ReplacementChip {
     pub height: ChipHeight,
     /// An icon before the text, in the text's colour.
     pub icon: Option<ChipIcon>,
-    /// A dashed line this colour along the bottom of the row, under it.
+    /// A dashed line this colour along the bottom of the box, 1px thick.
     pub dashed_bottom: Option<Hsla>,
+    /// Whether it stands for a laid-out element: its text's room is its width
+    /// rounded up to a whole pixel, and the box sits on whole device pixels.
+    pub whole_width: bool,
+    /// Where its text's baseline is, below the box's top; by default the
+    /// text keeps the row's baseline.
+    pub text_baseline: Option<Pixels>,
 }
 
 /// An icon in a [`ReplacementChip`]: the SVG asset at `path`, `size` square,
@@ -188,6 +205,9 @@ pub enum ChipHeight {
     CapHeight,
     /// This tall, centred on the row, as is its text.
     Fixed(Pixels),
+    /// From `ascent` above the row's baseline to `descent` below it, like an
+    /// inline element set on the line's baseline.
+    Baseline { ascent: Pixels, descent: Pixels },
 }
 
 /// A column a [`Replacement`]'s text is set in, like a list's marker column:
@@ -229,6 +249,9 @@ pub enum Ornament {
         border_color: Hsla,
         fill: Option<Hsla>,
         check: Option<Hsla>,
+        /// The height of the box from the row's top it is centred in, when not
+        /// the row's.
+        row: Option<Pixels>,
     },
 }
 
@@ -306,6 +329,7 @@ pub(crate) struct ValidPresentation {
     pub(crate) blocks: Rc<[BlockWidget]>,
     pub(crate) line_heights: Rc<[(usize, f32)]>,
     pub(crate) line_height: Option<Pixels>,
+    pub(crate) leaves: Rc<[(Range<usize>, Pixels)]>,
 }
 
 impl PartialEq for ValidPresentation {
@@ -319,6 +343,7 @@ impl PartialEq for ValidPresentation {
             && self.blocks == other.blocks
             && self.line_heights == other.line_heights
             && self.line_height == other.line_height
+            && self.leaves == other.leaves
     }
 }
 
@@ -333,6 +358,7 @@ impl ValidPresentation {
             && self.blocks.is_empty()
             && self.line_heights.is_empty()
             && self.line_height.is_none()
+            && self.leaves.is_empty()
     }
 
     fn to_presentation(&self) -> EditorPresentation {
@@ -346,6 +372,7 @@ impl ValidPresentation {
             block_widgets: self.blocks.to_vec(),
             line_heights: self.line_heights.to_vec(),
             line_height: self.line_height,
+            leaves: self.leaves.to_vec(),
         }
     }
 }
@@ -390,6 +417,7 @@ impl EditorPresentation {
             && self.block_widgets.is_empty()
             && self.line_heights.is_empty()
             && self.line_height.is_none()
+            && self.leaves.is_empty()
     }
 
     /// The valid part of this presentation for `text`: sorted, disjoint ranges,
@@ -433,6 +461,7 @@ impl EditorPresentation {
         });
 
         let lines = text.lines_len();
+        let lines_count = lines;
         let line_scales = first_per_line(
             self.line_scales
                 .iter()
@@ -529,7 +558,32 @@ impl EditorPresentation {
                 .collect(),
         );
 
+        let mut leaves: Vec<(Range<usize>, Pixels)> = self
+            .leaves
+            .iter()
+            .filter(|(lines, extra)| {
+                lines.start < lines.end
+                    && lines.end <= lines_count
+                    && finite_px(*extra)
+                    && *extra >= px(0.)
+                    && !blocks
+                        .iter()
+                        .any(|b| b.lines.start < lines.end && lines.start < b.lines.end)
+            })
+            .cloned()
+            .collect();
+        leaves.sort_by_key(|(lines, _)| lines.start);
+        let mut end = 0;
+        leaves.retain(|(lines, _)| {
+            let keep = lines.start >= end;
+            if keep {
+                end = lines.end;
+            }
+            keep
+        });
+
         ValidPresentation {
+            leaves: leaves.into(),
             line_height: self
                 .line_height
                 .filter(|&height| finite_px(height) && height > px(0.)),
@@ -741,6 +795,8 @@ mod tests {
                     gap: px(4.),
                 }),
                 dashed_bottom: None,
+                whole_width: false,
+                text_baseline: None,
             }),
             ..Replacement::new(0..2, "x")
         };

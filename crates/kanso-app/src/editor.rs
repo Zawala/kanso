@@ -330,6 +330,9 @@ pub struct NoteEditor {
     /// Whether the text is drawn without Markdown's syntax colours, as Live
     /// draws it.
     live_plain: bool,
+    /// The window's device pixels per pixel, which Live rounds its gaps to
+    /// as the preview's layout does.
+    live_scale: f32,
     /// The shared note open, attached to the engine (`editor_collab.rs`).
     shared: Option<crate::collab_model::OpenShare>,
     /// Effective read-only state for the title and text inputs.
@@ -578,6 +581,7 @@ impl NoteEditor {
             spell_marks: Default::default(),
             live_marks: Default::default(),
             live_plain: false,
+            live_scale: 0.,
             shared: None,
             text_read_only: false,
             account_read_only: false,
@@ -646,7 +650,7 @@ impl NoteEditor {
             preview_source: &preview_source,
             resolved: &resolved,
             due,
-            metrics: live_metrics(cx),
+            metrics: live_metrics(self.live_scale, cx),
             math: self.preview.read(cx).live_math(),
         };
         self.live_marks
@@ -4094,7 +4098,7 @@ fn spoken_commands(cx: &App) -> bool {
 
 /// The sizes Live mode draws at: the preview's text size, the rem and the
 /// zoom, in the window's pixels.
-fn live_metrics(cx: &mut App) -> crate::live_marks::LiveMetrics {
+fn live_metrics(scale: f32, cx: &mut App) -> crate::live_marks::LiveMetrics {
     let ty = crate::preview::preview_type(cx);
     let body = px(ty.size);
     let text = cx.text_system();
@@ -4105,6 +4109,7 @@ fn live_metrics(cx: &mut App) -> crate::live_marks::LiveMetrics {
         zoom: crate::zoom::scale(),
         ascent: f32::from(text.ascent(face, body)),
         descent: f32::from(text.descent(face, body)).abs(),
+        scale,
     }
 }
 
@@ -4211,6 +4216,10 @@ impl Render for NoteEditor {
             face
         };
         self.set_live_highlighting(live, cx);
+        if live && self.live_scale != window.scale_factor() {
+            self.live_scale = window.scale_factor();
+            self.refresh_live(cx);
+        }
         if face.line_numbers != self.line_numbers {
             self.line_numbers = face.line_numbers;
             self.body.update(cx, |body, cx| {
