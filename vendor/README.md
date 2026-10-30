@@ -7,7 +7,7 @@ the copy here through `[patch.crates-io]`:
 | Crate | Version | Why |
 |---|---|---|
 | [`gpui-component`](gpui-component) | 0.7.3, as published | One small hook, so an icon theme draws the component library's own icons too. |
-| [`gpui-base`](gpui-base) | 0.7.3, as published | One small hook, so a click on a task box in a Markdown view says which task it was. |
+| [`gpui-base`](gpui-base) | 0.7.3, as published | One small hook, so a click on a task box in a Markdown view says which task it was; and a render-only presentation for the code editor (hidden ranges, taller lines) for Live mode. |
 
 ## What changed
 
@@ -44,6 +44,40 @@ Three files differ from the published `gpui-base` (the diff is in
 
 Nothing else is touched: `Cargo.toml`, features and the rest are the
 published files.
+
+## gpui-base: a render-only presentation for the code editor
+
+Live mode draws a note's Markdown in place: marks such as `**` and `#` are
+hidden on the lines the caret is not on, and headings are drawn larger. The
+editor's text stays the Markdown source, so this is a presentation of it,
+set with `EditorState::set_presentation` (off by default; with none set the
+editor lays out exactly as before). The diff and the proposal are in
+[UPSTREAM-gpui-base-presentation.md](UPSTREAM-gpui-base-presentation.md).
+These files differ from the published `gpui-base` for it:
+
+- `src/input/editor/presentation.rs` (new) defines `EditorPresentation`
+  (concealed byte ranges, per-line scales), validates it against the text,
+  and adds `set_presentation` and `editor_presentation` to `EditorState`.
+  `src/input/mod.rs` declares it and re-exports `EditorPresentation`.
+- `src/input/editor/display_map/text_wrapper.rs` keeps the presentation,
+  carries it across edits, wraps a concealed range as a zero-width element and
+  a scaled line at `wrap_width / scale`, and gives `LineLayout` a scale so each
+  of its rows is `line_height * scale` tall.
+- `src/input/editor/display_map/wrap_map.rs` and `display_map.rs` pass it
+  through, and the display map keeps the scaled rows to map display rows to
+  and from y (`display_row_top`, `display_row_at_y`, `display_row_height`,
+  `wrap_rows_height`).
+- `src/input/editor/display_map/inline_line.rs`: a click on a zero-width
+  fragment lands after it, and `is_concealed` tells whitespace indicators to
+  skip hidden text.
+- `src/input/base/element.rs` shapes a presented line at its scale with its
+  concealed ranges as zero-width fragments, and uses the per-line heights for
+  the visible range, scroll size, carets, selections and range decorations,
+  line numbers, the active line and fold icons.
+- `src/input/base/state.rs`, `movement.rs`, `touch.rs` and
+  `src/input/editor/indent.rs` use the per-line heights for hit testing,
+  scrolling to the caret, IME and range bounds, up/down moves, touch handles
+  and indent guides.
 
 ## Why
 

@@ -558,7 +558,10 @@ impl<M: InputModeKind> TextElement<M> {
         let visible_buffer_lines = &last_layout.visible_buffer_lines;
         let caret_for = |row: usize, offset: usize, affinity: bool| -> Point<Pixels> {
             // y of the top of buffer line `row` in content space.
-            let top = line_height * state.display_map.buffer_line_to_display_row(row);
+            let top = state.display_map.display_row_top(
+                state.display_map.buffer_line_to_display_row(row),
+                line_height,
+            );
             let line_origin = point(px(0.), top);
 
             if let Some(vi) = visible_buffer_lines.iter().position(|&bl| bl == row) {
@@ -571,8 +574,6 @@ impl<M: InputModeKind> TextElement<M> {
             }
             line_origin
         };
-
-        let cursor_height = 0.85 * line_height;
 
         for selection in state.selections.iter() {
             let is_active = selection.id == active_id;
@@ -608,6 +609,10 @@ impl<M: InputModeKind> TextElement<M> {
 
             let affinity = is_active && state.cursor_line_end_affinity;
             let cursor_pos = caret_for(cursor_row, cursor, affinity);
+            // A scaled line's rows are taller, and so is its caret.
+            let row_height = line_height * state.display_map.line_scale(cursor_row);
+            let cursor_height = 0.85 * row_height;
+            let below_row = row_height - line_height;
             let cursor_start = caret_for(sel_start_row, selected_range.start, false);
             let cursor_end = caret_for(sel_end_row, selected_range.end, false);
 
@@ -644,11 +649,11 @@ impl<M: InputModeKind> TextElement<M> {
                         // the frame the selection changed, so a one-line step
                         // would leave a far-off caret (e.g. after typing at the
                         // end of a long paste) outside the viewport.
-                        scroll_offset.y = if scroll_offset.y + cursor_pos.y
+                        scroll_offset.y = if scroll_offset.y + cursor_pos.y + below_row
                             > bounds.size.height - top_bottom_margin
                         {
                             // cursor is out of bottom
-                            bounds.size.height - top_bottom_margin - cursor_pos.y
+                            bounds.size.height - top_bottom_margin - cursor_pos.y - below_row
                         } else if scroll_offset.y + cursor_pos.y < top_bottom_margin {
                             // cursor is out of top
                             (top_bottom_margin - cursor_pos.y).min(px(0.))
@@ -689,7 +694,7 @@ impl<M: InputModeKind> TextElement<M> {
                 bounds: Bounds::new(
                     point(
                         cursor_x,
-                        bounds.top() + cursor_pos.y + ((line_height - cursor_height) / 2.),
+                        bounds.top() + cursor_pos.y + ((row_height - cursor_height) / 2.),
                     ),
                     size(CURSOR_WIDTH, cursor_height),
                 ),
@@ -765,6 +770,7 @@ impl<M: InputModeKind> TextElement<M> {
         {
             let mut offset = line_offset;
             let alignment = last_layout.alignment_offset(line.longest_width);
+            let row_height = line.row_height(last_layout.line_height);
             for (row, shaped) in line.wrapped_lines.iter().enumerate() {
                 let end = offset + shaped.len;
                 let start_ix = range.start.max(offset);
@@ -786,12 +792,12 @@ impl<M: InputModeKind> TextElement<M> {
                     corners.push(Corners {
                         top_left: point(left, y),
                         top_right: point(right, y),
-                        bottom_left: point(left, y + last_layout.line_height),
-                        bottom_right: point(right, y + last_layout.line_height),
+                        bottom_left: point(left, y + row_height),
+                        bottom_right: point(right, y + row_height),
                     });
                 }
                 offset = end;
-                y += last_layout.line_height;
+                y += row_height;
             }
         }
         (!corners.is_empty()).then_some(corners)
@@ -1044,22 +1050,40 @@ impl<M: InputModeKind> TextElement<M> {
         } else {
             state.scroll_handle.offset().y
         };
+        let content_height = if state.display_map.line_scales().is_empty() {
+            line_height * total_lines
+        } else {
+            state.display_map.wrap_rows_height(line_height)
+        };
         scroll_top = clamp_auto_grow_vertical_scroll_offset(
             &state.mode,
             scroll_top,
-            line_height * total_lines,
+            content_height,
             input_height,
         );
 
         // Display rows are uniformly `line_height` tall, so the visible window maps
-        // directly to a display-row range.
+        // directly to a display-row range. A presentation's scaled lines make some rows
+        // taller; the display map walks those instead.
         let viewport_top = (-scroll_top).max(px(0.));
         let viewport_bottom = viewport_top + input_height;
-        let line_height_f = f32::from(line_height);
-        let first_display =
-            ((f32::from(viewport_top) / line_height_f).floor() as usize).min(display_count - 1);
-        let last_display =
-            ((f32::from(viewport_bottom) / line_height_f).ceil() as usize).min(display_count - 1);
+        let (first_display, last_display) = if state.display_map.line_scales().is_empty() {
+            let line_height_f = f32::from(line_height);
+            (
+                ((f32::from(viewport_top) / line_height_f).floor() as usize).min(display_count - 1),
+                ((f32::from(viewport_bottom) / line_height_f).ceil() as usize)
+                    .min(display_count - 1),
+            )
+        } else {
+            let display_map = &state.display_map;
+            (
+                display_map
+                    .display_row_at_y(viewport_top, line_height)
+                    .min(display_count - 1),
+                (display_map.display_row_at_y(viewport_bottom, line_height) + 1)
+                    .min(display_count - 1),
+            )
+        };
 
         let start_line = state.display_map.display_row_to_buffer_line(first_display);
         let end_line = state.display_map.display_row_to_buffer_line(last_display);
@@ -1069,8 +1093,10 @@ impl<M: InputModeKind> TextElement<M> {
             .display_map
             .buffer_line_to_display_row_range(start_line)
         {
-            Some(range) => line_height * range.start,
-            None => line_height * first_display,
+            Some(range) => state.display_map.display_row_top(range.start, line_height),
+            None => state
+                .display_map
+                .display_row_top(first_display, line_height),
         };
 
         let visible_range = start_line..(end_line + 1 + extra_rows).min(buffer_line_count);
@@ -1288,6 +1314,7 @@ impl<M: InputModeKind> TextElement<M> {
             is_folded: bool,
             display_row: usize,
             offset_y: Pixels,
+            row_height: Pixels,
         }
 
         let line_number_hitbox = window.insert_hitbox(
@@ -1324,25 +1351,26 @@ impl<M: InputModeKind> TextElement<M> {
                         is_folded,
                         display_row: buffer_line,
                         offset_y,
+                        row_height: line.row_height(last_layout.line_height),
                     });
                 }
 
-                offset_y += line.wrapped_lines.len() * last_layout.line_height;
+                offset_y += line.size(last_layout.line_height).height;
             }
 
             infos
         }; // state is dropped here
 
         // Second pass: create and prepaint icons
-        let line_height = last_layout.line_height;
         let line_number_width =
             last_layout.line_number_width - LINE_NUMBER_RIGHT_MARGIN - FOLD_ICON_HITBOX_WIDTH;
-        let icon_relative_pos = point(
-            (FOLD_ICON_HITBOX_WIDTH - FOLD_ICON_WIDTH).half(),
-            (line_height - FOLD_ICON_WIDTH).half(),
-        );
 
         for (ix, info) in fold_infos.iter().enumerate() {
+            let line_height = info.row_height;
+            let icon_relative_pos = point(
+                (FOLD_ICON_HITBOX_WIDTH - FOLD_ICON_WIDTH).half(),
+                (line_height - FOLD_ICON_WIDTH).half(),
+            );
             // Position fold icon to the right of line numbers.
             // Use origin_x (unscrolled) so icons stay fixed in the gutter during horizontal scroll.
             let fold_icon_bounds = Bounds::new(
@@ -1838,6 +1866,8 @@ impl<M: InputModeKind> TextElement<M> {
                         .wrapped_lines
                         .clone()
                 };
+                let scale = state.display_map.line_scale(row);
+                let font_size = font_size * scale;
                 let mut lines: SmallVec<[InputLine; 1]> = SmallVec::new();
                 for range in ranges {
                     let mut fragments = Vec::new();
@@ -1909,6 +1939,7 @@ impl<M: InputModeKind> TextElement<M> {
                 LineLayout::new()
                     .inline_lines(lines)
                     .wrap_indent(wrap_indent)
+                    .with_scale(scale)
             })
             .collect()
     }
@@ -2043,9 +2074,12 @@ impl<M: InputModeKind> TextElement<M> {
             }
 
             // Keep placeholder lines in a single layout to stay parallel with visible_* metadata.
+            // A scaled first line keeps its row height (not its text size), so the caret
+            // and the rows below agree with the display map.
             let line_layout = LineLayout::new()
                 .lines(placeholder_lines)
                 .with_background(line_has_background)
+                .with_scale(state.display_map.line_scale(0))
                 .with_whitespaces(whitespace_indicators);
             return vec![line_layout];
         }
@@ -2064,6 +2098,36 @@ impl<M: InputModeKind> TextElement<M> {
                 .expect("line should exists in wrapper");
 
             debug_assert_eq!(line_item.len(), line_text.len());
+
+            // A presentation scales the line's text and conceals ranges of it. Concealed
+            // text is laid out at zero width through inline fragments, like a token's.
+            let scale = state.display_map.line_scale(buffer_line);
+            let concealed = if state.masked {
+                Vec::new()
+            } else {
+                concealed_in_line(
+                    state.display_map.concealed(),
+                    state.text.line_start_offset(buffer_line),
+                    &line_text,
+                )
+            };
+            if scale != 1. || !concealed.is_empty() {
+                lines.push(Self::layout_presented_line(
+                    &line_text,
+                    &line_item.wrapped_lines,
+                    line_item.indent,
+                    &concealed,
+                    scale,
+                    font_size * scale,
+                    &runs_for_range(runs, run_offset, &(0..line_text.len())),
+                    last_layout.visible_line_byte_offsets[vi],
+                    bg_segments,
+                    whitespace_indicators.clone(),
+                    window,
+                ));
+                run_offset += line_text.len() + 1;
+                continue;
+            }
 
             let mut wrapped_lines: SmallVec<[ShapedLine; 1]> = SmallVec::with_capacity(1);
             let mut line_has_background = false;
@@ -2115,6 +2179,110 @@ impl<M: InputModeKind> TextElement<M> {
         }
 
         lines
+    }
+
+    /// Lay out one buffer line under a presentation: shaped at `font_size` (the scaled
+    /// size), with its rows `scale` line heights tall and `concealed` (line-local, sorted,
+    /// disjoint, on char boundaries) laid out at zero width and not painted.
+    ///
+    /// `runs` cover exactly this line's bytes.
+    #[allow(clippy::too_many_arguments)]
+    fn layout_presented_line(
+        line_text: &str,
+        wrapped_ranges: &[Range<usize>],
+        indent: u32,
+        concealed: &[Range<usize>],
+        scale: f32,
+        font_size: Pixels,
+        runs: &[TextRun],
+        line_offset: usize,
+        bg_segments: &[(Range<usize>, Hsla)],
+        whitespace_indicators: Option<WhitespaceIndicators>,
+        window: &mut Window,
+    ) -> LineLayout {
+        use crate::input::display_map::{InlineFragment, InputLine};
+
+        let mut lines: SmallVec<[InputLine; 1]> = SmallVec::with_capacity(1);
+        let mut line_has_background = false;
+        for range in wrapped_ranges {
+            let mut row_runs = runs_for_range(runs, 0, range);
+            if !bg_segments.is_empty() {
+                row_runs =
+                    split_runs_by_bg_segments(line_offset + range.start, &row_runs, bg_segments);
+            }
+            let row_text = &line_text[range.clone()];
+            let row_runs = align_runs_to_char_boundaries(row_text, &row_runs).unwrap_or(row_runs);
+            line_has_background |= has_background(&row_runs);
+
+            // Shape `part` (row-local) as one fragment at `x`.
+            let shape = |part: Range<usize>, x: Pixels, window: &mut Window| {
+                let text = &row_text[part.clone()];
+                let part_runs = runs_for_range(&row_runs, 0, &part);
+                let part_runs =
+                    align_runs_to_char_boundaries(text, &part_runs).unwrap_or(part_runs);
+                let shaped = window.text_system().shape_line(
+                    text.to_owned().into(),
+                    font_size,
+                    &part_runs,
+                    None,
+                );
+                InlineFragment {
+                    range: part,
+                    x,
+                    width: shaped.width,
+                    text: Some(shaped),
+                }
+            };
+
+            let first = concealed.partition_point(|c| c.end <= range.start);
+            let hidden = concealed[first..]
+                .iter()
+                .take_while(|c| c.start < range.end);
+            let mut fragments = Vec::new();
+            let mut offset = 0;
+            let mut x = px(0.);
+            for c in hidden {
+                let c = c.start.max(range.start) - range.start..c.end.min(range.end) - range.start;
+                if c.start < offset || c.is_empty() {
+                    continue;
+                }
+                if offset < c.start {
+                    let fragment = shape(offset..c.start, x, window);
+                    x += fragment.width;
+                    fragments.push(fragment);
+                }
+                fragments.push(InlineFragment {
+                    range: c.clone(),
+                    x,
+                    width: px(0.),
+                    text: None,
+                });
+                offset = c.end;
+            }
+            if offset < row_text.len() || fragments.is_empty() {
+                fragments.push(shape(offset..row_text.len(), x, window));
+            }
+            lines.push(InputLine::inline(row_text.to_owned().into(), fragments));
+        }
+
+        // Use the first visual line's indentation width for continuation lines.
+        let wrap_indent = if indent > 0 && lines.len() > 1 {
+            let indent_byte_len = line_text
+                .char_indices()
+                .nth(indent as usize)
+                .map(|(ix, _)| ix)
+                .unwrap_or(line_text.len());
+            lines[0].x_for_index(indent_byte_len)
+        } else {
+            px(0.)
+        };
+
+        LineLayout::new()
+            .inline_lines(lines)
+            .wrap_indent(wrap_indent)
+            .with_background(line_has_background)
+            .with_scale(scale)
+            .with_whitespaces(whitespace_indicators)
     }
 
     /// First usize is the offset of skipped.
@@ -2777,6 +2945,14 @@ impl<M: InputModeKind> Element for TextElement<M> {
                     .map_or(px(0.), |cache| cache.unwrapped_width)
             };
         }
+        // The longest row by bytes no longer says which row is widest once rows are scaled
+        // or concealed, so the laid-out rows count too.
+        if !state.soft_wrap && state.display_map.has_presentation() {
+            longest_line_width = lines
+                .iter()
+                .map(|line| line.size(line_height).width)
+                .fold(longest_line_width, Pixels::max);
+        }
         last_layout.lines = Rc::new(lines);
 
         let (ghost_first_line, ghost_lines) = Self::layout_inline_completion(
@@ -2789,7 +2965,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let ghost_line_count = ghost_lines.len();
         let ghost_lines_height = ghost_line_count as f32 * line_height;
 
-        let total_wrapped_lines = state.display_map.wrap_row_count();
         let empty_bottom_height = empty_bottom_height(
             state.is_code_editor(),
             state.scroll_beyond_last_line,
@@ -2806,7 +2981,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             } else {
                 longest_line_width
             },
-            (total_wrapped_lines as f32 * line_height
+            (state.display_map.wrap_rows_height(line_height)
                 + empty_bottom_height.max(ghost_lines_height))
             .max(bounds.size.height),
         );
@@ -3051,13 +3226,16 @@ impl<M: InputModeKind> Element for TextElement<M> {
             offset_y += invisible_top_padding;
 
             // Each item is the normal lines.
-            for (lines, &buffer_line) in line_numbers
+            for (line, &buffer_line) in prepaint
+                .last_layout
+                .lines
                 .iter()
                 .zip(prepaint.last_layout.visible_buffer_lines.iter())
+                .take(line_numbers.len())
             {
                 let is_active = prepaint.current_row == Some(buffer_line);
                 let p = point(input_bounds.origin.x, origin.y + offset_y);
-                let height = line_height * lines.len() as f32;
+                let height = line.size(line_height).height;
                 // Paint the current line background
                 if is_active {
                     if let Some(bg_color) = active_line_color {
@@ -3258,12 +3436,15 @@ impl<M: InputModeKind> Element for TextElement<M> {
             window.paint_quad(fill(gutter_bounds, gutter_bg));
 
             // Each item is the normal lines.
-            for (lines, &buffer_line) in line_numbers
+            for ((lines, &buffer_line), layout) in line_numbers
                 .iter()
                 .zip(prepaint.last_layout.visible_buffer_lines.iter())
+                .zip(prepaint.last_layout.lines.iter())
             {
                 let p = point(input_bounds.origin.x, origin.y + offset_y);
                 let is_active = prepaint.current_row == Some(buffer_line);
+                // A scaled line's number sits centred in its taller rows.
+                let line_height = layout.row_height(line_height);
 
                 let height = line_height * lines.len() as f32;
                 // paint active line number background
@@ -3353,6 +3534,35 @@ impl<M: InputModeKind> Element for TextElement<M> {
 
         self.paint_mouse_listeners(&prepaint.hitbox, window, cx);
     }
+}
+
+/// The concealed ranges that lie within the line starting at `line_start`, made local to it.
+///
+/// Ranges are checked against the current text again here: a presentation is validated when
+/// it is set, but a range that is out of the line or off a char boundary must never reach
+/// shaping, whatever happened to the text since.
+fn concealed_in_line(
+    concealed: &[Range<usize>],
+    line_start: usize,
+    line_text: &str,
+) -> Vec<Range<usize>> {
+    let line_end = line_start + line_text.len();
+    let first = concealed.partition_point(|r| r.end <= line_start);
+    let mut result: Vec<Range<usize>> = Vec::new();
+    for range in concealed[first..].iter().take_while(|r| r.start < line_end) {
+        if range.start < line_start || range.end > line_end || range.is_empty() {
+            continue;
+        }
+        let local = range.start - line_start..range.end - line_start;
+        if !line_text.is_char_boundary(local.start)
+            || !line_text.is_char_boundary(local.end)
+            || result.last().is_some_and(|last| last.end > local.start)
+        {
+            continue;
+        }
+        result.push(local);
+    }
+    result
 }
 
 /// Split placeholder text into display lines and trim runs to each line.
@@ -3592,7 +3802,9 @@ fn split_runs_by_bg_segments(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input::{EditorMode, EditorState, FoldRange, RangeDecoration, Redo, Undo};
+    use crate::input::{
+        EditorMode, EditorPresentation, EditorState, FoldRange, RangeDecoration, Redo, Undo,
+    };
     use gpui::{
         AppContext as _, Context, EntityInputHandler as _, Render, TestAppContext,
         VisualTestContext, div,
@@ -4091,6 +4303,403 @@ mod tests {
                 TextElement::<EditorMode>::layout_range_corners(&hidden, layout).unwrap();
             assert_eq!(revealed.len(), 2);
             assert_eq!(collection.get_ranges(cx), vec![hidden]);
+        });
+    }
+
+    fn present(
+        editor: &Entity<EditorState>,
+        concealed: Vec<Range<usize>>,
+        line_scales: Vec<(usize, f32)>,
+        cx: &mut App,
+    ) {
+        editor.update(cx, |state, cx| {
+            state.set_presentation(
+                Some(EditorPresentation {
+                    concealed,
+                    line_scales,
+                }),
+                cx,
+            )
+        });
+    }
+
+    fn assert_close(a: Pixels, b: Pixels) {
+        assert!((a - b).abs() < px(0.01), "{a:?} != {b:?}");
+    }
+
+    #[gpui::test]
+    fn presentation_conceals_ranges_at_zero_width_and_maps_carets_across_them(
+        cx: &mut TestAppContext,
+    ) {
+        let text = "**bold** text";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            let plain_width =
+                editor.read(cx).last_layout.as_ref().unwrap().lines[0].wrapped_lines[0].width;
+            present(&editor, vec![0..2, 6..8], vec![], cx);
+            editor.update(cx, |state, cx| state.set_selected_range(7..7, cx));
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let row = &layout.lines[0].wrapped_lines[0];
+            // The hidden bytes take no room; offsets still address the source.
+            assert_eq!(row.len, text.len());
+            for ix in 0..=2 {
+                assert_eq!(row.x_for_index(ix), px(0.));
+            }
+            assert!(row.x_for_index(6) > px(0.));
+            assert_eq!(row.x_for_index(7), row.x_for_index(6));
+            assert_eq!(row.x_for_index(8), row.x_for_index(6));
+            assert!(row.width < plain_width);
+            // A click at a conceal point lands after the hidden source.
+            assert_eq!(row.closest_index_for_x(px(0.)), 2);
+            assert_eq!(row.closest_index_for_x(row.width + px(40.)), text.len());
+            // A caret inside a concealed range is drawn at its conceal point.
+            let caret = layout.cursor_bounds.unwrap();
+            assert_close(
+                caret.origin.x,
+                state.input_bounds.left() + layout.line_number_width + row.x_for_index(6),
+            );
+            // A selection over the hidden range spans the visible text only.
+            let corners = TextElement::<EditorMode>::layout_range_corners(&(0..8), layout).unwrap();
+            assert_eq!(corners[0].top_left.x, px(0.));
+            assert_eq!(corners[0].top_right.x, row.x_for_index(8));
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_scales_a_line_its_caret_and_the_rows_below(cx: &mut TestAppContext) {
+        let text = "# Title\nbody\nmore";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            let plain = {
+                let layout = editor.read(cx).last_layout.clone().unwrap();
+                let row = &layout.lines[0].wrapped_lines[0];
+                row.x_for_index(7) - row.x_for_index(2)
+            };
+            present(&editor, vec![0..2], vec![(0, 1.6)], cx);
+            editor.update(cx, |state, cx| state.set_selected_range(3..3, cx));
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let lh = layout.line_height;
+            assert_close(layout.lines[0].size(lh).height, lh * 1.6);
+            assert_eq!(layout.lines[1].size(lh).height, lh);
+            let row = &layout.lines[0].wrapped_lines[0];
+            let scaled = row.x_for_index(7) - row.x_for_index(2);
+            assert!(
+                (scaled - plain * 1.6).abs() < px(2.),
+                "{scaled:?} vs {plain:?}"
+            );
+            assert_eq!(row.x_for_index(2), px(0.));
+
+            let body = TextElement::<EditorMode>::layout_range_corners(&(8..12), layout).unwrap();
+            assert_close(body[0].top_left.y, layout.visible_top + lh * 1.6);
+            assert_close(body[0].bottom_left.y - body[0].top_left.y, lh);
+            let caret = layout.cursor_bounds.unwrap();
+            assert_close(caret.size.height, 0.85 * lh * 1.6);
+
+            // Hit testing walks the taller row: a point that a uniform layout would put
+            // on `body` is still on the heading, and the row below it is `body`.
+            let origin =
+                state.last_bounds.unwrap().origin + point(layout.line_number_width, px(0.));
+            let (heading, _, _) = state.resolve_mouse_position(origin + point(px(1.), lh * 1.3));
+            assert!(heading <= 7, "{heading}");
+            let (below, _, _) =
+                state.resolve_mouse_position(origin + point(px(1.), lh * 1.6 + lh * 0.5));
+            assert!((8..=12).contains(&below), "{below}");
+            let (more, _, _) =
+                state.resolve_mouse_position(origin + point(px(1.), lh * 2.6 + lh * 0.5));
+            assert!(more >= 13, "{more}");
+
+            editor.update(cx, |state, cx| state.set_selected_range(9..9, cx));
+            window.draw(cx).clear(cx);
+            let layout = editor.read(cx).last_layout.clone().unwrap();
+            let caret = layout.cursor_bounds.unwrap();
+            assert_close(caret.size.height, 0.85 * lh);
+            assert!(caret.origin.y >= state_top(&editor, cx) + lh * 1.6);
+        });
+    }
+
+    fn state_top(editor: &Entity<EditorState>, cx: &App) -> Pixels {
+        editor.read(cx).last_bounds.unwrap().origin.y
+    }
+
+    #[gpui::test]
+    fn presentation_scaled_line_wraps_narrower(cx: &mut TestAppContext) {
+        let text = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu";
+        let (editor, window) = decoration_editor(cx, text, true);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            let rows = editor.read(cx).last_layout.as_ref().unwrap().lines[0]
+                .wrapped_lines
+                .len();
+            present(&editor, vec![], vec![(0, 2.)], cx);
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let line = &layout.lines[0];
+            assert!(line.wrapped_lines.len() > rows);
+            let wrap_width = layout.wrap_width.unwrap();
+            for row in &line.wrapped_lines {
+                assert!(row.width <= wrap_width + px(4.), "{:?}", row.width);
+            }
+            assert_eq!(
+                line.size(layout.line_height).height,
+                layout.line_height * 2. * line.wrapped_lines.len() as f32
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_visible_range_follows_mixed_row_heights(cx: &mut TestAppContext) {
+        let text = (0..80)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (editor, window) = decoration_editor(cx, &text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            let scales = (0..80).step_by(3).map(|line| (line, 2.)).collect();
+            present(&editor, vec![], scales, cx);
+            window.draw(cx).clear(cx);
+            let lh = editor.read(cx).last_layout.as_ref().unwrap().line_height;
+            {
+                let map = &editor.read(cx).display_map;
+                for row in 0..80 {
+                    let top = map.display_row_top(row, lh);
+                    let height = map.display_row_height(row, lh);
+                    assert_eq!(height, if row % 3 == 0 { lh * 2. } else { lh });
+                    assert_eq!(map.display_row_at_y(top, lh), row);
+                    assert_eq!(map.display_row_at_y(top + height - px(0.5), lh), row);
+                    assert_close(map.display_row_top(row + 1, lh), top + height);
+                }
+                assert_close(map.wrap_rows_height(lh), lh * (80. + 27.));
+            }
+
+            editor.update(cx, |state, cx| {
+                state.set_scroll_offset(point(px(0.), -lh * 50.), cx);
+            });
+            window.draw(cx).clear(cx);
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let top = -state.scroll_handle.offset().y;
+            assert!(top > lh * 40.);
+            assert!(layout.visible_top <= top);
+            assert!(layout.visible_top + layout.lines[0].size(lh).height > top);
+            let laid_out: Pixels = layout.lines.iter().map(|line| line.size(lh).height).sum();
+            assert!(layout.visible_top + laid_out >= top + state.input_bounds.size.height);
+            assert_eq!(
+                layout.visible_top,
+                state
+                    .display_map
+                    .display_row_top(layout.visible_buffer_lines[0], lh)
+            );
+            assert!(state.scroll_size.height >= state.display_map.wrap_rows_height(lh));
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_scales_of_folded_lines_add_no_height(cx: &mut TestAppContext) {
+        let text = "top\nhidden one\nhidden two\nend\nlast";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.apply_highlighter_fold_candidates(vec![FoldRange::new(0, 3)], cx);
+                state.set_presentation(
+                    Some(EditorPresentation {
+                        concealed: vec![],
+                        line_scales: vec![(1, 2.), (3, 1.5)],
+                    }),
+                    cx,
+                );
+                state.display_map.set_folded(0, true);
+            });
+            window.draw(cx).clear(cx);
+            let state = editor.read(cx);
+            let layout = state.last_layout.as_ref().unwrap();
+            let lh = layout.line_height;
+            assert_eq!(layout.visible_buffer_lines, vec![0, 3, 4]);
+            assert_close(state.display_map.wrap_rows_height(lh), lh * 5.5);
+            let end = text.find("end").unwrap();
+            let corners =
+                TextElement::<EditorMode>::layout_range_corners(&(end..end + 3), layout).unwrap();
+            assert_close(corners[0].top_left.y, layout.visible_top + lh);
+            assert_close(corners[0].bottom_left.y - corners[0].top_left.y, lh * 1.5);
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_survives_edits_and_invalid_input(cx: &mut TestAppContext) {
+        let text = "**a** b\n# H\ntail";
+        let (editor, window) = decoration_editor(cx, text, true);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            #[allow(clippy::reversed_empty_ranges)]
+            let reversed = 5..1;
+            present(
+                &editor,
+                vec![0..2, 3..5, 50..60, 9..20, reversed, 2..2],
+                vec![(1, 1.6), (7, 2.), (0, -1.), (2, f32::NAN), (2, 0.5)],
+                cx,
+            );
+            assert_eq!(
+                editor.read(cx).editor_presentation(),
+                EditorPresentation {
+                    concealed: vec![0..2, 3..5],
+                    line_scales: vec![(1, 1.6)],
+                }
+            );
+            window.draw(cx).clear(cx);
+
+            // An edit above shifts everything after it.
+            editor.update(cx, |state, cx| {
+                state.replace_text_in_range(Some(0..0), "xx\n", window, cx)
+            });
+            assert_eq!(
+                editor.read(cx).editor_presentation(),
+                EditorPresentation {
+                    concealed: vec![3..5, 6..8],
+                    line_scales: vec![(2, 1.6)],
+                }
+            );
+            window.draw(cx).clear(cx);
+
+            // An edit inside a concealed range drops it; typing within the heading keeps
+            // its scale.
+            editor.update(cx, |state, cx| {
+                state.replace_text_in_range(Some(4..4), "z", window, cx);
+                let heading = state.text().to_string().find("# H").unwrap() + 3;
+                state.replace_text_in_range(Some(heading..heading), "ey", window, cx);
+            });
+            assert_eq!(
+                editor.read(cx).editor_presentation(),
+                EditorPresentation {
+                    concealed: vec![7..9],
+                    line_scales: vec![(2, 1.6)],
+                }
+            );
+            window.draw(cx).clear(cx);
+
+            // IME composition on a concealed, scaled line lays out.
+            editor.update(cx, |state, cx| {
+                state.set_selected_range(8..8, cx);
+                state.replace_and_mark_text_in_range(None, "かな", None, window, cx);
+            });
+            window.draw(cx).clear(cx);
+            editor.update(cx, |state, cx| state.unmark_text(window, cx));
+
+            // Joining the heading into the line above drops the scale.
+            editor.update(cx, |state, cx| {
+                let heading = state.text().to_string().find("# H").unwrap();
+                let heading = state.text().offset_to_offset_utf16(heading);
+                state.replace_text_in_range(Some(heading - 1..heading), "", window, cx);
+            });
+            assert!(editor.read(cx).editor_presentation().line_scales.is_empty());
+            window.draw(cx).clear(cx);
+
+            // Replacing everything leaves nothing stale behind.
+            present(&editor, vec![0..1], vec![(0, 1.4), (1, 1.2)], cx);
+            editor.update(cx, |state, cx| state.set_value("", window, cx));
+            window.draw(cx).clear(cx);
+            assert!(editor.read(cx).editor_presentation().concealed.is_empty());
+            editor.update(cx, |state, cx| state.set_presentation(None, cx));
+            window.draw(cx).clear(cx);
+            assert!(editor.read(cx).editor_presentation().is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn presentation_vertical_moves_step_display_rows_and_keep_x(cx: &mut TestAppContext) {
+        let text = "body text here\n# Heading\nmore text here";
+        let (editor, window) = decoration_editor(cx, text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            present(&editor, vec![0..0, 15..17], vec![(1, 2.)], cx);
+            editor.update(cx, |state, cx| state.set_selected_range(5..5, cx));
+            window.draw(cx).clear(cx);
+            editor.update(cx, |state, cx| {
+                state.down(&crate::input::MoveDown, window, cx)
+            });
+            window.draw(cx).clear(cx);
+            let on_heading = editor.read(cx).cursor();
+            assert!((15..25).contains(&on_heading), "{on_heading}");
+            editor.update(cx, |state, cx| {
+                state.down(&crate::input::MoveDown, window, cx)
+            });
+            window.draw(cx).clear(cx);
+            let below = editor.read(cx).cursor();
+            assert_eq!(below, text.rfind("more").unwrap() + 5);
+            editor.update(cx, |state, cx| state.up(&crate::input::MoveUp, window, cx));
+            window.draw(cx).clear(cx);
+            assert_eq!(editor.read(cx).cursor(), on_heading);
+        });
+    }
+
+    #[test]
+    fn concealed_ranges_are_checked_against_the_line_at_layout() {
+        let line = "aé b";
+        // `é` is bytes 1..3.
+        assert_eq!(
+            concealed_in_line(&[0..1, 2..3, 3..4, 4..9, 10..11], 0, line),
+            vec![0..1, 3..4]
+        );
+        // Before the line, then `é` and the space as absolute offsets.
+        assert_eq!(
+            concealed_in_line(&[1..3, 6..8, 8..9], 5, line),
+            vec![1..3, 3..4]
+        );
+        assert!(concealed_in_line(&[], 0, line).is_empty());
+    }
+
+    #[gpui::test]
+    fn no_presentation_keeps_the_layout_unchanged(cx: &mut TestAppContext) {
+        let text = "alpha beta gamma delta epsilon zeta eta theta\n\n    short\nlast line";
+        let (editor, window) = decoration_editor(cx, text, true);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| state.set_selected_range(20..20, cx));
+            let snapshot = |window: &mut Window, cx: &mut App| {
+                window.draw(cx).clear(cx);
+                let state = editor.read(cx);
+                let layout = state.last_layout.as_ref().unwrap();
+                (
+                    layout.visible_top,
+                    layout.visible_buffer_lines.clone(),
+                    layout
+                        .lines
+                        .iter()
+                        .map(|line| {
+                            (
+                                line.size(layout.line_height),
+                                line.wrapped_lines
+                                    .iter()
+                                    .map(|row| (row.len, row.width))
+                                    .collect::<Vec<_>>(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    layout.cursor_bounds,
+                    state.scroll_size,
+                )
+            };
+            let before = snapshot(window, cx);
+            present(&editor, vec![0..6], vec![(0, 1.6), (2, 1.2)], cx);
+            assert_ne!(snapshot(window, cx), before);
+            editor.update(cx, |state, cx| state.set_presentation(None, cx));
+            assert_eq!(snapshot(window, cx), before);
+            editor.update(cx, |state, cx| {
+                state.set_presentation(Some(EditorPresentation::default()), cx)
+            });
+            assert_eq!(snapshot(window, cx), before);
         });
     }
 

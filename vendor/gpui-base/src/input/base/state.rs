@@ -1017,7 +1017,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             let prev_lines_offset = last_layout.visible_line_byte_offsets[vi];
             let local_offset = offset.saturating_sub(prev_lines_offset);
             if let Some(pos) = line.position_for_index(local_offset, last_layout, false) {
-                let sub_line_index = (pos.y / line_height) as usize;
+                let sub_line_index = (pos.y / line.row_height(line_height)) as usize;
                 let adjusted_pos = point(pos.x + last_layout.line_number_width, pos.y + y_offset);
                 return (vi, sub_line_index, Some(adjusted_pos));
             }
@@ -2675,7 +2675,14 @@ impl<M: InputModeKind> InputBaseState<M> {
         let display_pos = self
             .display_map
             .buffer_pos_to_display_pos(crate::input::BufferPoint::new(row, point.column));
-        let row_offset_y = line_height * display_pos.row;
+        let row_offset_y = self
+            .display_map
+            .display_row_top(display_pos.row, line_height);
+        // How far a scaled row reaches below a uniform one.
+        let below_row = self
+            .display_map
+            .display_row_height(display_pos.row, line_height)
+            - line_height;
 
         // For Right alignment use 0 margin: the cursor indicator is clamped inside bounds
         // in layout_cursors, so shifting the text here would cause a first-click visual jump.
@@ -2721,9 +2728,9 @@ impl<M: InputModeKind> InputBaseState<M> {
         if row_offset_y - edge_height + line_height < -scroll_offset.y {
             // Scroll up
             scroll_offset.y = -row_offset_y + edge_height - line_height;
-        } else if row_offset_y + edge_height > -scroll_offset.y + bounds.size.height {
+        } else if row_offset_y + below_row + edge_height > -scroll_offset.y + bounds.size.height {
             // Scroll down
-            scroll_offset.y = -(row_offset_y - bounds.size.height + edge_height);
+            scroll_offset.y = -(row_offset_y + below_row - bounds.size.height + edge_height);
         }
 
         // Avoid necessary scroll, when it was already in the correct position.
@@ -3310,7 +3317,9 @@ impl<M: InputModeKind> InputBaseState<M> {
             .zip(last_line_pos)
             .zip(last_layout.visible_line_byte_offsets.last())
             .map(|((line_layout, pos), line_start)| {
-                let last_row_top = (line_layout.size(line_height).height - line_height).max(px(0.));
+                let last_row_top = (line_layout.size(line_height).height
+                    - line_layout.row_height(line_height))
+                .max(px(0.));
                 let pos = point(pos.x, last_row_top);
                 (
                     self.resolve_index(line_start + line_layout.len()),
@@ -3814,7 +3823,15 @@ impl<M: InputModeKind> InputBaseState<M> {
 
         Some(Bounds::from_corners(
             last_bounds.origin + start_pos,
-            last_bounds.origin + end_pos + point(px(0.), last_layout.line_height),
+            last_bounds.origin
+                + end_pos
+                + point(
+                    px(0.),
+                    last_layout.line_height
+                        * self
+                            .display_map
+                            .line_scale(self.text.offset_to_point(range.end).row),
+                ),
         ))
     }
 
@@ -4563,7 +4580,16 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
         Some(Bounds::from_corners(
             bounds.origin + line_number_origin + start_origin,
             // + line_height for show IME panel under the cursor line.
-            bounds.origin + line_number_origin + point(end_origin.x, end_origin.y + line_height),
+            bounds.origin
+                + line_number_origin
+                + point(
+                    end_origin.x,
+                    end_origin.y
+                        + line_height
+                            * self
+                                .display_map
+                                .line_scale(self.text.offset_to_point(range.start).row),
+                ),
         ))
     }
 
