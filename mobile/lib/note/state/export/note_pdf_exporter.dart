@@ -14,6 +14,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/models/data/application_error.dart';
 import '../../../core/models/repos/abs/renderer_repository.dart';
+import '../../../core/services/preview_theme_fitter.dart';
 import '../preview/preview_bloc.dart';
 
 /// The folder a PDF is written in before it is shared.
@@ -39,13 +40,16 @@ String? countryOf(String locale) {
 }
 
 /// Writes a note as a PDF: the page the desktop exports, printed in the
-/// theme the note is drawn in, on A4 or Letter by the phone's country.
+/// theme the note is drawn in, on A4 or Letter by the phone's country. The
+/// theme is the preview's: the interface, syntax and preview themes fitted
+/// together, or Kanso's own when they can't be read.
 ///
 /// The seams are there so the parts that need a device (a temporary folder
 /// and the native writer) can be stood in for in tests.
 class NotePdfExporter {
   NotePdfExporter(
-    this._renderer, {
+    this._renderer,
+    this._fitter, {
     PdfFolder? folder,
     PdfPrinter? print,
     String? locale,
@@ -54,6 +58,7 @@ class NotePdfExporter {
        _countryCode = countryOf(locale ?? Platform.localeName);
 
   final RendererRepository _renderer;
+  final PreviewThemeFitter _fitter;
   final PdfFolder _folder;
   final PdfPrinter _print;
   final String? _countryCode;
@@ -61,15 +66,15 @@ class NotePdfExporter {
   /// The paper the phone's country prints on.
   KansoPaper get paper => paperFor(_countryCode);
 
-  /// The note [noteId], drawn in [themeId], written as a PDF.
+  /// The note [noteId], drawn in [themes], written as a PDF.
   ///
   /// Answers the path it was written to, for [`sharePdf`]. A note that is
   /// locked and closed comes back as [LockedError].
   Future<Either<ApplicationError, String>> export({
     required String noteId,
-    required String themeId,
+    required PreviewThemes themes,
   }) async {
-    final tokens = await _renderer.builtinThemeTokens(themeId);
+    final tokens = await _fitter.tokens(themes);
     if (tokens case Left(value: final error)) {
       return Left<ApplicationError, String>(error);
     }

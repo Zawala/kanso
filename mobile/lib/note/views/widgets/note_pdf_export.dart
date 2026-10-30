@@ -6,8 +6,9 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/repos/abs/renderer_repository.dart';
+import '../../../core/services/preview_theme_fitter.dart';
 import '../../../core/utils/context_extensions.dart';
-import '../../../core/utils/syntax_theme_id.dart';
+import '../../../core/utils/preview_themes_of.dart';
 import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../injection.dart';
 import '../../state/export/note_pdf_exporter.dart';
@@ -24,15 +25,20 @@ Future<void> exportNotePdf(
   final overlay = Overlay.of(context, rootOverlay: true);
   // Where the share sheet points on a tablet. Taken before the menu closes.
   final origin = exportOriginOf(context);
+  // The themes the note's preview is drawn in, taken while the menu is open.
+  final themes = previewThemesOf(context);
   final progress = OverlayEntry(
     builder: (_) => NoteExportProgress(label: l10n.noteExportPreparing),
   );
   overlay.insert(progress);
   try {
-    final exporter = NotePdfExporter(getIt<RendererRepository>());
+    final exporter = NotePdfExporter(
+      getIt<RendererRepository>(),
+      getIt<PreviewThemeFitter>(),
+    );
     final written = await exporter.export(
       noteId: noteId,
-      themeId: syntaxThemeId(context),
+      themes: themes,
     );
     progress.remove();
     switch (written) {

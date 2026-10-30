@@ -109,6 +109,7 @@ import 'core/router/kanso_router.dart' as _i388;
 import 'core/router/layout_class_notifier.dart' as _i609;
 import 'core/services/external_changes.dart' as _i825;
 import 'core/services/library_folder_migration.dart' as _i846;
+import 'core/services/preview_theme_fitter.dart' as _i550;
 import 'core/services/widget_reloader.dart' as _i608;
 import 'core/state/account/account_bloc.dart' as _i168;
 import 'core/state/appearance/appearance_bloc.dart' as _i551;
@@ -713,6 +714,15 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i38.LibraryRepository>(),
       ),
     );
+    gh.factory<_i185.SyncStatusBloc>(
+      () => _i185.SyncStatusBloc(gh<_i601.SyncRepository>()),
+    );
+    gh.factory<_i794.SyncSettingsBloc>(
+      () => _i794.SyncSettingsBloc(gh<_i601.SyncRepository>()),
+    );
+    gh.factory<_i614.PublishBloc>(
+      () => _i614.PublishBloc(gh<_i1047.PublishRepository>()),
+    );
     gh.factory<_i435.PreviewBloc>(
       () => _i435.PreviewBloc(
         gh<_i38.LibraryRepository>(),
@@ -722,15 +732,6 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i985.UndoNoticeBloc>(),
         gh<_i1056.HapticsRepository>(),
       ),
-    );
-    gh.factory<_i185.SyncStatusBloc>(
-      () => _i185.SyncStatusBloc(gh<_i601.SyncRepository>()),
-    );
-    gh.factory<_i794.SyncSettingsBloc>(
-      () => _i794.SyncSettingsBloc(gh<_i601.SyncRepository>()),
-    );
-    gh.factory<_i614.PublishBloc>(
-      () => _i614.PublishBloc(gh<_i1047.PublishRepository>()),
     );
     gh.factory<_i1028.ReplaceNotesBloc>(
       () => _i1028.ReplaceNotesBloc(gh<_i608.ReplaceRepository>()),
@@ -758,6 +759,9 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i38.LibraryRepository>(),
         gh<_i333.SessionRepository>(),
       ),
+    );
+    gh.factory<_i550.PreviewThemeFitter>(
+      () => _i550.PreviewThemeFitter(gh<_i40.ThemesRepository>()),
     );
     gh.factory<_i64.VoiceSettingsBloc>(
       () => _i64.VoiceSettingsBloc(
