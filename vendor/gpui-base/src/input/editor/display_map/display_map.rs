@@ -359,6 +359,13 @@ impl DisplayMap {
         self.wrap_map.wrapper().line_scale(line)
     }
 
+    /// How many line heights tall each row of buffer line `line` is: its scale times its
+    /// line height factor.
+    #[inline]
+    pub(crate) fn row_scale(&self, line: usize) -> f32 {
+        self.wrap_map.wrapper().row_scale(line)
+    }
+
     /// The block widget whose first line is `line`.
     pub(crate) fn block_at(&self, line: usize) -> Option<&BlockWidget> {
         let blocks = &self.presentation().blocks;
@@ -551,6 +558,7 @@ impl DisplayMap {
         if presentation.line_scales.is_empty()
             && presentation.line_space.is_empty()
             && presentation.blocks.is_empty()
+            && presentation.line_heights.is_empty()
         {
             return;
         }
@@ -560,6 +568,7 @@ impl DisplayMap {
             .map(|(line, _)| *line)
             .chain(presentation.line_space.iter().map(|(line, _, _)| *line))
             .chain(presentation.blocks.iter().map(|b| b.lines.start))
+            .chain(presentation.line_heights.iter().map(|(line, _)| *line))
             .collect();
         lines.sort_unstable();
         lines.dedup();
@@ -577,7 +586,7 @@ impl DisplayMap {
                 Some(block) => (0., self.block_height(block), px(0.), px(0.)),
                 None => {
                     let (above, below) = self.line_space(line);
-                    (self.line_scale(line), px(0.), above, below)
+                    (self.row_scale(line), px(0.), above, below)
                 }
             };
             scaled_rows.push(ScaledRows {

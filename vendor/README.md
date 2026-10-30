@@ -77,7 +77,19 @@ These files differ from the published `gpui-base` for it:
   widget's lines after the first the way a fold hides its inside.
 - `src/input/editor/display_map/inline_line.rs`: a click on a zero-width
   fragment lands after it, a replacement fragment is atomic for the caret,
-  and `is_concealed` tells whitespace indicators to skip hidden text.
+  and `is_concealed` tells whitespace indicators to skip hidden text. A
+  replacement fragment can be drawn offset in its room (right-aligned in a
+  column, or hanging left of it into the inset), moved to keep the row's
+  baseline at another size, on a box (with an icon and a dashed underline),
+  or as an image.
+- Live mode draws as the Preview does, so the presentation also has a row
+  height factor per line (`line_heights`, a heading's tighter line height),
+  a base row height that is not rounded (`line_height`), scales below 1.0,
+  replacements in their own family and size, in columns, on chips or as
+  images, and a check box ornament (`Ornament::Check`).
+  `src/input/base/element.rs` lays these out and paints them, and clips
+  decorations to the visible lines when there is no highlighter (a
+  decoration over a line hidden by a block widget shifted every later run).
 - `src/input/base/element.rs` shapes a presented line at its scale with its
   concealed ranges as zero-width fragments and its replacements as their
   text, uses the per-line heights for the visible range, scroll size, carets,

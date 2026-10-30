@@ -1,5 +1,7 @@
 //! A visual row whose offsets remain in source UTF-8 bytes.
-use gpui::{App, Pixels, Point, ShapedLine, SharedString, TextAlign, Window, point, px};
+use gpui::{
+    App, Bounds, Hsla, Pixels, Point, ShapedLine, SharedString, TextAlign, Window, point, px, size,
+};
 use std::ops::Range;
 
 pub(crate) struct InlineFragment {
@@ -10,6 +12,34 @@ pub(crate) struct InlineFragment {
     /// A presentation's replacement: `text` is drawn in place of the source in `range`, which
     /// the caret treats as one unit, like an element.
     pub(crate) replaced: bool,
+    /// Where `text` starts within the fragment: a replacement set in a column is
+    /// right-aligned in it.
+    pub(crate) text_x: Pixels,
+    /// How far a hanging replacement's column reaches left of `x`, where a click
+    /// still lands on it.
+    pub(crate) hang: Pixels,
+    /// How far `text` is drawn below where the row would centre it: a replacement at
+    /// another size keeps the row's baseline.
+    pub(crate) text_y: Pixels,
+    /// A replacement's box, drawn behind `text`.
+    pub(crate) chip: Option<FragmentChip>,
+    /// A replacement's image, drawn instead of `text`, with the row font's ascent and
+    /// descent to put its baseline on the row's.
+    pub(crate) image: Option<(crate::input::ReplacementImage, Pixels, Pixels)>,
+}
+
+/// A replacement's box, as laid out: what to draw, and its text's metrics to place it.
+#[derive(Clone)]
+pub(crate) struct FragmentChip {
+    /// The icon's asset, size and colour, and where it starts in the fragment.
+    pub(crate) icon: Option<(SharedString, Pixels, Hsla, Pixels)>,
+    pub(crate) dashed_bottom: Option<Hsla>,
+    pub(crate) background: Hsla,
+    pub(crate) radius: Pixels,
+    /// Its top and height within the row, from the row's height.
+    pub(crate) height: crate::input::ChipHeight,
+    pub(crate) cap_height: Pixels,
+    pub(crate) font_size: Pixels,
 }
 
 pub(crate) struct InputLine {
@@ -102,7 +132,7 @@ impl InputLine {
             Content::Text(_) => None,
             Content::Inline(fragments) => fragments
                 .iter()
-                .find(|f| f.replaced && x >= f.x && x < f.x + f.width)
+                .find(|f| f.replaced && x >= f.x - f.hang && x < f.x + f.width.max(px(0.)))
                 .map(|f| f.range.clone()),
         }
     }
@@ -166,10 +196,84 @@ impl InputLine {
                     _ => px(0.),
                 };
                 for f in fragments {
+                    if background && let (Some(chip), Some(line)) = (&f.chip, &f.text) {
+                        let (top, chip_height) = match chip.height {
+                            crate::input::ChipHeight::Fixed(h) => ((height - h) / 2., h),
+                            crate::input::ChipHeight::CapHeight => {
+                                let baseline = (height - line.ascent - line.descent) / 2.
+                                    + line.ascent
+                                    + f.text_y;
+                                let pad = chip.font_size * 0.125 + line.descent / 2.;
+                                (baseline - chip.cap_height - pad, chip.cap_height + pad * 2.)
+                            }
+                        };
+                        window.paint_quad(
+                            gpui::fill(
+                                Bounds::new(
+                                    pos + point(offset + f.x, top),
+                                    size(f.width, chip_height),
+                                ),
+                                chip.background,
+                            )
+                            .corner_radii(chip.radius),
+                        );
+                        if let Some(color) = chip.dashed_bottom {
+                            window.paint_quad(gpui::quad(
+                                Bounds::new(
+                                    pos + point(offset + f.x, px(0.)),
+                                    size(f.width, height),
+                                ),
+                                px(0.),
+                                gpui::transparent_black(),
+                                gpui::Edges {
+                                    bottom: px(1.),
+                                    ..Default::default()
+                                },
+                                color,
+                                gpui::BorderStyle::Dashed,
+                            ));
+                        }
+                    }
+                    if !background
+                        && let Some(FragmentChip {
+                            icon: Some((path, side, color, x)),
+                            ..
+                        }) = &f.chip
+                    {
+                        let bounds = Bounds::new(
+                            pos + point(offset + f.x + *x, (height - *side) / 2.),
+                            size(*side, *side),
+                        );
+                        window
+                            .paint_svg(
+                                bounds,
+                                path.clone(),
+                                None,
+                                gpui::TransformationMatrix::unit(),
+                                *color,
+                                cx,
+                            )
+                            .ok();
+                    }
+                    if let Some((image, ascent, descent)) = &f.image {
+                        if !background {
+                            let baseline = (height - *ascent - *descent) / 2. + *ascent;
+                            let bounds = Bounds::new(
+                                pos + point(offset + f.x, baseline - image.baseline),
+                                image.size,
+                            );
+                            if let Some(data) = image.image.clone().use_render_image(window, cx) {
+                                window
+                                    .paint_image(bounds, bounds, Default::default(), data, 0, false)
+                                    .ok();
+                            }
+                        }
+                        continue;
+                    }
                     if let Some(line) = &f.text {
                         paint(
                             line,
-                            pos + point(offset + f.x, px(0.)),
+                            pos + point(offset + f.x + f.text_x, f.text_y),
                             TextAlign::Left,
                             None,
                             window,

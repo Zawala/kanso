@@ -450,14 +450,18 @@ impl TextWrapper {
                         let width = replacement.map_or(px(0.), |replacement| {
                             let text = replacement.text.clone();
                             let font = gpui::Font {
+                                family: replacement
+                                    .family
+                                    .clone()
+                                    .unwrap_or_else(|| font.family.clone()),
                                 weight: replacement.style.font_weight.unwrap_or(font.weight),
                                 style: replacement.style.font_style.unwrap_or(font.style),
                                 ..font.clone()
                             };
-                            text_system
+                            let width = text_system
                                 .layout_line(
                                     &text,
-                                    font_size,
+                                    replacement.font_size(font_size),
                                     &[gpui::TextRun {
                                         len: text.len(),
                                         font,
@@ -468,7 +472,8 @@ impl TextWrapper {
                                     }],
                                     None,
                                 )
-                                .width
+                                .width;
+                            replacement.placement(width).0
                         });
                         fragments.push(LineFragment::element(width, range.len()));
                         offset = range.end;
@@ -610,6 +615,17 @@ impl TextWrapper {
             return 1.;
         }
         line_value(&self.presentation.line_scales, row).unwrap_or(1.)
+    }
+
+    /// How many line heights tall each visual row of buffer line `row` is: its scale,
+    /// times its line height factor.
+    #[inline]
+    pub(crate) fn row_scale(&self, row: usize) -> f32 {
+        let scale = self.line_scale(row);
+        if self.presentation.line_heights.is_empty() {
+            return scale;
+        }
+        scale * line_value(&self.presentation.line_heights, row).unwrap_or(1.)
     }
 
     /// How much the wrap width of buffer line `row` shrinks, and whether it is wrapped at all.
@@ -794,6 +810,7 @@ impl TextWrapper {
         }
         p.line_scales = shift_lines(&p.line_scales, shift_line);
         p.line_insets = shift_lines(&p.line_insets, shift_line);
+        p.line_heights = shift_lines(&p.line_heights, shift_line);
         p.line_ornaments = shift_lines(&p.line_ornaments, shift_line);
         if !p.line_space.is_empty() {
             p.line_space = p

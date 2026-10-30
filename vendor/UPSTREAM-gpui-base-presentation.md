@@ -11,14 +11,21 @@ how it is drawn:
 
 - byte ranges laid out at zero width and not painted ("concealed");
 - byte ranges drawn as other text ("replacements", such as a bullet for a
-  list marker), atomic for the caret, optionally clickable;
-- buffer lines drawn larger (a scale per line: the line's text is shaped at
-  `font_size * scale` and each of its visual rows is `line_height * scale`
-  tall, wrapped at `wrap_width / scale`);
+  list marker), atomic for the caret, optionally clickable; in a font
+  family and at a size of their own (a code span), right-aligned in a
+  column that can hang into the line's inset (an outside list marker), on a
+  rounded box with an icon and a dashed underline (a code span, a date
+  chip, a link to a missing page), or drawn as an image on the baseline (a
+  typeset formula);
+- buffer lines drawn larger or smaller (a scale per line: the line's text is
+  shaped at `font_size * scale` and each of its visual rows is
+  `line_height * scale` tall, wrapped at `wrap_width / scale`), with a row
+  height factor of their own (a heading's tighter line height), and a base
+  row height that is not rounded to whole pixels;
 - empty space above and below a line, and a left inset for every row of a
   line (wrapped that much narrower);
-- ornaments painted with a line: a vertical bar over its full height, or a
-  horizontal rule across the text area;
+- ornaments painted with a line: a vertical bar over its full height, a
+  horizontal rule across the text area, or a task's check box;
 - runs of whole lines drawn as an element of the app's ("block widgets"),
   in one row as tall as the element, the other lines hidden like a fold's.
 
@@ -70,20 +77,43 @@ pub struct EditorPresentation {
     pub line_ornaments: Vec<(usize, Ornament)>,
     /// Runs of whole lines drawn as an element.
     pub block_widgets: Vec<BlockWidget>,
+    /// `(buffer line, factor)`: its rows are `factor` times as tall as its scale makes them.
+    pub line_heights: Vec<(usize, f32)>,
+    /// The height of a row at scale 1, instead of the window's (rounded) line height.
+    pub line_height: Option<Pixels>,
 }
 
 pub struct Replacement {
-    pub range: Range<usize>,      // within one line
-    pub text: SharedString,       // one line
-    pub style: HighlightStyle,    // over the editor's text style
-    pub clickable: bool,          // a click is reported, the caret stays
+    pub range: Range<usize>,             // within one line
+    pub text: SharedString,              // one line
+    pub style: HighlightStyle,           // over the editor's text style
+    pub clickable: bool,                 // a click is reported, the caret stays
+    pub family: Option<SharedString>,    // its own font family
+    pub size: f32,                       // relative to the line's; keeps the row's baseline
+    pub column: Option<ReplacementColumn>, // right-aligned in a column, maybe hanging
+    pub chip: Option<ReplacementChip>,   // a rounded box behind it, with room either side
+    pub image: Option<ReplacementImage>, // drawn as an image on the row's baseline
 }
+
+pub struct ReplacementColumn { pub width: Pixels, pub gap: Pixels, pub hanging: bool }
+pub struct ReplacementChip {
+    pub padding: Pixels,
+    pub background: Hsla,
+    pub radius: Pixels,
+    pub height: ChipHeight,          // CapHeight (a code span's) or Fixed(h), centred
+    pub icon: Option<ChipIcon>,      // an SVG asset before the text, in its colour
+    pub dashed_bottom: Option<Hsla>, // a dashed line along the row's bottom
+}
+pub struct ReplacementImage { pub image: Arc<Image>, pub size: Size<Pixels>, pub baseline: Pixels }
 
 pub enum Ornament {
     /// Full line height (its space included), `x` from the text area's left edge.
     Bar { x: Pixels, width: Pixels, color: Hsla },
     /// Across the text area, centred on the line's rows.
     Rule { thickness: Pixels, color: Hsla },
+    /// A check box `size` square at `x`, centred on the line's first row.
+    Check { x: Pixels, size: Pixels, radius: Pixels, border: Pixels, border_color: Hsla,
+            fill: Option<Hsla>, check: Option<Hsla> },
 }
 
 pub type BlockWidgetRenderer = Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>;
@@ -112,8 +142,9 @@ Input is validated against the current text when it is set, and invalid
 items are dropped: concealed ranges and replacements that are empty, out of
 bounds, off a char boundary, cross a newline or overlap (a replacement must
 not overlap a concealed range either, and its text must be one line);
-scales that are not finite, not above 1.0, or for lines the text does not
-have; space that is not finite, negative or zero; insets that are not
+scales and row height factors that are not finite, not above zero, 1.0, or
+for lines the text does not have; a base row height that is not finite and
+positive; space that is not finite, negative or zero; insets that are not
 finite or not positive; ornaments with a non-finite or non-positive size;
 block widgets that are empty, out of the text, overlap or have a
 non-finite or non-positive height. Duplicates per line keep the first
@@ -165,6 +196,15 @@ Behaviour:
   replaces the given one from the next frame on (kept by key). Mouse events
   inside reach the element; a press it does not handle is kept from placing
   the caret, and a click it does not stop is reported as `BlockClicked`.
+- A replacement in a hanging column takes no room: its text is drawn left
+  of where it is, in the line's inset, and a click in the column hits it. A
+  replacement at another size is moved to keep the row's baseline; one with
+  a chip is drawn on the box (the backgrounds pass) with its icon; one with
+  an image draws the image (loaded through the asset cache) instead of its
+  text.
+- Without a highlighter, decorations are clipped to the visible (unfolded)
+  lines' bytes as the highlighter path already clips its styles; before,
+  a decoration over a folded or block-hidden line shifted every later run.
 - Left uniform: page up/down move by `viewport / line_height` display rows;
   an auto-growing input counts rows; the scroll wheel's line delta, the
   popup anchor's line height, ghost (inline completion) lines and token
@@ -215,7 +255,7 @@ Against the published crate (`vendor/gpui-base` in this repository).
 
 ```diff
 diff --git a/src/input/base/element.rs b/src/input/base/element.rs
-index 2e23301e..00892ab9 100644
+index 2e23301e..34bfc845 100644
 --- a/src/input/base/element.rs
 +++ b/src/input/base/element.rs
 @@ -17,7 +17,12 @@ use std::{ops::Range, rc::Rc};
@@ -258,7 +298,7 @@ index 2e23301e..00892ab9 100644
              let affinity = is_active && state.cursor_line_end_affinity;
              let cursor_pos = caret_for(cursor_row, cursor, affinity);
 +            // A scaled line's rows are taller, and so is its caret.
-+            let row_height = line_height * state.display_map.line_scale(cursor_row);
++            let row_height = line_height * state.display_map.row_scale(cursor_row);
 +            let cursor_height = 0.85 * row_height;
 +            let below_row = row_height - line_height;
              let cursor_start = caret_for(sel_start_row, selected_range.start, false);
@@ -436,40 +476,55 @@ index 2e23301e..00892ab9 100644
                  let mut lines: SmallVec<[InputLine; 1]> = SmallVec::new();
                  for range in ranges {
                      let mut fragments = Vec::new();
-@@ -1864,6 +1901,7 @@ impl<M: InputModeKind> TextElement<M> {
+@@ -1864,6 +1901,12 @@ impl<M: InputModeKind> TextElement<M> {
                                  x,
                                  width,
                                  text: Some(shaped),
 +                                replaced: false,
++                                text_x: px(0.),
++                                hang: px(0.),
++                                text_y: px(0.),
++                                chip: None,
++                                image: None,
                              });
                              x += width;
                          }
-@@ -1873,6 +1911,7 @@ impl<M: InputModeKind> TextElement<M> {
+@@ -1873,6 +1916,12 @@ impl<M: InputModeKind> TextElement<M> {
                              x,
                              width,
                              text: None,
 +                            replaced: false,
++                            text_x: px(0.),
++                            hang: px(0.),
++                            text_y: px(0.),
++                            chip: None,
++                            image: None,
                          });
                          x += width;
                          offset = local.end;
-@@ -1891,6 +1930,7 @@ impl<M: InputModeKind> TextElement<M> {
+@@ -1891,6 +1940,12 @@ impl<M: InputModeKind> TextElement<M> {
                              x,
                              width,
                              text: Some(shaped),
 +                            replaced: false,
++                            text_x: px(0.),
++                            hang: px(0.),
++                            text_y: px(0.),
++                            chip: None,
++                            image: None,
                          });
                      }
                      lines.push(InputLine::inline(text[range].to_owned().into(), fragments));
-@@ -1909,6 +1949,8 @@ impl<M: InputModeKind> TextElement<M> {
+@@ -1909,6 +1964,8 @@ impl<M: InputModeKind> TextElement<M> {
                  LineLayout::new()
                      .inline_lines(lines)
                      .wrap_indent(wrap_indent)
-+                    .with_scale(scale)
++                    .with_scale(state.display_map.row_scale(row))
 +                    .with_frame(state.display_map.line_frame(row))
              })
              .collect()
      }
-@@ -1994,6 +2036,85 @@ impl<M: InputModeKind> TextElement<M> {
+@@ -1994,6 +2051,85 @@ impl<M: InputModeKind> TextElement<M> {
          out
      }
  
@@ -555,7 +610,7 @@ index 2e23301e..00892ab9 100644
      #[allow(clippy::too_many_arguments)]
      fn layout_lines(
          state: &InputBaseState<M>,
-@@ -2043,14 +2164,26 @@ impl<M: InputModeKind> TextElement<M> {
+@@ -2043,14 +2179,26 @@ impl<M: InputModeKind> TextElement<M> {
              }
  
              // Keep placeholder lines in a single layout to stay parallel with visible_* metadata.
@@ -564,7 +619,7 @@ index 2e23301e..00892ab9 100644
              let line_layout = LineLayout::new()
                  .lines(placeholder_lines)
                  .with_background(line_has_background)
-+                .with_scale(state.display_map.line_scale(0))
++                .with_scale(state.display_map.row_scale(0))
 +                .with_frame(state.display_map.line_frame(0))
                  .with_whitespaces(whitespace_indicators);
              return vec![line_layout];
@@ -582,7 +637,7 @@ index 2e23301e..00892ab9 100644
          // run_offset tracks position in the runs vec coordinate space (only visible line bytes).
          // This is separate from the visible_text offset because runs from highlight_lines
          // only cover visible (non-folded) lines.
-@@ -2065,6 +2198,70 @@ impl<M: InputModeKind> TextElement<M> {
+@@ -2065,6 +2213,71 @@ impl<M: InputModeKind> TextElement<M> {
  
              debug_assert_eq!(line_item.len(), line_text.len());
  
@@ -628,14 +683,15 @@ index 2e23301e..00892ab9 100644
 +                }
 +                hidden
 +            };
-+            if scale != 1. || !hidden.is_empty() {
++            let row_scale = state.display_map.row_scale(buffer_line);
++            if scale != 1. || row_scale != scale || !hidden.is_empty() {
 +                lines.push(
 +                    Self::layout_presented_line(
 +                        &line_text,
 +                        &line_item.wrapped_lines,
 +                        line_item.indent,
 +                        &hidden,
-+                        scale,
++                        row_scale,
 +                        font_size * scale,
 +                        &runs_for_range(runs, run_offset, &(0..line_text.len())),
 +                        last_layout.visible_line_byte_offsets[vi],
@@ -653,7 +709,7 @@ index 2e23301e..00892ab9 100644
              let mut wrapped_lines: SmallVec<[ShapedLine; 1]> = SmallVec::with_capacity(1);
              let mut line_has_background = false;
  
-@@ -2107,6 +2304,7 @@ impl<M: InputModeKind> TextElement<M> {
+@@ -2107,6 +2320,7 @@ impl<M: InputModeKind> TextElement<M> {
                  .lines(wrapped_lines)
                  .wrap_indent(wrap_indent)
                  .with_background(line_has_background)
@@ -661,7 +717,7 @@ index 2e23301e..00892ab9 100644
                  .with_whitespaces(whitespace_indicators.clone());
              lines.push(line_layout);
  
-@@ -2117,6 +2315,137 @@ impl<M: InputModeKind> TextElement<M> {
+@@ -2117,6 +2331,236 @@ impl<M: InputModeKind> TextElement<M> {
          lines
      }
  
@@ -686,7 +742,7 @@ index 2e23301e..00892ab9 100644
 +        replacement_style: &TextStyle,
 +        window: &mut Window,
 +    ) -> LineLayout {
-+        use crate::input::display_map::{InlineFragment, InputLine};
++        use crate::input::display_map::{FragmentChip, InlineFragment, InputLine};
 +
 +        let mut lines: SmallVec<[InputLine; 1]> = SmallVec::with_capacity(1);
 +        let mut line_has_background = false;
@@ -718,6 +774,11 @@ index 2e23301e..00892ab9 100644
 +                    width: shaped.width,
 +                    text: Some(shaped),
 +                    replaced: false,
++                    text_x: px(0.),
++                    hang: px(0.),
++                    text_y: px(0.),
++                    chip: None,
++                    image: None,
 +                }
 +            };
 +
@@ -743,20 +804,72 @@ index 2e23301e..00892ab9 100644
 +                match replacement.filter(|_| whole) {
 +                    Some(replacement) => {
 +                        let text = replacement.text.clone();
-+                        let run = replacement_style
++                        let mut text_style = replacement_style.clone();
++                        if let Some(family) = &replacement.family {
++                            text_style.font_family = family.clone();
++                        }
++                        let run = text_style
 +                            .clone()
 +                            .highlight(replacement.style)
 +                            .to_run(text.len());
-+                        let shaped = window
-+                            .text_system()
-+                            .shape_line(text, font_size, &[run], None);
-+                        let width = shaped.width;
++                        let shaped = window.text_system().shape_line(
++                            text,
++                            replacement.font_size(font_size),
++                            &[run],
++                            None,
++                        );
++                        let (width, text_x, hang) = replacement.placement(shaped.width);
++                        // Another size keeps the row's baseline: the text moves by half
++                        // the difference of what is above and below it.
++                        let base = window.text_system().resolve_font(&replacement_style.font());
++                        let (ascent, descent) = (
++                            window.text_system().ascent(base, font_size),
++                            // The text system gives the descent below the baseline as
++                            // a negative number; the shaped line, as a positive one.
++                            window.text_system().descent(base, font_size).abs(),
++                        );
++                        let centred = matches!(
++                            replacement.chip,
++                            Some(crate::input::ReplacementChip {
++                                height: crate::input::ChipHeight::Fixed(_),
++                                ..
++                            })
++                        );
++                        let text_y = if centred || replacement.font_size(font_size) == font_size {
++                            px(0.)
++                        } else {
++                            (ascent - descent - shaped.ascent + shaped.descent) / 2.
++                        };
++                        let chip = replacement.chip.as_ref().map(|chip| {
++                            let font = window.text_system().resolve_font(&text_style.font());
++                            let size = replacement.font_size(font_size);
++                            let color = replacement.style.color.unwrap_or(text_style.color);
++                            FragmentChip {
++                                icon: chip.icon.as_ref().map(|icon| {
++                                    (icon.path.clone(), icon.size, color, chip.padding)
++                                }),
++                                dashed_bottom: chip.dashed_bottom,
++                                background: chip.background,
++                                radius: chip.radius,
++                                height: chip.height,
++                                cap_height: window.text_system().cap_height(font, size),
++                                font_size: size,
++                            }
++                        });
 +                        fragments.push(InlineFragment {
 +                            range: c.clone(),
 +                            x,
 +                            width,
 +                            text: Some(shaped),
 +                            replaced: true,
++                            text_x,
++                            hang,
++                            text_y,
++                            chip,
++                            image: replacement
++                                .image
++                                .clone()
++                                .map(|image| (image, ascent, descent)),
 +                        });
 +                        x += width;
 +                    }
@@ -766,6 +879,11 @@ index 2e23301e..00892ab9 100644
 +                        width: px(0.),
 +                        text: None,
 +                        replaced: false,
++                        text_x: px(0.),
++                        hang: px(0.),
++                        text_y: px(0.),
++                        chip: None,
++                        image: None,
 +                    }),
 +                }
 +                offset = c.end;
@@ -773,6 +891,8 @@ index 2e23301e..00892ab9 100644
 +            if offset < row_text.len() || fragments.is_empty() {
 +                fragments.push(shape(offset..row_text.len(), x, window));
 +            }
++            // A replacement's box is drawn with the backgrounds.
++            line_has_background |= fragments.iter().any(|f| f.chip.is_some());
 +            lines.push(InputLine::inline(row_text.to_owned().into(), fragments));
 +        }
 +
@@ -796,10 +916,80 @@ index 2e23301e..00892ab9 100644
 +            .with_whitespaces(whitespace_indicators)
 +    }
 +
++    /// The decorations alone, without a highlighter, clipped to the visible lines' bytes:
++    /// the runs cover only lines that are not folded (or hidden by a block widget), so a
++    /// style over a hidden line would shift every later run.
++    fn decorations_only(
++        state: &InputBaseState<M>,
++        text: &Rope,
++        visible_buffer_lines: &[usize],
++        visible_byte_range: Range<usize>,
++    ) -> Option<Vec<(Range<usize>, HighlightStyle)>> {
++        if state.masked {
++            return None;
++        }
++        let styles = compose_decoration_collections(
++            Vec::new(),
++            state.extras.decoration_layers().into_iter(),
++            visible_byte_range,
++        )?;
++        let is_multi_line = state.is_multi_line();
++        let mut groups: Vec<Range<usize>> = Vec::new();
++        let mut lines = visible_buffer_lines.iter().peekable();
++        while let Some(&first) = lines.next() {
++            let mut last = first;
++            while lines.peek().is_some_and(|&&next| next == last + 1) {
++                last = *lines.next().expect("peeked");
++            }
++            let end = if is_multi_line {
++                text.line_start_offset(last + 1)
++            } else {
++                text.line_end_offset(last)
++            };
++            groups.push(text.line_start_offset(first)..end);
++        }
++        Some(clip_styles_to_ranges(styles, &groups))
++    }
++
      /// First usize is the offset of skipped.
      fn highlight_lines(
          &mut self,
-@@ -2281,6 +2610,8 @@ pub(super) struct PrepaintState {
+@@ -2136,27 +2580,16 @@ impl<M: InputModeKind> TextElement<M> {
+                 ..
+             } => (highlighter.borrow_mut(), diagnostics),
+             _ => {
+-                return (!state.masked)
+-                    .then(|| {
+-                        compose_decoration_collections(
+-                            Vec::new(),
+-                            state.extras.decoration_layers().into_iter(),
+-                            visible_byte_range,
+-                        )
+-                    })
+-                    .flatten();
++                return Self::decorations_only(
++                    state,
++                    text,
++                    visible_buffer_lines,
++                    visible_byte_range,
++                );
+             }
+         };
+         let Some(highlighter) = highlighter.as_mut() else {
+-            return (!state.masked)
+-                .then(|| {
+-                    compose_decoration_collections(
+-                        Vec::new(),
+-                        state.extras.decoration_layers().into_iter(),
+-                        visible_byte_range,
+-                    )
+-                })
+-                .flatten();
++            return Self::decorations_only(state, text, visible_buffer_lines, visible_byte_range);
+         };
+ 
+         let mut styles = Vec::with_capacity(visible_buffer_lines.len());
+@@ -2281,6 +2714,8 @@ pub(super) struct PrepaintState {
      /// The lines of entire lines.
      last_layout: LastLayout,
      token_elements: Vec<AnyElement>,
@@ -808,7 +998,25 @@ index 2e23301e..00892ab9 100644
      /// The lines only contains the visible lines in the viewport, based on `visible_range`.
      ///
      /// The child is the soft lines.
-@@ -2777,6 +3108,14 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -2487,7 +2922,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
+         cx: &mut App,
+     ) -> (LayoutId, Self::RequestLayoutState) {
+         let state = self.state.read(cx);
+-        let line_height = window.line_height();
++        let line_height = state.presented_line_height(window);
+ 
+         let mut style = Style::default();
+         style.size.width = relative(1.).into();
+@@ -2585,7 +3020,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
+             });
+         }
+ 
+-        let line_height = window.line_height();
++        let line_height = self.state.read(cx).presented_line_height(window);
+         let token_elements = self.measure_tokens(
+             (bounds.size.width - line_number_width - RIGHT_MARGIN).max(px(1.)),
+             line_height,
+@@ -2777,6 +3212,14 @@ impl<M: InputModeKind> Element for TextElement<M> {
                      .map_or(px(0.), |cache| cache.unwrapped_width)
              };
          }
@@ -823,7 +1031,7 @@ index 2e23301e..00892ab9 100644
          last_layout.lines = Rc::new(lines);
  
          let (ghost_first_line, ghost_lines) = Self::layout_inline_completion(
-@@ -2789,7 +3128,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -2789,7 +3232,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
          let ghost_line_count = ghost_lines.len();
          let ghost_lines_height = ghost_line_count as f32 * line_height;
  
@@ -831,7 +1039,7 @@ index 2e23301e..00892ab9 100644
          let empty_bottom_height = empty_bottom_height(
              state.is_code_editor(),
              state.scroll_beyond_last_line,
-@@ -2806,7 +3144,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -2806,7 +3248,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
              } else {
                  longest_line_width
              },
@@ -840,7 +1048,7 @@ index 2e23301e..00892ab9 100644
                  + empty_bottom_height.max(ghost_lines_height))
              .max(bounds.size.height),
          );
-@@ -2975,8 +3313,10 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -2975,8 +3417,10 @@ impl<M: InputModeKind> Element for TextElement<M> {
          let hitbox = window.insert_hitbox(input_bounds, HitboxBehavior::Normal);
  
          let token_elements = self.prepaint_tokens(&last_layout, bounds, token_elements, window, cx);
@@ -851,7 +1059,16 @@ index 2e23301e..00892ab9 100644
              hitbox,
              bounds,
              last_layout,
-@@ -3051,13 +3391,16 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -3032,7 +3476,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
+         );
+ 
+         // Paint multi line text
+-        let line_height = window.line_height();
++        let line_height = self.state.read(cx).presented_line_height(window);
+         let origin = bounds.origin;
+ 
+         let invisible_top_padding = prepaint.last_layout.visible_top;
+@@ -3051,13 +3495,16 @@ impl<M: InputModeKind> Element for TextElement<M> {
              offset_y += invisible_top_padding;
  
              // Each item is the normal lines.
@@ -870,7 +1087,7 @@ index 2e23301e..00892ab9 100644
                  // Paint the current line background
                  if is_active {
                      if let Some(bg_color) = active_line_color {
-@@ -3088,6 +3431,16 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -3088,6 +3535,16 @@ impl<M: InputModeKind> Element for TextElement<M> {
          // backgrounds need their own pass. It runs ahead of the indent guides, selections,
          // and text so a highlighted range sits under them instead of covering them.
          let mut offset_y = invisible_top_padding;
@@ -887,7 +1104,7 @@ index 2e23301e..00892ab9 100644
          for (line, &buffer_line) in prepaint
              .last_layout
              .lines
-@@ -3099,6 +3452,32 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -3099,6 +3556,68 @@ impl<M: InputModeKind> Element for TextElement<M> {
                  origin.y + offset_y,
              );
  
@@ -900,6 +1117,42 @@ index 2e23301e..00892ab9 100644
 +                    .take_while(|(l, _)| *l == buffer_line)
 +                {
 +                    let quad = match *ornament {
++                        Ornament::Check {
++                            x,
++                            size: side,
++                            radius,
++                            border,
++                            border_color,
++                            fill: background,
++                            check,
++                        } => {
++                            let row = line.row_height(line_height);
++                            let origin = p + point(x, frame.above + (row - side).half());
++                            let bounds = Bounds::new(origin, size(side, side));
++                            window.paint_quad(gpui::quad(
++                                bounds,
++                                radius,
++                                background.unwrap_or(gpui::transparent_black()),
++                                border.max(px(0.)),
++                                border_color,
++                                gpui::BorderStyle::default(),
++                            ));
++                            if let Some(color) = check {
++                                // The mark of a 16-unit box, `m3.25 8.25 3 3 6.5-7`, drawn
++                                // in the middle `0.8` of this one.
++                                let unit = side * 0.8 / 16.;
++                                let inner = origin + point(side * 0.1, side * 0.1);
++                                let at = |x: f32, y: f32| inner + point(unit * x, unit * y);
++                                let mut path = gpui::PathBuilder::stroke(unit * 1.8);
++                                path.move_to(at(3.25, 8.25));
++                                path.line_to(at(6.25, 11.25));
++                                path.line_to(at(12.75, 4.25));
++                                if let Ok(path) = path.build() {
++                                    window.paint_path(path, color);
++                                }
++                            }
++                            continue;
++                        }
 +                        Ornament::Bar { x, width, color } => fill(
 +                            Bounds::new(p + point(x, px(0.)), size(width, height)),
 +                            color,
@@ -920,7 +1173,7 @@ index 2e23301e..00892ab9 100644
              line.paint_background(
                  p,
                  line_height,
-@@ -3229,6 +3608,9 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -3229,6 +3748,9 @@ impl<M: InputModeKind> Element for TextElement<M> {
          for element in &mut prepaint.token_elements {
              element.paint(window, cx);
          }
@@ -930,7 +1183,7 @@ index 2e23301e..00892ab9 100644
  
          // Paint blinking cursors (shared blink state for all carets)
          if focused && show_cursor {
-@@ -3258,12 +3640,17 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -3258,12 +3780,17 @@ impl<M: InputModeKind> Element for TextElement<M> {
              window.paint_quad(fill(gutter_bounds, gutter_bg));
  
              // Each item is the normal lines.
@@ -949,7 +1202,7 @@ index 2e23301e..00892ab9 100644
  
                  let height = line_height * lines.len() as f32;
                  // paint active line number background
-@@ -3283,6 +3670,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -3283,6 +3810,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
                      _ = line.paint(p, line_height, TextAlign::Left, None, window, cx);
                      offset_y += line_height;
                  }
@@ -957,7 +1210,7 @@ index 2e23301e..00892ab9 100644
  
                  // Add ghost line height after cursor row for line numbers alignment
                  if !prepaint.ghost_lines.is_empty() && prepaint.current_row == Some(buffer_line) {
-@@ -3355,6 +3743,35 @@ impl<M: InputModeKind> Element for TextElement<M> {
+@@ -3355,6 +3883,35 @@ impl<M: InputModeKind> Element for TextElement<M> {
      }
  }
  
@@ -993,7 +1246,7 @@ index 2e23301e..00892ab9 100644
  /// Split placeholder text into display lines and trim runs to each line.
  fn placeholder_line_runs<'a>(
      display_text: &'a str,
-@@ -3592,7 +4009,10 @@ fn split_runs_by_bg_segments(
+@@ -3592,7 +4149,10 @@ fn split_runs_by_bg_segments(
  #[cfg(test)]
  mod tests {
      use super::*;
@@ -1005,7 +1258,7 @@ index 2e23301e..00892ab9 100644
      use gpui::{
          AppContext as _, Context, EntityInputHandler as _, Render, TestAppContext,
          VisualTestContext, div,
-@@ -4094,6 +4514,1063 @@ mod tests {
+@@ -4094,6 +4654,1138 @@ mod tests {
          });
      }
  
@@ -1253,7 +1506,7 @@ index 2e23301e..00892ab9 100644
 +            present(
 +                &editor,
 +                vec![0..2, 3..5, 50..60, 9..20, reversed, 2..2],
-+                vec![(1, 1.6), (7, 2.), (0, -1.), (2, f32::NAN), (2, 0.5)],
++                vec![(1, 1.6), (7, 2.), (0, -1.), (2, f32::NAN), (2, 0.), (2, 1.)],
 +                cx,
 +            );
 +            assert_eq!(
@@ -1419,10 +1672,8 @@ index 2e23301e..00892ab9 100644
 +
 +    fn replacement(range: Range<usize>, text: &str, clickable: bool) -> Replacement {
 +        Replacement {
-+            range,
-+            text: SharedString::from(text.to_string()),
-+            style: HighlightStyle::default(),
 +            clickable,
++            ..Replacement::new(range, SharedString::from(text.to_string()))
 +        }
 +    }
 +
@@ -1483,6 +1734,83 @@ index 2e23301e..00892ab9 100644
 +            let corners = TextElement::<EditorMode>::layout_range_corners(&(0..2), layout).unwrap();
 +            assert_close(corners[0].top_right.x - corners[0].top_left.x, bullets);
 +        });
++    }
++
++    #[gpui::test]
++    fn presentation_line_heights_and_line_height_set_row_heights(cx: &mut TestAppContext) {
++        let text = "# Title\nbody\nmore";
++        let (editor, window) = decoration_editor(cx, text, false);
++        let mut cx = VisualTestContext::from_window(window.into(), cx);
++        cx.update(|window, cx| {
++            present_with(
++                &editor,
++                EditorPresentation {
++                    line_scales: vec![(0, 2.)],
++                    line_heights: vec![(0, 0.75), (2, 0.5)],
++                    line_height: Some(px(20.5)),
++                    ..Default::default()
++                },
++                cx,
++            );
++            window.draw(cx).clear(cx);
++            let state = editor.read(cx);
++            let layout = state.last_layout.as_ref().unwrap();
++            // The rows are as tall as asked, not rounded to whole pixels.
++            let lh = layout.line_height;
++            assert_close(lh, px(20.5));
++            let map = &state.display_map;
++            assert_close(map.display_row_height(0, lh), px(20.5 * 2. * 0.75));
++            assert_close(map.display_row_height(1, lh), px(20.5));
++            assert_close(map.display_row_height(2, lh), px(20.5 * 0.5));
++            assert_close(layout.lines[0].size(lh).height, px(20.5 * 1.5));
++            assert_close(map.wrap_rows_height(lh), px(20.5 * (1.5 + 1. + 0.5)));
++        });
++    }
++
++    #[gpui::test]
++    fn presentation_hanging_column_takes_no_room_and_takes_clicks(cx: &mut TestAppContext) {
++        let text = "- item";
++        let (editor, window) = decoration_editor(cx, text, false);
++        let mut cx = VisualTestContext::from_window(window.into(), cx);
++        cx.update(|window, cx| {
++            present_with(
++                &editor,
++                EditorPresentation {
++                    replacements: vec![Replacement {
++                        clickable: true,
++                        column: Some(crate::input::ReplacementColumn {
++                            width: px(20.),
++                            gap: px(6.),
++                            hanging: true,
++                        }),
++                        ..Replacement::new(0..2, "•")
++                    }],
++                    line_insets: vec![(0, px(20.))],
++                    ..Default::default()
++                },
++                cx,
++            );
++            window.draw(cx).clear(cx);
++            let state = editor.read(cx);
++            let layout = state.last_layout.as_ref().unwrap();
++            let row = &layout.lines[0].wrapped_lines[0];
++            // The text starts at the inset; the marker hangs in it.
++            assert_eq!(row.x_for_index(2), px(0.));
++            assert_eq!(row.replacement_at_x(px(-10.)), Some(0..2));
++            assert_eq!(row.replacement_at_x(px(-21.)), None);
++            assert_eq!(row.replacement_at_x(px(1.)), None);
++        });
++    }
++
++    #[test]
++    fn decorations_without_a_highlighter_keep_to_the_visible_lines() {
++        let text = Rope::from("hidden\nalso\nbold here");
++        let styles = vec![(0..text.len(), HighlightStyle::default())];
++        // Lines 0 and 1 are hidden (folded, or under a block widget): the
++        // styles keep only line 2's bytes, so the runs line up with it.
++        let groups = [12..text.len()];
++        let clipped = clip_styles_to_ranges(styles, &groups);
++        assert_eq!(clipped, vec![(12..text.len(), HighlightStyle::default())]);
 +    }
 +
 +    #[gpui::test]
@@ -2083,7 +2411,7 @@ index 10304df2..509e09eb 100644
                      last_layout,
                  ) {
 diff --git a/src/input/base/state.rs b/src/input/base/state.rs
-index d35f0834..d91bb513 100644
+index d35f0834..65944c44 100644
 --- a/src/input/base/state.rs
 +++ b/src/input/base/state.rs
 @@ -1017,7 +1017,8 @@ impl<M: InputModeKind> InputBaseState<M> {
@@ -2166,7 +2494,7 @@ index d35f0834..d91bb513 100644
 +                    last_layout.line_height
 +                        * self
 +                            .display_map
-+                            .line_scale(self.text.offset_to_point(range.end).row),
++                            .row_scale(self.text.offset_to_point(range.end).row),
 +                ),
          ))
      }
@@ -2184,13 +2512,13 @@ index d35f0834..d91bb513 100644
 +                        + line_height
 +                            * self
 +                                .display_map
-+                                .line_scale(self.text.offset_to_point(range.start).row),
++                                .row_scale(self.text.offset_to_point(range.start).row),
 +                ),
          ))
      }
  
 diff --git a/src/input/base/touch.rs b/src/input/base/touch.rs
-index e3bd2d26..19413815 100644
+index e3bd2d26..a9fc83aa 100644
 --- a/src/input/base/touch.rs
 +++ b/src/input/base/touch.rs
 @@ -14,7 +14,7 @@
@@ -2208,7 +2536,7 @@ index e3bd2d26..19413815 100644
              let (_, _, position) = self.line_and_position_for_offset(offset);
 +            // A presentation's scaled line has taller rows, and so a taller caret.
 +            let row = self.text.offset_to_point(offset).row;
-+            let row_height = line_height * self.display_map.line_scale(row);
++            let row_height = line_height * self.display_map.row_scale(row);
              match position.filter(|_| laid_out.contains(&offset) || laid_out.end == offset) {
 -                Some(position) => caret_line_box(origin + position, line_height),
 +                Some(position) => caret_line_box(origin + position, row_height),
@@ -2216,7 +2544,7 @@ index e3bd2d26..19413815 100644
              }
          };
 diff --git a/src/input/editor/display_map/display_map.rs b/src/input/editor/display_map/display_map.rs
-index 650cd718..c155fd19 100644
+index 650cd718..daca1de4 100644
 --- a/src/input/editor/display_map/display_map.rs
 +++ b/src/input/editor/display_map/display_map.rs
 @@ -4,19 +4,21 @@
@@ -2297,7 +2625,7 @@ index 650cd718..c155fd19 100644
          }
      }
  
-@@ -266,12 +308,229 @@ impl DisplayMap {
+@@ -266,12 +308,236 @@ impl DisplayMap {
          self.rebuild_fold_projection();
      }
  
@@ -2350,6 +2678,13 @@ index 650cd718..c155fd19 100644
 +    #[inline]
 +    pub(crate) fn line_scale(&self, line: usize) -> f32 {
 +        self.wrap_map.wrapper().line_scale(line)
++    }
++
++    /// How many line heights tall each row of buffer line `line` is: its scale times its
++    /// line height factor.
++    #[inline]
++    pub(crate) fn row_scale(&self, line: usize) -> f32 {
++        self.wrap_map.wrapper().row_scale(line)
 +    }
 +
 +    /// The block widget whose first line is `line`.
@@ -2528,7 +2863,7 @@ index 650cd718..c155fd19 100644
              self.fold_map.rebuild(&self.wrap_map);
          } else {
              // No active folds: identity mapping (wrap_row == display_row).
-@@ -279,6 +538,63 @@ impl DisplayMap {
+@@ -279,6 +545,65 @@ impl DisplayMap {
              self.fold_map
                  .mark_dirty_with_wrap_count(self.wrap_map.wrap_row_count());
          }
@@ -2545,6 +2880,7 @@ index 650cd718..c155fd19 100644
 +        if presentation.line_scales.is_empty()
 +            && presentation.line_space.is_empty()
 +            && presentation.blocks.is_empty()
++            && presentation.line_heights.is_empty()
 +        {
 +            return;
 +        }
@@ -2554,6 +2890,7 @@ index 650cd718..c155fd19 100644
 +            .map(|(line, _)| *line)
 +            .chain(presentation.line_space.iter().map(|(line, _, _)| *line))
 +            .chain(presentation.blocks.iter().map(|b| b.lines.start))
++            .chain(presentation.line_heights.iter().map(|(line, _)| *line))
 +            .collect();
 +        lines.sort_unstable();
 +        lines.dedup();
@@ -2571,7 +2908,7 @@ index 650cd718..c155fd19 100644
 +                Some(block) => (0., self.block_height(block), px(0.), px(0.)),
 +                None => {
 +                    let (above, below) = self.line_space(line);
-+                    (self.line_scale(line), px(0.), above, below)
++                    (self.row_scale(line), px(0.), above, below)
 +                }
 +            };
 +            scaled_rows.push(ScaledRows {
@@ -2696,20 +3033,57 @@ index 32c6b0a2..cbbf0318 100644
          self.set_hidden_rows(wrap_row_count, hidden_ranges);
          self.needs_rebuild = false;
 diff --git a/src/input/editor/display_map/inline_line.rs b/src/input/editor/display_map/inline_line.rs
-index b45fd3ba..66252426 100644
+index b45fd3ba..60e13e47 100644
 --- a/src/input/editor/display_map/inline_line.rs
 +++ b/src/input/editor/display_map/inline_line.rs
-@@ -7,6 +7,9 @@ pub(crate) struct InlineFragment {
+@@ -1,5 +1,7 @@
+ //! A visual row whose offsets remain in source UTF-8 bytes.
+-use gpui::{App, Pixels, Point, ShapedLine, SharedString, TextAlign, Window, point, px};
++use gpui::{
++    App, Bounds, Hsla, Pixels, Point, ShapedLine, SharedString, TextAlign, Window, point, px, size,
++};
+ use std::ops::Range;
+ 
+ pub(crate) struct InlineFragment {
+@@ -7,6 +9,37 @@ pub(crate) struct InlineFragment {
      pub(crate) x: Pixels,
      pub(crate) width: Pixels,
      pub(crate) text: Option<ShapedLine>,
 +    /// A presentation's replacement: `text` is drawn in place of the source in `range`, which
 +    /// the caret treats as one unit, like an element.
 +    pub(crate) replaced: bool,
++    /// Where `text` starts within the fragment: a replacement set in a column is
++    /// right-aligned in it.
++    pub(crate) text_x: Pixels,
++    /// How far a hanging replacement's column reaches left of `x`, where a click
++    /// still lands on it.
++    pub(crate) hang: Pixels,
++    /// How far `text` is drawn below where the row would centre it: a replacement at
++    /// another size keeps the row's baseline.
++    pub(crate) text_y: Pixels,
++    /// A replacement's box, drawn behind `text`.
++    pub(crate) chip: Option<FragmentChip>,
++    /// A replacement's image, drawn instead of `text`, with the row font's ascent and
++    /// descent to put its baseline on the row's.
++    pub(crate) image: Option<(crate::input::ReplacementImage, Pixels, Pixels)>,
++}
++
++/// A replacement's box, as laid out: what to draw, and its text's metrics to place it.
++#[derive(Clone)]
++pub(crate) struct FragmentChip {
++    /// The icon's asset, size and colour, and where it starts in the fragment.
++    pub(crate) icon: Option<(SharedString, Pixels, Hsla, Pixels)>,
++    pub(crate) dashed_bottom: Option<Hsla>,
++    pub(crate) background: Hsla,
++    pub(crate) radius: Pixels,
++    /// Its top and height within the row, from the row's height.
++    pub(crate) height: crate::input::ChipHeight,
++    pub(crate) cap_height: Pixels,
++    pub(crate) font_size: Pixels,
  }
  
  pub(crate) struct InputLine {
-@@ -49,10 +52,13 @@ impl InputLine {
+@@ -49,10 +82,13 @@ impl InputLine {
                  for f in fragments {
                      if ix < f.range.end {
                          return f.x
@@ -2727,7 +3101,7 @@ index b45fd3ba..66252426 100644
                      }
                  }
                  self.width
-@@ -65,20 +71,41 @@ impl InputLine {
+@@ -65,20 +101,41 @@ impl InputLine {
              Content::Inline(fragments) => {
                  for f in fragments {
                      if x <= f.x + f.width {
@@ -2770,15 +3144,114 @@ index b45fd3ba..66252426 100644
 +            Content::Text(_) => None,
 +            Content::Inline(fragments) => fragments
 +                .iter()
-+                .find(|f| f.replaced && x >= f.x && x < f.x + f.width)
++                .find(|f| f.replaced && x >= f.x - f.hang && x < f.x + f.width.max(px(0.)))
 +                .map(|f| f.range.clone()),
 +        }
 +    }
      pub(crate) fn index_for_x(&self, x: Pixels) -> Option<usize> {
          match &self.content {
              Content::Text(line) => line.index_for_x(x),
+@@ -139,10 +196,84 @@ impl InputLine {
+                     _ => px(0.),
+                 };
+                 for f in fragments {
++                    if background && let (Some(chip), Some(line)) = (&f.chip, &f.text) {
++                        let (top, chip_height) = match chip.height {
++                            crate::input::ChipHeight::Fixed(h) => ((height - h) / 2., h),
++                            crate::input::ChipHeight::CapHeight => {
++                                let baseline = (height - line.ascent - line.descent) / 2.
++                                    + line.ascent
++                                    + f.text_y;
++                                let pad = chip.font_size * 0.125 + line.descent / 2.;
++                                (baseline - chip.cap_height - pad, chip.cap_height + pad * 2.)
++                            }
++                        };
++                        window.paint_quad(
++                            gpui::fill(
++                                Bounds::new(
++                                    pos + point(offset + f.x, top),
++                                    size(f.width, chip_height),
++                                ),
++                                chip.background,
++                            )
++                            .corner_radii(chip.radius),
++                        );
++                        if let Some(color) = chip.dashed_bottom {
++                            window.paint_quad(gpui::quad(
++                                Bounds::new(
++                                    pos + point(offset + f.x, px(0.)),
++                                    size(f.width, height),
++                                ),
++                                px(0.),
++                                gpui::transparent_black(),
++                                gpui::Edges {
++                                    bottom: px(1.),
++                                    ..Default::default()
++                                },
++                                color,
++                                gpui::BorderStyle::Dashed,
++                            ));
++                        }
++                    }
++                    if !background
++                        && let Some(FragmentChip {
++                            icon: Some((path, side, color, x)),
++                            ..
++                        }) = &f.chip
++                    {
++                        let bounds = Bounds::new(
++                            pos + point(offset + f.x + *x, (height - *side) / 2.),
++                            size(*side, *side),
++                        );
++                        window
++                            .paint_svg(
++                                bounds,
++                                path.clone(),
++                                None,
++                                gpui::TransformationMatrix::unit(),
++                                *color,
++                                cx,
++                            )
++                            .ok();
++                    }
++                    if let Some((image, ascent, descent)) = &f.image {
++                        if !background {
++                            let baseline = (height - *ascent - *descent) / 2. + *ascent;
++                            let bounds = Bounds::new(
++                                pos + point(offset + f.x, baseline - image.baseline),
++                                image.size,
++                            );
++                            if let Some(data) = image.image.clone().use_render_image(window, cx) {
++                                window
++                                    .paint_image(bounds, bounds, Default::default(), data, 0, false)
++                                    .ok();
++                            }
++                        }
++                        continue;
++                    }
+                     if let Some(line) = &f.text {
+                         paint(
+                             line,
+-                            pos + point(offset + f.x, px(0.)),
++                            pos + point(offset + f.x + f.text_x, f.text_y),
+                             TextAlign::Left,
+                             None,
+                             window,
+diff --git a/src/input/editor/display_map/mod.rs b/src/input/editor/display_map/mod.rs
+index 0ebaf622..3214ddca 100644
+--- a/src/input/editor/display_map/mod.rs
++++ b/src/input/editor/display_map/mod.rs
+@@ -9,7 +9,7 @@
+ /// about `BufferPoint ↔ DisplayPoint` mapping, without worrying about internal wrap/fold complexity.
+ mod display_map;
+ mod inline_line;
+-pub(crate) use inline_line::{InlineFragment, InputLine};
++pub(crate) use inline_line::{FragmentChip, InlineFragment, InputLine};
+ mod fold_map;
+ mod folding;
+ mod text_wrapper;
 diff --git a/src/input/editor/display_map/text_wrapper.rs b/src/input/editor/display_map/text_wrapper.rs
-index 4c59bf27..63c2ee3c 100644
+index 4c59bf27..e743b36d 100644
 --- a/src/input/editor/display_map/text_wrapper.rs
 +++ b/src/input/editor/display_map/text_wrapper.rs
 @@ -15,6 +15,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
@@ -2819,7 +3292,7 @@ index 4c59bf27..63c2ee3c 100644
          let text_system = gpui::WindowTextSystem::new(cx.text_system().clone());
          let font = self.font.clone();
          let font_size = self.font_size;
-@@ -404,6 +414,66 @@ impl TextWrapper {
+@@ -404,6 +414,71 @@ impl TextWrapper {
                      fragments.push(LineFragment::element(*width, range.len()));
                      offset = range.end;
                  }
@@ -2859,14 +3332,18 @@ index 4c59bf27..63c2ee3c 100644
 +                        let width = replacement.map_or(px(0.), |replacement| {
 +                            let text = replacement.text.clone();
 +                            let font = gpui::Font {
++                                family: replacement
++                                    .family
++                                    .clone()
++                                    .unwrap_or_else(|| font.family.clone()),
 +                                weight: replacement.style.font_weight.unwrap_or(font.weight),
 +                                style: replacement.style.font_style.unwrap_or(font.style),
 +                                ..font.clone()
 +                            };
-+                            text_system
++                            let width = text_system
 +                                .layout_line(
 +                                    &text,
-+                                    font_size,
++                                    replacement.font_size(font_size),
 +                                    &[gpui::TextRun {
 +                                        len: text.len(),
 +                                        font,
@@ -2877,7 +3354,8 @@ index 4c59bf27..63c2ee3c 100644
 +                                    }],
 +                                    None,
 +                                )
-+                                .width
++                                .width;
++                            replacement.placement(width).0
 +                        });
 +                        fragments.push(LineFragment::element(width, range.len()));
 +                        offset = range.end;
@@ -2886,7 +3364,7 @@ index 4c59bf27..63c2ee3c 100644
                  if fragments.is_empty() {
                      return measured_wrap_boundaries(
                          line_str,
-@@ -515,6 +585,249 @@ impl TextWrapper {
+@@ -515,6 +590,261 @@ impl TextWrapper {
          }
      }
  
@@ -2915,6 +3393,17 @@ index 4c59bf27..63c2ee3c 100644
 +            return 1.;
 +        }
 +        line_value(&self.presentation.line_scales, row).unwrap_or(1.)
++    }
++
++    /// How many line heights tall each visual row of buffer line `row` is: its scale,
++    /// times its line height factor.
++    #[inline]
++    pub(crate) fn row_scale(&self, row: usize) -> f32 {
++        let scale = self.line_scale(row);
++        if self.presentation.line_heights.is_empty() {
++            return scale;
++        }
++        scale * line_value(&self.presentation.line_heights, row).unwrap_or(1.)
 +    }
 +
 +    /// How much the wrap width of buffer line `row` shrinks, and whether it is wrapped at all.
@@ -3099,6 +3588,7 @@ index 4c59bf27..63c2ee3c 100644
 +        }
 +        p.line_scales = shift_lines(&p.line_scales, shift_line);
 +        p.line_insets = shift_lines(&p.line_insets, shift_line);
++        p.line_heights = shift_lines(&p.line_heights, shift_line);
 +        p.line_ornaments = shift_lines(&p.line_ornaments, shift_line);
 +        if !p.line_space.is_empty() {
 +            p.line_space = p
@@ -3136,7 +3626,7 @@ index 4c59bf27..63c2ee3c 100644
      fn _update<F>(
          &mut self,
          changed_text: &Rope,
-@@ -548,7 +861,21 @@ impl TextWrapper {
+@@ -548,7 +878,21 @@ impl TextWrapper {
              let mut indent_chars = 0;
  
              // If wrap_width is Pixels::MAX, skip wrapping to disable word wrap
@@ -3159,7 +3649,7 @@ index 4c59bf27..63c2ee3c 100644
                  // Borrowed for lines within a single rope chunk.
                  let line_str: Cow<str> = line.into();
                  match self.wrapping_indent {
-@@ -749,6 +1076,24 @@ pub(crate) struct LineLayout {
+@@ -749,6 +1093,24 @@ pub(crate) struct LineLayout {
      /// Whether any run of this line carries a background color, so [`Self::paint_background`]
      /// can skip the glyph walk for the common case of a line without highlights.
      has_background: bool,
@@ -3184,7 +3674,7 @@ index 4c59bf27..63c2ee3c 100644
  }
  
  impl LineLayout {
-@@ -761,6 +1106,41 @@ impl LineLayout {
+@@ -761,6 +1123,41 @@ impl LineLayout {
              whitespace_chars: Vec::new(),
              whitespace_indicators: None,
              has_background: false,
@@ -3226,7 +3716,7 @@ index 4c59bf27..63c2ee3c 100644
          }
      }
  
-@@ -777,13 +1157,14 @@ impl LineLayout {
+@@ -777,13 +1174,14 @@ impl LineLayout {
      }
  
      /// The pixel indent applied to the given visual line, relative to the line's
@@ -3245,7 +3735,7 @@ index 4c59bf27..63c2ee3c 100644
          }
      }
  
-@@ -824,7 +1205,7 @@ impl LineLayout {
+@@ -824,7 +1222,7 @@ impl LineLayout {
  
          for (line_index, wrapped_line) in self.wrapped_lines.iter().enumerate() {
              for (relative_offset, c) in wrapped_line.text.char_indices() {
@@ -3254,7 +3744,7 @@ index 4c59bf27..63c2ee3c 100644
                      let is_tab = c == '\t';
                      let start_x = wrapped_line.x_for_index(relative_offset);
                      let end_x = wrapped_line.x_for_index(relative_offset + c.len_utf8());
-@@ -860,7 +1241,7 @@ impl LineLayout {
+@@ -860,7 +1258,7 @@ impl LineLayout {
          line_end_affinity: bool,
      ) -> Option<Point<Pixels>> {
          let mut acc_len = 0;
@@ -3263,7 +3753,7 @@ index 4c59bf27..63c2ee3c 100644
  
          let x_offset = last_layout.alignment_offset(self.longest_width);
  
-@@ -888,7 +1269,7 @@ impl LineLayout {
+@@ -888,7 +1286,7 @@ impl LineLayout {
              // Always advance by actual line length. The last line gets +1 so the
              // cursor can be placed after the final character.
              acc_len += if is_last { line.len + 1 } else { line.len };
@@ -3272,7 +3762,7 @@ index 4c59bf27..63c2ee3c 100644
          }
  
          None
-@@ -925,11 +1306,11 @@ impl LineLayout {
+@@ -925,11 +1323,11 @@ impl LineLayout {
          last_layout: &LastLayout,
      ) -> Option<(usize, usize, Pixels)> {
          let mut offset = 0;
@@ -3286,7 +3776,7 @@ index 4c59bf27..63c2ee3c 100644
              if pos.y >= line_top && pos.y < line_bottom {
                  return Some((i, offset, pos.x - x_offset - self.line_indent(i)));
              }
-@@ -938,7 +1319,18 @@ impl LineLayout {
+@@ -938,7 +1336,18 @@ impl LineLayout {
              line_top = line_bottom;
          }
  
@@ -3306,7 +3796,7 @@ index 4c59bf27..63c2ee3c 100644
      }
  
      /// Get the index for the given position (x, y) in this line layout.
-@@ -995,6 +1387,24 @@ impl LineLayout {
+@@ -995,6 +1404,24 @@ impl LineLayout {
          (past_end / last_layout.space_width).round() as usize
      }
  
@@ -3331,7 +3821,7 @@ index 4c59bf27..63c2ee3c 100644
      pub(crate) fn index_for_position(
          &self,
          pos: Point<Pixels>,
-@@ -1013,7 +1423,12 @@ impl LineLayout {
+@@ -1013,7 +1440,12 @@ impl LineLayout {
              .map(|(ix, line)| line.width + self.line_indent(ix))
              .max()
              .unwrap_or(self.longest_width);
@@ -3345,7 +3835,7 @@ index 4c59bf27..63c2ee3c 100644
      }
  
      /// Paint only the glyph background quads of this line.
-@@ -1031,10 +1446,12 @@ impl LineLayout {
+@@ -1031,10 +1463,12 @@ impl LineLayout {
      ) {
          // Painting a background walks every glyph and pushes a scene layer, so skip the
          // whole pass for lines that have no background color to paint.
@@ -3359,7 +3849,7 @@ index 4c59bf27..63c2ee3c 100644
          for (ix, line) in self.wrapped_lines.iter().enumerate() {
              _ = line.paint_background(
                  pos + point(self.line_indent(ix), ix * line_height),
-@@ -1056,6 +1473,12 @@ impl LineLayout {
+@@ -1056,6 +1490,12 @@ impl LineLayout {
          window: &mut Window,
          cx: &mut App,
      ) {
@@ -3444,36 +3934,12 @@ index d50bff1c..ea3c45f3 100644
              last_indents = current_indents;
          }
  
-diff --git a/src/input/mod.rs b/src/input/mod.rs
-index 13f64102..52930e7c 100644
---- a/src/input/mod.rs
-+++ b/src/input/mod.rs
-@@ -61,6 +61,8 @@ mod mode;
- mod movement;
- #[path = "base/native.rs"]
- mod native;
-+#[path = "editor/presentation.rs"]
-+mod presentation;
- #[path = "base/rope_ext.rs"]
- mod rope_ext;
- #[path = "editor/search.rs"]
-@@ -117,6 +119,10 @@ pub use mask_pattern::MaskPattern;
- #[doc(hidden)]
- pub use native::set_text_content_type;
- pub use native::{NativeMenu, NativeMenuItem};
-+pub use presentation::{
-+    BlockWidget, BlockWidgetRenderer, EditorPresentation, EditorPresentationEvent, Ornament,
-+    Replacement,
-+};
- pub use rope_ext::{InputEdit, Point, RopeExt, RopeLines};
- pub use ropey::Rope;
- pub use search::{SearchMatcher, SearchSession};
 diff --git a/src/input/editor/presentation.rs b/src/input/editor/presentation.rs
 new file mode 100644
-index 00000000..adc24611
+index 00000000..19aeb798
 --- /dev/null
 +++ b/src/input/editor/presentation.rs
-@@ -0,0 +1,627 @@
+@@ -0,0 +1,894 @@
 +//! A render-only presentation of the code editor's text: ranges laid out at zero
 +//! width or drawn as other text, lines drawn larger, with space around them, inset
 +//! or ornamented, and runs of lines drawn as an element of the app's.
@@ -3498,15 +3964,16 @@ index 00000000..adc24611
 +/// Input is checked against the current text when it is set: a concealed range
 +/// that is empty, out of bounds, off a char boundary, crosses a newline, or
 +/// overlaps an earlier one is dropped, and so is a scale that is not finite,
-+/// not above `1.0`, or for a line the text does not have. The other fields are
++/// not above zero, `1.0`, or for a line the text does not have. The other fields are
 +/// checked the same way (see each), and nothing in them can make it panic.
 +#[derive(Debug, Clone, Default, PartialEq)]
 +pub struct EditorPresentation {
 +    /// UTF-8 byte ranges laid out at zero width and not painted. Each lies
 +    /// within one line (it may end at the line's end, not past its newline).
 +    pub concealed: Vec<Range<usize>>,
-+    /// `(buffer line, scale)`: the line's text is shaped `scale` times larger,
-+    /// and each of its visual rows is `scale` line heights tall.
++    /// `(buffer line, scale)`: the line's text is shaped `scale` times larger
++    /// (or smaller, below `1.0`), and each of its visual rows is `scale` line
++    /// heights tall.
 +    pub line_scales: Vec<(usize, f32)>,
 +    /// Source ranges drawn as other text. Each is checked like a concealed
 +    /// range, must not overlap a concealed range or an earlier replacement, and
@@ -3524,6 +3991,15 @@ index 00000000..adc24611
 +    pub line_ornaments: Vec<(usize, Ornament)>,
 +    /// Runs of whole lines drawn as an element instead of their text.
 +    pub block_widgets: Vec<BlockWidget>,
++    /// `(buffer line, factor)`: each visual row of the line is `factor` times as
++    /// tall as its scale alone makes it (the editor's line height times the
++    /// line's scale), its text centred in it as before. Must be finite, above
++    /// zero and not `1.0`.
++    pub line_heights: Vec<(usize, f32)>,
++    /// The height of a row at scale `1.0`, instead of the window's line height
++    /// (which is rounded to whole pixels), so rows can follow another
++    /// renderer's exactly. Must be finite and above zero.
++    pub line_height: Option<Pixels>,
 +}
 +
 +/// A source range drawn as `text` instead, see [`EditorPresentation::replacements`].
@@ -3545,6 +4021,130 @@ index 00000000..adc24611
 +    pub style: HighlightStyle,
 +    /// Whether a click on it is reported instead of placing the caret.
 +    pub clickable: bool,
++    /// The font family `text` is shaped in, instead of the editor's.
++    pub family: Option<SharedString>,
++    /// `text`'s size relative to its line's. Must be finite and above zero;
++    /// anything else is taken as `1.0`.
++    pub size: f32,
++    /// A column `text` is set in, right-aligned, instead of its own width.
++    pub column: Option<ReplacementColumn>,
++    /// A box drawn behind `text`, with room either side of it.
++    pub chip: Option<ReplacementChip>,
++    /// An image drawn in place of `text` (which is then not drawn).
++    pub image: Option<ReplacementImage>,
++}
++
++/// An image a [`Replacement`] is drawn as, like a typeset formula: `size`,
++/// with its baseline `baseline` from its top on the row's baseline.
++#[derive(Debug, Clone, PartialEq)]
++pub struct ReplacementImage {
++    pub image: std::sync::Arc<gpui::Image>,
++    pub size: gpui::Size<Pixels>,
++    pub baseline: Pixels,
++}
++
++impl Replacement {
++    /// `range` drawn as `text`, in the editor's style, not clickable.
++    pub fn new(range: Range<usize>, text: impl Into<SharedString>) -> Self {
++        Self {
++            range,
++            text: text.into(),
++            style: HighlightStyle::default(),
++            clickable: false,
++            family: None,
++            size: 1.,
++            column: None,
++            chip: None,
++            image: None,
++        }
++    }
++
++    /// The size its text is shaped at, for a line shaped at `font_size`.
++    pub(crate) fn font_size(&self, font_size: Pixels) -> Pixels {
++        if self.size.is_finite() && self.size > 0. {
++            font_size * self.size
++        } else {
++            font_size
++        }
++    }
++
++    /// How it is placed for text `text_width` wide: how wide it is laid out,
++    /// where its text starts (from where it is laid out), and how far its
++    /// column hangs to the left of where it is laid out.
++    pub(crate) fn placement(&self, text_width: Pixels) -> (Pixels, Pixels, Pixels) {
++        if let Some(image) = &self.image {
++            return (image.size.width, px(0.), px(0.));
++        }
++        if let Some(chip) = &self.chip {
++            let padding = chip.padding.max(px(0.));
++            let icon = chip
++                .icon
++                .as_ref()
++                .map_or(px(0.), |icon| icon.size + icon.gap);
++            return (text_width + icon + padding * 2., padding + icon, px(0.));
++        }
++        match self.column {
++            Some(column) => {
++                let gap = column.gap.max(px(0.));
++                let width = column.width.max(text_width + gap);
++                if column.hanging {
++                    (px(0.), -(gap + text_width), width)
++                } else {
++                    (width, width - gap - text_width, px(0.))
++                }
++            }
++            None => (text_width, px(0.), px(0.)),
++        }
++    }
++}
++
++/// A box behind a [`Replacement`]'s text, like a code span's or a tag's: the
++/// replacement is `padding` wider either side, and the box spans it.
++#[derive(Debug, Clone, PartialEq)]
++pub struct ReplacementChip {
++    pub padding: Pixels,
++    pub background: Hsla,
++    pub radius: Pixels,
++    pub height: ChipHeight,
++    /// An icon before the text, in the text's colour.
++    pub icon: Option<ChipIcon>,
++    /// A dashed line this colour along the bottom of the row, under it.
++    pub dashed_bottom: Option<Hsla>,
++}
++
++/// An icon in a [`ReplacementChip`]: the SVG asset at `path`, `size` square,
++/// centred on the row, `gap` before the text.
++#[derive(Debug, Clone, PartialEq)]
++pub struct ChipIcon {
++    pub path: SharedString,
++    pub size: Pixels,
++    pub gap: Pixels,
++}
++
++/// How tall a [`ReplacementChip`] is.
++#[derive(Debug, Clone, Copy, PartialEq)]
++pub enum ChipHeight {
++    /// Around its text's capitals: their height and `size * 0.125 +
++    /// descent / 2` either side, as a code span's. Its text keeps the row's
++    /// baseline.
++    CapHeight,
++    /// This tall, centred on the row, as is its text.
++    Fixed(Pixels),
++}
++
++/// A column a [`Replacement`]'s text is set in, like a list's marker column:
++/// at least `width` wide, its text right-aligned `gap` short of its right edge.
++/// A wider text widens the column.
++///
++/// A `hanging` column takes no room: it hangs to the left of where the
++/// replacement is (into the line's inset, like an outside list marker), so
++/// the text after it starts where the line's wrapped rows do. A click on it
++/// is a click on the replacement.
++#[derive(Debug, Clone, Copy, PartialEq)]
++pub struct ReplacementColumn {
++    pub width: Pixels,
++    pub gap: Pixels,
++    pub hanging: bool,
 +}
 +
 +/// Something drawn with a line, see [`EditorPresentation::line_ornaments`].
@@ -3559,6 +4159,19 @@ index 00000000..adc24611
 +    },
 +    /// A horizontal line across the text area, centred on the line's rows.
 +    Rule { thickness: Pixels, color: Hsla },
++    /// A task's box: a square `size` wide with corners of `radius`, `x` from
++    /// the left edge of the text area, centred on the line's first row. Its
++    /// border is `border` wide in `border_color`; a `fill` fills it, and a
++    /// `check` draws a check mark in it (a stroke `size * 0.1` wide).
++    Check {
++        x: Pixels,
++        size: Pixels,
++        radius: Pixels,
++        border: Pixels,
++        border_color: Hsla,
++        fill: Option<Hsla>,
++        check: Option<Hsla>,
++    },
 +}
 +
 +/// Builds the element of a [`BlockWidget`].
@@ -3633,6 +4246,8 @@ index 00000000..adc24611
 +    pub(crate) line_insets: Rc<[(usize, Pixels)]>,
 +    pub(crate) line_ornaments: Rc<[(usize, Ornament)]>,
 +    pub(crate) blocks: Rc<[BlockWidget]>,
++    pub(crate) line_heights: Rc<[(usize, f32)]>,
++    pub(crate) line_height: Option<Pixels>,
 +}
 +
 +impl PartialEq for ValidPresentation {
@@ -3644,6 +4259,8 @@ index 00000000..adc24611
 +            && self.line_insets == other.line_insets
 +            && self.line_ornaments == other.line_ornaments
 +            && self.blocks == other.blocks
++            && self.line_heights == other.line_heights
++            && self.line_height == other.line_height
 +    }
 +}
 +
@@ -3656,6 +4273,8 @@ index 00000000..adc24611
 +            && self.line_insets.is_empty()
 +            && self.line_ornaments.is_empty()
 +            && self.blocks.is_empty()
++            && self.line_heights.is_empty()
++            && self.line_height.is_none()
 +    }
 +
 +    fn to_presentation(&self) -> EditorPresentation {
@@ -3667,6 +4286,8 @@ index 00000000..adc24611
 +            line_insets: self.line_insets.to_vec(),
 +            line_ornaments: self.line_ornaments.to_vec(),
 +            block_widgets: self.blocks.to_vec(),
++            line_heights: self.line_heights.to_vec(),
++            line_height: self.line_height,
 +        }
 +    }
 +}
@@ -3709,6 +4330,8 @@ index 00000000..adc24611
 +            && self.line_insets.is_empty()
 +            && self.line_ornaments.is_empty()
 +            && self.block_widgets.is_empty()
++            && self.line_heights.is_empty()
++            && self.line_height.is_none()
 +    }
 +
 +    /// The valid part of this presentation for `text`: sorted, disjoint ranges,
@@ -3756,7 +4379,9 @@ index 00000000..adc24611
 +            self.line_scales
 +                .iter()
 +                .copied()
-+                .filter(|&(line, scale)| line < lines && scale.is_finite() && scale > 1.)
++                .filter(|&(line, scale)| {
++                    line < lines && scale.is_finite() && scale > 0. && scale != 1.
++                })
 +                .collect(),
 +        );
 +        let line_space = {
@@ -3797,6 +4422,19 @@ index 00000000..adc24611
 +                        Ornament::Rule { thickness, .. } => {
 +                            finite_px(thickness) && thickness > px(0.)
 +                        }
++                        Ornament::Check {
++                            x,
++                            size,
++                            radius,
++                            border,
++                            ..
++                        } => {
++                            finite_px(x)
++                                && finite_px(size)
++                                && size > px(0.)
++                                && finite_px(radius)
++                                && finite_px(border)
++                        }
 +                    }
 +            })
 +            .collect();
@@ -3823,7 +4461,21 @@ index 00000000..adc24611
 +            keep
 +        });
 +
++        let line_heights = first_per_line(
++            self.line_heights
++                .iter()
++                .copied()
++                .filter(|&(line, factor)| {
++                    line < lines && factor.is_finite() && factor > 0. && factor != 1.
++                })
++                .collect(),
++        );
++
 +        ValidPresentation {
++            line_height: self
++                .line_height
++                .filter(|&height| finite_px(height) && height > px(0.)),
++            line_heights: line_heights.into(),
 +            concealed: concealed.into(),
 +            line_scales: line_scales.into(),
 +            replacements: replacements.into(),
@@ -3873,6 +4525,15 @@ index 00000000..adc24611
 +}
 +
 +impl<M: InputModeKind> InputBaseState<M> {
++    /// The height of a row at scale `1.0`: the presentation's, or the window's line
++    /// height.
++    pub(crate) fn presented_line_height(&self, window: &Window) -> Pixels {
++        self.display_map
++            .presentation()
++            .line_height
++            .unwrap_or_else(|| window.line_height())
++    }
++
 +    /// The source range of the clickable replacement drawn under window `position`, if any.
 +    pub(crate) fn clickable_replacement_at(
 +        &self,
@@ -3952,17 +4613,12 @@ index 00000000..adc24611
 +        };
 +        assert_eq!(
 +            valid(presentation, "a\nb\nc").line_scales,
-+            vec![(0, 1.6), (2, 1.2)]
++            vec![(0, 1.6), (1, 0.5), (2, 1.2)]
 +        );
 +    }
 +
 +    fn replacement(range: Range<usize>, text: &str) -> Replacement {
-+        Replacement {
-+            range,
-+            text: SharedString::from(text.to_string()),
-+            style: HighlightStyle::default(),
-+            clickable: false,
-+        }
++        Replacement::new(range, SharedString::from(text.to_string()))
 +    }
 +
 +    #[test]
@@ -3993,6 +4649,83 @@ index 00000000..adc24611
 +                .collect::<Vec<_>>(),
 +            vec![0..2, 2..5, 14..16]
 +        );
++    }
++
++    #[test]
++    fn replacements_are_placed_in_columns_chips_and_images() {
++        let mut r = Replacement::new(0..2, "1.");
++        assert_eq!(r.placement(px(10.)), (px(10.), px(0.), px(0.)));
++        r.column = Some(ReplacementColumn {
++            width: px(22.),
++            gap: px(6.),
++            hanging: false,
++        });
++        // Right-aligned in the column, `gap` short of its edge.
++        assert_eq!(r.placement(px(10.)), (px(22.), px(6.), px(0.)));
++        // A wider text widens the column.
++        assert_eq!(r.placement(px(20.)), (px(26.), px(0.), px(0.)));
++        r.column = Some(ReplacementColumn {
++            width: px(22.),
++            gap: px(6.),
++            hanging: true,
++        });
++        // Hanging: no room, the text left of where it is, the column to hit.
++        assert_eq!(r.placement(px(10.)), (px(0.), px(-16.), px(22.)));
++        let chip = Replacement {
++            chip: Some(ReplacementChip {
++                padding: px(4.),
++                background: hsla(0., 0., 0., 1.),
++                radius: px(2.),
++                height: ChipHeight::CapHeight,
++                icon: Some(ChipIcon {
++                    path: "icons/calendar.svg".into(),
++                    size: px(12.),
++                    gap: px(4.),
++                }),
++                dashed_bottom: None,
++            }),
++            ..Replacement::new(0..2, "x")
++        };
++        assert_eq!(
++            chip.placement(px(10.)),
++            (px(10. + 16. + 8.), px(20.), px(0.))
++        );
++        let image = Replacement {
++            image: Some(ReplacementImage {
++                image: std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, vec![])),
++                size: gpui::size(px(30.), px(14.)),
++                baseline: px(11.),
++            }),
++            ..Replacement::new(0..2, "")
++        };
++        assert_eq!(image.placement(px(0.)), (px(30.), px(0.), px(0.)));
++        // A size that is not one is taken as the line's.
++        let sized = Replacement {
++            size: f32::NAN,
++            ..Replacement::new(0..1, "x")
++        };
++        assert_eq!(sized.font_size(px(16.)), px(16.));
++    }
++
++    #[test]
++    fn invalid_line_heights_and_line_height_are_dropped() {
++        let presentation = EditorPresentation {
++            line_heights: vec![(1, 0.5), (0, 1.), (0, 0.), (2, f32::NAN), (9, 2.)],
++            line_height: Some(px(-1.)),
++            ..Default::default()
++        };
++        let valid = valid(presentation, "a\nb\nc");
++        assert_eq!(valid.line_heights, vec![(1, 0.5)]);
++        assert_eq!(valid.line_height, None);
++        let kept = EditorPresentation {
++            line_height: Some(px(26.4)),
++            ..Default::default()
++        };
++        assert_eq!(valid_height(kept), Some(px(26.4)));
++    }
++
++    fn valid_height(presentation: EditorPresentation) -> Option<Pixels> {
++        valid(presentation, "a").line_height
 +    }
 +
 +    #[test]
@@ -4101,4 +4834,29 @@ index 00000000..adc24611
 +        );
 +    }
 +}
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index 13f64102..35339bb2 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -61,6 +61,8 @@ mod mode;
+ mod movement;
+ #[path = "base/native.rs"]
+ mod native;
++#[path = "editor/presentation.rs"]
++mod presentation;
+ #[path = "base/rope_ext.rs"]
+ mod rope_ext;
+ #[path = "editor/search.rs"]
+@@ -117,6 +119,11 @@ pub use mask_pattern::MaskPattern;
+ #[doc(hidden)]
+ pub use native::set_text_content_type;
+ pub use native::{NativeMenu, NativeMenuItem};
++pub use presentation::{
++    BlockWidget, BlockWidgetRenderer, ChipHeight, ChipIcon, EditorPresentation,
++    EditorPresentationEvent, Ornament, Replacement, ReplacementChip, ReplacementColumn,
++    ReplacementImage,
++};
+ pub use rope_ext::{InputEdit, Point, RopeExt, RopeLines};
+ pub use ropey::Rope;
+ pub use search::{SearchMatcher, SearchSession};
 ```

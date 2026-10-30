@@ -120,8 +120,9 @@ pub use mask_pattern::MaskPattern;
 pub use native::set_text_content_type;
 pub use native::{NativeMenu, NativeMenuItem};
 pub use presentation::{
-    BlockWidget, BlockWidgetRenderer, EditorPresentation, EditorPresentationEvent, Ornament,
-    Replacement,
+    BlockWidget, BlockWidgetRenderer, ChipHeight, ChipIcon, EditorPresentation,
+    EditorPresentationEvent, Ornament, Replacement, ReplacementChip, ReplacementColumn,
+    ReplacementImage,
 };
 pub use rope_ext::{InputEdit, Point, RopeExt, RopeLines};
 pub use ropey::Rope;

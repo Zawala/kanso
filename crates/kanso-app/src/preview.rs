@@ -30,7 +30,7 @@ use crate::theme_file::PreviewColors;
 use crate::zoom::px;
 
 /// The room above the first chunk and below the last.
-const TEXT_TOP: f32 = 24.;
+pub(crate) const TEXT_TOP: f32 = 24.;
 /// How far past the pane the list lays chunks out, so a scroll shows them
 /// laid out already.
 const OVERDRAW: f32 = 800.;
@@ -124,6 +124,8 @@ pub struct Preview {
     _rich: Task<()>,
     /// The note shown: a query view leaves it out.
     note: Arc<Mutex<Option<String>>>,
+    /// Draws math and diagrams, and wakes the preview when they are drawn.
+    rich: Arc<Rich>,
 }
 
 impl Preview {
@@ -149,7 +151,12 @@ impl Preview {
             note: note.clone(),
         });
         let edits = resizes.clone();
-        let extensions = quote_extensions(Arc::new(Links(links.clone())), resolver, resizes, rich);
+        let extensions = quote_extensions(
+            Arc::new(Links(links.clone())),
+            resolver,
+            resizes,
+            rich.clone(),
+        );
         let rich_task = cx.spawn(async move |this, cx| {
             while woken.recv().await.is_ok() {
                 // Several drawings finishing together are one remeasure.
@@ -176,6 +183,7 @@ impl Preview {
             shown_type: None,
             _rich: rich_task,
             note,
+            rich,
         }
     }
 
@@ -418,6 +426,44 @@ impl Preview {
     /// Where the preview is scrolled to, in points from the start.
     pub fn scroll_top(&self) -> f32 {
         -f32::from(self.list.scroll_px_offset_for_scrollbar().y)
+    }
+
+    /// Draws a block of Live mode's the way this preview draws it: the same
+    /// style, face, size and extensions (pictures, front matter, math and
+    /// diagrams, query views, quotes), so the block comes out the same.
+    // no-prop-test: drawing; the Live snapshots compare it with the preview.
+    pub fn live_renderer(&self) -> crate::live_marks::MarkdownRenderer {
+        let extensions = self.extensions.clone();
+        let resolver: ImageResolver = Arc::new(self.image_resolver());
+        let links = Arc::new(Links(self.links.clone()));
+        std::rc::Rc::new(move |state, _window, cx| {
+            let ty = preview_type(cx);
+            let colors = Colors::get(cx);
+            let preview = crate::themes::preview_colors(cx);
+            let style = text_style(colors, &preview, cx.theme().is_dark());
+            let resolver = resolver.clone();
+            let links = links.clone();
+            TextView::new(state)
+                .style(style)
+                .font_family(ty.family)
+                .text_size(px(ty.size))
+                .line_height(relative(typography::LINE_HEIGHT))
+                .text_color(preview.text)
+                .markdown_extensions(extensions.clone())
+                .code_block_actions(code_block_actions)
+                .image_source(move |uri| resolver(uri))
+                .on_link_click(move |url, _, _, cx| links.open(url, cx))
+                .into_any_element()
+        })
+    }
+
+    /// Typesets an inline formula for Live, as this preview does: drawn off
+    /// the main thread, this preview told when it is ready.
+    pub fn live_math(&self) -> crate::live_marks::MathTypesetter {
+        let rich = self.rich.clone();
+        std::rc::Rc::new(move |source, font_size, cx| {
+            preview_rich::typeset(source, font_size, &rich, cx)
+        })
     }
 
     /// Resolves attachment links ([`FILE_LINK_PREFIX`]`<id>`) from the store,

@@ -2442,13 +2442,14 @@ fn a_file_opened_with_no_window_opens_the_window(cx: &mut TestAppContext) {
     assert_eq!(store.counts().unwrap()[&DocType::Note], 1);
 }
 
-/// Live mode hides the Markdown marks on the lines the caret is off, draws
-/// headings larger, and reveals a line's marks once the caret is on it;
-/// another mode draws the plain source again.
+/// Live mode hides the Markdown marks off the caret (a heading's `#` off
+/// its line, an inline mark off its element), draws headings at the
+/// preview's sizes, and reveals marks once the caret comes to them; another
+/// mode draws the plain source again.
 #[gpui_kit::test]
 fn live_mode_hides_the_marks_off_the_caret_line(cx: &mut TestAppContext) {
     use crate::config::ViewMode;
-    use kanso_engine::live::heading_scale;
+    let heading_scale = |level| kanso_render::typography::heading(level).scale;
 
     let f = setup(cx);
     f.select(cx, &f.notes[0]);
@@ -2473,7 +2474,7 @@ fn live_mode_hides_the_marks_off_the_caret_line(cx: &mut TestAppContext) {
         "{shown:?}"
     );
 
-    // On the bold text's line its stars show, and the heading's `# ` hides.
+    // In the bold text its stars show, and the heading's `# ` hides.
     f.update_editor(cx, |editor, _, cx| {
         editor.select_for_test(stars + 4..stars + 4, cx)
     });
@@ -2513,6 +2514,127 @@ fn live_mode_hides_the_marks_off_the_caret_line(cx: &mut TestAppContext) {
     let (shown, live) = f.editor(&mut vcx, |e, cx| e.live_for_test(cx));
     assert!(!live);
     assert!(shown.is_empty(), "{shown:?}");
+}
+
+/// Opens a note in Live mode with `text` typed, the caret at its end.
+fn live_note(cx: &mut TestAppContext, text: &str) -> Fixture {
+    use crate::config::ViewMode;
+    let f = setup(cx);
+    f.select(cx, &f.notes[0]);
+    f.window
+        .update(cx, |_, _, cx| {
+            f.workspace.update(cx, |workspace, cx| {
+                workspace.set_view_mode_for_test(ViewMode::Live, cx)
+            })
+        })
+        .unwrap();
+    f.type_body(cx, text);
+    f.update_editor(cx, |editor, _, cx| {
+        editor.select_for_test(text.len()..text.len(), cx)
+    });
+    f.draw(cx);
+    f
+}
+
+/// A click on a task's box in Live ticks the task, as in the preview, and
+/// the box is drawn ticked.
+// no-prop-test: drives the editor; `live_marks` has the properties and the
+// vendor's tests click a replacement into this event.
+#[gpui_kit::test]
+fn live_task_box_click_ticks_the_task(cx: &mut TestAppContext) {
+    use gpui_kit::base::input::{EditorPresentationEvent, Ornament};
+    let text = "- [ ] Water the plants
+
+Done.
+";
+    let f = live_note(cx, text);
+    let (shown, live) = f.editor(cx, |e, cx| e.live_for_test(cx));
+    assert!(live);
+    let task = shown
+        .replacements
+        .iter()
+        .find(|r| r.clickable)
+        .expect("the task's box")
+        .range
+        .clone();
+    f.update_editor(cx, |editor, _, cx| {
+        editor.body_state().update(cx, |_, cx| {
+            cx.emit(EditorPresentationEvent::ReplacementClicked { range: task })
+        })
+    });
+    f.draw(cx);
+    let body = f.editor(cx, |e, cx| e.body_state().read(cx).value().to_string());
+    assert!(body.starts_with("- [x] Water the plants"), "{body}");
+    let (shown, _) = f.editor(cx, |e, cx| e.live_for_test(cx));
+    assert!(
+        shown
+            .line_ornaments
+            .iter()
+            .any(|(_, o)| matches!(o, Ornament::Check { fill: Some(_), .. })),
+        "{shown:?}"
+    );
+}
+
+/// A block Live draws with the preview's renderer shows its source once
+/// clicked, with the caret at its start.
+// no-prop-test: drives the editor; `live_marks` has the properties.
+#[gpui_kit::test]
+fn live_block_click_shows_its_source(cx: &mut TestAppContext) {
+    use gpui_kit::base::input::EditorPresentationEvent;
+    let text = "Intro
+
+```rust
+fn main() {}
+```
+
+End
+";
+    let f = live_note(cx, text);
+    let (shown, _) = f.editor(cx, |e, cx| e.live_for_test(cx));
+    let code = shown
+        .block_widgets
+        .iter()
+        .find(|b| b.lines == (2..5))
+        .expect("the code block drawn")
+        .lines
+        .clone();
+    f.update_editor(cx, |editor, _, cx| {
+        editor.body_state().update(cx, |_, cx| {
+            cx.emit(EditorPresentationEvent::BlockClicked { lines: code })
+        })
+    });
+    f.draw(cx);
+    let (shown, _) = f.editor(cx, |e, cx| e.live_for_test(cx));
+    assert!(
+        shown.block_widgets.iter().all(|b| b.lines.start != 2),
+        "{shown:?}"
+    );
+    let caret = f.editor(cx, |e, cx| e.body_state().read(cx).cursor());
+    assert_eq!(caret, text.find("```").unwrap());
+}
+
+/// Arrowing up into a heading shows its `#`; leaving it hides it again.
+// no-prop-test: drives the editor through keystrokes.
+#[gpui_kit::test]
+fn live_arrowing_into_a_heading_shows_its_marks(cx: &mut TestAppContext) {
+    let text = "# Title
+Body text
+";
+    let f = live_note(cx, text);
+    f.update_editor(cx, |editor, window, cx| editor.focus_body(window, cx));
+    f.update_editor(cx, |editor, _, cx| editor.select_for_test(9..9, cx));
+    f.draw(cx);
+    let (shown, _) = f.editor(cx, |e, cx| e.live_for_test(cx));
+    assert!(shown.concealed.contains(&(0..2)), "{shown:?}");
+    let mut vcx = gpui_kit::VisualTestContext::from_window(f.window, cx);
+    vcx.simulate_keystrokes("up");
+    f.draw(&mut vcx);
+    let (shown, _) = f.editor(&mut vcx, |e, cx| e.live_for_test(cx));
+    assert!(!shown.concealed.contains(&(0..2)), "{shown:?}");
+    vcx.simulate_keystrokes("down");
+    f.draw(&mut vcx);
+    let (shown, _) = f.editor(&mut vcx, |e, cx| e.live_for_test(cx));
+    assert!(shown.concealed.contains(&(0..2)), "{shown:?}");
 }
 
 /// ⌘4 and the toolbar's Live segment switch to Live mode, which is kept.

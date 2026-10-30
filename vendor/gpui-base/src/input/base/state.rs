@@ -3843,7 +3843,7 @@ impl<M: InputModeKind> InputBaseState<M> {
                     last_layout.line_height
                         * self
                             .display_map
-                            .line_scale(self.text.offset_to_point(range.end).row),
+                            .row_scale(self.text.offset_to_point(range.end).row),
                 ),
         ))
     }
@@ -4601,7 +4601,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                         + line_height
                             * self
                                 .display_map
-                                .line_scale(self.text.offset_to_point(range.start).row),
+                                .row_scale(self.text.offset_to_point(range.start).row),
                 ),
         ))
     }

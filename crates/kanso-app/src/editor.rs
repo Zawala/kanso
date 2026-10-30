@@ -21,7 +21,8 @@ use std::time::Duration;
 use gpui_kit::EntityInputHandler as _;
 use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::base::input::{
-    Backspace, Copy, Cut, Enter, IndentInline, OutdentInline, Paste, SelectAll,
+    Backspace, Copy, Cut, EditorPresentationEvent, Enter, IndentInline, OutdentInline, Paste,
+    SelectAll,
 };
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
@@ -71,6 +72,7 @@ use crate::word_goal::{self, GoalSetting};
 use crate::workspace::{AppState, NewNote};
 use crate::zoom::px;
 use inline_glue::InlineAssist;
+use kanso_render::typography;
 
 #[path = "editor_collab.rs"]
 mod collab_glue;
@@ -110,6 +112,14 @@ const SOURCE_TEXT_LEFT: f32 = 12.;
 /// that, its right padding, and the line number column when it shows.
 const SOURCE_EDGES: f32 = SOURCE_TEXT_LEFT + 10.;
 const LINE_NUMBER_COLUMN: f32 = 44.;
+/// The room the source editor keeps right of its text, inside it: a medium
+/// input's padding and the margin it keeps for the caret.
+const EDITOR_RIGHT: f32 = 10. + 10.;
+/// The room the preview keeps right of its text (`pr_8`).
+const PREVIEW_RIGHT: f32 = 32.;
+/// The room the source editor leaves above its first line, inside it (a
+/// medium input's vertical padding).
+const EDITOR_TOP_PADDING: f32 = 8.;
 /// One line of the header's save state; a second line is clipped away.
 const SAVE_LABEL_HEIGHT: f32 = 20.;
 /// The widest column the note keeps in focus mode, each side of it in
@@ -317,6 +327,9 @@ pub struct NoteEditor {
     spell_marks: SpellMarks,
     /// Live mode's hidden marks, larger headings and styles in the text.
     live_marks: crate::live_marks::LiveMarks,
+    /// Whether the text is drawn without Markdown's syntax colours, as Live
+    /// draws it.
+    live_plain: bool,
     /// The shared note open, attached to the engine (`editor_collab.rs`).
     shared: Option<crate::collab_model::OpenShare>,
     /// Effective read-only state for the title and text inputs.
@@ -490,6 +503,17 @@ impl NoteEditor {
                     cx,
                 );
             }),
+            // Live's task boxes and blocks, clicked.
+            cx.subscribe_in(&body, window, |this, _, event, window, cx| {
+                this.live_clicked(event, window, cx)
+            }),
+            // The preview drew its math and diagrams: so do Live's blocks.
+            cx.observe(&preview, |this, _, cx| {
+                if this.view_mode == ViewMode::Live {
+                    this.live_marks.drawings_ready(&this.body, cx);
+                    this.refresh_live(cx);
+                }
+            }),
             // Quitting from the Dock, at logout or from the menu.
             cx.on_app_quit(|this, cx| {
                 this.flush(cx);
@@ -553,6 +577,7 @@ impl NoteEditor {
             due_marks: Default::default(),
             spell_marks: Default::default(),
             live_marks: Default::default(),
+            live_plain: false,
             shared: None,
             text_read_only: false,
             account_read_only: false,
@@ -601,10 +626,75 @@ impl NoteEditor {
     // no-prop-test: glue; `live_marks` has the properties and the Live
     // mode UI tests drive it.
     fn refresh_live(&mut self, cx: &mut Context<Self>) {
-        if self.view_mode == ViewMode::Live && self.note.is_some() {
-            self.live_marks.refresh(&self.body, self.text_version, cx);
-        } else {
+        if self.view_mode != ViewMode::Live || self.note.is_none() {
             self.live_marks.clear(&self.body, cx);
+            return;
+        }
+        let wiki = self.wiki.borrow().clone();
+        let preview_source = |markdown: &str| -> String {
+            crate::due::rewrite_for_preview(&rewrite_for_preview(
+                &SharedString::from(markdown.to_owned()),
+                &wiki,
+            ))
+            .to_string()
+        };
+        let resolved = |title: &str| wiki.resolve(title).is_some();
+        let text = self.body.read(cx).value();
+        let due = crate::live_marks::due_labels(&text, crate::journal::now(cx), Colors::get(cx));
+        let live = crate::live_marks::LiveContext {
+            render: self.preview.read(cx).live_renderer(),
+            preview_source: &preview_source,
+            resolved: &resolved,
+            due,
+            metrics: live_metrics(cx),
+            math: self.preview.read(cx).live_math(),
+        };
+        self.live_marks
+            .refresh(&self.body, self.text_version, live, cx);
+    }
+
+    /// Live draws the text in the preview's colours, not Markdown's syntax
+    /// colours; the other modes highlight the syntax.
+    fn set_live_highlighting(&mut self, live: bool, cx: &mut Context<Self>) {
+        if self.live_plain != live {
+            self.live_plain = live;
+            self.body.update(cx, |state, cx| {
+                state.set_highlighter(if live { "text" } else { "markdown" }, cx)
+            });
+        }
+    }
+
+    /// A click on Live's drawing: a task's box ticks the task; a block drawn
+    /// by the preview's renderer shows its source, with the caret at its
+    /// start.
+    // no-prop-test: glue; the Live mode UI tests click both.
+    fn live_clicked(
+        &mut self,
+        event: &EditorPresentationEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.view_mode != ViewMode::Live {
+            return;
+        }
+        match event {
+            EditorPresentationEvent::ReplacementClicked { range } => {
+                let text = self.body.read(cx).value();
+                let Some(item) = crate::live_marks::task_item_start(&text, range) else {
+                    return;
+                };
+                if let Some(tick) = preview_tasks::tick_at(&text, item) {
+                    self.tick_task(&tick, window, cx);
+                }
+            }
+            EditorPresentationEvent::BlockClicked { lines } => {
+                let line = lines.start as u32;
+                self.body.update(cx, |state, cx| {
+                    state.focus(window, cx);
+                    state.set_cursor_position(Position::new(line, 0), window, cx);
+                });
+                self.refresh_live(cx);
+            }
         }
     }
 
@@ -4002,6 +4092,22 @@ fn spoken_commands(cx: &App) -> bool {
         .is_none_or(|state| state.config.voice.spoken_commands)
 }
 
+/// The sizes Live mode draws at: the preview's text size, the rem and the
+/// zoom, in the window's pixels.
+fn live_metrics(cx: &mut App) -> crate::live_marks::LiveMetrics {
+    let ty = crate::preview::preview_type(cx);
+    let body = px(ty.size);
+    let text = cx.text_system();
+    let face = text.resolve_font(&font(ty.family));
+    crate::live_marks::LiveMetrics {
+        body: f32::from(body),
+        rem: f32::from(cx.theme().font_size),
+        zoom: crate::zoom::scale(),
+        ascent: f32::from(text.ascent(face, body)),
+        descent: f32::from(text.descent(face, body)).abs(),
+    }
+}
+
 /// The words voice input has shown so far (`NoteEditor::live_voice`).
 struct LiveVoice {
     /// The text, and its selection, when the first words came: each
@@ -4094,6 +4200,17 @@ impl Render for NoteEditor {
             .editor_font
             .face(self.view_mode)
             .with_line_numbers(self.allow_line_numbers);
+        // Live sets the note as the preview does: its face, no numbers.
+        let live = self.view_mode == ViewMode::Live;
+        let face = if live {
+            kanso_engine::editor_settings::EditorFace {
+                mono: false,
+                line_numbers: false,
+            }
+        } else {
+            face
+        };
+        self.set_live_highlighting(live, cx);
         if face.line_numbers != self.line_numbers {
             self.line_numbers = face.line_numbers;
             self.body.update(cx, |body, cx| {
@@ -4170,7 +4287,15 @@ impl Render for NoteEditor {
                 cx.theme().font_family.clone(),
             )
         };
-        let size = self.font_size;
+        let preview_type = live.then(|| crate::preview::preview_type(cx));
+        let family = preview_type.as_ref().map_or(family, |ty| ty.family.clone());
+        let size = preview_type.as_ref().map_or(self.font_size, |ty| ty.size);
+        let line_height = if live {
+            typography::LINE_HEIGHT
+        } else {
+            BODY_LINE_HEIGHT
+        };
+        let text_color = live.then(|| Hsla::from(crate::themes::preview_colors(cx).text));
         // Alone, the source keeps to a readable measure for its face and
         // size, starting under the title, unless the setting lets it fill the
         // pane; beside the preview it takes its side of the divider.
@@ -4180,7 +4305,13 @@ impl Render for NoteEditor {
             } else {
                 0.
             };
-            px(readable_width(size, face.mono) + SOURCE_EDGES + numbers)
+            // Live's text is exactly as wide as the preview's.
+            let edges = if live {
+                SOURCE_TEXT_LEFT + EDITOR_RIGHT
+            } else {
+                SOURCE_EDGES
+            };
+            px(readable_width(size, face.mono) + edges + numbers)
         });
         // In focus mode the header band waits, invisible but in place so
         // nothing moves, until the pointer comes near the top. The status,
@@ -4214,8 +4345,9 @@ impl Render for NoteEditor {
             .when(!focus_mode, |el| {
                 el.child(v_flex().flex_none().child(self.render_meta(&note, cx)))
             })
+            // Live has no toolbar: the note reads as the preview does.
             .when(
-                mode.source_alone() && !trashed && !focus_mode && !self.lock.is_closed(),
+                mode.source_alone() && !live && !trashed && !focus_mode && !self.lock.is_closed(),
                 |el| el.child(v_flex().flex_none().child(self.render_format_bar(cx))),
             );
 
@@ -4254,6 +4386,13 @@ impl Render for NoteEditor {
             .pl(px(TEXT_INSET - SOURCE_TEXT_LEFT))
             .pr_4()
             .py_2()
+            // Live's text ends where the preview's does: its room on the
+            // right less what the editor keeps there.
+            .when(live, |el| el.pr(px(PREVIEW_RIGHT - EDITOR_RIGHT)))
+            // Live's first line starts where the preview's does.
+            .when(live, |el| {
+                el.pt(px(crate::preview::TEXT_TOP - EDITOR_TOP_PADDING))
+            })
             // The margin beside a narrowed source scrolls it too; over the
             // text, the editor takes the wheel first.
             .when(measure.is_some(), |el| {
@@ -4284,7 +4423,8 @@ impl Render for NoteEditor {
                             .h_full()
                             .font_family(family)
                             .text_size(px(size))
-                            .line_height(relative(BODY_LINE_HEIGHT)),
+                            .line_height(relative(line_height))
+                            .when_some(text_color, |el, color| el.text_color(color)),
                     )
                     // Vim's block caret, over the text.
                     .children(self.vim_caret(window, cx))

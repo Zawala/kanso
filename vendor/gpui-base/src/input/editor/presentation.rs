@@ -22,15 +22,16 @@ use super::{EditorState, InputBaseState, InputModeKind, RopeExt as _};
 /// Input is checked against the current text when it is set: a concealed range
 /// that is empty, out of bounds, off a char boundary, crosses a newline, or
 /// overlaps an earlier one is dropped, and so is a scale that is not finite,
-/// not above `1.0`, or for a line the text does not have. The other fields are
+/// not above zero, `1.0`, or for a line the text does not have. The other fields are
 /// checked the same way (see each), and nothing in them can make it panic.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct EditorPresentation {
     /// UTF-8 byte ranges laid out at zero width and not painted. Each lies
     /// within one line (it may end at the line's end, not past its newline).
     pub concealed: Vec<Range<usize>>,
-    /// `(buffer line, scale)`: the line's text is shaped `scale` times larger,
-    /// and each of its visual rows is `scale` line heights tall.
+    /// `(buffer line, scale)`: the line's text is shaped `scale` times larger
+    /// (or smaller, below `1.0`), and each of its visual rows is `scale` line
+    /// heights tall.
     pub line_scales: Vec<(usize, f32)>,
     /// Source ranges drawn as other text. Each is checked like a concealed
     /// range, must not overlap a concealed range or an earlier replacement, and
@@ -48,6 +49,15 @@ pub struct EditorPresentation {
     pub line_ornaments: Vec<(usize, Ornament)>,
     /// Runs of whole lines drawn as an element instead of their text.
     pub block_widgets: Vec<BlockWidget>,
+    /// `(buffer line, factor)`: each visual row of the line is `factor` times as
+    /// tall as its scale alone makes it (the editor's line height times the
+    /// line's scale), its text centred in it as before. Must be finite, above
+    /// zero and not `1.0`.
+    pub line_heights: Vec<(usize, f32)>,
+    /// The height of a row at scale `1.0`, instead of the window's line height
+    /// (which is rounded to whole pixels), so rows can follow another
+    /// renderer's exactly. Must be finite and above zero.
+    pub line_height: Option<Pixels>,
 }
 
 /// A source range drawn as `text` instead, see [`EditorPresentation::replacements`].
@@ -69,6 +79,130 @@ pub struct Replacement {
     pub style: HighlightStyle,
     /// Whether a click on it is reported instead of placing the caret.
     pub clickable: bool,
+    /// The font family `text` is shaped in, instead of the editor's.
+    pub family: Option<SharedString>,
+    /// `text`'s size relative to its line's. Must be finite and above zero;
+    /// anything else is taken as `1.0`.
+    pub size: f32,
+    /// A column `text` is set in, right-aligned, instead of its own width.
+    pub column: Option<ReplacementColumn>,
+    /// A box drawn behind `text`, with room either side of it.
+    pub chip: Option<ReplacementChip>,
+    /// An image drawn in place of `text` (which is then not drawn).
+    pub image: Option<ReplacementImage>,
+}
+
+/// An image a [`Replacement`] is drawn as, like a typeset formula: `size`,
+/// with its baseline `baseline` from its top on the row's baseline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplacementImage {
+    pub image: std::sync::Arc<gpui::Image>,
+    pub size: gpui::Size<Pixels>,
+    pub baseline: Pixels,
+}
+
+impl Replacement {
+    /// `range` drawn as `text`, in the editor's style, not clickable.
+    pub fn new(range: Range<usize>, text: impl Into<SharedString>) -> Self {
+        Self {
+            range,
+            text: text.into(),
+            style: HighlightStyle::default(),
+            clickable: false,
+            family: None,
+            size: 1.,
+            column: None,
+            chip: None,
+            image: None,
+        }
+    }
+
+    /// The size its text is shaped at, for a line shaped at `font_size`.
+    pub(crate) fn font_size(&self, font_size: Pixels) -> Pixels {
+        if self.size.is_finite() && self.size > 0. {
+            font_size * self.size
+        } else {
+            font_size
+        }
+    }
+
+    /// How it is placed for text `text_width` wide: how wide it is laid out,
+    /// where its text starts (from where it is laid out), and how far its
+    /// column hangs to the left of where it is laid out.
+    pub(crate) fn placement(&self, text_width: Pixels) -> (Pixels, Pixels, Pixels) {
+        if let Some(image) = &self.image {
+            return (image.size.width, px(0.), px(0.));
+        }
+        if let Some(chip) = &self.chip {
+            let padding = chip.padding.max(px(0.));
+            let icon = chip
+                .icon
+                .as_ref()
+                .map_or(px(0.), |icon| icon.size + icon.gap);
+            return (text_width + icon + padding * 2., padding + icon, px(0.));
+        }
+        match self.column {
+            Some(column) => {
+                let gap = column.gap.max(px(0.));
+                let width = column.width.max(text_width + gap);
+                if column.hanging {
+                    (px(0.), -(gap + text_width), width)
+                } else {
+                    (width, width - gap - text_width, px(0.))
+                }
+            }
+            None => (text_width, px(0.), px(0.)),
+        }
+    }
+}
+
+/// A box behind a [`Replacement`]'s text, like a code span's or a tag's: the
+/// replacement is `padding` wider either side, and the box spans it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplacementChip {
+    pub padding: Pixels,
+    pub background: Hsla,
+    pub radius: Pixels,
+    pub height: ChipHeight,
+    /// An icon before the text, in the text's colour.
+    pub icon: Option<ChipIcon>,
+    /// A dashed line this colour along the bottom of the row, under it.
+    pub dashed_bottom: Option<Hsla>,
+}
+
+/// An icon in a [`ReplacementChip`]: the SVG asset at `path`, `size` square,
+/// centred on the row, `gap` before the text.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChipIcon {
+    pub path: SharedString,
+    pub size: Pixels,
+    pub gap: Pixels,
+}
+
+/// How tall a [`ReplacementChip`] is.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ChipHeight {
+    /// Around its text's capitals: their height and `size * 0.125 +
+    /// descent / 2` either side, as a code span's. Its text keeps the row's
+    /// baseline.
+    CapHeight,
+    /// This tall, centred on the row, as is its text.
+    Fixed(Pixels),
+}
+
+/// A column a [`Replacement`]'s text is set in, like a list's marker column:
+/// at least `width` wide, its text right-aligned `gap` short of its right edge.
+/// A wider text widens the column.
+///
+/// A `hanging` column takes no room: it hangs to the left of where the
+/// replacement is (into the line's inset, like an outside list marker), so
+/// the text after it starts where the line's wrapped rows do. A click on it
+/// is a click on the replacement.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReplacementColumn {
+    pub width: Pixels,
+    pub gap: Pixels,
+    pub hanging: bool,
 }
 
 /// Something drawn with a line, see [`EditorPresentation::line_ornaments`].
@@ -83,6 +217,19 @@ pub enum Ornament {
     },
     /// A horizontal line across the text area, centred on the line's rows.
     Rule { thickness: Pixels, color: Hsla },
+    /// A task's box: a square `size` wide with corners of `radius`, `x` from
+    /// the left edge of the text area, centred on the line's first row. Its
+    /// border is `border` wide in `border_color`; a `fill` fills it, and a
+    /// `check` draws a check mark in it (a stroke `size * 0.1` wide).
+    Check {
+        x: Pixels,
+        size: Pixels,
+        radius: Pixels,
+        border: Pixels,
+        border_color: Hsla,
+        fill: Option<Hsla>,
+        check: Option<Hsla>,
+    },
 }
 
 /// Builds the element of a [`BlockWidget`].
@@ -157,6 +304,8 @@ pub(crate) struct ValidPresentation {
     pub(crate) line_insets: Rc<[(usize, Pixels)]>,
     pub(crate) line_ornaments: Rc<[(usize, Ornament)]>,
     pub(crate) blocks: Rc<[BlockWidget]>,
+    pub(crate) line_heights: Rc<[(usize, f32)]>,
+    pub(crate) line_height: Option<Pixels>,
 }
 
 impl PartialEq for ValidPresentation {
@@ -168,6 +317,8 @@ impl PartialEq for ValidPresentation {
             && self.line_insets == other.line_insets
             && self.line_ornaments == other.line_ornaments
             && self.blocks == other.blocks
+            && self.line_heights == other.line_heights
+            && self.line_height == other.line_height
     }
 }
 
@@ -180,6 +331,8 @@ impl ValidPresentation {
             && self.line_insets.is_empty()
             && self.line_ornaments.is_empty()
             && self.blocks.is_empty()
+            && self.line_heights.is_empty()
+            && self.line_height.is_none()
     }
 
     fn to_presentation(&self) -> EditorPresentation {
@@ -191,6 +344,8 @@ impl ValidPresentation {
             line_insets: self.line_insets.to_vec(),
             line_ornaments: self.line_ornaments.to_vec(),
             block_widgets: self.blocks.to_vec(),
+            line_heights: self.line_heights.to_vec(),
+            line_height: self.line_height,
         }
     }
 }
@@ -233,6 +388,8 @@ impl EditorPresentation {
             && self.line_insets.is_empty()
             && self.line_ornaments.is_empty()
             && self.block_widgets.is_empty()
+            && self.line_heights.is_empty()
+            && self.line_height.is_none()
     }
 
     /// The valid part of this presentation for `text`: sorted, disjoint ranges,
@@ -280,7 +437,9 @@ impl EditorPresentation {
             self.line_scales
                 .iter()
                 .copied()
-                .filter(|&(line, scale)| line < lines && scale.is_finite() && scale > 1.)
+                .filter(|&(line, scale)| {
+                    line < lines && scale.is_finite() && scale > 0. && scale != 1.
+                })
                 .collect(),
         );
         let line_space = {
@@ -321,6 +480,19 @@ impl EditorPresentation {
                         Ornament::Rule { thickness, .. } => {
                             finite_px(thickness) && thickness > px(0.)
                         }
+                        Ornament::Check {
+                            x,
+                            size,
+                            radius,
+                            border,
+                            ..
+                        } => {
+                            finite_px(x)
+                                && finite_px(size)
+                                && size > px(0.)
+                                && finite_px(radius)
+                                && finite_px(border)
+                        }
                     }
             })
             .collect();
@@ -347,7 +519,21 @@ impl EditorPresentation {
             keep
         });
 
+        let line_heights = first_per_line(
+            self.line_heights
+                .iter()
+                .copied()
+                .filter(|&(line, factor)| {
+                    line < lines && factor.is_finite() && factor > 0. && factor != 1.
+                })
+                .collect(),
+        );
+
         ValidPresentation {
+            line_height: self
+                .line_height
+                .filter(|&height| finite_px(height) && height > px(0.)),
+            line_heights: line_heights.into(),
             concealed: concealed.into(),
             line_scales: line_scales.into(),
             replacements: replacements.into(),
@@ -397,6 +583,15 @@ impl EditorState {
 }
 
 impl<M: InputModeKind> InputBaseState<M> {
+    /// The height of a row at scale `1.0`: the presentation's, or the window's line
+    /// height.
+    pub(crate) fn presented_line_height(&self, window: &Window) -> Pixels {
+        self.display_map
+            .presentation()
+            .line_height
+            .unwrap_or_else(|| window.line_height())
+    }
+
     /// The source range of the clickable replacement drawn under window `position`, if any.
     pub(crate) fn clickable_replacement_at(
         &self,
@@ -476,17 +671,12 @@ mod tests {
         };
         assert_eq!(
             valid(presentation, "a\nb\nc").line_scales,
-            vec![(0, 1.6), (2, 1.2)]
+            vec![(0, 1.6), (1, 0.5), (2, 1.2)]
         );
     }
 
     fn replacement(range: Range<usize>, text: &str) -> Replacement {
-        Replacement {
-            range,
-            text: SharedString::from(text.to_string()),
-            style: HighlightStyle::default(),
-            clickable: false,
-        }
+        Replacement::new(range, SharedString::from(text.to_string()))
     }
 
     #[test]
@@ -517,6 +707,83 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![0..2, 2..5, 14..16]
         );
+    }
+
+    #[test]
+    fn replacements_are_placed_in_columns_chips_and_images() {
+        let mut r = Replacement::new(0..2, "1.");
+        assert_eq!(r.placement(px(10.)), (px(10.), px(0.), px(0.)));
+        r.column = Some(ReplacementColumn {
+            width: px(22.),
+            gap: px(6.),
+            hanging: false,
+        });
+        // Right-aligned in the column, `gap` short of its edge.
+        assert_eq!(r.placement(px(10.)), (px(22.), px(6.), px(0.)));
+        // A wider text widens the column.
+        assert_eq!(r.placement(px(20.)), (px(26.), px(0.), px(0.)));
+        r.column = Some(ReplacementColumn {
+            width: px(22.),
+            gap: px(6.),
+            hanging: true,
+        });
+        // Hanging: no room, the text left of where it is, the column to hit.
+        assert_eq!(r.placement(px(10.)), (px(0.), px(-16.), px(22.)));
+        let chip = Replacement {
+            chip: Some(ReplacementChip {
+                padding: px(4.),
+                background: hsla(0., 0., 0., 1.),
+                radius: px(2.),
+                height: ChipHeight::CapHeight,
+                icon: Some(ChipIcon {
+                    path: "icons/calendar.svg".into(),
+                    size: px(12.),
+                    gap: px(4.),
+                }),
+                dashed_bottom: None,
+            }),
+            ..Replacement::new(0..2, "x")
+        };
+        assert_eq!(
+            chip.placement(px(10.)),
+            (px(10. + 16. + 8.), px(20.), px(0.))
+        );
+        let image = Replacement {
+            image: Some(ReplacementImage {
+                image: std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, vec![])),
+                size: gpui::size(px(30.), px(14.)),
+                baseline: px(11.),
+            }),
+            ..Replacement::new(0..2, "")
+        };
+        assert_eq!(image.placement(px(0.)), (px(30.), px(0.), px(0.)));
+        // A size that is not one is taken as the line's.
+        let sized = Replacement {
+            size: f32::NAN,
+            ..Replacement::new(0..1, "x")
+        };
+        assert_eq!(sized.font_size(px(16.)), px(16.));
+    }
+
+    #[test]
+    fn invalid_line_heights_and_line_height_are_dropped() {
+        let presentation = EditorPresentation {
+            line_heights: vec![(1, 0.5), (0, 1.), (0, 0.), (2, f32::NAN), (9, 2.)],
+            line_height: Some(px(-1.)),
+            ..Default::default()
+        };
+        let valid = valid(presentation, "a\nb\nc");
+        assert_eq!(valid.line_heights, vec![(1, 0.5)]);
+        assert_eq!(valid.line_height, None);
+        let kept = EditorPresentation {
+            line_height: Some(px(26.4)),
+            ..Default::default()
+        };
+        assert_eq!(valid_height(kept), Some(px(26.4)));
+    }
+
+    fn valid_height(presentation: EditorPresentation) -> Option<Pixels> {
+        valid(presentation, "a").line_height
     }
 
     #[test]
