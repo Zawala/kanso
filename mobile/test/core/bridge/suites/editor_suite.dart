@@ -248,6 +248,50 @@ void editorSuite(OpenLibrary open) {
       expect(await editor.linkAt(offset: 0), isNull);
     });
 
+    test('what Live mode draws is laid out in Rust', () async {
+      final library = await open();
+      const text = '# Title\n\nA **bold** word and `code`.\n';
+      final id = await makeNote(library, 'Live', text);
+      final editor = await library.edit(id: id);
+      final snapshot = await editor.snapshot();
+      expect(snapshot.text, text);
+      String of(Range16 range, [int from = 0]) =>
+          text.substring(from + range.start, from + range.end);
+
+      final batch = await editor.liveLayout(start: 0, end: text.length);
+      expect(batch.version, snapshot.version);
+      // The heading's line, without its line break, at its level's size.
+      expect(batch.lines, hasLength(1));
+      expect(of(batch.lines.single.range), '# Title');
+      expect(batch.lines.single.level, 1);
+      expect(batch.lines.single.scale, 1.6);
+      // The styled spans: the heading's text without its `#`s, the bold
+      // word and the code without its backticks.
+      String run(LiveKind kind) =>
+          of(batch.runs.firstWhere((run) => run.kind == kind).range);
+      expect(run(LiveKind.heading), 'Title');
+      expect(run(LiveKind.strong), contains('bold'));
+      expect(run(LiveKind.code), 'code');
+      // The marks are not drawn, on every line, as no caret were in it.
+      final concealed = batch.conceal.map(of).join();
+      expect(concealed, contains('#'));
+      expect(concealed, contains('**'));
+      expect(concealed, contains('`'));
+      expect(concealed, isNot(contains('Title')));
+
+      // A window of the text is counted from its start.
+      const from = 9;
+      final window = await editor.liveLayout(start: from, end: text.length);
+      expect(window.lines, isEmpty);
+      expect(
+        of(
+          window.runs.firstWhere((run) => run.kind == LiveKind.code).range,
+          from,
+        ),
+        'code',
+      );
+    });
+
     test('a photo is saved as an attachment and put in the text', () async {
       final library = await open();
       final id = await makeNote(library, 'Attach', 'hello');

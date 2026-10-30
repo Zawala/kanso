@@ -10,11 +10,14 @@ import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../note/state/note/note_bloc.dart';
 import 'day_stepper.dart';
 
-/// The journal's controls in the bar of a note that is in the Journal
-/// notebook: the days before and after it, and the calendar. Nothing for
-/// any other note. It needs a `JournalOpener` above it.
+/// One of the journal's controls in the bar of a note that is in the
+/// Journal notebook: the day before it, the day after or the calendar, as
+/// [control] says. Nothing for any other note. It needs a `JournalOpener`
+/// above it.
 class NoteJournalActions extends StatelessWidget {
-  const NoteJournalActions({super.key});
+  const NoteJournalActions({required this.control, super.key});
+
+  final DayControl control;
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +32,10 @@ class NoteJournalActions extends StatelessWidget {
             if (notebook?.role != NotebookRole.journal) {
               return const SizedBox.shrink();
             }
-            return DayStepper(openNote: state.noteId);
+            return DayControlButton(
+              control: control,
+              openNote: state.noteId,
+            );
           },
         );
       },

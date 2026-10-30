@@ -238,6 +238,41 @@ void rendererSuite(OpenLibrary open) {
       expect(html, contains('bold'));
     });
 
+    test(
+      'a note is given as the blocks the app draws its preview from',
+      () async {
+        final library = await open();
+        final id = await makeNote(
+          library,
+          'Blocks',
+          '# Garden plan\n\nSee [the seeds](https://example.com/seeds).\n',
+        );
+        final blocks = await library.renderer().previewBlocks(
+          id: id,
+          palette: palette,
+          options: const PreviewOptions(size: 18, utcOffsetSecs: 0, code: []),
+        );
+        final heading = blocks.whereType<PreviewBlock_Heading>().single;
+        expect(heading.level, 1);
+        expect(heading.id, 'garden-plan');
+        final paragraph = blocks.whereType<PreviewBlock_Paragraph>().single;
+        final link = paragraph.inlines.whereType<PreviewInline_Link>().single;
+        expect(link.url, 'https://example.com/seeds');
+        expect(
+          link.inlines.whereType<PreviewInline_Text>().map((run) => run.text),
+          <String>['the seeds'],
+        );
+        await expectLater(
+          library.renderer().previewBlocks(
+            id: 'note:none',
+            palette: palette,
+            options: const PreviewOptions(size: 18, utcOffsetSecs: 0, code: []),
+          ),
+          throwsA(isA<KansoError>()),
+        );
+      },
+    );
+
     test('the app page takes options, and says what an address is', () async {
       final library = await open();
       final id = await makeNote(

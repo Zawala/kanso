@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/run_style.dart';
@@ -12,7 +13,9 @@ import '../../models/data/source_line.dart';
 /// A note's Markdown as the editor will show it, read-only: its text in the
 /// editor font, each run in the colour, slant and weight the theme gives
 /// it. It is a sliver, laid out line by line as it scrolls into view, so
-/// the size of the note costs nothing until it is read.
+/// the size of the note costs nothing until it is read; the lines far from
+/// the screen are never laid out, their heights guessed, so a jump far down
+/// is immediate.
 ///
 /// A double tap on a line asks to edit there ([onEditAt]), with the offset in
 /// the text the tap fell on.
@@ -40,7 +43,7 @@ class NoteSourceText extends StatelessWidget {
     final blankHeight =
         MediaQuery.textScalerOf(context).scale(base.fontSize ?? 15) *
         (base.height ?? 1.4);
-    return SliverList.builder(
+    return SuperSliverList.builder(
       itemCount: lines.length,
       itemBuilder: (context, at) {
         final line = lines[at];
