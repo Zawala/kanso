@@ -2488,6 +2488,36 @@ abstract class AppLocalizations {
   /// **'The preview couldn\'t be drawn.'**
   String get previewFailed;
 
+  /// Read by a screen reader for the button that copies a code block in a note's preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy code'**
+  String get previewCopyCode;
+
+  /// Read by a screen reader for a task's box in a note's preview, with whether it is ticked.
+  ///
+  /// In en, this message translates to:
+  /// **'Task'**
+  String get previewTask;
+
+  /// Shown in a note's preview for a drawing with nothing in it yet.
+  ///
+  /// In en, this message translates to:
+  /// **'An empty drawing'**
+  String get previewEmptyDrawing;
+
+  /// Shown under a query view's headings in a note's preview when no note matches it.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes match.'**
+  String get previewQueryEmpty;
+
+  /// The badge over a query view's text in a note's preview when the query can't be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Query'**
+  String get previewQueryBadge;
+
   /// Said when a tap on a link in the preview did nothing.
   ///
   /// In en, this message translates to:

@@ -639,9 +639,9 @@ fn script_attempts_are_not_active() {
     assert!(!body.contains("evil.example/t.png"));
     assert!(body.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
     // The policy stays.
-    assert!(
-        page.contains(r#"content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'""#)
-    );
+    assert!(page.contains(
+        r#"content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'""#
+    ));
 }
 
 #[test]

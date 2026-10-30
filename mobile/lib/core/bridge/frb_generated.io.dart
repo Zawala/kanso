@@ -684,6 +684,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PreviewOptions dco_decode_box_autoadd_preview_options(dynamic raw);
 
   @protected
+  PreviewSvg dco_decode_box_autoadd_preview_svg(dynamic raw);
+
+  @protected
+  PreviewTaskBox dco_decode_box_autoadd_preview_task_box(dynamic raw);
+
+  @protected
   PublishLink dco_decode_box_autoadd_publish_link(dynamic raw);
 
   @protected
@@ -1106,6 +1112,30 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<PlannedNote> dco_decode_list_planned_note(dynamic raw);
 
   @protected
+  List<PreviewAlign> dco_decode_list_preview_align(dynamic raw);
+
+  @protected
+  List<PreviewBlock> dco_decode_list_preview_block(dynamic raw);
+
+  @protected
+  List<PreviewCell> dco_decode_list_preview_cell(dynamic raw);
+
+  @protected
+  List<PreviewCodeRun> dco_decode_list_preview_code_run(dynamic raw);
+
+  @protected
+  List<PreviewInline> dco_decode_list_preview_inline(dynamic raw);
+
+  @protected
+  List<PreviewListItem> dco_decode_list_preview_list_item(dynamic raw);
+
+  @protected
+  List<PreviewQueryRow> dco_decode_list_preview_query_row(dynamic raw);
+
+  @protected
+  List<PreviewRow> dco_decode_list_preview_row(dynamic raw);
+
+  @protected
   Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
 
   @protected
@@ -1363,6 +1393,9 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PersonRow? dco_decode_opt_box_autoadd_person_row(dynamic raw);
 
   @protected
+  PreviewTaskBox? dco_decode_opt_box_autoadd_preview_task_box(dynamic raw);
+
+  @protected
   PublishLink? dco_decode_opt_box_autoadd_publish_link(dynamic raw);
 
   @protected
@@ -1449,10 +1482,43 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PlannedNote dco_decode_planned_note(dynamic raw);
 
   @protected
+  PreviewAlign dco_decode_preview_align(dynamic raw);
+
+  @protected
+  PreviewBlock dco_decode_preview_block(dynamic raw);
+
+  @protected
+  PreviewCell dco_decode_preview_cell(dynamic raw);
+
+  @protected
+  PreviewCodeRun dco_decode_preview_code_run(dynamic raw);
+
+  @protected
+  PreviewFigureKind dco_decode_preview_figure_kind(dynamic raw);
+
+  @protected
+  PreviewInline dco_decode_preview_inline(dynamic raw);
+
+  @protected
   PreviewLink dco_decode_preview_link(dynamic raw);
 
   @protected
+  PreviewListItem dco_decode_preview_list_item(dynamic raw);
+
+  @protected
   PreviewOptions dco_decode_preview_options(dynamic raw);
+
+  @protected
+  PreviewQueryRow dco_decode_preview_query_row(dynamic raw);
+
+  @protected
+  PreviewRow dco_decode_preview_row(dynamic raw);
+
+  @protected
+  PreviewSvg dco_decode_preview_svg(dynamic raw);
+
+  @protected
+  PreviewTaskBox dco_decode_preview_task_box(dynamic raw);
 
   @protected
   PromptState dco_decode_prompt_state(dynamic raw);
@@ -2343,6 +2409,14 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  PreviewSvg sse_decode_box_autoadd_preview_svg(SseDeserializer deserializer);
+
+  @protected
+  PreviewTaskBox sse_decode_box_autoadd_preview_task_box(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   PublishLink sse_decode_box_autoadd_publish_link(SseDeserializer deserializer);
 
   @protected
@@ -2815,6 +2889,42 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<PlannedNote> sse_decode_list_planned_note(SseDeserializer deserializer);
 
   @protected
+  List<PreviewAlign> sse_decode_list_preview_align(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<PreviewBlock> sse_decode_list_preview_block(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<PreviewCell> sse_decode_list_preview_cell(SseDeserializer deserializer);
+
+  @protected
+  List<PreviewCodeRun> sse_decode_list_preview_code_run(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<PreviewInline> sse_decode_list_preview_inline(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<PreviewListItem> sse_decode_list_preview_list_item(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<PreviewQueryRow> sse_decode_list_preview_query_row(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<PreviewRow> sse_decode_list_preview_row(SseDeserializer deserializer);
+
+  @protected
   Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
 
   @protected
@@ -3124,6 +3234,11 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  PreviewTaskBox? sse_decode_opt_box_autoadd_preview_task_box(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   PublishLink? sse_decode_opt_box_autoadd_publish_link(
     SseDeserializer deserializer,
   );
@@ -3226,10 +3341,45 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   PlannedNote sse_decode_planned_note(SseDeserializer deserializer);
 
   @protected
+  PreviewAlign sse_decode_preview_align(SseDeserializer deserializer);
+
+  @protected
+  PreviewBlock sse_decode_preview_block(SseDeserializer deserializer);
+
+  @protected
+  PreviewCell sse_decode_preview_cell(SseDeserializer deserializer);
+
+  @protected
+  PreviewCodeRun sse_decode_preview_code_run(SseDeserializer deserializer);
+
+  @protected
+  PreviewFigureKind sse_decode_preview_figure_kind(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PreviewInline sse_decode_preview_inline(SseDeserializer deserializer);
+
+  @protected
   PreviewLink sse_decode_preview_link(SseDeserializer deserializer);
 
   @protected
+  PreviewListItem sse_decode_preview_list_item(SseDeserializer deserializer);
+
+  @protected
   PreviewOptions sse_decode_preview_options(SseDeserializer deserializer);
+
+  @protected
+  PreviewQueryRow sse_decode_preview_query_row(SseDeserializer deserializer);
+
+  @protected
+  PreviewRow sse_decode_preview_row(SseDeserializer deserializer);
+
+  @protected
+  PreviewSvg sse_decode_preview_svg(SseDeserializer deserializer);
+
+  @protected
+  PreviewTaskBox sse_decode_preview_task_box(SseDeserializer deserializer);
 
   @protected
   PromptState sse_decode_prompt_state(SseDeserializer deserializer);
@@ -4297,6 +4447,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_preview_svg(
+    PreviewSvg self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_preview_task_box(
+    PreviewTaskBox self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_publish_link(
     PublishLink self,
     SseSerializer serializer,
@@ -4906,6 +5068,54 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_list_preview_align(
+    List<PreviewAlign> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_preview_block(
+    List<PreviewBlock> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_preview_cell(
+    List<PreviewCell> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_preview_code_run(
+    List<PreviewCodeRun> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_preview_inline(
+    List<PreviewInline> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_preview_list_item(
+    List<PreviewListItem> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_preview_query_row(
+    List<PreviewQueryRow> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_preview_row(
+    List<PreviewRow> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_32_strict(
     Uint32List self,
     SseSerializer serializer,
@@ -5293,6 +5503,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_preview_task_box(
+    PreviewTaskBox? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_publish_link(
     PublishLink? self,
     SseSerializer serializer,
@@ -5425,11 +5641,59 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   void sse_encode_planned_note(PlannedNote self, SseSerializer serializer);
 
   @protected
+  void sse_encode_preview_align(PreviewAlign self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_block(PreviewBlock self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_cell(PreviewCell self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_code_run(
+    PreviewCodeRun self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_preview_figure_kind(
+    PreviewFigureKind self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_preview_inline(PreviewInline self, SseSerializer serializer);
+
+  @protected
   void sse_encode_preview_link(PreviewLink self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_list_item(
+    PreviewListItem self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_preview_options(
     PreviewOptions self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_preview_query_row(
+    PreviewQueryRow self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_preview_row(PreviewRow self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_svg(PreviewSvg self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_preview_task_box(
+    PreviewTaskBox self,
     SseSerializer serializer,
   );
 

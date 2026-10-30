@@ -19,10 +19,11 @@ abstract interface class RendererRepository {
     PaletteDto palette,
   );
 
-  /// The note [id] as the app's own preview page: links keep addresses that
-  /// [linkTarget] understands, task boxes can be tapped, and query views are
-  /// tables. Locked while the note is locked and closed.
-  Future<Either<ApplicationError, String>> previewPage(
+  /// The note [id] as the blocks the app draws its preview from: links keep
+  /// addresses that [linkTarget] understands, task boxes can be tapped, and
+  /// query views are tables. [palette] colours its math and diagrams. Locked
+  /// while the note is locked and closed.
+  Future<Either<ApplicationError, List<PreviewBlock>>> previewBlocks(
     String id,
     PaletteDto palette,
     PreviewOptions options,

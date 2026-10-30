@@ -3146,6 +3146,159 @@ class PlannedNote {
           rev == other.rev;
 }
 
+enum PreviewAlign {
+  none,
+  left,
+  center,
+  right,
+}
+
+@freezed
+sealed class PreviewBlock with _$PreviewBlock {
+  const PreviewBlock._();
+
+  const factory PreviewBlock.heading({
+    required int level,
+    required String id,
+    required List<PreviewInline> inlines,
+  }) = PreviewBlock_Heading;
+  const factory PreviewBlock.paragraph({
+    required List<PreviewInline> inlines,
+  }) = PreviewBlock_Paragraph;
+  const factory PreviewBlock.list({
+    required bool ordered,
+    required int start,
+    required bool tight,
+    required List<PreviewListItem> items,
+  }) = PreviewBlock_List;
+  const factory PreviewBlock.quote({
+    required List<PreviewBlock> blocks,
+  }) = PreviewBlock_Quote;
+  const factory PreviewBlock.code({
+    String? language,
+    required List<PreviewCodeRun> runs,
+    required int copy,
+  }) = PreviewBlock_Code;
+  const factory PreviewBlock.rule() = PreviewBlock_Rule;
+  const factory PreviewBlock.table({
+    required List<PreviewAlign> aligns,
+    required List<PreviewCell> head,
+    required List<PreviewRow> rows,
+  }) = PreviewBlock_Table;
+  const factory PreviewBlock.figure({
+    required PreviewFigureKind kind,
+    required PreviewSvg svg,
+  }) = PreviewBlock_Figure;
+  const factory PreviewBlock.emptyDrawing() = PreviewBlock_EmptyDrawing;
+  const factory PreviewBlock.failed({
+    required String badge,
+    required String detail,
+    String? language,
+    required String code,
+    int? copy,
+  }) = PreviewBlock_Failed;
+  const factory PreviewBlock.query({
+    required List<String> columns,
+    required List<PreviewQueryRow> rows,
+  }) = PreviewBlock_Query;
+  const factory PreviewBlock.queryInvalid({
+    required String code,
+    required String message,
+  }) = PreviewBlock_QueryInvalid;
+  const factory PreviewBlock.html({
+    required String text,
+  }) = PreviewBlock_Html;
+}
+
+class PreviewCell {
+  final List<PreviewInline> inlines;
+
+  const PreviewCell({
+    required this.inlines,
+  });
+
+  @override
+  int get hashCode => inlines.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewCell &&
+          runtimeType == other.runtimeType &&
+          inlines == other.inlines;
+}
+
+class PreviewCodeRun {
+  final String text;
+  final int? color;
+  final bool bold;
+  final bool italic;
+
+  const PreviewCodeRun({
+    required this.text,
+    this.color,
+    required this.bold,
+    required this.italic,
+  });
+
+  @override
+  int get hashCode =>
+      text.hashCode ^ color.hashCode ^ bold.hashCode ^ italic.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewCodeRun &&
+          runtimeType == other.runtimeType &&
+          text == other.text &&
+          color == other.color &&
+          bold == other.bold &&
+          italic == other.italic;
+}
+
+enum PreviewFigureKind {
+  math,
+  diagram,
+  drawing,
+  plugin,
+}
+
+@freezed
+sealed class PreviewInline with _$PreviewInline {
+  const PreviewInline._();
+
+  const factory PreviewInline.text({
+    required String text,
+    required bool bold,
+    required bool italic,
+    required bool strike,
+    required bool code,
+  }) = PreviewInline_Text;
+  const factory PreviewInline.link({
+    required String url,
+    required List<PreviewInline> inlines,
+  }) = PreviewInline_Link;
+  const factory PreviewInline.due({
+    required String url,
+    required String label,
+    required String title,
+    required DueTone tone,
+  }) = PreviewInline_Due;
+  const factory PreviewInline.math({
+    required PreviewSvg svg,
+  }) = PreviewInline_Math;
+  const factory PreviewInline.image({
+    required String contentType,
+    required Uint8List bytes,
+    required String alt,
+    int? width,
+  }) = PreviewInline_Image;
+  const factory PreviewInline.missing({
+    required String text,
+  }) = PreviewInline_Missing;
+  const factory PreviewInline.break_() = PreviewInline_Break;
+}
+
 @freezed
 sealed class PreviewLink with _$PreviewLink {
   const PreviewLink._();
@@ -3183,6 +3336,27 @@ sealed class PreviewLink with _$PreviewLink {
   const factory PreviewLink.nothing() = PreviewLink_Nothing;
 }
 
+class PreviewListItem {
+  final PreviewTaskBox? task;
+  final List<PreviewBlock> blocks;
+
+  const PreviewListItem({
+    this.task,
+    required this.blocks,
+  });
+
+  @override
+  int get hashCode => task.hashCode ^ blocks.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewListItem &&
+          runtimeType == other.runtimeType &&
+          task == other.task &&
+          blocks == other.blocks;
+}
+
 class PreviewOptions {
   final String? font;
   final String? mono;
@@ -3216,6 +3390,97 @@ class PreviewOptions {
           size == other.size &&
           utcOffsetSecs == other.utcOffsetSecs &&
           code == other.code;
+}
+
+class PreviewQueryRow {
+  final String url;
+  final String title;
+  final List<String> cells;
+
+  const PreviewQueryRow({
+    required this.url,
+    required this.title,
+    required this.cells,
+  });
+
+  @override
+  int get hashCode => url.hashCode ^ title.hashCode ^ cells.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewQueryRow &&
+          runtimeType == other.runtimeType &&
+          url == other.url &&
+          title == other.title &&
+          cells == other.cells;
+}
+
+class PreviewRow {
+  final List<PreviewCell> cells;
+
+  const PreviewRow({
+    required this.cells,
+  });
+
+  @override
+  int get hashCode => cells.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewRow &&
+          runtimeType == other.runtimeType &&
+          cells == other.cells;
+}
+
+class PreviewSvg {
+  final String markup;
+  final double width;
+  final double height;
+  final double? baseline;
+
+  const PreviewSvg({
+    required this.markup,
+    required this.width,
+    required this.height,
+    this.baseline,
+  });
+
+  @override
+  int get hashCode =>
+      markup.hashCode ^ width.hashCode ^ height.hashCode ^ baseline.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewSvg &&
+          runtimeType == other.runtimeType &&
+          markup == other.markup &&
+          width == other.width &&
+          height == other.height &&
+          baseline == other.baseline;
+}
+
+class PreviewTaskBox {
+  final bool checked;
+  final int? index;
+
+  const PreviewTaskBox({
+    required this.checked,
+    this.index,
+  });
+
+  @override
+  int get hashCode => checked.hashCode ^ index.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreviewTaskBox &&
+          runtimeType == other.runtimeType &&
+          checked == other.checked &&
+          index == other.index;
 }
 
 enum PromptState {

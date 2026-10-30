@@ -10,27 +10,27 @@ abstract class PreviewState with _$PreviewState {
     /// The note drawn.
     @Default('') String noteId,
 
-    /// The built-in theme it is drawn in.
-    @Default('') String themeId,
+    /// The themes it is drawn in.
+    @Default((
+      ui: 'kanso-light',
+      syntax: 'kanso-light',
+      preview: 'kanso-light',
+      dark: false,
+    ))
+    PreviewThemes themes,
 
-    /// The proportional font family used by the rendered note.
-    String? font,
-
-    /// The monospaced font family used by code in the rendered note.
-    String? mono,
-
-    /// The rendered note's body size in logical pixels.
+    /// The note's body size in logical pixels.
     @Default(previewBaseTextSize) double size,
 
-    /// The page, once it is drawn; the last one stays while it is drawn
-    /// again.
-    String? html,
+    /// The note's blocks, once they are drawn; the last ones stay while they
+    /// are drawn again.
+    List<PreviewBlock>? blocks,
 
-    /// The revision of the note the page was drawn from: a tick is made
+    /// The revision of the note the blocks were drawn from: a tick is made
     /// against it.
     @Default('') String rev,
 
-    /// Why the page could not be drawn, when it couldn't.
+    /// Why the note could not be drawn, when it couldn't.
     ApplicationError? error,
 
     /// What the screen is to do for the last tap, until it says it has.

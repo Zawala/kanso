@@ -10,6 +10,7 @@
 //! Sizes are in points for text set at [`TEXT_SIZE`]; a caller showing text
 //! at another size scales them.
 
+pub mod blocks;
 mod cache;
 pub mod excalidraw;
 pub mod html;

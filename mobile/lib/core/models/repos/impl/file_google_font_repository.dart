@@ -111,14 +111,6 @@ class FileGoogleFontRepository implements GoogleFontRepository {
     }
   }
 
-  @override
-  Future<List<int>?> cachedBytes(String family) async {
-    final file = File(
-      p.join(_folder.path, 'fonts', '${_cacheKey(family.trim())}.ttf'),
-    );
-    return file.existsSync() ? file.readAsBytes() : null;
-  }
-
   String _cacheKey(String value) =>
       value.toLowerCase().replaceAll(RegExp('[^a-z0-9]+'), '-');
 }

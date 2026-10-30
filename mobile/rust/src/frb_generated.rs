@@ -54,7 +54,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1814635546;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1929450997;
 
 // Section: executor
 
@@ -12446,6 +12446,63 @@ fn wire__crate__api__renderer__KansoRenderer_page_pdf_impl(
         },
     )
 }
+fn wire__crate__api__renderer__KansoRenderer_preview_blocks_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "KansoRenderer_preview_blocks",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoRenderer>,
+            >>::sse_decode(&mut deserializer);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            let api_palette = <crate::api::types::PaletteDto>::sse_decode(&mut deserializer);
+            let api_options = <crate::api::types::PreviewOptions>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::types::KansoError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = crate::api::renderer::KansoRenderer::preview_blocks(
+                        &*api_that_guard,
+                        api_id,
+                        api_palette,
+                        api_options,
+                    )?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__renderer__KansoRenderer_preview_html_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -17167,6 +17224,133 @@ const _: fn() = || {
         let _: String = PlannedNote.id;
         let _: String = PlannedNote.rev;
     }
+    match None::<crate::api::types::PreviewBlock>.unwrap() {
+        crate::api::types::PreviewBlock::Heading { level, id, inlines } => {
+            let _: u32 = level;
+            let _: String = id;
+            let _: Vec<crate::api::types::PreviewInline> = inlines;
+        }
+        crate::api::types::PreviewBlock::Paragraph { inlines } => {
+            let _: Vec<crate::api::types::PreviewInline> = inlines;
+        }
+        crate::api::types::PreviewBlock::List {
+            ordered,
+            start,
+            tight,
+            items,
+        } => {
+            let _: bool = ordered;
+            let _: u32 = start;
+            let _: bool = tight;
+            let _: Vec<crate::api::types::PreviewListItem> = items;
+        }
+        crate::api::types::PreviewBlock::Quote { blocks } => {
+            let _: Vec<crate::api::types::PreviewBlock> = blocks;
+        }
+        crate::api::types::PreviewBlock::Code {
+            language,
+            runs,
+            copy,
+        } => {
+            let _: Option<String> = language;
+            let _: Vec<crate::api::types::PreviewCodeRun> = runs;
+            let _: u32 = copy;
+        }
+        crate::api::types::PreviewBlock::Rule => {}
+        crate::api::types::PreviewBlock::Table { aligns, head, rows } => {
+            let _: Vec<crate::api::types::PreviewAlign> = aligns;
+            let _: Vec<crate::api::types::PreviewCell> = head;
+            let _: Vec<crate::api::types::PreviewRow> = rows;
+        }
+        crate::api::types::PreviewBlock::Figure { kind, svg } => {
+            let _: crate::api::types::PreviewFigureKind = kind;
+            let _: crate::api::types::PreviewSvg = svg;
+        }
+        crate::api::types::PreviewBlock::EmptyDrawing => {}
+        crate::api::types::PreviewBlock::Failed {
+            badge,
+            detail,
+            language,
+            code,
+            copy,
+        } => {
+            let _: String = badge;
+            let _: String = detail;
+            let _: Option<String> = language;
+            let _: String = code;
+            let _: Option<u32> = copy;
+        }
+        crate::api::types::PreviewBlock::Query { columns, rows } => {
+            let _: Vec<String> = columns;
+            let _: Vec<crate::api::types::PreviewQueryRow> = rows;
+        }
+        crate::api::types::PreviewBlock::QueryInvalid { code, message } => {
+            let _: String = code;
+            let _: String = message;
+        }
+        crate::api::types::PreviewBlock::Html { text } => {
+            let _: String = text;
+        }
+    }
+    {
+        let PreviewCell = None::<crate::api::types::PreviewCell>.unwrap();
+        let _: Vec<crate::api::types::PreviewInline> = PreviewCell.inlines;
+    }
+    {
+        let PreviewCodeRun = None::<crate::api::types::PreviewCodeRun>.unwrap();
+        let _: String = PreviewCodeRun.text;
+        let _: Option<u32> = PreviewCodeRun.color;
+        let _: bool = PreviewCodeRun.bold;
+        let _: bool = PreviewCodeRun.italic;
+    }
+    match None::<crate::api::types::PreviewInline>.unwrap() {
+        crate::api::types::PreviewInline::Text {
+            text,
+            bold,
+            italic,
+            strike,
+            code,
+        } => {
+            let _: String = text;
+            let _: bool = bold;
+            let _: bool = italic;
+            let _: bool = strike;
+            let _: bool = code;
+        }
+        crate::api::types::PreviewInline::Link { url, inlines } => {
+            let _: String = url;
+            let _: Vec<crate::api::types::PreviewInline> = inlines;
+        }
+        crate::api::types::PreviewInline::Due {
+            url,
+            label,
+            title,
+            tone,
+        } => {
+            let _: String = url;
+            let _: String = label;
+            let _: String = title;
+            let _: crate::api::types::DueTone = tone;
+        }
+        crate::api::types::PreviewInline::Math { svg } => {
+            let _: crate::api::types::PreviewSvg = svg;
+        }
+        crate::api::types::PreviewInline::Image {
+            content_type,
+            bytes,
+            alt,
+            width,
+        } => {
+            let _: String = content_type;
+            let _: Vec<u8> = bytes;
+            let _: String = alt;
+            let _: Option<u32> = width;
+        }
+        crate::api::types::PreviewInline::Missing { text } => {
+            let _: String = text;
+        }
+        crate::api::types::PreviewInline::Break => {}
+    }
     match None::<crate::api::types::PreviewLink>.unwrap() {
         crate::api::types::PreviewLink::Note {
             id,
@@ -17210,12 +17394,39 @@ const _: fn() = || {
         crate::api::types::PreviewLink::Nothing => {}
     }
     {
+        let PreviewListItem = None::<crate::api::types::PreviewListItem>.unwrap();
+        let _: Option<crate::api::types::PreviewTaskBox> = PreviewListItem.task;
+        let _: Vec<crate::api::types::PreviewBlock> = PreviewListItem.blocks;
+    }
+    {
         let PreviewOptions = None::<crate::api::types::PreviewOptions>.unwrap();
         let _: Option<String> = PreviewOptions.font;
         let _: Option<String> = PreviewOptions.mono;
         let _: f32 = PreviewOptions.size;
         let _: i32 = PreviewOptions.utc_offset_secs;
         let _: Vec<crate::api::types::SyntaxStyleRow> = PreviewOptions.code;
+    }
+    {
+        let PreviewQueryRow = None::<crate::api::types::PreviewQueryRow>.unwrap();
+        let _: String = PreviewQueryRow.url;
+        let _: String = PreviewQueryRow.title;
+        let _: Vec<String> = PreviewQueryRow.cells;
+    }
+    {
+        let PreviewRow = None::<crate::api::types::PreviewRow>.unwrap();
+        let _: Vec<crate::api::types::PreviewCell> = PreviewRow.cells;
+    }
+    {
+        let PreviewSvg = None::<crate::api::types::PreviewSvg>.unwrap();
+        let _: String = PreviewSvg.markup;
+        let _: f32 = PreviewSvg.width;
+        let _: f32 = PreviewSvg.height;
+        let _: Option<f32> = PreviewSvg.baseline;
+    }
+    {
+        let PreviewTaskBox = None::<crate::api::types::PreviewTaskBox>.unwrap();
+        let _: bool = PreviewTaskBox.checked;
+        let _: Option<u32> = PreviewTaskBox.index;
     }
     {
         let Property = None::<crate::api::types::Property>.unwrap();
@@ -20626,6 +20837,108 @@ impl SseDecode for Vec<crate::api::types::PlannedNote> {
     }
 }
 
+impl SseDecode for Vec<crate::api::types::PreviewAlign> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::PreviewAlign>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::PreviewBlock> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::PreviewBlock>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::PreviewCell> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::PreviewCell>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::PreviewCodeRun> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::PreviewCodeRun>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::PreviewInline> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::PreviewInline>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::PreviewListItem> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::PreviewListItem>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::PreviewQueryRow> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::PreviewQueryRow>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::types::PreviewRow> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::types::PreviewRow>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<u32> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -21841,6 +22154,19 @@ impl SseDecode for Option<crate::api::types::PersonRow> {
     }
 }
 
+impl SseDecode for Option<crate::api::types::PreviewTaskBox> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::types::PreviewTaskBox>::sse_decode(
+                deserializer,
+            ));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<crate::api::publish::PublishLink> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -22312,6 +22638,249 @@ impl SseDecode for crate::api::types::PlannedNote {
     }
 }
 
+impl SseDecode for crate::api::types::PreviewAlign {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::types::PreviewAlign::None,
+            1 => crate::api::types::PreviewAlign::Left,
+            2 => crate::api::types::PreviewAlign::Center,
+            3 => crate::api::types::PreviewAlign::Right,
+            _ => unreachable!("Invalid variant for PreviewAlign: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::PreviewBlock {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_level = <u32>::sse_decode(deserializer);
+                let mut var_id = <String>::sse_decode(deserializer);
+                let mut var_inlines =
+                    <Vec<crate::api::types::PreviewInline>>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::Heading {
+                    level: var_level,
+                    id: var_id,
+                    inlines: var_inlines,
+                };
+            }
+            1 => {
+                let mut var_inlines =
+                    <Vec<crate::api::types::PreviewInline>>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::Paragraph {
+                    inlines: var_inlines,
+                };
+            }
+            2 => {
+                let mut var_ordered = <bool>::sse_decode(deserializer);
+                let mut var_start = <u32>::sse_decode(deserializer);
+                let mut var_tight = <bool>::sse_decode(deserializer);
+                let mut var_items =
+                    <Vec<crate::api::types::PreviewListItem>>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::List {
+                    ordered: var_ordered,
+                    start: var_start,
+                    tight: var_tight,
+                    items: var_items,
+                };
+            }
+            3 => {
+                let mut var_blocks =
+                    <Vec<crate::api::types::PreviewBlock>>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::Quote { blocks: var_blocks };
+            }
+            4 => {
+                let mut var_language = <Option<String>>::sse_decode(deserializer);
+                let mut var_runs =
+                    <Vec<crate::api::types::PreviewCodeRun>>::sse_decode(deserializer);
+                let mut var_copy = <u32>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::Code {
+                    language: var_language,
+                    runs: var_runs,
+                    copy: var_copy,
+                };
+            }
+            5 => {
+                return crate::api::types::PreviewBlock::Rule;
+            }
+            6 => {
+                let mut var_aligns =
+                    <Vec<crate::api::types::PreviewAlign>>::sse_decode(deserializer);
+                let mut var_head = <Vec<crate::api::types::PreviewCell>>::sse_decode(deserializer);
+                let mut var_rows = <Vec<crate::api::types::PreviewRow>>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::Table {
+                    aligns: var_aligns,
+                    head: var_head,
+                    rows: var_rows,
+                };
+            }
+            7 => {
+                let mut var_kind = <crate::api::types::PreviewFigureKind>::sse_decode(deserializer);
+                let mut var_svg = <crate::api::types::PreviewSvg>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::Figure {
+                    kind: var_kind,
+                    svg: var_svg,
+                };
+            }
+            8 => {
+                return crate::api::types::PreviewBlock::EmptyDrawing;
+            }
+            9 => {
+                let mut var_badge = <String>::sse_decode(deserializer);
+                let mut var_detail = <String>::sse_decode(deserializer);
+                let mut var_language = <Option<String>>::sse_decode(deserializer);
+                let mut var_code = <String>::sse_decode(deserializer);
+                let mut var_copy = <Option<u32>>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::Failed {
+                    badge: var_badge,
+                    detail: var_detail,
+                    language: var_language,
+                    code: var_code,
+                    copy: var_copy,
+                };
+            }
+            10 => {
+                let mut var_columns = <Vec<String>>::sse_decode(deserializer);
+                let mut var_rows =
+                    <Vec<crate::api::types::PreviewQueryRow>>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::Query {
+                    columns: var_columns,
+                    rows: var_rows,
+                };
+            }
+            11 => {
+                let mut var_code = <String>::sse_decode(deserializer);
+                let mut var_message = <String>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::QueryInvalid {
+                    code: var_code,
+                    message: var_message,
+                };
+            }
+            12 => {
+                let mut var_text = <String>::sse_decode(deserializer);
+                return crate::api::types::PreviewBlock::Html { text: var_text };
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseDecode for crate::api::types::PreviewCell {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_inlines = <Vec<crate::api::types::PreviewInline>>::sse_decode(deserializer);
+        return crate::api::types::PreviewCell {
+            inlines: var_inlines,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::PreviewCodeRun {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_text = <String>::sse_decode(deserializer);
+        let mut var_color = <Option<u32>>::sse_decode(deserializer);
+        let mut var_bold = <bool>::sse_decode(deserializer);
+        let mut var_italic = <bool>::sse_decode(deserializer);
+        return crate::api::types::PreviewCodeRun {
+            text: var_text,
+            color: var_color,
+            bold: var_bold,
+            italic: var_italic,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::PreviewFigureKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::types::PreviewFigureKind::Math,
+            1 => crate::api::types::PreviewFigureKind::Diagram,
+            2 => crate::api::types::PreviewFigureKind::Drawing,
+            3 => crate::api::types::PreviewFigureKind::Plugin,
+            _ => unreachable!("Invalid variant for PreviewFigureKind: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::PreviewInline {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_text = <String>::sse_decode(deserializer);
+                let mut var_bold = <bool>::sse_decode(deserializer);
+                let mut var_italic = <bool>::sse_decode(deserializer);
+                let mut var_strike = <bool>::sse_decode(deserializer);
+                let mut var_code = <bool>::sse_decode(deserializer);
+                return crate::api::types::PreviewInline::Text {
+                    text: var_text,
+                    bold: var_bold,
+                    italic: var_italic,
+                    strike: var_strike,
+                    code: var_code,
+                };
+            }
+            1 => {
+                let mut var_url = <String>::sse_decode(deserializer);
+                let mut var_inlines =
+                    <Vec<crate::api::types::PreviewInline>>::sse_decode(deserializer);
+                return crate::api::types::PreviewInline::Link {
+                    url: var_url,
+                    inlines: var_inlines,
+                };
+            }
+            2 => {
+                let mut var_url = <String>::sse_decode(deserializer);
+                let mut var_label = <String>::sse_decode(deserializer);
+                let mut var_title = <String>::sse_decode(deserializer);
+                let mut var_tone = <crate::api::types::DueTone>::sse_decode(deserializer);
+                return crate::api::types::PreviewInline::Due {
+                    url: var_url,
+                    label: var_label,
+                    title: var_title,
+                    tone: var_tone,
+                };
+            }
+            3 => {
+                let mut var_svg = <crate::api::types::PreviewSvg>::sse_decode(deserializer);
+                return crate::api::types::PreviewInline::Math { svg: var_svg };
+            }
+            4 => {
+                let mut var_contentType = <String>::sse_decode(deserializer);
+                let mut var_bytes = <Vec<u8>>::sse_decode(deserializer);
+                let mut var_alt = <String>::sse_decode(deserializer);
+                let mut var_width = <Option<u32>>::sse_decode(deserializer);
+                return crate::api::types::PreviewInline::Image {
+                    content_type: var_contentType,
+                    bytes: var_bytes,
+                    alt: var_alt,
+                    width: var_width,
+                };
+            }
+            5 => {
+                let mut var_text = <String>::sse_decode(deserializer);
+                return crate::api::types::PreviewInline::Missing { text: var_text };
+            }
+            6 => {
+                return crate::api::types::PreviewInline::Break;
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseDecode for crate::api::types::PreviewLink {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -22376,6 +22945,18 @@ impl SseDecode for crate::api::types::PreviewLink {
     }
 }
 
+impl SseDecode for crate::api::types::PreviewListItem {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_task = <Option<crate::api::types::PreviewTaskBox>>::sse_decode(deserializer);
+        let mut var_blocks = <Vec<crate::api::types::PreviewBlock>>::sse_decode(deserializer);
+        return crate::api::types::PreviewListItem {
+            task: var_task,
+            blocks: var_blocks,
+        };
+    }
+}
+
 impl SseDecode for crate::api::types::PreviewOptions {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -22390,6 +22971,56 @@ impl SseDecode for crate::api::types::PreviewOptions {
             size: var_size,
             utc_offset_secs: var_utcOffsetSecs,
             code: var_code,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::PreviewQueryRow {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_url = <String>::sse_decode(deserializer);
+        let mut var_title = <String>::sse_decode(deserializer);
+        let mut var_cells = <Vec<String>>::sse_decode(deserializer);
+        return crate::api::types::PreviewQueryRow {
+            url: var_url,
+            title: var_title,
+            cells: var_cells,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::PreviewRow {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_cells = <Vec<crate::api::types::PreviewCell>>::sse_decode(deserializer);
+        return crate::api::types::PreviewRow { cells: var_cells };
+    }
+}
+
+impl SseDecode for crate::api::types::PreviewSvg {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_markup = <String>::sse_decode(deserializer);
+        let mut var_width = <f32>::sse_decode(deserializer);
+        let mut var_height = <f32>::sse_decode(deserializer);
+        let mut var_baseline = <Option<f32>>::sse_decode(deserializer);
+        return crate::api::types::PreviewSvg {
+            markup: var_markup,
+            width: var_width,
+            height: var_height,
+            baseline: var_baseline,
+        };
+    }
+}
+
+impl SseDecode for crate::api::types::PreviewTaskBox {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_checked = <bool>::sse_decode(deserializer);
+        let mut var_index = <Option<u32>>::sse_decode(deserializer);
+        return crate::api::types::PreviewTaskBox {
+            checked: var_checked,
+            index: var_index,
         };
     }
 }
@@ -24926,242 +25557,248 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        243 => wire__crate__api__renderer__KansoRenderer_preview_html_impl(
+        243 => wire__crate__api__renderer__KansoRenderer_preview_blocks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        244 => wire__crate__api__renderer__KansoRenderer_preview_html_with_impl(
+        244 => wire__crate__api__renderer__KansoRenderer_preview_html_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        245 => wire__crate__api__renderer__KansoRenderer_set_diagram_renderer_impl(
+        245 => wire__crate__api__renderer__KansoRenderer_preview_html_with_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        246 => wire__crate__api__renderer__KansoRenderer_set_fonts_impl(
+        246 => wire__crate__api__renderer__KansoRenderer_set_diagram_renderer_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        247 => wire__crate__api__renderer__KansoRenderer_styled_runs_impl(
+        247 => wire__crate__api__renderer__KansoRenderer_set_fonts_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        248 => wire__crate__api__renderer__KansoRenderer_theme_tokens_impl(
+        248 => wire__crate__api__renderer__KansoRenderer_styled_runs_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        249 => wire__crate__api__shared__KansoShared_accept_impl(port, ptr, rust_vec_len, data_len),
-        250 => wire__crate__api__shared__KansoShared_accept_new_key_impl(
+        249 => wire__crate__api__renderer__KansoRenderer_theme_tokens_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        251 => wire__crate__api__shared__KansoShared_add_comment_impl(
+        250 => wire__crate__api__shared__KansoShared_accept_impl(port, ptr, rust_vec_len, data_len),
+        251 => wire__crate__api__shared__KansoShared_accept_new_key_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        252 => wire__crate__api__shared__KansoShared_approve_request_impl(
+        252 => wire__crate__api__shared__KansoShared_add_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        253 => {
+        253 => wire__crate__api__shared__KansoShared_approve_request_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        254 => {
             wire__crate__api__shared__KansoShared_can_share_impl(port, ptr, rust_vec_len, data_len)
         }
-        254 => wire__crate__api__shared__KansoShared_cancel_link_impl(
+        255 => wire__crate__api__shared__KansoShared_cancel_link_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        255 => {
+        256 => {
             wire__crate__api__shared__KansoShared_close_live_impl(port, ptr, rust_vec_len, data_len)
         }
-        256 => {
+        257 => {
             wire__crate__api__shared__KansoShared_comments_impl(port, ptr, rust_vec_len, data_len)
         }
-        257 => wire__crate__api__shared__KansoShared_comments_band_impl(
+        258 => wire__crate__api__shared__KansoShared_comments_band_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        258 => wire__crate__api__shared__KansoShared_create_link_impl(
+        259 => wire__crate__api__shared__KansoShared_create_link_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        259 => {
+        260 => {
             wire__crate__api__shared__KansoShared_decline_impl(port, ptr, rust_vec_len, data_len)
         }
-        260 => wire__crate__api__shared__KansoShared_decline_request_impl(
+        261 => wire__crate__api__shared__KansoShared_decline_request_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        261 => wire__crate__api__shared__KansoShared_delete_comment_impl(
+        262 => wire__crate__api__shared__KansoShared_delete_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        262 => wire__crate__api__shared__KansoShared_dismiss_problems_impl(
+        263 => wire__crate__api__shared__KansoShared_dismiss_problems_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        263 => wire__crate__api__shared__KansoShared_edit_comment_impl(
+        264 => wire__crate__api__shared__KansoShared_edit_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        264 => wire__crate__api__shared__KansoShared_events_impl(port, ptr, rust_vec_len, data_len),
-        265 => wire__crate__api__shared__KansoShared_info_impl(port, ptr, rust_vec_len, data_len),
-        266 => wire__crate__api__shared__KansoShared_invitations_impl(
+        265 => wire__crate__api__shared__KansoShared_events_impl(port, ptr, rust_vec_len, data_len),
+        266 => wire__crate__api__shared__KansoShared_info_impl(port, ptr, rust_vec_len, data_len),
+        267 => wire__crate__api__shared__KansoShared_invitations_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        267 => wire__crate__api__shared__KansoShared_invite_impl(port, ptr, rust_vec_len, data_len),
-        268 => wire__crate__api__shared__KansoShared_join_impl(port, ptr, rust_vec_len, data_len),
-        269 => wire__crate__api__shared__KansoShared_leave_impl(port, ptr, rust_vec_len, data_len),
-        270 => wire__crate__api__shared__KansoShared_live_status_impl(
+        268 => wire__crate__api__shared__KansoShared_invite_impl(port, ptr, rust_vec_len, data_len),
+        269 => wire__crate__api__shared__KansoShared_join_impl(port, ptr, rust_vec_len, data_len),
+        270 => wire__crate__api__shared__KansoShared_leave_impl(port, ptr, rust_vec_len, data_len),
+        271 => wire__crate__api__shared__KansoShared_live_status_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        271 => wire__crate__api__shared__KansoShared_lookup_person_impl(
+        272 => wire__crate__api__shared__KansoShared_lookup_person_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        272 => wire__crate__api__shared__KansoShared_open_comments_impl(
+        273 => wire__crate__api__shared__KansoShared_open_comments_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        273 => {
+        274 => {
             wire__crate__api__shared__KansoShared_open_live_impl(port, ptr, rust_vec_len, data_len)
         }
-        274 => wire__crate__api__shared__KansoShared_remove_impl(port, ptr, rust_vec_len, data_len),
-        275 => wire__crate__api__shared__KansoShared_resolve_comment_impl(
+        275 => wire__crate__api__shared__KansoShared_remove_impl(port, ptr, rust_vec_len, data_len),
+        276 => wire__crate__api__shared__KansoShared_resolve_comment_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        276 => {
+        277 => {
             wire__crate__api__shared__KansoShared_set_role_impl(port, ptr, rust_vec_len, data_len)
         }
-        277 => wire__crate__api__shared__KansoShared_share_impl(port, ptr, rust_vec_len, data_len),
-        278 => wire__crate__api__shared__KansoShared_stop_impl(port, ptr, rust_vec_len, data_len),
-        279 => wire__crate__api__shared__KansoShared_sync_shared_impl(
+        278 => wire__crate__api__shared__KansoShared_share_impl(port, ptr, rust_vec_len, data_len),
+        279 => wire__crate__api__shared__KansoShared_stop_impl(port, ptr, rust_vec_len, data_len),
+        280 => wire__crate__api__shared__KansoShared_sync_shared_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        280 => wire__crate__api__shared__KansoShared_verify_person_impl(
+        281 => wire__crate__api__shared__KansoShared_verify_person_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        281 => {
+        282 => {
             wire__crate__api__sync__KansoSync_check_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        282 => {
+        283 => {
             wire__crate__api__sync__KansoSync_default_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        286 => {
+        287 => {
             wire__crate__api__sync__KansoSync_push_enabled_impl(port, ptr, rust_vec_len, data_len)
         }
-        287 => {
+        288 => {
             wire__crate__api__sync__KansoSync_refresh_push_impl(port, ptr, rust_vec_len, data_len)
         }
-        288 => {
+        289 => {
             wire__crate__api__sync__KansoSync_set_foreground_impl(port, ptr, rust_vec_len, data_len)
         }
-        289 => wire__crate__api__sync__KansoSync_set_push_enabled_impl(
+        290 => wire__crate__api__sync__KansoSync_set_push_enabled_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        290 => {
+        291 => {
             wire__crate__api__sync__KansoSync_set_push_token_impl(port, ptr, rust_vec_len, data_len)
         }
-        291 => {
+        292 => {
             wire__crate__api__sync__KansoSync_set_settings_impl(port, ptr, rust_vec_len, data_len)
         }
-        292 => wire__crate__api__sync__KansoSync_settings_impl(port, ptr, rust_vec_len, data_len),
-        293 => wire__crate__api__sync__KansoSync_sign_in_password_impl(
+        293 => wire__crate__api__sync__KansoSync_settings_impl(port, ptr, rust_vec_len, data_len),
+        294 => wire__crate__api__sync__KansoSync_sign_in_password_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        294 => wire__crate__api__sync__KansoSync_sign_out_impl(port, ptr, rust_vec_len, data_len),
-        295 => wire__crate__api__sync__KansoSync_status_impl(port, ptr, rust_vec_len, data_len),
-        297 => {
+        295 => wire__crate__api__sync__KansoSync_sign_out_impl(port, ptr, rust_vec_len, data_len),
+        296 => wire__crate__api__sync__KansoSync_status_impl(port, ptr, rust_vec_len, data_len),
+        298 => {
             wire__crate__api__sync__KansoSync_status_stream_impl(port, ptr, rust_vec_len, data_len)
         }
-        298 => wire__crate__api__sync__KansoSync_sync_now_impl(port, ptr, rust_vec_len, data_len),
-        299 => wire__crate__api__themes__KansoThemes_fit_impl(port, ptr, rust_vec_len, data_len),
-        300 => wire__crate__api__themes__KansoThemes_icon_themes_impl(
+        299 => wire__crate__api__sync__KansoSync_sync_now_impl(port, ptr, rust_vec_len, data_len),
+        300 => wire__crate__api__themes__KansoThemes_fit_impl(port, ptr, rust_vec_len, data_len),
+        301 => wire__crate__api__themes__KansoThemes_icon_themes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        301 => wire__crate__api__themes__KansoThemes_import_impl(port, ptr, rust_vec_len, data_len),
-        302 => wire__crate__api__themes__KansoThemes_import_icon_theme_impl(
+        302 => wire__crate__api__themes__KansoThemes_import_impl(port, ptr, rust_vec_len, data_len),
+        303 => wire__crate__api__themes__KansoThemes_import_icon_theme_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        303 => wire__crate__api__themes__KansoThemes_list_impl(port, ptr, rust_vec_len, data_len),
-        304 => {
+        304 => wire__crate__api__themes__KansoThemes_list_impl(port, ptr, rust_vec_len, data_len),
+        305 => {
             wire__crate__api__themes__KansoThemes_notices_impl(port, ptr, rust_vec_len, data_len)
         }
-        305 => wire__crate__api__themes__KansoThemes_styled_runs_impl(
+        306 => wire__crate__api__themes__KansoThemes_styled_runs_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        306 => {
+        307 => {
             wire__crate__api__diagnostics__backup_excluded_impl(port, ptr, rust_vec_len, data_len)
         }
-        313 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
-        315 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
-        317 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
-        318 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
+        314 => wire__crate__api__diagnostics__panic_probe_impl(port, ptr, rust_vec_len, data_len),
+        316 => wire__crate__api__diagnostics__secrets_probe_impl(port, ptr, rust_vec_len, data_len),
+        318 => wire__crate__api__diagnostics__tls_ready_impl(port, ptr, rust_vec_len, data_len),
+        319 => wire__crate__api__diagnostics__version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -25237,26 +25874,26 @@ fn pde_ffi_dispatcher_sync_impl(
             data_len,
         ),
         199 => wire__crate__api__linking__KansoLinking_outline_impl(ptr, rust_vec_len, data_len),
-        283 => wire__crate__api__sync__KansoSync_interval_label_impl(ptr, rust_vec_len, data_len),
-        284 => wire__crate__api__sync__KansoSync_interval_options_impl(ptr, rust_vec_len, data_len),
-        285 => wire__crate__api__sync__KansoSync_interval_phrase_impl(ptr, rust_vec_len, data_len),
-        296 => wire__crate__api__sync__KansoSync_status_line_impl(ptr, rust_vec_len, data_len),
-        307 => wire__crate__api__library__backups_summary_impl(ptr, rust_vec_len, data_len),
-        308 => wire__crate__api__voice__dictated_impl(ptr, rust_vec_len, data_len),
-        309 => wire__crate__api__import__import_kinds_for_impl(ptr, rust_vec_len, data_len),
-        310 => wire__crate__api__import__import_sources_impl(ptr, rust_vec_len, data_len),
-        311 => wire__crate__api__discovery__meaning_min_chars_impl(ptr, rust_vec_len, data_len),
-        312 => wire__crate__api__discovery__meaning_query_impl(ptr, rust_vec_len, data_len),
-        314 => wire__crate__api__library__replace_apply_label_impl(ptr, rust_vec_len, data_len),
-        316 => wire__crate__api__shortcuts__shortcut_catalog_impl(ptr, rust_vec_len, data_len),
-        319 => {
+        284 => wire__crate__api__sync__KansoSync_interval_label_impl(ptr, rust_vec_len, data_len),
+        285 => wire__crate__api__sync__KansoSync_interval_options_impl(ptr, rust_vec_len, data_len),
+        286 => wire__crate__api__sync__KansoSync_interval_phrase_impl(ptr, rust_vec_len, data_len),
+        297 => wire__crate__api__sync__KansoSync_status_line_impl(ptr, rust_vec_len, data_len),
+        308 => wire__crate__api__library__backups_summary_impl(ptr, rust_vec_len, data_len),
+        309 => wire__crate__api__voice__dictated_impl(ptr, rust_vec_len, data_len),
+        310 => wire__crate__api__import__import_kinds_for_impl(ptr, rust_vec_len, data_len),
+        311 => wire__crate__api__import__import_sources_impl(ptr, rust_vec_len, data_len),
+        312 => wire__crate__api__discovery__meaning_min_chars_impl(ptr, rust_vec_len, data_len),
+        313 => wire__crate__api__discovery__meaning_query_impl(ptr, rust_vec_len, data_len),
+        315 => wire__crate__api__library__replace_apply_label_impl(ptr, rust_vec_len, data_len),
+        317 => wire__crate__api__shortcuts__shortcut_catalog_impl(ptr, rust_vec_len, data_len),
+        320 => {
             wire__crate__api__word_goal__word_goal_format_count_impl(ptr, rust_vec_len, data_len)
         }
-        320 => wire__crate__api__word_goal__word_goal_label_impl(ptr, rust_vec_len, data_len),
-        321 => wire__crate__api__word_goal__word_goal_parse_impl(ptr, rust_vec_len, data_len),
-        322 => wire__crate__api__word_goal__word_goal_presets_impl(ptr, rust_vec_len, data_len),
-        323 => wire__crate__api__word_goal__word_goal_progress_impl(ptr, rust_vec_len, data_len),
-        324 => wire__crate__api__word_goal__word_goal_word_count_impl(ptr, rust_vec_len, data_len),
+        321 => wire__crate__api__word_goal__word_goal_label_impl(ptr, rust_vec_len, data_len),
+        322 => wire__crate__api__word_goal__word_goal_parse_impl(ptr, rust_vec_len, data_len),
+        323 => wire__crate__api__word_goal__word_goal_presets_impl(ptr, rust_vec_len, data_len),
+        324 => wire__crate__api__word_goal__word_goal_progress_impl(ptr, rust_vec_len, data_len),
+        325 => wire__crate__api__word_goal__word_goal_word_count_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -28902,6 +29539,270 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PlannedNote
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewAlign> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::types::PreviewAlign::None => 0.into_dart(),
+            crate::api::types::PreviewAlign::Left => 1.into_dart(),
+            crate::api::types::PreviewAlign::Center => 2.into_dart(),
+            crate::api::types::PreviewAlign::Right => 3.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewAlign>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewAlign>>
+    for crate::api::types::PreviewAlign
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewAlign> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewBlock> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::types::PreviewBlock::Heading { level, id, inlines } => [
+                0.into_dart(),
+                level.into_into_dart().into_dart(),
+                id.into_into_dart().into_dart(),
+                inlines.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewBlock::Paragraph { inlines } => {
+                [1.into_dart(), inlines.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::types::PreviewBlock::List {
+                ordered,
+                start,
+                tight,
+                items,
+            } => [
+                2.into_dart(),
+                ordered.into_into_dart().into_dart(),
+                start.into_into_dart().into_dart(),
+                tight.into_into_dart().into_dart(),
+                items.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewBlock::Quote { blocks } => {
+                [3.into_dart(), blocks.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::types::PreviewBlock::Code {
+                language,
+                runs,
+                copy,
+            } => [
+                4.into_dart(),
+                language.into_into_dart().into_dart(),
+                runs.into_into_dart().into_dart(),
+                copy.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewBlock::Rule => [5.into_dart()].into_dart(),
+            crate::api::types::PreviewBlock::Table { aligns, head, rows } => [
+                6.into_dart(),
+                aligns.into_into_dart().into_dart(),
+                head.into_into_dart().into_dart(),
+                rows.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewBlock::Figure { kind, svg } => [
+                7.into_dart(),
+                kind.into_into_dart().into_dart(),
+                svg.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewBlock::EmptyDrawing => [8.into_dart()].into_dart(),
+            crate::api::types::PreviewBlock::Failed {
+                badge,
+                detail,
+                language,
+                code,
+                copy,
+            } => [
+                9.into_dart(),
+                badge.into_into_dart().into_dart(),
+                detail.into_into_dart().into_dart(),
+                language.into_into_dart().into_dart(),
+                code.into_into_dart().into_dart(),
+                copy.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewBlock::Query { columns, rows } => [
+                10.into_dart(),
+                columns.into_into_dart().into_dart(),
+                rows.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewBlock::QueryInvalid { code, message } => [
+                11.into_dart(),
+                code.into_into_dart().into_dart(),
+                message.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewBlock::Html { text } => {
+                [12.into_dart(), text.into_into_dart().into_dart()].into_dart()
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewBlock>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewBlock>>
+    for crate::api::types::PreviewBlock
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewBlock> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewCell> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [self.0.inlines.into_into_dart().into_dart()].into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewCell>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewCell>>
+    for crate::api::types::PreviewCell
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewCell> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewCodeRun> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.text.into_into_dart().into_dart(),
+            self.0.color.into_into_dart().into_dart(),
+            self.0.bold.into_into_dart().into_dart(),
+            self.0.italic.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewCodeRun>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewCodeRun>>
+    for crate::api::types::PreviewCodeRun
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewCodeRun> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewFigureKind> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::types::PreviewFigureKind::Math => 0.into_dart(),
+            crate::api::types::PreviewFigureKind::Diagram => 1.into_dart(),
+            crate::api::types::PreviewFigureKind::Drawing => 2.into_dart(),
+            crate::api::types::PreviewFigureKind::Plugin => 3.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewFigureKind>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewFigureKind>>
+    for crate::api::types::PreviewFigureKind
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewFigureKind> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewInline> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self.0 {
+            crate::api::types::PreviewInline::Text {
+                text,
+                bold,
+                italic,
+                strike,
+                code,
+            } => [
+                0.into_dart(),
+                text.into_into_dart().into_dart(),
+                bold.into_into_dart().into_dart(),
+                italic.into_into_dart().into_dart(),
+                strike.into_into_dart().into_dart(),
+                code.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewInline::Link { url, inlines } => [
+                1.into_dart(),
+                url.into_into_dart().into_dart(),
+                inlines.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewInline::Due {
+                url,
+                label,
+                title,
+                tone,
+            } => [
+                2.into_dart(),
+                url.into_into_dart().into_dart(),
+                label.into_into_dart().into_dart(),
+                title.into_into_dart().into_dart(),
+                tone.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewInline::Math { svg } => {
+                [3.into_dart(), svg.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::types::PreviewInline::Image {
+                content_type,
+                bytes,
+                alt,
+                width,
+            } => [
+                4.into_dart(),
+                content_type.into_into_dart().into_dart(),
+                bytes.into_into_dart().into_dart(),
+                alt.into_into_dart().into_dart(),
+                width.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::types::PreviewInline::Missing { text } => {
+                [5.into_dart(), text.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::types::PreviewInline::Break => [6.into_dart()].into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewInline>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewInline>>
+    for crate::api::types::PreviewInline
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewInline> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewLink> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
@@ -28967,6 +29868,27 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewLink
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewListItem> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.task.into_into_dart().into_dart(),
+            self.0.blocks.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewListItem>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewListItem>>
+    for crate::api::types::PreviewListItem
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewListItem> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewOptions> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -28987,6 +29909,89 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewOpti
     for crate::api::types::PreviewOptions
 {
     fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewOptions> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewQueryRow> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.url.into_into_dart().into_dart(),
+            self.0.title.into_into_dart().into_dart(),
+            self.0.cells.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewQueryRow>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewQueryRow>>
+    for crate::api::types::PreviewQueryRow
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewQueryRow> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewRow> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [self.0.cells.into_into_dart().into_dart()].into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewRow>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewRow>>
+    for crate::api::types::PreviewRow
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewRow> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewSvg> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.markup.into_into_dart().into_dart(),
+            self.0.width.into_into_dart().into_dart(),
+            self.0.height.into_into_dart().into_dart(),
+            self.0.baseline.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewSvg>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewSvg>>
+    for crate::api::types::PreviewSvg
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewSvg> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<crate::api::types::PreviewTaskBox> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.checked.into_into_dart().into_dart(),
+            self.0.index.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<crate::api::types::PreviewTaskBox>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<crate::api::types::PreviewTaskBox>>
+    for crate::api::types::PreviewTaskBox
+{
+    fn into_into_dart(self) -> FrbWrapper<crate::api::types::PreviewTaskBox> {
         self.into()
     }
 }
@@ -33338,6 +34343,86 @@ impl SseEncode for Vec<crate::api::types::PlannedNote> {
     }
 }
 
+impl SseEncode for Vec<crate::api::types::PreviewAlign> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::PreviewAlign>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::PreviewBlock> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::PreviewBlock>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::PreviewCell> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::PreviewCell>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::PreviewCodeRun> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::PreviewCodeRun>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::PreviewInline> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::PreviewInline>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::PreviewListItem> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::PreviewListItem>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::PreviewQueryRow> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::PreviewQueryRow>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::types::PreviewRow> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::types::PreviewRow>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<u32> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -34296,6 +35381,16 @@ impl SseEncode for Option<crate::api::types::PersonRow> {
     }
 }
 
+impl SseEncode for Option<crate::api::types::PreviewTaskBox> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::types::PreviewTaskBox>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<crate::api::publish::PublishLink> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -34673,6 +35768,216 @@ impl SseEncode for crate::api::types::PlannedNote {
     }
 }
 
+impl SseEncode for crate::api::types::PreviewAlign {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::types::PreviewAlign::None => 0,
+                crate::api::types::PreviewAlign::Left => 1,
+                crate::api::types::PreviewAlign::Center => 2,
+                crate::api::types::PreviewAlign::Right => 3,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::types::PreviewBlock {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::types::PreviewBlock::Heading { level, id, inlines } => {
+                <i32>::sse_encode(0, serializer);
+                <u32>::sse_encode(level, serializer);
+                <String>::sse_encode(id, serializer);
+                <Vec<crate::api::types::PreviewInline>>::sse_encode(inlines, serializer);
+            }
+            crate::api::types::PreviewBlock::Paragraph { inlines } => {
+                <i32>::sse_encode(1, serializer);
+                <Vec<crate::api::types::PreviewInline>>::sse_encode(inlines, serializer);
+            }
+            crate::api::types::PreviewBlock::List {
+                ordered,
+                start,
+                tight,
+                items,
+            } => {
+                <i32>::sse_encode(2, serializer);
+                <bool>::sse_encode(ordered, serializer);
+                <u32>::sse_encode(start, serializer);
+                <bool>::sse_encode(tight, serializer);
+                <Vec<crate::api::types::PreviewListItem>>::sse_encode(items, serializer);
+            }
+            crate::api::types::PreviewBlock::Quote { blocks } => {
+                <i32>::sse_encode(3, serializer);
+                <Vec<crate::api::types::PreviewBlock>>::sse_encode(blocks, serializer);
+            }
+            crate::api::types::PreviewBlock::Code {
+                language,
+                runs,
+                copy,
+            } => {
+                <i32>::sse_encode(4, serializer);
+                <Option<String>>::sse_encode(language, serializer);
+                <Vec<crate::api::types::PreviewCodeRun>>::sse_encode(runs, serializer);
+                <u32>::sse_encode(copy, serializer);
+            }
+            crate::api::types::PreviewBlock::Rule => {
+                <i32>::sse_encode(5, serializer);
+            }
+            crate::api::types::PreviewBlock::Table { aligns, head, rows } => {
+                <i32>::sse_encode(6, serializer);
+                <Vec<crate::api::types::PreviewAlign>>::sse_encode(aligns, serializer);
+                <Vec<crate::api::types::PreviewCell>>::sse_encode(head, serializer);
+                <Vec<crate::api::types::PreviewRow>>::sse_encode(rows, serializer);
+            }
+            crate::api::types::PreviewBlock::Figure { kind, svg } => {
+                <i32>::sse_encode(7, serializer);
+                <crate::api::types::PreviewFigureKind>::sse_encode(kind, serializer);
+                <crate::api::types::PreviewSvg>::sse_encode(svg, serializer);
+            }
+            crate::api::types::PreviewBlock::EmptyDrawing => {
+                <i32>::sse_encode(8, serializer);
+            }
+            crate::api::types::PreviewBlock::Failed {
+                badge,
+                detail,
+                language,
+                code,
+                copy,
+            } => {
+                <i32>::sse_encode(9, serializer);
+                <String>::sse_encode(badge, serializer);
+                <String>::sse_encode(detail, serializer);
+                <Option<String>>::sse_encode(language, serializer);
+                <String>::sse_encode(code, serializer);
+                <Option<u32>>::sse_encode(copy, serializer);
+            }
+            crate::api::types::PreviewBlock::Query { columns, rows } => {
+                <i32>::sse_encode(10, serializer);
+                <Vec<String>>::sse_encode(columns, serializer);
+                <Vec<crate::api::types::PreviewQueryRow>>::sse_encode(rows, serializer);
+            }
+            crate::api::types::PreviewBlock::QueryInvalid { code, message } => {
+                <i32>::sse_encode(11, serializer);
+                <String>::sse_encode(code, serializer);
+                <String>::sse_encode(message, serializer);
+            }
+            crate::api::types::PreviewBlock::Html { text } => {
+                <i32>::sse_encode(12, serializer);
+                <String>::sse_encode(text, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
+impl SseEncode for crate::api::types::PreviewCell {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<crate::api::types::PreviewInline>>::sse_encode(self.inlines, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::PreviewCodeRun {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.text, serializer);
+        <Option<u32>>::sse_encode(self.color, serializer);
+        <bool>::sse_encode(self.bold, serializer);
+        <bool>::sse_encode(self.italic, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::PreviewFigureKind {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::types::PreviewFigureKind::Math => 0,
+                crate::api::types::PreviewFigureKind::Diagram => 1,
+                crate::api::types::PreviewFigureKind::Drawing => 2,
+                crate::api::types::PreviewFigureKind::Plugin => 3,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::types::PreviewInline {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::types::PreviewInline::Text {
+                text,
+                bold,
+                italic,
+                strike,
+                code,
+            } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(text, serializer);
+                <bool>::sse_encode(bold, serializer);
+                <bool>::sse_encode(italic, serializer);
+                <bool>::sse_encode(strike, serializer);
+                <bool>::sse_encode(code, serializer);
+            }
+            crate::api::types::PreviewInline::Link { url, inlines } => {
+                <i32>::sse_encode(1, serializer);
+                <String>::sse_encode(url, serializer);
+                <Vec<crate::api::types::PreviewInline>>::sse_encode(inlines, serializer);
+            }
+            crate::api::types::PreviewInline::Due {
+                url,
+                label,
+                title,
+                tone,
+            } => {
+                <i32>::sse_encode(2, serializer);
+                <String>::sse_encode(url, serializer);
+                <String>::sse_encode(label, serializer);
+                <String>::sse_encode(title, serializer);
+                <crate::api::types::DueTone>::sse_encode(tone, serializer);
+            }
+            crate::api::types::PreviewInline::Math { svg } => {
+                <i32>::sse_encode(3, serializer);
+                <crate::api::types::PreviewSvg>::sse_encode(svg, serializer);
+            }
+            crate::api::types::PreviewInline::Image {
+                content_type,
+                bytes,
+                alt,
+                width,
+            } => {
+                <i32>::sse_encode(4, serializer);
+                <String>::sse_encode(content_type, serializer);
+                <Vec<u8>>::sse_encode(bytes, serializer);
+                <String>::sse_encode(alt, serializer);
+                <Option<u32>>::sse_encode(width, serializer);
+            }
+            crate::api::types::PreviewInline::Missing { text } => {
+                <i32>::sse_encode(5, serializer);
+                <String>::sse_encode(text, serializer);
+            }
+            crate::api::types::PreviewInline::Break => {
+                <i32>::sse_encode(6, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseEncode for crate::api::types::PreviewLink {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -34736,6 +36041,14 @@ impl SseEncode for crate::api::types::PreviewLink {
     }
 }
 
+impl SseEncode for crate::api::types::PreviewListItem {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Option<crate::api::types::PreviewTaskBox>>::sse_encode(self.task, serializer);
+        <Vec<crate::api::types::PreviewBlock>>::sse_encode(self.blocks, serializer);
+    }
+}
+
 impl SseEncode for crate::api::types::PreviewOptions {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -34744,6 +36057,40 @@ impl SseEncode for crate::api::types::PreviewOptions {
         <f32>::sse_encode(self.size, serializer);
         <i32>::sse_encode(self.utc_offset_secs, serializer);
         <Vec<crate::api::types::SyntaxStyleRow>>::sse_encode(self.code, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::PreviewQueryRow {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.url, serializer);
+        <String>::sse_encode(self.title, serializer);
+        <Vec<String>>::sse_encode(self.cells, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::PreviewRow {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<crate::api::types::PreviewCell>>::sse_encode(self.cells, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::PreviewSvg {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.markup, serializer);
+        <f32>::sse_encode(self.width, serializer);
+        <f32>::sse_encode(self.height, serializer);
+        <Option<f32>>::sse_encode(self.baseline, serializer);
+    }
+}
+
+impl SseEncode for crate::api::types::PreviewTaskBox {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.checked, serializer);
+        <Option<u32>>::sse_encode(self.index, serializer);
     }
 }
 
