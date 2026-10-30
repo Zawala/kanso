@@ -13,6 +13,7 @@ import 'package:injectable/injectable.dart';
 import '../../bridge/api/types.dart' show DiagramRenderer;
 import '../../configs/kanso_palette.dart';
 import '../../models/data/appearance_status.dart';
+import '../../models/data/application_error.dart';
 import '../../models/data/kanso_font_family.dart';
 import '../../models/data/kanso_fonts.dart';
 import '../../models/data/kanso_icon_set.dart';
@@ -20,6 +21,7 @@ import '../../models/data/kanso_text_size.dart';
 import '../../models/data/preferences.dart';
 import '../../models/data/theme_selection.dart';
 import '../../models/repos/abs/gallery_repository.dart';
+import '../../models/repos/abs/google_font_repository.dart';
 import '../../models/repos/abs/preferences_repository.dart';
 import '../../models/repos/abs/renderer_repository.dart';
 import '../../models/repos/abs/themes_repository.dart';
@@ -42,8 +44,13 @@ part 'appearance_state.dart';
 /// theme that cannot be read at start is replaced the same way.
 @injectable
 class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
-  AppearanceBloc(this._preferences, this._renderer, this._gallery, this._themes)
-    : super(const AppearanceState()) {
+  AppearanceBloc(
+    this._preferences,
+    this._renderer,
+    this._gallery,
+    this._themes, {
+    this._googleFonts,
+  }) : super(const AppearanceState()) {
     // One handler for every event, so they all run one after another in the
     // order they came (a transformer orders only the events of one handler).
     on<AppearanceEvent>(
@@ -70,23 +77,29 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
         ),
         AppearanceEditorFontChangedEvent(:final font) => _changeFonts(
           emit,
-          state.fonts.copyWith(editorFont: font),
+          state.fonts.copyWith(editorFont: font, editorGoogleFont: null),
         ),
         AppearancePreviewFontChangedEvent(:final font) => _changeFonts(
           emit,
-          state.fonts.copyWith(previewFont: font),
+          state.fonts.copyWith(previewFont: font, previewGoogleFont: null),
         ),
         // Code is always monospaced: any other family is ignored.
         AppearanceCodeFontChangedEvent(:final font) =>
           font.monospaced
               ? _changeFonts(emit, state.fonts.copyWith(codeFont: font))
               : Future<void>.value(),
-        AppearanceTextSizeChangedEvent(:final size) => _onTextSizeChanged(
-          size,
+        AppearanceTextSizeChangedEvent(:final scale) => _onTextSizeChanged(
+          scale,
           emit,
         ),
-        AppearancePreviewTextSizeChangedEvent(:final size) =>
-          _onPreviewTextSizeChanged(size, emit),
+        AppearancePreviewTextSizeChangedEvent(:final scale) =>
+          _onPreviewTextSizeChanged(scale, emit),
+        AppearanceInterfaceTextSizeChangedEvent(:final scale) =>
+          _onInterfaceTextSizeChanged(scale, emit),
+        AppearanceGoogleFontPickedEvent(:final family) => _onGoogleFontPicked(
+          family,
+          emit,
+        ),
         AppearanceDiagramRendererChangedEvent(:final renderer) =>
           _onDiagramRendererChanged(renderer, emit),
         AppearanceThemeChangedEvent(:final id) => _onThemeChanged(id, emit),
@@ -102,6 +115,7 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
   final RendererRepository _renderer;
   final GalleryRepository _gallery;
   final ThemesRepository _themes;
+  final GoogleFontRepository? _googleFonts;
   late final StreamSubscription<String> _themeChanges;
   final Map<String, KansoPalette> _palettes = <String, KansoPalette>{
     _key('kanso-light', 'kanso-light', 'kanso-light'): KansoPalette.kansoLight,
@@ -128,15 +142,28 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
     }
     final shown = await _paletteSlots(selection);
     final icons = await _iconSet(preferences.iconTheme);
+    var fonts = preferences.fonts;
+    String? googleFontError;
+    final googleFont = fonts.editorGoogleFont ?? fonts.previewGoogleFont;
+    if (googleFont != null) {
+      final result = await _googleFonts?.load(googleFont);
+      if (result == null || result.isLeft()) {
+        fonts = fonts.copyWith(editorGoogleFont: null, previewGoogleFont: null);
+        googleFontError = 'cache';
+        await _preferences.update((current) => current.copyWith(fonts: fonts));
+      }
+    }
     emit(
       AppearanceState(
         selection: selection,
         light: shown.light,
         dark: shown.dark,
         iconSet: icons ?? KansoIconSet.lucide,
-        fonts: preferences.fonts,
+        fonts: fonts,
+        googleFontError: googleFontError,
         textSize: preferences.textSize,
         previewTextSize: preferences.previewTextSize,
+        interfaceTextSize: preferences.interfaceTextSize,
         diagramRenderer: preferences.diagramRenderer,
         status: loaded.isRight() && shown.complete && icons != null
             ? AppearanceStatus.ready
@@ -201,21 +228,76 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
   }
 
   Future<void> _onTextSizeChanged(
-    KansoTextSize size,
+    double scale,
     Emitter<AppearanceState> emit,
   ) async {
-    emit(state.copyWith(textSize: size));
-    await _preferences.update((current) => current.copyWith(textSize: size));
+    final normalized = normalizeTextScale(scale);
+    emit(state.copyWith(textSize: normalized));
+    await _preferences.update(
+      (current) => current.copyWith(textSize: normalized),
+    );
   }
 
   Future<void> _onPreviewTextSizeChanged(
-    KansoTextSize size,
+    double scale,
     Emitter<AppearanceState> emit,
   ) async {
-    emit(state.copyWith(previewTextSize: size));
+    final normalized = normalizeTextScale(scale);
+    emit(state.copyWith(previewTextSize: normalized));
     await _preferences.update(
-      (current) => current.copyWith(previewTextSize: size),
+      (current) => current.copyWith(previewTextSize: normalized),
     );
+  }
+
+  Future<void> _onInterfaceTextSizeChanged(
+    double scale,
+    Emitter<AppearanceState> emit,
+  ) async {
+    final normalized = normalizeInterfaceTextScale(scale);
+    emit(state.copyWith(interfaceTextSize: normalized));
+    await _preferences.update(
+      (current) => current.copyWith(interfaceTextSize: normalized),
+    );
+  }
+
+  Future<void> _onGoogleFontPicked(
+    String family,
+    Emitter<AppearanceState> emit,
+  ) async {
+    emit(
+      state.copyWith(
+        googleFontLoading: true,
+        googleFontError: null,
+      ),
+    );
+    final result = await _googleFonts?.load(family);
+    if (result == null || result.isLeft()) {
+      final offline =
+          result?.fold((error) => error is NetworkError, (_) => false) ?? false;
+      emit(
+        state.copyWith(
+          googleFontLoading: false,
+          googleFontError:
+              result?.fold((error) => error.message, (_) => null) ??
+              'Google Fonts are unavailable.',
+          googleFontOffline: offline,
+        ),
+      );
+      return;
+    }
+    final loadedFamily = result.getOrElse(() => family);
+    final fonts = state.fonts.copyWith(
+      editorGoogleFont: loadedFamily,
+      previewGoogleFont: loadedFamily,
+    );
+    emit(
+      state.copyWith(
+        fonts: fonts,
+        googleFontLoading: false,
+        googleFontError: null,
+      ),
+    );
+    await _preferences.update((current) => current.copyWith(fonts: fonts));
   }
 
   Future<void> _onDiagramRendererChanged(

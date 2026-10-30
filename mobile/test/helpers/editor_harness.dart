@@ -8,16 +8,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/editor.dart';
 import 'package:kanso/core/bridge/api/library.dart';
 import 'package:kanso/core/bridge/api/types.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/editor/models/repos/impl/rust_editor_repository.dart';
 import 'package:kanso/editor/utils/editor_window.dart';
 import 'package:kanso/editor/views/controllers/kanso_markdown_controller.dart';
 import 'package:kanso/editor/views/widgets/markdown_editor.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
 
 import 'core_library.dart';
 import 'fake_editor_document.dart';
+import 'kanso_test_app.dart';
 
 /// A note open for editing in the real Rust core, with the editor drawn on
 /// it: for widget tests that type against the library.
@@ -105,17 +104,13 @@ Future<EditorHarness> pumpEditor(
     controller.dispose();
   });
   await tester.pumpWidget(
-    MaterialApp(
-      theme: KansoTheme.light.copyWith(platform: platform),
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: MarkdownEditor(
-            controller: controller,
-            focusNode: focusNode,
-            spellCheckService: spellCheckService,
-          ),
+    KansoTestApp(
+      platform: platform,
+      home: SingleChildScrollView(
+        child: MarkdownEditor(
+          controller: controller,
+          focusNode: focusNode,
+          spellCheckService: spellCheckService,
         ),
       ),
     ),
@@ -163,17 +158,12 @@ Future<KansoMarkdownController> pumpFakeEditor(
     controller.dispose();
   });
   await tester.pumpWidget(
-    MaterialApp(
-      theme: KansoTheme.light,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: MarkdownEditor(
-            controller: controller,
-            focusNode: focusNode,
-            spellCheckService: spellCheckService,
-          ),
+    KansoTestApp(
+      home: SingleChildScrollView(
+        child: MarkdownEditor(
+          controller: controller,
+          focusNode: focusNode,
+          spellCheckService: spellCheckService,
         ),
       ),
     ),

@@ -202,6 +202,54 @@ void main() {
         isTrue,
       );
     });
+
+    testWidgets('lets go of the keyboard when the tap is outside it', (
+      tester,
+    ) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await pumpKanso(
+        tester,
+        SizedBox(
+          width: 300,
+          child: KansoTextField(
+            controller: controller,
+            label: 'Username',
+            hint: 'ana',
+          ),
+        ),
+      );
+      await tester.enterText(find.byType(EditableText), 'bo');
+      await tester.pump();
+      final field = tester.widget<EditableText>(find.byType(EditableText));
+      expect(field.focusNode.hasFocus, isTrue);
+
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pump();
+      expect(field.focusNode.hasFocus, isFalse);
+    });
+
+    testWidgets('an outlined hint-only field also lets the keyboard go', (
+      tester,
+    ) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await pumpKanso(
+        tester,
+        SizedBox(
+          width: 300,
+          child: KansoTextField(controller: controller, hint: 'Search'),
+        ),
+      );
+      await tester.enterText(find.byType(EditableText), 'tea');
+      await tester.pump();
+      final field = tester.widget<EditableText>(find.byType(EditableText));
+      expect(field.focusNode.hasFocus, isTrue);
+
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pump();
+      expect(field.focusNode.hasFocus, isFalse);
+    });
   });
 
   group('KansoCodeDisplay', () {

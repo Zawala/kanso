@@ -15,6 +15,7 @@ import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_bottom_sheet_route.dart';
 import '../../../core/views/widgets/kanso_check_row.dart';
 import '../../../core/views/widgets/kanso_confirm_sheet.dart';
+import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../core/views/widgets/kanso_pressable.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_sheet_group.dart';
@@ -66,9 +67,7 @@ class NoteActionsSheet extends StatelessWidget {
     final host = Navigator.of(context, rootNavigator: true).overlay!.context;
 
     void say(String message) {
-      ScaffoldMessenger.maybeOf(host)?.showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      KansoFeedback.show(context, message);
     }
 
     void change(NoteChange change) {

@@ -250,25 +250,29 @@ void main() {
       expect(problem, parts);
     });
 
-    test(
-      'a sign-in answers a password no account can have like a wrong one',
-      () {
-        expect(
-          AccountForms.signInProblem('ana', 'short'),
-          FormProblem.credentialsDontMatch,
-        );
-        expect(
-          AccountForms.signInProblem('a b', good),
-          FormProblem.usernameInvalid,
-        );
-        expect(AccountForms.signInProblem('Ana', good), isNull);
-        expect(
-          AccountForms.unlockProblem('short', 'ana'),
-          FormProblem.credentialsDontMatch,
-        );
-        expect(AccountForms.unlockProblem(good, 'ana'), isNull);
-      },
-    );
+    test('a sign-in sends any non-empty password to the server', () {
+      // Existing accounts may have short passwords, or even a password that
+      // equals their username. The server alone can decide those.
+      expect(AccountForms.signInProblem('ana', 'x'), isNull);
+      expect(AccountForms.signInProblem('ana', 'short'), isNull);
+      expect(AccountForms.signInProblem('ana', 'ana'), isNull);
+      expect(AccountForms.signInProblem('ana', good), isNull);
+      expect(
+        AccountForms.signInProblem('ana', ''),
+        FormProblem.credentialsDontMatch,
+      );
+      expect(
+        AccountForms.signInProblem('a b', good),
+        FormProblem.usernameInvalid,
+      );
+      expect(AccountForms.signInProblem('Ana', good), isNull);
+      expect(AccountForms.unlockProblem('x', 'ana'), isNull);
+      expect(AccountForms.unlockProblem(good, 'ana'), isNull);
+      expect(
+        AccountForms.unlockProblem('', 'ana'),
+        FormProblem.credentialsDontMatch,
+      );
+    });
 
     test('a recovery needs a name, a key and a new password twice', () {
       FormProblem? problem({

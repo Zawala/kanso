@@ -26,12 +26,24 @@ abstract class AppearanceState with _$AppearanceState {
 
     @Default(KansoFonts()) KansoFonts fonts,
 
-    /// The size of the editor's text.
-    @Default(KansoTextSize.standard) KansoTextSize textSize,
+    /// Whether the selected Google Font is downloading or loading from cache.
+    @Default(false) bool googleFontLoading,
 
-    /// The size of the rendered preview's text. The preview applies it where
-    /// it sets its text size; the editor does not use it.
-    @Default(KansoTextSize.standard) KansoTextSize previewTextSize,
+    /// A Google Fonts failure detail used by the settings feedback.
+    String? googleFontError,
+
+    /// Whether the last Google Fonts operation failed because the network
+    /// could not be reached.
+    @Default(false) bool googleFontOffline,
+
+    /// The editor's note text scale.
+    @Default(1.0) double textSize,
+
+    /// The rendered preview's note text scale. The editor does not use it.
+    @Default(1.0) double previewTextSize,
+
+    /// The interface's label and text scale. Note text has its own scales.
+    @Default(1.0) double interfaceTextSize,
 
     /// What draws Mermaid diagrams.
     @Default(DiagramRenderer.pele) DiagramRenderer diagramRenderer,

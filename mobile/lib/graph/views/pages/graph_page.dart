@@ -13,6 +13,8 @@ import '../../../core/router/kanso_routes.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
+import '../../../core/views/widgets/kanso_page.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../injection.dart';
 import '../../state/graph/graph_bloc.dart';
@@ -33,7 +35,7 @@ class GraphPage extends StatelessWidget {
         : GraphRequest.local(center: centerId!, hops: hops);
     return BlocProvider<GraphBloc>(
       create: (_) => getIt<GraphBloc>()..add(GraphEvent.started(request)),
-      child: Scaffold(
+      child: KansoPage(
         backgroundColor: context.colors.app,
         body: Column(
           children: <Widget>[
@@ -62,7 +64,7 @@ class GraphPage extends StatelessWidget {
                       ),
                     Expanded(
                       child: state.loading && state.layout == null
-                          ? const Center(child: CircularProgressIndicator())
+                          ? const Center(child: KansoSpinner())
                           : state.failed
                           ? Center(
                               child: Column(

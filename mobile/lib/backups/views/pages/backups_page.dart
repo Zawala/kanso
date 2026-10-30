@@ -5,14 +5,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-
 import '../../../core/configs/kanso_icons.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/load_status.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_button.dart';
+import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
+import '../../../core/views/widgets/kanso_page.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../models/data/backups_notice.dart';
 import '../../models/data/backups_problem.dart';
@@ -26,7 +28,7 @@ class BackupsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return Scaffold(
+    return KansoPage(
       backgroundColor: context.colors.app,
       body: Column(
         children: <Widget>[
@@ -46,9 +48,7 @@ class BackupsPage extends StatelessWidget {
                   final message = notice == BackupsNotice.madeNow
                       ? l10n.backupsNoticeMadeNow
                       : l10n.backupsNoticeDeleted;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(message)),
-                  );
+                  KansoFeedback.show(context, message);
                 }
               },
               builder: (context, state) => ListView(
@@ -92,7 +92,7 @@ class BackupsPage extends StatelessWidget {
                       label: l10n.backupsLoading,
                       child: const Padding(
                         padding: EdgeInsets.all(KansoSpacing.md),
-                        child: LinearProgressIndicator(),
+                        child: KansoProgressBar(),
                       ),
                     )
                   else if (state.status == LoadStatus.failed)

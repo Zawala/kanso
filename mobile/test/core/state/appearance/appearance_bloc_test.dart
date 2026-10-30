@@ -18,9 +18,9 @@ import 'package:kanso/core/models/data/installed_theme.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
 import 'package:kanso/core/models/data/kanso_icon_set.dart';
-import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
+import 'package:kanso/core/models/repos/abs/google_font_repository.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/utils/palette_from_tokens.dart';
 import 'package:mocktail/mocktail.dart';
@@ -32,6 +32,8 @@ import '../../../helpers/theme_tokens.dart';
 
 final KansoPalette _nord = fakePalette('nord', dark: true);
 final KansoPalette _github = fakePalette('github-light');
+
+class MockGoogleFontRepository extends Mock implements GoogleFontRepository {}
 
 const IconThemeRow _phosphorRow = IconThemeRow(
   id: 'phosphor',
@@ -94,6 +96,7 @@ void main() {
   late MockRendererRepository renderer;
   late MockGalleryRepository gallery;
   late FixtureThemesRepository themes;
+  late MockGoogleFontRepository googleFonts;
   late Preferences saved;
 
   setUpAll(() {
@@ -105,6 +108,10 @@ void main() {
     preferences = MockPreferencesRepository();
     renderer = MockRendererRepository();
     gallery = MockGalleryRepository();
+    googleFonts = MockGoogleFontRepository();
+    when(() => googleFonts.load(any())).thenAnswer(
+      (_) async => const Right<ApplicationError, String>('Lora'),
+    );
     themes = FixtureThemesRepository(
       themes: <InstalledTheme>[
         ...defaultFixtureThemes(),
@@ -152,8 +159,13 @@ void main() {
     );
   });
 
-  AppearanceBloc build() =>
-      AppearanceBloc(preferences, renderer, gallery, themes);
+  AppearanceBloc build() => AppearanceBloc(
+    preferences,
+    renderer,
+    gallery,
+    themes,
+    googleFonts: googleFonts,
+  );
 
   group('AppearanceBloc', () {
     test('starts loading, in the Kanso themes, following the system', () {
@@ -164,7 +176,9 @@ void main() {
       expect(state.selection, const ThemeSelection());
       expect(state.themeMode, ThemeMode.system);
       expect(state.fonts, const KansoFonts());
-      expect(state.textSize, KansoTextSize.standard);
+      expect(state.textSize, 1.0);
+      expect(state.previewTextSize, 1.0);
+      expect(state.interfaceTextSize, 1.0);
     });
 
     blocTest<AppearanceBloc, AppearanceState>(
@@ -192,7 +206,9 @@ void main() {
             dark: 'nord',
           ),
           fonts: KansoFonts(editorFont: KansoFontFamily.literata),
-          textSize: KansoTextSize.large,
+          textSize: 1.15,
+          previewTextSize: 1.2,
+          interfaceTextSize: 1.1,
         );
       },
       build: build,
@@ -203,7 +219,9 @@ void main() {
           light: _nord,
           dark: _nord,
           fonts: saved.fonts,
-          textSize: KansoTextSize.large,
+          textSize: 1.15,
+          previewTextSize: 1.2,
+          interfaceTextSize: 1.1,
           status: AppearanceStatus.ready,
         ),
       ],
@@ -480,10 +498,9 @@ void main() {
           ApplicationError.storage(message: 'Disk full.'),
         ),
       );
-      final bloc = build()
-        ..add(const AppearanceEvent.textSizeChanged(KansoTextSize.large));
+      final bloc = build()..add(const AppearanceEvent.textSizeChanged(1.15));
       await bloc.stream.first;
-      expect(bloc.state.textSize, KansoTextSize.large);
+      expect(bloc.state.textSize, 1.15);
       await bloc.close();
     });
 
@@ -502,6 +519,100 @@ void main() {
         saved.fonts,
         const KansoFonts(editorFont: KansoFontFamily.literata),
       ),
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'Google Font download applies the family and persists its selection',
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.googleFontPicked('Lora')),
+      expect: () => const <AppearanceState>[
+        AppearanceState(googleFontLoading: true),
+        AppearanceState(
+          fonts: KansoFonts(
+            editorGoogleFont: 'Lora',
+            previewGoogleFont: 'Lora',
+          ),
+        ),
+      ],
+      verify: (_) {
+        expect(saved.fonts.editorGoogleFont, 'Lora');
+        expect(saved.fonts.previewGoogleFont, 'Lora');
+        verify(() => googleFonts.load('Lora')).called(1);
+      },
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'a failed Google Font download leaves bundled choices active',
+      setUp: () {
+        when(() => googleFonts.load(any())).thenAnswer(
+          (_) async => const Left<ApplicationError, String>(
+            ApplicationError.network(message: 'offline'),
+          ),
+        );
+      },
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.googleFontPicked('Lora')),
+      expect: () => const <AppearanceState>[
+        AppearanceState(googleFontLoading: true),
+        AppearanceState(
+          googleFontError: 'offline',
+          googleFontOffline: true,
+        ),
+      ],
+      verify: (_) {
+        expect(saved.fonts, const KansoFonts());
+        verifyNever(() => preferences.update(any()));
+      },
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'startup restores a cached Google Font selection',
+      setUp: () {
+        saved = const Preferences(
+          fonts: KansoFonts(
+            editorGoogleFont: 'Lora',
+            previewGoogleFont: 'Lora',
+          ),
+        );
+      },
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.started()),
+      expect: () => const <AppearanceState>[
+        AppearanceState(
+          fonts: KansoFonts(
+            editorGoogleFont: 'Lora',
+            previewGoogleFont: 'Lora',
+          ),
+          status: AppearanceStatus.ready,
+        ),
+      ],
+      verify: (_) => verify(() => googleFonts.load('Lora')).called(1),
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'startup falls back to bundled fonts if the cached file is gone',
+      setUp: () {
+        saved = const Preferences(
+          fonts: KansoFonts(
+            editorGoogleFont: 'Lora',
+            previewGoogleFont: 'Lora',
+          ),
+        );
+        when(() => googleFonts.load(any())).thenAnswer(
+          (_) async => const Left<ApplicationError, String>(
+            ApplicationError.storage(message: 'missing cache'),
+          ),
+        );
+      },
+      build: build,
+      act: (bloc) => bloc.add(const AppearanceEvent.started()),
+      expect: () => const <AppearanceState>[
+        AppearanceState(
+          googleFontError: 'cache',
+          status: AppearanceStatus.ready,
+        ),
+      ],
+      verify: (_) => expect(saved.fonts, const KansoFonts()),
     );
 
     blocTest<AppearanceBloc, AppearanceState>(
@@ -557,13 +668,50 @@ void main() {
       'textSizeChanged emits each size chosen and saves the last',
       build: build,
       act: (bloc) => bloc
-        ..add(const AppearanceEvent.textSizeChanged(KansoTextSize.large))
-        ..add(const AppearanceEvent.textSizeChanged(KansoTextSize.small)),
+        ..add(const AppearanceEvent.textSizeChanged(1.15))
+        ..add(const AppearanceEvent.textSizeChanged(0.9)),
       expect: () => <AppearanceState>[
-        const AppearanceState(textSize: KansoTextSize.large),
-        const AppearanceState(textSize: KansoTextSize.small),
+        const AppearanceState(textSize: 1.15),
+        const AppearanceState(textSize: 0.9),
       ],
-      verify: (_) => expect(saved.textSize, KansoTextSize.small),
+      verify: (_) => expect(saved.textSize, 0.9),
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'textSizeChanged rounds and bounds before saving',
+      build: build,
+      act: (bloc) => bloc
+        ..add(const AppearanceEvent.textSizeChanged(1.23))
+        ..add(const AppearanceEvent.previewTextSizeChanged(2)),
+      expect: () => const <AppearanceState>[
+        AppearanceState(textSize: 1.25),
+        AppearanceState(textSize: 1.25, previewTextSize: 1.8),
+      ],
+      verify: (_) {
+        expect(saved.textSize, 1.25);
+        expect(saved.previewTextSize, 1.8);
+      },
+    );
+
+    blocTest<AppearanceBloc, AppearanceState>(
+      'interfaceTextSizeChanged changes only the interface and saves the '
+      'normalized scale',
+      build: build,
+      act: (bloc) => bloc
+        ..add(const AppearanceEvent.interfaceTextSizeChanged(1.23))
+        ..add(const AppearanceEvent.interfaceTextSizeChanged(2)),
+      expect: () => const <AppearanceState>[
+        AppearanceState(interfaceTextSize: 1.25),
+        AppearanceState(interfaceTextSize: 1.3),
+      ],
+      verify: (bloc) {
+        expect(bloc.state.interfaceTextSize, 1.3);
+        expect(bloc.state.textSize, 1.0);
+        expect(bloc.state.previewTextSize, 1.0);
+        expect(saved.interfaceTextSize, 1.3);
+        expect(saved.textSize, 1.0);
+        expect(saved.previewTextSize, 1.0);
+      },
     );
 
     blocTest<AppearanceBloc, AppearanceState>(
@@ -584,7 +732,7 @@ void main() {
       build: build,
       act: (bloc) => bloc
         ..add(const AppearanceEvent.themePicked('nord', dark: true))
-        ..add(const AppearanceEvent.textSizeChanged(KansoTextSize.larger))
+        ..add(const AppearanceEvent.textSizeChanged(1.3))
         ..add(const AppearanceEvent.editorFontChanged(KansoFontFamily.inter))
         ..add(const AppearanceEvent.previewFontChanged(KansoFontFamily.inter)),
       verify: (bloc) {
@@ -593,7 +741,7 @@ void main() {
           AppearanceState(
             selection: const ThemeSelection(ui: 'nord', dark: 'nord'),
             dark: _nord,
-            textSize: KansoTextSize.larger,
+            textSize: 1.3,
             fonts: const KansoFonts(
               editorFont: KansoFontFamily.inter,
               previewFont: KansoFontFamily.inter,
@@ -604,7 +752,7 @@ void main() {
           saved,
           Preferences(
             themeSelection: bloc.state.selection,
-            textSize: KansoTextSize.larger,
+            textSize: 1.3,
             fonts: bloc.state.fonts,
           ),
         );
@@ -793,8 +941,7 @@ void main() {
         descending: false,
         backupNoticeSeen: true,
       );
-      final bloc = build()
-        ..add(const AppearanceEvent.textSizeChanged(KansoTextSize.large));
+      final bloc = build()..add(const AppearanceEvent.textSizeChanged(1.15));
       await bloc.stream.first;
       await Future<void>.delayed(Duration.zero);
       expect(saved.sort, SortKey.title);
@@ -929,19 +1076,31 @@ void main() {
 
     group('the preview text size and the diagrams', () {
       blocTest<AppearanceBloc, AppearanceState>(
+        'textSizeChanged changes only the editor text size',
+        build: build,
+        act: (bloc) => bloc.add(
+          const AppearanceEvent.textSizeChanged(1.3),
+        ),
+        verify: (bloc) {
+          expect(bloc.state.textSize, 1.3);
+          expect(bloc.state.previewTextSize, 1.0);
+        },
+      );
+
+      blocTest<AppearanceBloc, AppearanceState>(
         'previewTextSizeChanged changes only the preview text size and saves '
         'it',
         build: build,
         act: (bloc) => bloc.add(
-          const AppearanceEvent.previewTextSizeChanged(KansoTextSize.larger),
+          const AppearanceEvent.previewTextSizeChanged(1.3),
         ),
         expect: () => const <AppearanceState>[
-          AppearanceState(previewTextSize: KansoTextSize.larger),
+          AppearanceState(previewTextSize: 1.3),
         ],
         verify: (bloc) {
-          expect(bloc.state.textSize, KansoTextSize.standard);
-          expect(saved.previewTextSize, KansoTextSize.larger);
-          expect(saved.textSize, KansoTextSize.standard);
+          expect(bloc.state.textSize, 1.0);
+          expect(saved.previewTextSize, 1.3);
+          expect(saved.textSize, 1.0);
         },
       );
 
@@ -964,7 +1123,7 @@ void main() {
         'started tells the core the saved diagram renderer',
         setUp: () {
           saved = const Preferences(
-            previewTextSize: KansoTextSize.large,
+            previewTextSize: 1.15,
             diagramRenderer: DiagramRenderer.kanso,
           );
         },
@@ -972,7 +1131,7 @@ void main() {
         act: (bloc) => bloc.add(const AppearanceEvent.started()),
         expect: () => const <AppearanceState>[
           AppearanceState(
-            previewTextSize: KansoTextSize.large,
+            previewTextSize: 1.15,
             diagramRenderer: DiagramRenderer.kanso,
             status: AppearanceStatus.ready,
           ),

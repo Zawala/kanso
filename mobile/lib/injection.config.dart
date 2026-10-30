@@ -59,6 +59,7 @@ import 'core/models/repos/abs/capture_repository.dart' as _i23;
 import 'core/models/repos/abs/diagnostics_repository.dart' as _i984;
 import 'core/models/repos/abs/file_picker_repository.dart' as _i205;
 import 'core/models/repos/abs/gallery_repository.dart' as _i550;
+import 'core/models/repos/abs/google_font_repository.dart' as _i1009;
 import 'core/models/repos/abs/haptics_repository.dart' as _i1056;
 import 'core/models/repos/abs/journal_repository.dart' as _i169;
 import 'core/models/repos/abs/library_repository.dart' as _i38;
@@ -76,11 +77,13 @@ import 'core/models/repos/abs/templates_repository.dart' as _i460;
 import 'core/models/repos/abs/themes_repository.dart' as _i40;
 import 'core/models/repos/abs/widget_colors_repository.dart' as _i978;
 import 'core/models/repos/impl/channel_reminder_notifier.dart' as _i740;
+import 'core/models/repos/impl/file_google_font_repository.dart' as _i8;
 import 'core/models/repos/impl/file_preferences_repository.dart' as _i207;
 import 'core/models/repos/impl/file_widget_colors_repository.dart' as _i2;
 import 'core/models/repos/impl/flutter_haptics_repository.dart' as _i438;
 import 'core/models/repos/impl/flutter_licences_repository.dart' as _i1025;
 import 'core/models/repos/impl/flutter_system_share_repository.dart' as _i254;
+import 'core/models/repos/impl/google_font_source.dart' as _i434;
 import 'core/models/repos/impl/package_info_about_repository.dart' as _i489;
 import 'core/models/repos/impl/plugin_auth_session_repository.dart' as _i680;
 import 'core/models/repos/impl/rust_account_repository.dart' as _i450;
@@ -261,6 +264,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i930.NotePlaceRepository>(
       () => _i503.MemoryNotePlaceRepository(),
     );
+    gh.lazySingleton<_i8.GoogleFontRegistrar>(
+      () => _i8.FlutterGoogleFontRegistrar(),
+    );
     gh.lazySingleton<_i874.ReminderNotifier>(
       () => _i740.ChannelReminderNotifier(),
     );
@@ -272,6 +278,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i272.WebLinkRepository>(
       () => _i635.UrlLauncherWebLinkRepository(),
+    );
+    gh.lazySingleton<_i434.GoogleFontStylesheetParser>(
+      () => _i434.GoogleFontCssParser(),
     );
     await gh.singletonAsync<_i392.CrashFolder>(
       () => crashModule.crashFolder(),
@@ -343,6 +352,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i900.MediaPickerRepository>(
       () => _i598.PlatformMediaPickerRepository(gh<_i183.ImagePicker>()),
     );
+    gh.lazySingleton<_i434.GoogleFontSource>(
+      () => _i434.GoogleFontHttpSource(gh<_i434.GoogleFontStylesheetParser>()),
+    );
     gh.lazySingleton<_i1070.CrashContextRepository>(
       () => _i756.PlatformCrashContextRepository(gh<_i909.PatchRepository>()),
     );
@@ -371,6 +383,13 @@ extension GetItInjectableX on _i174.GetIt {
       () => _i388.KansoRouter(
         gh<_i289.DesignGalleryAccess>(),
         gh<_i609.LayoutClassNotifier>(),
+      ),
+    );
+    gh.lazySingleton<_i1009.GoogleFontRepository>(
+      () => _i8.FileGoogleFontRepository(
+        gh<_i72.LibraryFolder>(),
+        gh<_i434.GoogleFontSource>(),
+        gh<_i8.GoogleFontRegistrar>(),
       ),
     );
     await gh.singletonAsync<_i612.NoteWindowRepository>(
@@ -461,6 +480,16 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i242.ImportRepository>(
       () => _i903.RustImportRepository(gh<_i455.KansoLibrary>()),
+    );
+    gh.factory<_i435.PreviewBloc>(
+      () => _i435.PreviewBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i732.RendererRepository>(),
+        gh<_i272.WebLinkRepository>(),
+        gh<_i985.UndoNoticeBloc>(),
+        gh<_i1056.HapticsRepository>(),
+        googleFonts: gh<_i1009.GoogleFontRepository>(),
+      ),
     );
     gh.factory<_i380.TabsBloc>(
       () => _i380.TabsBloc(
@@ -676,14 +705,6 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i374.SharedNotesRepository>(
       () => _i628.RustSharedNotesRepository(gh<_i315.KansoShared>()),
     );
-    gh.factory<_i551.AppearanceBloc>(
-      () => _i551.AppearanceBloc(
-        gh<_i384.PreferencesRepository>(),
-        gh<_i732.RendererRepository>(),
-        gh<_i550.GalleryRepository>(),
-        gh<_i40.ThemesRepository>(),
-      ),
-    );
     gh.factory<_i552.SignInBloc>(
       () => _i552.SignInBloc(
         gh<_i1035.AccountRepository>(),
@@ -693,15 +714,6 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.factory<_i274.DeviceApprovalBloc>(
       () => _i274.DeviceApprovalBloc(gh<_i465.ApprovalsRepository>()),
-    );
-    gh.factory<_i435.PreviewBloc>(
-      () => _i435.PreviewBloc(
-        gh<_i38.LibraryRepository>(),
-        gh<_i732.RendererRepository>(),
-        gh<_i272.WebLinkRepository>(),
-        gh<_i985.UndoNoticeBloc>(),
-        gh<_i1056.HapticsRepository>(),
-      ),
     );
     gh.lazySingleton<_i303.RemindersCoordinator>(
       () => _i303.RemindersCoordinator(
@@ -751,6 +763,15 @@ extension GetItInjectableX on _i174.GetIt {
       () => _i64.VoiceSettingsBloc(
         gh<_i1027.VoiceSettingsRepository>(),
         gh<_i872.DictationRepository>(),
+      ),
+    );
+    gh.factory<_i551.AppearanceBloc>(
+      () => _i551.AppearanceBloc(
+        gh<_i384.PreferencesRepository>(),
+        gh<_i732.RendererRepository>(),
+        gh<_i550.GalleryRepository>(),
+        gh<_i40.ThemesRepository>(),
+        googleFonts: gh<_i1009.GoogleFontRepository>(),
       ),
     );
     gh.factory<_i35.RecoveryKeyBloc>(

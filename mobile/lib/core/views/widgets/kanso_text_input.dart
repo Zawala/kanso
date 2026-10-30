@@ -8,6 +8,7 @@ import '../../configs/kanso_radii.dart';
 import '../../configs/kanso_sizes.dart';
 import '../../configs/kanso_spacing.dart';
 import '../../utils/context_extensions.dart';
+import '../../utils/tap_outside.dart';
 import 'kanso_selection_controls.dart';
 import 'kanso_text_context_menu.dart';
 
@@ -96,7 +97,7 @@ class _KansoTextInputState extends State<KansoTextInput>
     final typography = context.typography;
     // The caret the framework draws is taller on Apple's platforms: ask for
     // less there, so both match.
-    final asked = switch (Theme.of(context).platform) {
+    final asked = switch (context.platform) {
       TargetPlatform.iOS ||
       TargetPlatform.macOS => KansoTextInput.caretHeight - 2,
       _ => KansoTextInput.caretHeight,
@@ -162,10 +163,12 @@ class _KansoTextInputState extends State<KansoTextInput>
                       textCapitalization: widget.textCapitalization,
                       autocorrect: widget.autocorrect,
                       enableSuggestions: widget.autocorrect,
-                      keyboardAppearance: Theme.brightnessOf(context),
+                      keyboardAppearance: context.brightness,
                       selectionControls: selectionControls,
                       contextMenuBuilder: (context, state) =>
                           KansoTextContextMenu(state: state),
+                      onTapOutside: (event) =>
+                          unfocusOnTapOutside(event, focus),
                       onChanged: widget.onChanged,
                       onSubmitted: widget.onSubmitted,
                     ),

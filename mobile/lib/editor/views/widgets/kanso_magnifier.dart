@@ -66,7 +66,7 @@ class KansoMagnifier extends StatelessWidget {
             focalPointOffset: looksAt,
             decoration: MagnifierDecoration(
               shape: CircleBorder(side: BorderSide(color: colors.divider)),
-              shadows: KansoShadows.floating(Theme.brightnessOf(context)),
+              shadows: KansoShadows.floating(context.brightness),
             ),
           ),
         );

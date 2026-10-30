@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../configs/kanso_motion.dart';
 import '../../configs/kanso_shadows.dart';
+import '../../utils/context_extensions.dart';
 import 'kanso_divider.dart';
 import 'kanso_drawer_controller.dart';
 import 'kanso_drawer_scope.dart';
@@ -156,7 +157,7 @@ class KansoDrawerState extends State<KansoDrawer>
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           boxShadow: KansoShadows.sheet(
-                            Theme.brightnessOf(context),
+                            context.brightness,
                           ),
                         ),
                         child: Row(

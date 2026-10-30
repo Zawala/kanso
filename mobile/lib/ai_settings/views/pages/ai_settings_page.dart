@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/ai_settings/ai_settings_bloc.dart';
 import '../widgets/ai_settings_pane.dart';
@@ -19,8 +20,7 @@ class AiSettingsPage extends StatelessWidget {
     return BlocProvider<AiSettingsBloc>(
       create: (context) =>
           getIt<AiSettingsBloc>()..add(const AiSettingsEvent.started()),
-      child: Scaffold(
-        resizeToAvoidBottomInset: true,
+      child: KansoPage(
         backgroundColor: context.colors.app,
         body: const AiSettingsPane(),
       ),

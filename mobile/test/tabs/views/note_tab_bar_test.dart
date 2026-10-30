@@ -297,10 +297,11 @@ void main() {
       await pumpKanso(tester, _bar(asked, active: 1));
       await tester.tap(find.bySemanticsLabel('All tabs'));
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.done), findsOneWidget);
-      await tester.tap(
-        find.widgetWithText(CheckedPopupMenuItem<int>, 'Note a'),
+      final checked = find.byWidgetPredicate(
+        (widget) => widget is KansoIcon && widget.icon == KansoIcons.check,
       );
+      expect(checked, findsOneWidget);
+      await tester.tap(find.text('Note a').last);
       await tester.pumpAndSettle();
       expect(asked.log, <String>['activate 0']);
     });

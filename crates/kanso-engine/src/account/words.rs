@@ -399,12 +399,14 @@ pub fn check_sign_up(
     Ok((name, password))
 }
 
-/// The Sign in form. A password no account can have is answered like a
-/// wrong one.
+/// The Sign in form (and the password that unlocks a locked session). The
+/// password isn't held to the rules for a new one: whatever its length, the
+/// server says whether it is right. Only an empty one is answered here, like
+/// a wrong one.
 pub fn check_sign_in(username: &str, password: &str) -> Result<(String, Password), String> {
     let name = normalize_username(username).map_err(|err| username_words(err).to_owned())?;
-    let password = Password::new(password, &name)
-        .map_err(|err| error_words(&AccountError::Password(err), ErrorContext::SignIn))?;
+    let password = Password::for_sign_in(password)
+        .ok_or_else(|| error_words(&AccountError::InvalidCredentials, ErrorContext::SignIn))?;
     Ok((name, password))
 }
 
@@ -1059,8 +1061,11 @@ mod tests {
         );
         let (name, _) = check_sign_in(" Ngoni ", "correct horse battery").unwrap();
         assert_eq!(name, "ngoni");
+        // A short password is sent like any other; only nothing typed is
+        // answered here.
+        assert!(check_sign_in("ngoni", "short").is_ok());
         assert_eq!(
-            check_sign_in("ngoni", "short").err(),
+            check_sign_in("ngoni", "").err(),
             Some("That username and password don't match.".to_owned())
         );
         let key = RecoveryKey::from_bytes([7; 16]).display();
@@ -1362,6 +1367,20 @@ mod tests {
                 Ok(_) if password != confirm => prop_assert_eq!(result.err(), Some(PASSWORDS_DIFFER.to_owned())),
                 Ok(_) => prop_assert!(result.is_ok()),
             }
+        }
+
+        /// The Sign in form takes any non-empty password for a valid
+        /// username, whatever its length (even one the rules for a new
+        /// password refuse); only the username is checked offline.
+        #[test]
+        fn prop_sign_in_skips_the_password_rules(
+            username in "[a-z][a-z0-9]{2,12}",
+            password in prop_oneof!["\\PC{1,11}", "\\PC{12,40}", "\\PC{257,300}"],
+            same: bool,
+        ) {
+            let password = if same { username.to_uppercase() } else { password };
+            let (name, _) = check_sign_in(&username, &password).unwrap();
+            prop_assert_eq!(name, username);
         }
 
         /// Any recovery key round-trips through the recovery form, however

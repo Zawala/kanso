@@ -2,8 +2,6 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../../core/configs/kanso_spacing.dart';
@@ -105,19 +103,12 @@ class _CommentComposeSheetState extends State<CommentComposeSheet> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final colors = context.colors;
-    // The keyboard comes up under the sheet, which already has the home
-    // indicator's room.
-    final keyboard = math.max<double>(
-      0,
-      MediaQuery.viewInsetsOf(context).bottom -
-          MediaQuery.paddingOf(context).bottom,
-    );
     return Padding(
-      padding: EdgeInsets.fromLTRB(
+      padding: const EdgeInsets.fromLTRB(
         KansoSpacing.md,
         KansoSpacing.xs,
         KansoSpacing.md,
-        KansoSpacing.md + keyboard,
+        KansoSpacing.md,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

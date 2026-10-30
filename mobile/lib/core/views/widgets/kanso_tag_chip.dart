@@ -22,7 +22,7 @@ class KansoTagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.brightnessOf(context) == Brightness.dark;
+    final dark = context.brightness == Brightness.dark;
     final tint = mutedTagColor(color, dark: dark);
     return Container(
       height: KansoSizes.tagChip,

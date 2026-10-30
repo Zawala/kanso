@@ -6,7 +6,6 @@ import '../../gen/l10n/app_localizations.dart';
 import '../bridge/api/types.dart' show DiagramRenderer;
 import '../models/data/kanso_font_family.dart';
 import '../models/data/kanso_fonts.dart';
-import '../models/data/kanso_text_size.dart';
 
 /// The names of fonts and text sizes, in the current language.
 extension FontLabels on AppLocalizations {
@@ -16,15 +15,8 @@ extension FontLabels on AppLocalizations {
     return font == KansoFontFamily.system ? fontsSystemShort : font.displayName;
   }
 
-  /// What the settings call [size].
-  String textSizeName(KansoTextSize size) {
-    return switch (size) {
-      KansoTextSize.small => textSizeSmall,
-      KansoTextSize.standard => textSizeDefault,
-      KansoTextSize.large => textSizeLarge,
-      KansoTextSize.larger => textSizeLarger,
-    };
-  }
+  /// A note size percentage shown by the control and settings summary.
+  String textScaleName(double scale) => textSizePercent((scale * 100).round());
 
   /// What the settings call the diagram renderer [renderer].
   String diagramRendererName(DiagramRenderer renderer) {

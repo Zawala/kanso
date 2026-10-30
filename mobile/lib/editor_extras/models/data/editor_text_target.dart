@@ -38,4 +38,16 @@ abstract interface class EditorTextTarget {
   /// Replaces the selection with [text] as one undo step: inserts at the
   /// caret when nothing is selected.
   void insertAtSelection(String text);
+
+  /// Replaces [range] with [text] as [replace] does, for text that is still
+  /// changing (words being dictated). When [joining], and nothing else has
+  /// changed the note's text since the last [revise], [range] lies within
+  /// what that one put in and the two are one undo step: undo takes back
+  /// the whole run of revisions at once, not one revision at a time.
+  void revise(TextRange range, String text, {required bool joining});
+
+  /// Ends the run of [revise] calls, so the next one starts a new undo step.
+  /// Dictation calls this when a phrase is finished, even when the final
+  /// result is word-for-word what the last partial already put in the note.
+  void commitRevision();
 }

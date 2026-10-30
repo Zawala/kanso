@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/state/list_navigation/list_navigation_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/note_list/note_list_bloc.dart';
 import '../widgets/note_list_lock_sync.dart';
@@ -50,7 +51,7 @@ class NoteListPage extends StatelessWidget {
         child: NoteListLockSync(
           child: NotebookGateHost(
             place: place,
-            child: Scaffold(
+            child: KansoPage(
               resizeToAvoidBottomInset: false,
               backgroundColor: context.colors.list,
               body: NoteListPane(openNoteId: openNoteId, beside: beside),

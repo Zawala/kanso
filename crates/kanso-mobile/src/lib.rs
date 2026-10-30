@@ -154,7 +154,7 @@ mod voice;
 mod voice_model;
 mod word_goals;
 
-pub use account::AccountHandle;
+pub use account::{AccountHandle, check_new_password};
 pub use account_model::*;
 pub use account_settings::AccountSettings;
 pub use ai::{

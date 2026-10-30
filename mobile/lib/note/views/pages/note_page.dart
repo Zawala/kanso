@@ -11,6 +11,7 @@ import '../../../assist/views/widgets/summarize_note_action.dart';
 import '../../../core/state/navigation_history/navigation_history_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/syntax_theme_id.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../../lock/state/unlock/unlock_bloc.dart';
 import '../../../sharing/state/comments/comments_bloc.dart';
@@ -101,7 +102,7 @@ class NotePage extends StatelessWidget {
               // Unlocking this note, if it is locked.
               BlocProvider<UnlockBloc>(create: (_) => getIt<UnlockBloc>()),
             ],
-            child: Scaffold(
+            child: KansoPage(
               resizeToAvoidBottomInset: false,
               backgroundColor: context.colors.editor,
               body: MultiBlocListener(

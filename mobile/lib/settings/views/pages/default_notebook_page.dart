@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../widgets/default_notebook_pane.dart';
 
 /// Settings › General › Default notebook: the notebook new notes go in.
@@ -13,7 +14,7 @@ class DefaultNotebookPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return KansoPage(
       resizeToAvoidBottomInset: false,
       backgroundColor: context.colors.app,
       body: const DefaultNotebookPane(),

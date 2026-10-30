@@ -109,7 +109,7 @@ pub struct Preview {
     generation: u64,
     store: Arc<Store>,
     images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>>,
-    opened_files: Arc<Mutex<HashMap<String, (String, Vec<u8>)>>>,
+    opened_files: OpenedFiles,
     links: LinkSender,
     /// Where a ticked task box goes.
     edits: ResizeSender,
@@ -435,6 +435,10 @@ impl Preview {
 /// and cached; anything else as the URI says.
 type ImageResolver = Arc<dyn Fn(&SharedUri) -> ImageSource + Send + Sync>;
 
+/// The bytes of the files a locked note opened with the password it was
+/// unlocked with, by file id, with each file's content type.
+type OpenedFiles = Arc<Mutex<HashMap<String, (String, Vec<u8>)>>>;
+
 /// Decrypts the attachments of a locked note whose keys this session holds,
 /// so the preview can draw them. Only called from `set_note`.
 fn fill_opened_files(
@@ -456,7 +460,7 @@ fn fill_opened_files(
 fn image_resolver(
     store: Arc<Store>,
     images: Arc<Mutex<HashMap<String, Option<Arc<Image>>>>>,
-    opened_files: Arc<Mutex<HashMap<String, (String, Vec<u8>)>>>,
+    opened_files: OpenedFiles,
 ) -> impl Fn(&SharedUri) -> ImageSource + Send + Sync + 'static {
     move |uri| {
         let Some(suffix) = uri.strip_prefix(FILE_LINK_PREFIX) else {

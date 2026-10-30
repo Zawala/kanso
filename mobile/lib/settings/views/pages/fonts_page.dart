@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../widgets/fonts_pane.dart';
 
 /// Settings › Fonts: the fonts of notes and the size of their text.
@@ -17,7 +18,7 @@ class FontsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return KansoPage(
       resizeToAvoidBottomInset: false,
       backgroundColor: context.colors.app,
       body: FontsPane(startAtEnd: atTextSize),

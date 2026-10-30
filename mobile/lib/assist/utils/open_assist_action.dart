@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/data/assist_action.dart';
 import '../../core/utils/context_extensions.dart';
+import '../../core/views/widgets/kanso_feedback.dart';
 import '../../editor_extras/models/data/editor_text_target.dart';
 import '../models/data/assist_snapshot.dart';
 import '../views/widgets/show_assist_sheet.dart';
@@ -114,7 +115,5 @@ TextRange paragraphBefore(String text, int caret) {
 }
 
 void _notice(BuildContext context, String message) {
-  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-    SnackBar(content: Text(message)),
-  );
+  KansoFeedback.show(context, message);
 }

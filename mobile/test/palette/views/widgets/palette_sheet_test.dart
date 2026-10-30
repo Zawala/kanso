@@ -9,14 +9,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/linking_types.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/views/widgets/kanso_bottom_sheet_route.dart';
 import 'package:kanso/core/views/widgets/kanso_search_input.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
 import 'package:kanso/palette/models/repos/abs/palette_repository.dart';
 import 'package:kanso/palette/state/palette/palette_bloc.dart';
 import 'package:kanso/palette/views/widgets/palette_sheet.dart';
+
+import '../../../helpers/kanso_test_app.dart';
 
 const _context = PaletteContext(
   signedIn: false,
@@ -83,10 +83,7 @@ PaletteBloc _blocFor(List<PaletteSection> sections) {
   return bloc;
 }
 
-Widget _app(Widget child) => MaterialApp(
-  theme: KansoTheme.light,
-  localizationsDelegates: AppLocalizations.localizationsDelegates,
-  supportedLocales: AppLocalizations.supportedLocales,
+Widget _app(Widget child) => KansoTestApp(
   home: child,
 );
 

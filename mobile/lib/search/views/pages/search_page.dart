@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/models/data/search_scope_kind.dart';
 import '../../../core/state/list_navigation/list_navigation_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/search/search_bloc.dart';
 import '../widgets/search_navigation_sync.dart';
@@ -49,7 +50,7 @@ class SearchPage extends StatelessWidget {
           query: query,
           scope: scope,
           notebookId: notebookId,
-          child: Scaffold(
+          child: KansoPage(
             resizeToAvoidBottomInset: false,
             backgroundColor: context.colors.list,
             body: SearchPane(initialQuery: query, openNoteId: openNoteId),

@@ -180,10 +180,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get graphFilterTag => 'Tag';
 
   @override
+  String get graphFilterTitle => 'Show the graph of';
+
+  @override
+  String get graphFilterNotebooks => 'Notebooks';
+
+  @override
+  String get graphFilterTags => 'Tags';
+
+  @override
   String get graphEmpty => 'No linked notes to show.';
 
   @override
   String get graphFailed => 'Couldn\'t load the graph.';
+
+  @override
+  String get graphFit => 'Fit graph to view';
+
+  @override
+  String get graphZoomIn => 'Zoom in';
+
+  @override
+  String get graphZoomOut => 'Zoom out';
 
   @override
   String get noteMetaCreated => 'Created';
@@ -268,6 +286,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsTextSize => 'Text size';
+
+  @override
+  String get settingsInterfaceTextSize => 'Interface text size';
 
   @override
   String get settingsSync => 'Sync';
@@ -481,6 +502,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fontsTitle => 'Fonts';
 
   @override
+  String get googleFontSection => 'Google Font';
+
+  @override
+  String get googleFontFooter =>
+      'Enter a Google Fonts family name. It is saved on this device and works offline after downloading.';
+
+  @override
+  String get googleFontHint => 'For example, Lora or Nunito Sans';
+
+  @override
+  String get googleFontDownload => 'Download and use';
+
+  @override
+  String get googleFontLoading => 'Loading font…';
+
+  @override
+  String get googleFontOffline =>
+      'You’re offline. Connect to download this font; saved fonts remain available offline.';
+
+  @override
+  String get googleFontFailed =>
+      'This font could not be loaded. Check the family name and try again.';
+
+  @override
+  String googleFontActive(String family) {
+    return '$family is in use for writing and reading.';
+  }
+
+  @override
   String get fontsEditorSection => 'Editor font';
 
   @override
@@ -521,6 +571,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fontsSampleCode => 'let note = merge(a, b);';
 
   @override
+  String get fontsInterfaceTextSizeSection => 'Interface text size';
+
+  @override
+  String get fontsInterfaceTextSizeFooter =>
+      'Changes labels, menus, buttons and the rest of Kanso. Notes keep their own text sizes.';
+
+  @override
+  String get fontsInterfaceTextSizeSample =>
+      'Notebooks · Search · Tasks · Settings';
+
+  @override
+  String get interfaceTextSizeControlLabel => 'Interface text size';
+
+  @override
+  String get interfaceTextSizeDecrease => 'Decrease interface text size';
+
+  @override
+  String get interfaceTextSizeIncrease => 'Increase interface text size';
+
+  @override
   String get fontsTextSizeSection => 'Text size';
 
   @override
@@ -532,16 +602,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'Calm software says less and remembers more. Every device keeps a full copy of your notes, and a change is merged on the others.';
 
   @override
-  String get textSizeSmall => 'Small';
+  String textSizePercent(int percent) {
+    return '$percent%';
+  }
 
   @override
-  String get textSizeDefault => 'Default';
+  String get textSizeControlLabel => 'Text size';
 
   @override
-  String get textSizeLarge => 'Large';
+  String get textSizeDecrease => 'Decrease text size';
 
   @override
-  String get textSizeLarger => 'Larger';
+  String get textSizeIncrease => 'Increase text size';
 
   @override
   String get editorTitleHint => 'Title';
@@ -4250,6 +4322,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get dictationRestrictedMessage =>
       'This phone\'s rules keep Kanso from using the microphone or speech recognition.';
+
+  @override
+  String get sheetDismiss => 'Dismiss sheet';
 
   @override
   String get dictationOpenSettings => 'Open Settings';

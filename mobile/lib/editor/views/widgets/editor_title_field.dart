@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/utils/tap_outside.dart';
 import '../../../core/views/widgets/kanso_selection_controls.dart';
 import '../../../core/views/widgets/kanso_text_context_menu.dart';
 import 'markdown_editor.dart';
@@ -63,7 +64,7 @@ class _EditorTitleFieldState extends State<EditorTitleField>
   Widget build(BuildContext context) {
     final colors = context.colors;
     final style = context.typography.editorTitle;
-    final apple = switch (Theme.of(context).platform) {
+    final apple = switch (context.platform) {
       TargetPlatform.iOS || TargetPlatform.macOS => true,
       _ => false,
     };
@@ -98,10 +99,14 @@ class _EditorTitleFieldState extends State<EditorTitleField>
                 keyboardType: TextInputType.text,
                 textInputAction: TextInputAction.next,
                 textCapitalization: TextCapitalization.sentences,
-                keyboardAppearance: Theme.brightnessOf(context),
+                keyboardAppearance: context.brightness,
                 selectionControls: selectionControls,
                 contextMenuBuilder: (context, state) =>
                     KansoTextContextMenu(state: state),
+                onTapOutside: (event) => unfocusOnTapOutside(
+                  event,
+                  widget.focusNode,
+                ),
                 onChanged: widget.onChanged,
                 onEditingComplete: widget.onSubmitted,
               ),

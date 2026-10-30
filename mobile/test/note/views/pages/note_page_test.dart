@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_theme.dart';
+import 'package:kanso/core/configs/kanso_theme_scope.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/note/views/pages/note_page.dart';
 import 'package:kanso/note/views/widgets/note_pane.dart';
@@ -75,8 +76,8 @@ void main() {
             child: blocs.provide(
               ValueListenableBuilder<Brightness>(
                 valueListenable: brightness,
-                builder: (context, value, _) => Theme(
-                  data: value == Brightness.dark
+                builder: (context, value, _) => KansoThemeScope(
+                  theme: value == Brightness.dark
                       ? KansoTheme.dark
                       : KansoTheme.light,
                   child: const NotePage(noteId: MockIds.syncDesign),

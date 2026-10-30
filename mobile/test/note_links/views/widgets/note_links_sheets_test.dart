@@ -6,12 +6,12 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/linking_types.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/models/data/application_error.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
 import 'package:kanso/note_links/models/repos/abs/note_links_repository.dart';
 import 'package:kanso/note_links/views/widgets/backlinks_sheet.dart';
 import 'package:kanso/note_links/views/widgets/outline_sheet.dart';
+
+import '../../../helpers/kanso_test_app.dart';
 
 const _headings = <OutlineHeading>[
   OutlineHeading(level: 1, text: 'Morning', line: 3),
@@ -52,11 +52,8 @@ class _FakeLinks implements NoteLinksRepository {
   ) async => Right(mentions);
 }
 
-Widget _app(Widget child) => MaterialApp(
-  theme: KansoTheme.light,
-  localizationsDelegates: AppLocalizations.localizationsDelegates,
-  supportedLocales: AppLocalizations.supportedLocales,
-  home: Scaffold(body: child),
+Widget _app(Widget child) => KansoTestApp(
+  home: child,
 );
 
 const _link = LinkRef(

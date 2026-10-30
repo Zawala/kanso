@@ -145,6 +145,20 @@ void main() {
       );
     });
 
+    testWidgets('lets go of the keyboard when the tap is outside it', (
+      tester,
+    ) async {
+      await _pump(tester);
+      await tester.enterText(find.byType(EditableText), 'tea');
+      await tester.pump();
+      final field = tester.widget<EditableText>(find.byType(EditableText));
+      expect(field.focusNode.hasFocus, isTrue);
+
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pump();
+      expect(field.focusNode.hasFocus, isFalse);
+    });
+
     testWidgets('draws the same caret on every platform, with no handles or '
         'magnifier', (tester) async {
       for (final platform in <TargetPlatform>[

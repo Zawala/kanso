@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/assist/utils/open_assist_action.dart';
 import 'package:kanso/core/models/data/assist_action.dart';
+import 'package:kanso/shell/views/widgets/browse_shell.dart';
 
 import '../../helpers/ai_blocs.dart';
 import '../../helpers/fake_editor_target.dart';
@@ -21,7 +22,7 @@ Future<(FixtureAiRepository, BuildContext)> _pump(WidgetTester tester) async {
     settings: aiSettings(enabled: true, hasKey: true),
   );
   await pumpBrowseApp(tester, _size, ai: ai);
-  return (ai, tester.element(find.byType(Scaffold).first));
+  return (ai, tester.element(find.byType(BrowseShell).first));
 }
 
 void main() {

@@ -15,7 +15,6 @@ import 'package:kanso/core/models/data/app_version.dart';
 import 'package:kanso/core/models/data/application_error.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
 import 'package:kanso/core/models/data/kanso_icon_set.dart';
-import 'package:kanso/core/models/data/kanso_text_size.dart';
 import 'package:kanso/core/models/data/preferences.dart';
 import 'package:kanso/core/models/data/theme_selection.dart';
 import 'package:kanso/core/state/account/account_bloc.dart';
@@ -213,6 +212,7 @@ void main() {
         'Theme',
         'Icons',
         'Fonts',
+        'Interface text size',
         'Text size',
         'Preview',
         'Preview text size',
@@ -314,27 +314,33 @@ void main() {
       expect(find.text('Lucide'), findsNothing);
     });
 
-    testWidgets('the Text size row shows the size chosen', (tester) async {
+    testWidgets('the text size rows show the interface and note sizes '
+        'chosen', (tester) async {
       final screen = await _pump(tester);
-      // The text size and the preview text size.
-      expect(find.text('Default'), findsNWidgets(2));
+      // The interface, editor and preview text sizes.
+      expect(find.text('100%'), findsNWidgets(3));
       screen.appearance.add(
-        const AppearanceEvent.textSizeChanged(KansoTextSize.larger),
+        const AppearanceEvent.interfaceTextSizeChanged(1.2),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Larger'), findsOneWidget);
-      expect(find.text('Default'), findsOneWidget);
+      expect(find.text('120%'), findsOneWidget);
+      expect(find.text('100%'), findsNWidgets(2));
+      screen.appearance.add(const AppearanceEvent.textSizeChanged(1.3));
+      await tester.pumpAndSettle();
+      expect(find.text('130%'), findsOneWidget);
+      expect(find.text('120%'), findsOneWidget);
+      expect(find.text('100%'), findsOneWidget);
     });
 
     testWidgets('the Preview text size row shows the size chosen apart from '
         'the editor’s', (tester) async {
       final screen = await _pump(tester);
       screen.appearance.add(
-        const AppearanceEvent.previewTextSizeChanged(KansoTextSize.small),
+        const AppearanceEvent.previewTextSizeChanged(0.9),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Small'), findsOneWidget);
-      expect(find.text('Default'), findsOneWidget);
+      expect(find.text('90%'), findsOneWidget);
+      expect(find.text('100%'), findsNWidgets(2));
     });
 
     testWidgets('the Diagrams row chooses between Pele and Kanso, Pele by '
@@ -666,6 +672,11 @@ void main() {
       screen.router.pop();
       await tester.pumpAndSettle();
       await tester.tap(find.text('Fonts'));
+      await tester.pumpAndSettle();
+      expect(topOf(screen.router), '/settings/fonts');
+      screen.router.pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Interface text size'));
       await tester.pumpAndSettle();
       expect(topOf(screen.router), '/settings/fonts');
       screen.router.pop();

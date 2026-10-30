@@ -7,7 +7,6 @@ import 'dart:async';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/account/models/data/account_outcome.dart';
-import 'package:kanso/account/models/data/form_problem.dart';
 import 'package:kanso/account/state/unlock/unlock_bloc.dart';
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
@@ -35,28 +34,32 @@ void main() {
 
   setUp(() {
     account = MockAccountRepository();
-    when(account.cancelApproval).thenAnswer(
-      (_) async => const Right<ApplicationError, Unit>(unit),
-    );
+    when(
+      account.cancelApproval,
+    ).thenAnswer((_) async => const Right<ApplicationError, Unit>(unit));
   });
 
   group('UnlockBloc, the password', () {
-    test(
-      'a password no account can have is answered like a wrong one',
-      () async {
-        final bloc = UnlockBloc(account)
-          ..add(
-            const UnlockEvent.passwordSubmitted(
-              username: 'ana',
-              password: 'short',
-            ),
-          );
-        await pumpEventQueue();
-        expect(bloc.state.problem, FormProblem.credentialsDontMatch);
-        verifyNever(() => account.unlockWithPassword(any()));
-        await bloc.close();
-      },
-    );
+    test('a short password is sent, and the server decides', () async {
+      when(() => account.unlockWithPassword('short')).thenAnswer(
+        (_) async => const Left<ApplicationError, AccountState>(
+          ApplicationError.auth(
+            message: 'That username and password don’t match.',
+          ),
+        ),
+      );
+      final bloc = UnlockBloc(account)
+        ..add(
+          const UnlockEvent.passwordSubmitted(
+            username: 'ana',
+            password: 'short',
+          ),
+        );
+      await bloc.stream.firstWhere((state) => state.error != null);
+      expect(bloc.state.problem, isNull);
+      verify(() => account.unlockWithPassword('short')).called(1);
+      await bloc.close();
+    });
 
     test('the right password opens the notes', () async {
       final gate = Completer<void>();

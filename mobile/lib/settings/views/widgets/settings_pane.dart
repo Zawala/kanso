@@ -19,6 +19,8 @@ import '../../../core/utils/font_labels.dart';
 import '../../../core/views/widgets/kanso_grouped_section.dart';
 import '../../../core/views/widgets/kanso_icon_button.dart';
 import '../../../core/views/widgets/kanso_large_title.dart';
+import '../../../core/views/widgets/kanso_segment.dart';
+import '../../../core/views/widgets/kanso_segmented.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../push/views/widgets/push_setting_notice_host.dart';
@@ -174,8 +176,21 @@ class SettingsPane extends StatelessWidget {
                                 ),
                                 KansoSettingsRow(
                                   icon: KansoIcons.textSize,
+                                  label: l10n.settingsInterfaceTextSize,
+                                  value: l10n.textScaleName(
+                                    appearance.interfaceTextSize,
+                                  ),
+                                  chevron: true,
+                                  onTap: () => context.push(
+                                    KansoRoutes.fonts(atSize: true),
+                                  ),
+                                ),
+                                KansoSettingsRow(
+                                  icon: KansoIcons.textSize,
                                   label: l10n.settingsTextSize,
-                                  value: l10n.textSizeName(appearance.textSize),
+                                  value: l10n.textScaleName(
+                                    appearance.textSize,
+                                  ),
                                   chevron: true,
                                   onTap: () => context.push(
                                     KansoRoutes.fonts(atSize: true),
@@ -192,7 +207,7 @@ class SettingsPane extends StatelessWidget {
                                 KansoSettingsRow(
                                   icon: KansoIcons.textSize,
                                   label: l10n.fontsPreviewTextSizeSection,
-                                  value: l10n.textSizeName(
+                                  value: l10n.textScaleName(
                                     appearance.previewTextSize,
                                   ),
                                   chevron: true,
@@ -212,24 +227,23 @@ class SettingsPane extends StatelessWidget {
                                   padding: const EdgeInsets.all(
                                     KansoSpacing.md,
                                   ),
-                                  child: SegmentedButton<DiagramRenderer>(
-                                    segments: <ButtonSegment<DiagramRenderer>>[
-                                      ButtonSegment<DiagramRenderer>(
+                                  child: KansoSegmented<DiagramRenderer>(
+                                    expanded: true,
+                                    selected: appearance.diagramRenderer,
+                                    segments: <KansoSegment<DiagramRenderer>>[
+                                      KansoSegment<DiagramRenderer>(
                                         value: DiagramRenderer.pele,
-                                        label: Text(l10n.diagramRendererPele),
+                                        label: l10n.diagramRendererPele,
                                       ),
-                                      ButtonSegment<DiagramRenderer>(
+                                      KansoSegment<DiagramRenderer>(
                                         value: DiagramRenderer.kanso,
-                                        label: Text(l10n.diagramRendererKanso),
+                                        label: l10n.diagramRendererKanso,
                                       ),
                                     ],
-                                    selected: <DiagramRenderer>{
-                                      appearance.diagramRenderer,
-                                    },
-                                    onSelectionChanged: (selection) {
+                                    onChanged: (value) {
                                       context.read<AppearanceBloc>().add(
                                         AppearanceEvent.diagramRendererChanged(
-                                          selection.first,
+                                          value,
                                         ),
                                       );
                                     },

@@ -114,22 +114,23 @@ abstract final class AccountForms {
     return newPasswordProblem(password, repeat, username);
   }
 
-  /// What is wrong with the Sign in form. A password no account can have is
-  /// answered like a wrong one.
+  /// What is wrong with the Sign in form. The username is checked here;
+  /// the password is not, whatever its length. Existing accounts may have
+  /// any password, so only a blank one is answered locally and everything
+  /// else goes to the server, which alone can say whether it is right.
   static FormProblem? signInProblem(String username, String password) {
     if (normalizeUsername(username) == null) {
       return FormProblem.usernameInvalid;
     }
-    return passwordProblem(password, username) == null
-        ? null
-        : FormProblem.credentialsDontMatch;
+    return password.isEmpty ? FormProblem.credentialsDontMatch : null;
   }
 
-  /// What is wrong with the password typed to unlock a locked account.
+  /// What is wrong with the password typed to unlock a locked account. As
+  /// with sign-in, existing passwords are not held to the rules for a new
+  /// one: only a blank field is answered here, and the server decides the
+  /// rest.
   static FormProblem? unlockProblem(String password, String username) {
-    return passwordProblem(password, username) == null
-        ? null
-        : FormProblem.credentialsDontMatch;
+    return password.isEmpty ? FormProblem.credentialsDontMatch : null;
   }
 
   /// What is wrong with the recovery form: the username, the key, and the

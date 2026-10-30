@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/core/models/repos/abs/library_repository.dart';
 import 'package:kanso/dictation/models/data/dictation_routes.dart';
 import 'package:kanso/dictation/models/repos/abs/dictation_repository.dart';
@@ -18,12 +17,12 @@ import 'package:kanso/dictation/utils/dictation_editor_extras.dart';
 import 'package:kanso/dictation/views/pages/voice_note_page.dart';
 import 'package:kanso/dictation/views/widgets/dictation_scope.dart';
 import 'package:kanso/dictation/views/widgets/live_transcript.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
 import 'package:kanso/injection.dart';
 import 'package:kanso_dictation/kanso_dictation.dart' as plugin;
 
 import '../test/dictation/helpers/fake_dictation_host.dart';
 import '../test/dictation/helpers/fake_text_target.dart';
+import '../test/helpers/kanso_test_app.dart';
 import 'helpers/flow_driver.dart';
 
 /// Dictation on a simulator or emulator, with the speech recognizer
@@ -133,12 +132,9 @@ void main() {
       );
       addTearDown(router.dispose);
       await tester.pumpWidget(
-        MaterialApp.router(
-          theme: KansoTheme.light,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
+        KansoTestRouterApp(
           routerConfig: router,
-          builder: (context, child) => DictationScope(child: child!),
+          builder: (context, child) => DictationScope(child: child),
         ),
       );
       await pumpUntil(tester, find.text('Tap the mic and start talking.'));

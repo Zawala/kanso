@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
+import 'package:kanso/core/views/widgets/kanso_page.dart';
 import 'package:kanso/note/models/data/note_mode.dart';
 import 'package:kanso/shell/models/data/kanso_intent.dart';
 import 'package:kanso/window/models/data/note_window_request.dart';
@@ -155,7 +156,7 @@ void main() {
         'search intents go to the main window', (tester) async {
       final fixture = await NoteWindowFixture.open(MockIds.syncDesign);
       await _pump(tester, fixture);
-      final context = tester.element(find.byType(Scaffold).last);
+      final context = tester.element(find.byType(KansoPage).last);
 
       Actions.invoke(context, const CloseNoteWindowIntent());
       Actions.invoke(context, const NewNoteIntent());
@@ -172,7 +173,7 @@ void main() {
         'forward by the platform', (tester) async {
       final fixture = await NoteWindowFixture.open(MockIds.syncDesign);
       await _pump(tester, fixture);
-      final context = tester.element(find.byType(Scaffold).last);
+      final context = tester.element(find.byType(KansoPage).last);
       Actions.invoke(context, const OpenInNewWindowIntent());
       Actions.invoke(context, const OpenInNewWindowIntent('other'));
       await tester.pump();

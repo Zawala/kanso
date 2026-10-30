@@ -130,6 +130,7 @@ map
 map-pin
 megaphone
 menu
+minus
 message-circle
 message-square
 mic

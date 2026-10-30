@@ -51,6 +51,36 @@ use crate::passkey_bridge::{self, NativeCeremony};
 use crate::passkey_flow::{self, Context, Ended, RpRule};
 use crate::syncing::{SyncHandle, account_error};
 
+/// The password typed to sign in to, or unlock, an account that has one.
+/// It isn't held to the rules for a new password (its length, that it isn't
+/// the username): it is derived and sent whatever it is, and the server says
+/// whether it is right. Only an empty one is answered here, as the server
+/// would answer a wrong one.
+fn typed_password(text: &str) -> Result<Password, KansoError> {
+    Password::for_sign_in(text)
+        .ok_or_else(|| account_error(&AccountError::InvalidCredentials, ErrorContext::SignIn))
+}
+
+/// How a new password (signing up, recovering, changing it) stands against
+/// the rules, for a form to show while it is typed: its length counted as
+/// the rules count it (Unicode scalar values after NFC), and the first rule
+/// it breaks. The same check runs again when the form is sent.
+pub fn check_new_password(password: &str, username: &str) -> NewPasswordCheck {
+    let problem = match Password::new(password, username) {
+        Ok(_) => None,
+        Err(kanso_sync::PasswordError::TooShort) => Some(NewPasswordProblem::TooShort),
+        Err(kanso_sync::PasswordError::TooLong) => Some(NewPasswordProblem::TooLong),
+        Err(kanso_sync::PasswordError::SameAsUsername) => Some(NewPasswordProblem::SameAsUsername),
+    };
+    let clamp = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+    NewPasswordCheck {
+        chars: clamp(kanso_sync::password_chars(password)),
+        min_chars: clamp(kanso_sync::MIN_PASSWORD_CHARS),
+        max_chars: clamp(kanso_sync::MAX_PASSWORD_CHARS),
+        problem,
+    }
+}
+
 /// Sign-in, sign-up, provider and passkey flows, locked sessions, device approval as the new device, recovery and the binding question.
 #[derive(Clone)]
 pub struct AccountHandle {
@@ -160,8 +190,7 @@ impl AccountHandle {
         device_name: String,
     ) -> Result<AccountState, KansoError> {
         guard(|| {
-            let password = Password::new(&password, &username)
-                .map_err(|err| KansoError::invalid(format!("For the password, {err}.")))?;
+            let password = typed_password(&password)?;
             let _busy = begin_new(&self.inner)?;
             let sync = self.sync();
             let _stopped = sync.stop_sync();
@@ -192,12 +221,7 @@ impl AccountHandle {
             self.stop_approval();
             let _busy = begin_new(&self.inner)?;
             let locked = self.require_locked()?;
-            let password = Password::new(&password, &locked.username).map_err(|err| {
-                KansoError::invalid(words::error_words(
-                    &AccountError::Password(err),
-                    ErrorContext::SignIn,
-                ))
-            })?;
+            let password = typed_password(&password)?;
             let sync = self.sync();
             let _stopped = sync.stop_sync();
             let flow = self.flow("");
@@ -589,8 +613,7 @@ impl AccountHandle {
         use kanso_sync::SessionToken;
 
         guard(|| {
-            let password = Password::new(&password, &username)
-                .map_err(|err| KansoError::invalid(format!("For the password, {err}.")))?;
+            let password = typed_password(&password)?;
             let _busy = begin_new(&self.inner)?;
             let flow = self.flow(&device_name);
             let device = flow

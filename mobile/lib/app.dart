@@ -9,12 +9,14 @@ import 'account/views/widgets/device_approval_host.dart';
 import 'ai_settings/state/ai_status/ai_status_bloc.dart';
 import 'assist/utils/assist_editor_extras.dart';
 import 'core/configs/kanso_theme.dart';
+import 'core/configs/kanso_theme_scope.dart';
 import 'core/models/repos/abs/ai_repository.dart';
 import 'core/router/kanso_router.dart';
 import 'core/state/appearance/appearance_bloc.dart';
 import 'core/utils/context_extensions.dart';
 import 'core/utils/kanso_scroll_behavior.dart';
 import 'core/views/widgets/foreground_reporter.dart';
+import 'core/views/widgets/kanso_feedback.dart';
 import 'core/views/widgets/kanso_icon_set_scope.dart';
 import 'core/views/widgets/layout_class_reporter.dart';
 import 'crash/views/widgets/crash_notice_host.dart';
@@ -51,21 +53,10 @@ class _AppState extends State<App> {
   Widget build(BuildContext context) {
     return BlocBuilder<AppearanceBloc, AppearanceState>(
       builder: (context, state) {
-        return MaterialApp.router(
+        return WidgetsApp.router(
           debugShowCheckedModeBanner: false,
+          color: state.light.colors.button,
           onGenerateTitle: (context) => context.l10n.appName,
-          theme: KansoTheme.build(
-            state.light,
-            fonts: state.fonts,
-            textSize: state.textSize,
-          ),
-          darkTheme: KansoTheme.build(
-            state.dark,
-            fonts: state.fonts,
-            textSize: state.textSize,
-          ),
-          themeMode: state.themeMode,
-          scrollBehavior: const KansoScrollBehavior(),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           routerConfig: widget.router.config,
@@ -103,7 +94,39 @@ class _AppState extends State<App> {
                     router: widget.router.config,
                     child: content,
                   );
-            return DictationScope(others: assistant, child: hosted);
+            final brightness = switch (state.themeMode) {
+              ThemeMode.light => Brightness.light,
+              ThemeMode.dark => Brightness.dark,
+              ThemeMode.system => MediaQuery.platformBrightnessOf(context),
+            };
+            final theme = KansoTheme.build(
+              brightness == Brightness.dark ? state.dark : state.light,
+              fonts: state.fonts,
+              textSize: state.textSize,
+              previewTextSize: state.previewTextSize,
+              interfaceTextSize: state.interfaceTextSize,
+            );
+            return ScrollConfiguration(
+              behavior: const KansoScrollBehavior(),
+              child: KansoThemeTransition(
+                theme: theme,
+                child: DefaultTextStyle(
+                  style: theme.typography.body,
+                  child: DefaultSelectionStyle(
+                    selectionColor: theme.colors.accent.withValues(
+                      alpha: 0.3,
+                    ),
+                    cursorColor: theme.colors.accent,
+                    child: KansoFeedbackHost(
+                      child: DictationScope(
+                        others: assistant,
+                        child: hosted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
           },
         );
       },

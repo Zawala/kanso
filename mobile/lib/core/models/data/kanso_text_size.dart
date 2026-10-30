@@ -1,35 +1,84 @@
 // Kanso — kanso_text_size.dart
-// Created 2026-10-25.
+// Created 2026-10-29.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
-/// How large the text of notes is, relative to its designed size.
-///
-/// It scales note text only (the editor, or the rendered preview, which has
-/// a size of its own); the interface is untouched. It is applied to the font
-/// size and the device's own text scale (dynamic type) multiplies the result,
-/// so the two add up and neither is ever clamped.
-enum KansoTextSize {
-  /// A little smaller than designed.
-  small(0.9),
+/// The minimum text scale the note size setting can store.
+const double minimumTextScale = 0.8;
 
-  /// The size the type scale was designed at.
-  standard(1),
+/// The maximum text scale the note size setting can store.
+const double maximumTextScale = 1.8;
 
-  /// A little larger.
-  large(1.15),
+/// The step between adjacent values offered by the note size setting.
+const double textScaleStep = 0.05;
 
-  /// The largest.
-  larger(1.3);
+/// The minimum scale the interface text size setting can store.
+const double minimumInterfaceTextScale = 0.9;
 
-  const KansoTextSize(this.scale);
+/// The maximum scale the interface text size setting can store.
+const double maximumInterfaceTextScale = 1.3;
 
-  /// The multiplier applied to a designed font size.
-  final double scale;
+/// The step between adjacent values offered by the interface size setting.
+const double interfaceTextScaleStep = 0.05;
 
-  /// The size of a note's text for a designed [fontSize].
-  double scaled(double fontSize) => fontSize * scale;
-
-  /// The factor note text is finally drawn at once the device's own text
-  /// scale [deviceScale] is applied on top.
-  double withDeviceScale(double deviceScale) => deviceScale * scale;
+/// Rounds [scale] to a supported step and keeps it inside the setting bounds.
+/// Invalid values use the designed size, 1.0.
+double normalizeTextScale(double scale) {
+  if (!scale.isFinite) {
+    return 1;
+  }
+  final bounded = scale.clamp(minimumTextScale, maximumTextScale);
+  return ((bounded * 20).round() / 20).clamp(
+    minimumTextScale,
+    maximumTextScale,
+  );
 }
+
+/// Rounds [scale] to the interface setting's supported step and keeps it
+/// inside its narrower bounds. Invalid values use the designed size, 1.0.
+double normalizeInterfaceTextScale(double scale) {
+  if (!scale.isFinite) {
+    return 1;
+  }
+  final bounded = scale.clamp(
+    minimumInterfaceTextScale,
+    maximumInterfaceTextScale,
+  );
+  final steps = ((bounded - minimumInterfaceTextScale) / interfaceTextScaleStep)
+      .round();
+  final normalized = minimumInterfaceTextScale + steps * interfaceTextScaleStep;
+  return double.parse(
+    normalized
+        .clamp(minimumInterfaceTextScale, maximumInterfaceTextScale)
+        .toStringAsFixed(2),
+  );
+}
+
+/// Reads current numeric scales and the names written by earlier versions.
+double textScaleFromJson(Object? value) {
+  if (value is num) {
+    return normalizeTextScale(value.toDouble());
+  }
+  return switch (value) {
+    'small' => 0.9,
+    'standard' => 1,
+    'large' => 1.15,
+    'larger' => 1.3,
+    _ => 1,
+  };
+}
+
+/// Writes scales as normalized numeric JSON values.
+double textScaleToJson(double scale) => normalizeTextScale(scale);
+
+/// Reads an interface scale from JSON, including a value written by a newer
+/// version outside this build's range.
+double interfaceTextScaleFromJson(Object? value) {
+  if (value is num) {
+    return normalizeInterfaceTextScale(value.toDouble());
+  }
+  return 1;
+}
+
+/// Writes interface scales as normalized numeric JSON values.
+double interfaceTextScaleToJson(double scale) =>
+    normalizeInterfaceTextScale(scale);

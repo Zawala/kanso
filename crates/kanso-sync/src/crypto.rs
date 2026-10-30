@@ -204,7 +204,15 @@ impl KdfParams {
 pub const MIN_PASSWORD_CHARS: usize = 12;
 pub const MAX_PASSWORD_CHARS: usize = 256;
 
-/// Why a password was refused. Only the client checks these.
+/// How many characters `text` has as a password: Unicode scalar values
+/// after NFC, the count [`Password::new`] checks against
+/// [`MIN_PASSWORD_CHARS`] and [`MAX_PASSWORD_CHARS`].
+pub fn password_chars(text: &str) -> usize {
+    text.nfc().count()
+}
+
+/// Why a password was refused. Only the client checks these, and only for a
+/// new password: signing in with one is [`Password::for_sign_in`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum PasswordError {
     #[error("use at least {MIN_PASSWORD_CHARS} characters")]
@@ -225,7 +233,7 @@ impl Password {
     /// both lowercased). Pure (docs/ACCOUNTS.md › Password and KDF).
     pub fn new(text: &str, username: &str) -> Result<Password, PasswordError> {
         let normalized = Zeroizing::new(text.nfc().collect::<String>());
-        let chars = normalized.chars().count();
+        let chars = password_chars(&normalized);
         if chars < MIN_PASSWORD_CHARS {
             return Err(PasswordError::TooShort);
         }
@@ -238,6 +246,18 @@ impl Password {
             return Err(PasswordError::SameAsUsername);
         }
         Ok(Password(normalized))
+    }
+
+    /// The password typed to sign in to (or unlock) an account that already
+    /// has one, normalized to NFC and not checked against the rules for a
+    /// new one: whatever its length, it is derived and sent, and the server
+    /// says whether it is right. A password no account can have simply
+    /// fails to authenticate. `None` when nothing was typed.
+    pub fn for_sign_in(text: &str) -> Option<Password> {
+        if text.is_empty() {
+            return None;
+        }
+        Some(Password(Zeroizing::new(text.nfc().collect::<String>())))
     }
 
     /// The NFC text, as UTF-8 bytes for Argon2.
@@ -1009,6 +1029,13 @@ mod tests {
             format!("{:?}", Password::new("correct horse battery", "a").unwrap())
                 .contains("redacted")
         );
+        // Signing in checks none of that.
+        assert!(Password::for_sign_in("").is_none());
+        for typed in ["x", "short", "correct-horse", &"x".repeat(300)] {
+            assert!(Password::for_sign_in(typed).is_some(), "{typed}");
+        }
+        assert_eq!(password_chars("abcdefghije\u{301}"), 11);
+        assert_eq!(password_chars(""), 0);
     }
 
     #[test]
@@ -1365,6 +1392,63 @@ mod tests {
                 (Ok(a), Ok(b)) => prop_assert_eq!(a.as_bytes(), b.as_bytes()),
                 (a, b) => prop_assert_eq!(a.map(|_| ()), b.map(|_| ())),
             }
+        }
+
+        /// Model: a password typed to sign in is any non-empty text, kept
+        /// as its NFC form whatever its length and even when it is the
+        /// username; nothing typed is no password.
+        #[test]
+        fn prop_sign_in_passwords_skip_the_rules(
+            text in prop_oneof![
+                "\\PC{0,11}",
+                "[a-zé\u{e9}\u{301}ñÅ ]{1,40}",
+                "\\PC{257,300}",
+            ],
+            username in "[a-zA-Z0-9]{3,20}",
+        ) {
+            let expected: String = text.nfc().collect();
+            match Password::for_sign_in(&text) {
+                None => prop_assert!(text.is_empty()),
+                Some(password) => {
+                    prop_assert!(!text.is_empty());
+                    prop_assert_eq!(password.as_bytes(), expected.as_bytes());
+                }
+            }
+            prop_assert!(Password::for_sign_in(&username).is_some());
+        }
+
+        /// Equivalence: where a new password is accepted, signing in with the
+        /// same text is the same password (so the same keys are derived).
+        #[test]
+        fn prop_sign_in_password_equals_new_password(
+            text in "[a-zé\u{e9}\u{301}ñÅ0-9 ]{12,40}",
+        ) {
+            if let Ok(new) = Password::new(&text, "someone") {
+                let typed = Password::for_sign_in(&text).unwrap();
+                prop_assert_eq!(typed.as_bytes(), new.as_bytes());
+            }
+        }
+
+        /// Model: `password_chars` is the count the rules are checked
+        /// against, so a counter built on it never disagrees with them.
+        #[test]
+        fn prop_password_chars_decides_the_length_rules(
+            text in prop_oneof!["\\PC{0,300}", "[ae\u{301}\u{e9}o\u{308}]{0,30}"],
+        ) {
+            let chars = password_chars(&text);
+            prop_assert_eq!(chars, text.nfc().collect::<String>().chars().count());
+            let expected = if chars < MIN_PASSWORD_CHARS {
+                Some(PasswordError::TooShort)
+            } else if chars > MAX_PASSWORD_CHARS {
+                Some(PasswordError::TooLong)
+            } else {
+                None
+            };
+            let found = match Password::new(&text, "someone-unlikely") {
+                Err(PasswordError::SameAsUsername) | Ok(_) => None,
+                Err(err) => Some(err),
+            };
+            prop_assert_eq!(found, expected);
         }
 
         /// Refinement: an accepted password has 12–256 scalar values in NFC

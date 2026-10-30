@@ -28,6 +28,8 @@ _KansoFonts _$KansoFontsFromJson(Map<String, dynamic> json) => _KansoFonts(
         unknownValue: KansoFontFamily.jetBrainsMono,
       ) ??
       KansoFontFamily.jetBrainsMono,
+  editorGoogleFont: json['editorGoogleFont'] as String?,
+  previewGoogleFont: json['previewGoogleFont'] as String?,
 );
 
 Map<String, dynamic> _$KansoFontsToJson(_KansoFonts instance) =>
@@ -35,6 +37,8 @@ Map<String, dynamic> _$KansoFontsToJson(_KansoFonts instance) =>
       'editorFont': _$KansoFontFamilyEnumMap[instance.editorFont]!,
       'previewFont': _$KansoFontFamilyEnumMap[instance.previewFont]!,
       'codeFont': _$KansoFontFamilyEnumMap[instance.codeFont]!,
+      'editorGoogleFont': ?instance.editorGoogleFont,
+      'previewGoogleFont': ?instance.previewGoogleFont,
     };
 
 const _$KansoFontFamilyEnumMap = {

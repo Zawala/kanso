@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/state/list_navigation/list_navigation_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/tasks/tasks_bloc.dart';
 import '../widgets/tasks_pane.dart';
@@ -29,7 +30,7 @@ class TasksPage extends StatelessWidget {
         );
         return getIt<TasksBloc>()..add(const TasksEvent.started());
       },
-      child: Scaffold(
+      child: KansoPage(
         resizeToAvoidBottomInset: false,
         backgroundColor: context.colors.list,
         body: TasksPane(openNoteId: openNoteId),

@@ -32,10 +32,9 @@ class TabletMockPage extends StatelessWidget {
     };
     final content = SizedBox.fromSize(
       size: designSize,
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        backgroundColor: colors.editor,
-        body: Stack(
+      child: ColoredBox(
+        color: colors.editor,
+        child: Stack(
           children: <Widget>[
             Positioned.fill(
               child: TabletLayout(

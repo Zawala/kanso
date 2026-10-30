@@ -55,7 +55,7 @@ extension AppearanceEventPatterns on AppearanceEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppearanceStartedEvent value)?  started,TResult Function( AppearanceThemePickedEvent value)?  themePicked,TResult Function( AppearanceSyntaxPickedEvent value)?  syntaxPicked,TResult Function( AppearancePreviewPickedEvent value)?  previewPicked,TResult Function( AppearanceFollowSystemChangedEvent value)?  followSystemChanged,TResult Function( AppearanceIconThemePickedEvent value)?  iconThemePicked,TResult Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,TResult Function( AppearancePreviewTextSizeChangedEvent value)?  previewTextSizeChanged,TResult Function( AppearanceDiagramRendererChangedEvent value)?  diagramRendererChanged,TResult Function( AppearanceThemeChangedEvent value)?  themeChanged,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppearanceStartedEvent value)?  started,TResult Function( AppearanceThemePickedEvent value)?  themePicked,TResult Function( AppearanceSyntaxPickedEvent value)?  syntaxPicked,TResult Function( AppearancePreviewPickedEvent value)?  previewPicked,TResult Function( AppearanceFollowSystemChangedEvent value)?  followSystemChanged,TResult Function( AppearanceIconThemePickedEvent value)?  iconThemePicked,TResult Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,TResult Function( AppearancePreviewTextSizeChangedEvent value)?  previewTextSizeChanged,TResult Function( AppearanceInterfaceTextSizeChangedEvent value)?  interfaceTextSizeChanged,TResult Function( AppearanceGoogleFontPickedEvent value)?  googleFontPicked,TResult Function( AppearanceDiagramRendererChangedEvent value)?  diagramRendererChanged,TResult Function( AppearanceThemeChangedEvent value)?  themeChanged,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
@@ -69,7 +69,9 @@ return editorFontChanged(_that);case AppearancePreviewFontChangedEvent() when pr
 return previewFontChanged(_that);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
 return textSizeChanged(_that);case AppearancePreviewTextSizeChangedEvent() when previewTextSizeChanged != null:
-return previewTextSizeChanged(_that);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
+return previewTextSizeChanged(_that);case AppearanceInterfaceTextSizeChangedEvent() when interfaceTextSizeChanged != null:
+return interfaceTextSizeChanged(_that);case AppearanceGoogleFontPickedEvent() when googleFontPicked != null:
+return googleFontPicked(_that);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
 return diagramRendererChanged(_that);case AppearanceThemeChangedEvent() when themeChanged != null:
 return themeChanged(_that);case _:
   return orElse();
@@ -89,7 +91,7 @@ return themeChanged(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppearanceStartedEvent value)  started,required TResult Function( AppearanceThemePickedEvent value)  themePicked,required TResult Function( AppearanceSyntaxPickedEvent value)  syntaxPicked,required TResult Function( AppearancePreviewPickedEvent value)  previewPicked,required TResult Function( AppearanceFollowSystemChangedEvent value)  followSystemChanged,required TResult Function( AppearanceIconThemePickedEvent value)  iconThemePicked,required TResult Function( AppearanceEditorFontChangedEvent value)  editorFontChanged,required TResult Function( AppearancePreviewFontChangedEvent value)  previewFontChanged,required TResult Function( AppearanceCodeFontChangedEvent value)  codeFontChanged,required TResult Function( AppearanceTextSizeChangedEvent value)  textSizeChanged,required TResult Function( AppearancePreviewTextSizeChangedEvent value)  previewTextSizeChanged,required TResult Function( AppearanceDiagramRendererChangedEvent value)  diagramRendererChanged,required TResult Function( AppearanceThemeChangedEvent value)  themeChanged,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppearanceStartedEvent value)  started,required TResult Function( AppearanceThemePickedEvent value)  themePicked,required TResult Function( AppearanceSyntaxPickedEvent value)  syntaxPicked,required TResult Function( AppearancePreviewPickedEvent value)  previewPicked,required TResult Function( AppearanceFollowSystemChangedEvent value)  followSystemChanged,required TResult Function( AppearanceIconThemePickedEvent value)  iconThemePicked,required TResult Function( AppearanceEditorFontChangedEvent value)  editorFontChanged,required TResult Function( AppearancePreviewFontChangedEvent value)  previewFontChanged,required TResult Function( AppearanceCodeFontChangedEvent value)  codeFontChanged,required TResult Function( AppearanceTextSizeChangedEvent value)  textSizeChanged,required TResult Function( AppearancePreviewTextSizeChangedEvent value)  previewTextSizeChanged,required TResult Function( AppearanceInterfaceTextSizeChangedEvent value)  interfaceTextSizeChanged,required TResult Function( AppearanceGoogleFontPickedEvent value)  googleFontPicked,required TResult Function( AppearanceDiagramRendererChangedEvent value)  diagramRendererChanged,required TResult Function( AppearanceThemeChangedEvent value)  themeChanged,}){
 final _that = this;
 switch (_that) {
 case AppearanceStartedEvent():
@@ -103,7 +105,9 @@ return editorFontChanged(_that);case AppearancePreviewFontChangedEvent():
 return previewFontChanged(_that);case AppearanceCodeFontChangedEvent():
 return codeFontChanged(_that);case AppearanceTextSizeChangedEvent():
 return textSizeChanged(_that);case AppearancePreviewTextSizeChangedEvent():
-return previewTextSizeChanged(_that);case AppearanceDiagramRendererChangedEvent():
+return previewTextSizeChanged(_that);case AppearanceInterfaceTextSizeChangedEvent():
+return interfaceTextSizeChanged(_that);case AppearanceGoogleFontPickedEvent():
+return googleFontPicked(_that);case AppearanceDiagramRendererChangedEvent():
 return diagramRendererChanged(_that);case AppearanceThemeChangedEvent():
 return themeChanged(_that);}
 }
@@ -119,7 +123,7 @@ return themeChanged(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppearanceStartedEvent value)?  started,TResult? Function( AppearanceThemePickedEvent value)?  themePicked,TResult? Function( AppearanceSyntaxPickedEvent value)?  syntaxPicked,TResult? Function( AppearancePreviewPickedEvent value)?  previewPicked,TResult? Function( AppearanceFollowSystemChangedEvent value)?  followSystemChanged,TResult? Function( AppearanceIconThemePickedEvent value)?  iconThemePicked,TResult? Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult? Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult? Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult? Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,TResult? Function( AppearancePreviewTextSizeChangedEvent value)?  previewTextSizeChanged,TResult? Function( AppearanceDiagramRendererChangedEvent value)?  diagramRendererChanged,TResult? Function( AppearanceThemeChangedEvent value)?  themeChanged,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppearanceStartedEvent value)?  started,TResult? Function( AppearanceThemePickedEvent value)?  themePicked,TResult? Function( AppearanceSyntaxPickedEvent value)?  syntaxPicked,TResult? Function( AppearancePreviewPickedEvent value)?  previewPicked,TResult? Function( AppearanceFollowSystemChangedEvent value)?  followSystemChanged,TResult? Function( AppearanceIconThemePickedEvent value)?  iconThemePicked,TResult? Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult? Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult? Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult? Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,TResult? Function( AppearancePreviewTextSizeChangedEvent value)?  previewTextSizeChanged,TResult? Function( AppearanceInterfaceTextSizeChangedEvent value)?  interfaceTextSizeChanged,TResult? Function( AppearanceGoogleFontPickedEvent value)?  googleFontPicked,TResult? Function( AppearanceDiagramRendererChangedEvent value)?  diagramRendererChanged,TResult? Function( AppearanceThemeChangedEvent value)?  themeChanged,}){
 final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
@@ -133,7 +137,9 @@ return editorFontChanged(_that);case AppearancePreviewFontChangedEvent() when pr
 return previewFontChanged(_that);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
 return textSizeChanged(_that);case AppearancePreviewTextSizeChangedEvent() when previewTextSizeChanged != null:
-return previewTextSizeChanged(_that);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
+return previewTextSizeChanged(_that);case AppearanceInterfaceTextSizeChangedEvent() when interfaceTextSizeChanged != null:
+return interfaceTextSizeChanged(_that);case AppearanceGoogleFontPickedEvent() when googleFontPicked != null:
+return googleFontPicked(_that);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
 return diagramRendererChanged(_that);case AppearanceThemeChangedEvent() when themeChanged != null:
 return themeChanged(_that);case _:
   return null;
@@ -152,7 +158,7 @@ return themeChanged(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  started,TResult Function( String id,  bool dark)?  themePicked,TResult Function( String? id)?  syntaxPicked,TResult Function( String? id)?  previewPicked,TResult Function( bool follow)?  followSystemChanged,TResult Function( String id)?  iconThemePicked,TResult Function( KansoFontFamily font)?  editorFontChanged,TResult Function( KansoFontFamily font)?  previewFontChanged,TResult Function( KansoFontFamily font)?  codeFontChanged,TResult Function( KansoTextSize size)?  textSizeChanged,TResult Function( KansoTextSize size)?  previewTextSizeChanged,TResult Function( DiagramRenderer renderer)?  diagramRendererChanged,TResult Function( String id)?  themeChanged,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  started,TResult Function( String id,  bool dark)?  themePicked,TResult Function( String? id)?  syntaxPicked,TResult Function( String? id)?  previewPicked,TResult Function( bool follow)?  followSystemChanged,TResult Function( String id)?  iconThemePicked,TResult Function( KansoFontFamily font)?  editorFontChanged,TResult Function( KansoFontFamily font)?  previewFontChanged,TResult Function( KansoFontFamily font)?  codeFontChanged,TResult Function( double scale)?  textSizeChanged,TResult Function( double scale)?  previewTextSizeChanged,TResult Function( double scale)?  interfaceTextSizeChanged,TResult Function( String family)?  googleFontPicked,TResult Function( DiagramRenderer renderer)?  diagramRendererChanged,TResult Function( String id)?  themeChanged,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
 return started();case AppearanceThemePickedEvent() when themePicked != null:
@@ -164,8 +170,10 @@ return iconThemePicked(_that.id);case AppearanceEditorFontChangedEvent() when ed
 return editorFontChanged(_that.font);case AppearancePreviewFontChangedEvent() when previewFontChanged != null:
 return previewFontChanged(_that.font);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that.font);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
-return textSizeChanged(_that.size);case AppearancePreviewTextSizeChangedEvent() when previewTextSizeChanged != null:
-return previewTextSizeChanged(_that.size);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
+return textSizeChanged(_that.scale);case AppearancePreviewTextSizeChangedEvent() when previewTextSizeChanged != null:
+return previewTextSizeChanged(_that.scale);case AppearanceInterfaceTextSizeChangedEvent() when interfaceTextSizeChanged != null:
+return interfaceTextSizeChanged(_that.scale);case AppearanceGoogleFontPickedEvent() when googleFontPicked != null:
+return googleFontPicked(_that.family);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
 return diagramRendererChanged(_that.renderer);case AppearanceThemeChangedEvent() when themeChanged != null:
 return themeChanged(_that.id);case _:
   return orElse();
@@ -185,7 +193,7 @@ return themeChanged(_that.id);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  started,required TResult Function( String id,  bool dark)  themePicked,required TResult Function( String? id)  syntaxPicked,required TResult Function( String? id)  previewPicked,required TResult Function( bool follow)  followSystemChanged,required TResult Function( String id)  iconThemePicked,required TResult Function( KansoFontFamily font)  editorFontChanged,required TResult Function( KansoFontFamily font)  previewFontChanged,required TResult Function( KansoFontFamily font)  codeFontChanged,required TResult Function( KansoTextSize size)  textSizeChanged,required TResult Function( KansoTextSize size)  previewTextSizeChanged,required TResult Function( DiagramRenderer renderer)  diagramRendererChanged,required TResult Function( String id)  themeChanged,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  started,required TResult Function( String id,  bool dark)  themePicked,required TResult Function( String? id)  syntaxPicked,required TResult Function( String? id)  previewPicked,required TResult Function( bool follow)  followSystemChanged,required TResult Function( String id)  iconThemePicked,required TResult Function( KansoFontFamily font)  editorFontChanged,required TResult Function( KansoFontFamily font)  previewFontChanged,required TResult Function( KansoFontFamily font)  codeFontChanged,required TResult Function( double scale)  textSizeChanged,required TResult Function( double scale)  previewTextSizeChanged,required TResult Function( double scale)  interfaceTextSizeChanged,required TResult Function( String family)  googleFontPicked,required TResult Function( DiagramRenderer renderer)  diagramRendererChanged,required TResult Function( String id)  themeChanged,}) {final _that = this;
 switch (_that) {
 case AppearanceStartedEvent():
 return started();case AppearanceThemePickedEvent():
@@ -197,8 +205,10 @@ return iconThemePicked(_that.id);case AppearanceEditorFontChangedEvent():
 return editorFontChanged(_that.font);case AppearancePreviewFontChangedEvent():
 return previewFontChanged(_that.font);case AppearanceCodeFontChangedEvent():
 return codeFontChanged(_that.font);case AppearanceTextSizeChangedEvent():
-return textSizeChanged(_that.size);case AppearancePreviewTextSizeChangedEvent():
-return previewTextSizeChanged(_that.size);case AppearanceDiagramRendererChangedEvent():
+return textSizeChanged(_that.scale);case AppearancePreviewTextSizeChangedEvent():
+return previewTextSizeChanged(_that.scale);case AppearanceInterfaceTextSizeChangedEvent():
+return interfaceTextSizeChanged(_that.scale);case AppearanceGoogleFontPickedEvent():
+return googleFontPicked(_that.family);case AppearanceDiagramRendererChangedEvent():
 return diagramRendererChanged(_that.renderer);case AppearanceThemeChangedEvent():
 return themeChanged(_that.id);}
 }
@@ -214,7 +224,7 @@ return themeChanged(_that.id);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  started,TResult? Function( String id,  bool dark)?  themePicked,TResult? Function( String? id)?  syntaxPicked,TResult? Function( String? id)?  previewPicked,TResult? Function( bool follow)?  followSystemChanged,TResult? Function( String id)?  iconThemePicked,TResult? Function( KansoFontFamily font)?  editorFontChanged,TResult? Function( KansoFontFamily font)?  previewFontChanged,TResult? Function( KansoFontFamily font)?  codeFontChanged,TResult? Function( KansoTextSize size)?  textSizeChanged,TResult? Function( KansoTextSize size)?  previewTextSizeChanged,TResult? Function( DiagramRenderer renderer)?  diagramRendererChanged,TResult? Function( String id)?  themeChanged,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  started,TResult? Function( String id,  bool dark)?  themePicked,TResult? Function( String? id)?  syntaxPicked,TResult? Function( String? id)?  previewPicked,TResult? Function( bool follow)?  followSystemChanged,TResult? Function( String id)?  iconThemePicked,TResult? Function( KansoFontFamily font)?  editorFontChanged,TResult? Function( KansoFontFamily font)?  previewFontChanged,TResult? Function( KansoFontFamily font)?  codeFontChanged,TResult? Function( double scale)?  textSizeChanged,TResult? Function( double scale)?  previewTextSizeChanged,TResult? Function( double scale)?  interfaceTextSizeChanged,TResult? Function( String family)?  googleFontPicked,TResult? Function( DiagramRenderer renderer)?  diagramRendererChanged,TResult? Function( String id)?  themeChanged,}) {final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
 return started();case AppearanceThemePickedEvent() when themePicked != null:
@@ -226,8 +236,10 @@ return iconThemePicked(_that.id);case AppearanceEditorFontChangedEvent() when ed
 return editorFontChanged(_that.font);case AppearancePreviewFontChangedEvent() when previewFontChanged != null:
 return previewFontChanged(_that.font);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that.font);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
-return textSizeChanged(_that.size);case AppearancePreviewTextSizeChangedEvent() when previewTextSizeChanged != null:
-return previewTextSizeChanged(_that.size);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
+return textSizeChanged(_that.scale);case AppearancePreviewTextSizeChangedEvent() when previewTextSizeChanged != null:
+return previewTextSizeChanged(_that.scale);case AppearanceInterfaceTextSizeChangedEvent() when interfaceTextSizeChanged != null:
+return interfaceTextSizeChanged(_that.scale);case AppearanceGoogleFontPickedEvent() when googleFontPicked != null:
+return googleFontPicked(_that.family);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
 return diagramRendererChanged(_that.renderer);case AppearanceThemeChangedEvent() when themeChanged != null:
 return themeChanged(_that.id);case _:
   return null;
@@ -242,7 +254,7 @@ return themeChanged(_that.id);case _:
 
 class AppearanceStartedEvent implements AppearanceEvent {
   const AppearanceStartedEvent();
-  
+
 
 
 
@@ -274,7 +286,7 @@ String toString() {
 
 class AppearanceThemePickedEvent implements AppearanceEvent {
   const AppearanceThemePickedEvent(this.id, {required this.dark});
-  
+
 
  final  String id;
  final  bool dark;
@@ -342,7 +354,7 @@ as bool,
 
 class AppearanceSyntaxPickedEvent implements AppearanceEvent {
   const AppearanceSyntaxPickedEvent(this.id);
-  
+
 
  final  String? id;
 
@@ -408,7 +420,7 @@ as String?,
 
 class AppearancePreviewPickedEvent implements AppearanceEvent {
   const AppearancePreviewPickedEvent(this.id);
-  
+
 
  final  String? id;
 
@@ -474,7 +486,7 @@ as String?,
 
 class AppearanceFollowSystemChangedEvent implements AppearanceEvent {
   const AppearanceFollowSystemChangedEvent({required this.follow});
-  
+
 
  final  bool follow;
 
@@ -540,7 +552,7 @@ as bool,
 
 class AppearanceIconThemePickedEvent implements AppearanceEvent {
   const AppearanceIconThemePickedEvent(this.id);
-  
+
 
  final  String id;
 
@@ -606,7 +618,7 @@ as String,
 
 class AppearanceEditorFontChangedEvent implements AppearanceEvent {
   const AppearanceEditorFontChangedEvent(this.font);
-  
+
 
  final  KansoFontFamily font;
 
@@ -672,7 +684,7 @@ as KansoFontFamily,
 
 class AppearancePreviewFontChangedEvent implements AppearanceEvent {
   const AppearancePreviewFontChangedEvent(this.font);
-  
+
 
  final  KansoFontFamily font;
 
@@ -738,7 +750,7 @@ as KansoFontFamily,
 
 class AppearanceCodeFontChangedEvent implements AppearanceEvent {
   const AppearanceCodeFontChangedEvent(this.font);
-  
+
 
  final  KansoFontFamily font;
 
@@ -803,10 +815,10 @@ as KansoFontFamily,
 
 
 class AppearanceTextSizeChangedEvent implements AppearanceEvent {
-  const AppearanceTextSizeChangedEvent(this.size);
-  
+  const AppearanceTextSizeChangedEvent(this.scale);
 
- final  KansoTextSize size;
+
+ final  double scale;
 
 /// Create a copy of AppearanceEvent
 /// with the given fields replaced by the non-null parameter values.
@@ -818,16 +830,16 @@ $AppearanceTextSizeChangedEventCopyWith<AppearanceTextSizeChangedEvent> get copy
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceTextSizeChangedEvent&&(identical(other.size, size) || other.size == size));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceTextSizeChangedEvent&&(identical(other.scale, scale) || other.scale == scale));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,size);
+int get hashCode => Object.hash(runtimeType,scale);
 
 @override
 String toString() {
-  return 'AppearanceEvent.textSizeChanged(size: $size)';
+  return 'AppearanceEvent.textSizeChanged(scale: $scale)';
 }
 
 
@@ -838,7 +850,7 @@ abstract mixin class $AppearanceTextSizeChangedEventCopyWith<$Res> implements $A
   factory $AppearanceTextSizeChangedEventCopyWith(AppearanceTextSizeChangedEvent value, $Res Function(AppearanceTextSizeChangedEvent) _then) = _$AppearanceTextSizeChangedEventCopyWithImpl;
 @useResult
 $Res call({
- KansoTextSize size
+ double scale
 });
 
 
@@ -855,10 +867,10 @@ class _$AppearanceTextSizeChangedEventCopyWithImpl<$Res>
 
 /// Create a copy of AppearanceEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? size = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? scale = null,}) {
   return _then(AppearanceTextSizeChangedEvent(
-null == size ? _self.size : size // ignore: cast_nullable_to_non_nullable
-as KansoTextSize,
+null == scale ? _self.scale : scale // ignore: cast_nullable_to_non_nullable
+as double,
   ));
 }
 
@@ -869,10 +881,10 @@ as KansoTextSize,
 
 
 class AppearancePreviewTextSizeChangedEvent implements AppearanceEvent {
-  const AppearancePreviewTextSizeChangedEvent(this.size);
-  
+  const AppearancePreviewTextSizeChangedEvent(this.scale);
 
- final  KansoTextSize size;
+
+ final  double scale;
 
 /// Create a copy of AppearanceEvent
 /// with the given fields replaced by the non-null parameter values.
@@ -884,16 +896,16 @@ $AppearancePreviewTextSizeChangedEventCopyWith<AppearancePreviewTextSizeChangedE
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearancePreviewTextSizeChangedEvent&&(identical(other.size, size) || other.size == size));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearancePreviewTextSizeChangedEvent&&(identical(other.scale, scale) || other.scale == scale));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,size);
+int get hashCode => Object.hash(runtimeType,scale);
 
 @override
 String toString() {
-  return 'AppearanceEvent.previewTextSizeChanged(size: $size)';
+  return 'AppearanceEvent.previewTextSizeChanged(scale: $scale)';
 }
 
 
@@ -904,7 +916,7 @@ abstract mixin class $AppearancePreviewTextSizeChangedEventCopyWith<$Res> implem
   factory $AppearancePreviewTextSizeChangedEventCopyWith(AppearancePreviewTextSizeChangedEvent value, $Res Function(AppearancePreviewTextSizeChangedEvent) _then) = _$AppearancePreviewTextSizeChangedEventCopyWithImpl;
 @useResult
 $Res call({
- KansoTextSize size
+ double scale
 });
 
 
@@ -921,10 +933,142 @@ class _$AppearancePreviewTextSizeChangedEventCopyWithImpl<$Res>
 
 /// Create a copy of AppearanceEvent
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? size = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? scale = null,}) {
   return _then(AppearancePreviewTextSizeChangedEvent(
-null == size ? _self.size : size // ignore: cast_nullable_to_non_nullable
-as KansoTextSize,
+null == scale ? _self.scale : scale // ignore: cast_nullable_to_non_nullable
+as double,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AppearanceInterfaceTextSizeChangedEvent implements AppearanceEvent {
+  const AppearanceInterfaceTextSizeChangedEvent(this.scale);
+
+
+ final  double scale;
+
+/// Create a copy of AppearanceEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AppearanceInterfaceTextSizeChangedEventCopyWith<AppearanceInterfaceTextSizeChangedEvent> get copyWith => _$AppearanceInterfaceTextSizeChangedEventCopyWithImpl<AppearanceInterfaceTextSizeChangedEvent>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceInterfaceTextSizeChangedEvent&&(identical(other.scale, scale) || other.scale == scale));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,scale);
+
+@override
+String toString() {
+  return 'AppearanceEvent.interfaceTextSizeChanged(scale: $scale)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AppearanceInterfaceTextSizeChangedEventCopyWith<$Res> implements $AppearanceEventCopyWith<$Res> {
+  factory $AppearanceInterfaceTextSizeChangedEventCopyWith(AppearanceInterfaceTextSizeChangedEvent value, $Res Function(AppearanceInterfaceTextSizeChangedEvent) _then) = _$AppearanceInterfaceTextSizeChangedEventCopyWithImpl;
+@useResult
+$Res call({
+ double scale
+});
+
+
+
+
+}
+/// @nodoc
+class _$AppearanceInterfaceTextSizeChangedEventCopyWithImpl<$Res>
+    implements $AppearanceInterfaceTextSizeChangedEventCopyWith<$Res> {
+  _$AppearanceInterfaceTextSizeChangedEventCopyWithImpl(this._self, this._then);
+
+  final AppearanceInterfaceTextSizeChangedEvent _self;
+  final $Res Function(AppearanceInterfaceTextSizeChangedEvent) _then;
+
+/// Create a copy of AppearanceEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? scale = null,}) {
+  return _then(AppearanceInterfaceTextSizeChangedEvent(
+null == scale ? _self.scale : scale // ignore: cast_nullable_to_non_nullable
+as double,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AppearanceGoogleFontPickedEvent implements AppearanceEvent {
+  const AppearanceGoogleFontPickedEvent(this.family);
+
+
+ final  String family;
+
+/// Create a copy of AppearanceEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AppearanceGoogleFontPickedEventCopyWith<AppearanceGoogleFontPickedEvent> get copyWith => _$AppearanceGoogleFontPickedEventCopyWithImpl<AppearanceGoogleFontPickedEvent>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceGoogleFontPickedEvent&&(identical(other.family, family) || other.family == family));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,family);
+
+@override
+String toString() {
+  return 'AppearanceEvent.googleFontPicked(family: $family)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AppearanceGoogleFontPickedEventCopyWith<$Res> implements $AppearanceEventCopyWith<$Res> {
+  factory $AppearanceGoogleFontPickedEventCopyWith(AppearanceGoogleFontPickedEvent value, $Res Function(AppearanceGoogleFontPickedEvent) _then) = _$AppearanceGoogleFontPickedEventCopyWithImpl;
+@useResult
+$Res call({
+ String family
+});
+
+
+
+
+}
+/// @nodoc
+class _$AppearanceGoogleFontPickedEventCopyWithImpl<$Res>
+    implements $AppearanceGoogleFontPickedEventCopyWith<$Res> {
+  _$AppearanceGoogleFontPickedEventCopyWithImpl(this._self, this._then);
+
+  final AppearanceGoogleFontPickedEvent _self;
+  final $Res Function(AppearanceGoogleFontPickedEvent) _then;
+
+/// Create a copy of AppearanceEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? family = null,}) {
+  return _then(AppearanceGoogleFontPickedEvent(
+null == family ? _self.family : family // ignore: cast_nullable_to_non_nullable
+as String,
   ));
 }
 
@@ -936,7 +1080,7 @@ as KansoTextSize,
 
 class AppearanceDiagramRendererChangedEvent implements AppearanceEvent {
   const AppearanceDiagramRendererChangedEvent(this.renderer);
-  
+
 
  final  DiagramRenderer renderer;
 
@@ -1002,7 +1146,7 @@ as DiagramRenderer,
 
 class AppearanceThemeChangedEvent implements AppearanceEvent {
   const AppearanceThemeChangedEvent(this.id);
-  
+
 
  final  String id;
 
@@ -1075,10 +1219,14 @@ mixin _$AppearanceState {
  KansoPalette get light;/// The palette of the app's dark theme: the dark slot while the system
 /// is followed, the fixed theme otherwise (so the same as [light]).
  KansoPalette get dark;/// The icon theme every icon is drawn in.
- KansoIconSet get iconSet; KansoFonts get fonts;/// The size of the editor's text.
- KansoTextSize get textSize;/// The size of the rendered preview's text. The preview applies it where
-/// it sets its text size; the editor does not use it.
- KansoTextSize get previewTextSize;/// What draws Mermaid diagrams.
+ KansoIconSet get iconSet; KansoFonts get fonts;/// Whether the selected Google Font is downloading or loading from cache.
+ bool get googleFontLoading;/// A Google Fonts failure detail used by the settings feedback.
+ String? get googleFontError;/// Whether the last Google Fonts operation failed because the network
+/// could not be reached.
+ bool get googleFontOffline;/// The editor's note text scale.
+ double get textSize;/// The rendered preview's note text scale. The editor does not use it.
+ double get previewTextSize;/// The interface's label and text scale. Note text has its own scales.
+ double get interfaceTextSize;/// What draws Mermaid diagrams.
  DiagramRenderer get diagramRenderer; AppearanceStatus get status;
 /// Create a copy of AppearanceState
 /// with the given fields replaced by the non-null parameter values.
@@ -1090,16 +1238,16 @@ $AppearanceStateCopyWith<AppearanceState> get copyWith => _$AppearanceStateCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceState&&(identical(other.selection, selection) || other.selection == selection)&&(identical(other.light, light) || other.light == light)&&(identical(other.dark, dark) || other.dark == dark)&&(identical(other.iconSet, iconSet) || other.iconSet == iconSet)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.textSize, textSize) || other.textSize == textSize)&&(identical(other.previewTextSize, previewTextSize) || other.previewTextSize == previewTextSize)&&(identical(other.diagramRenderer, diagramRenderer) || other.diagramRenderer == diagramRenderer)&&(identical(other.status, status) || other.status == status));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceState&&(identical(other.selection, selection) || other.selection == selection)&&(identical(other.light, light) || other.light == light)&&(identical(other.dark, dark) || other.dark == dark)&&(identical(other.iconSet, iconSet) || other.iconSet == iconSet)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.googleFontLoading, googleFontLoading) || other.googleFontLoading == googleFontLoading)&&(identical(other.googleFontError, googleFontError) || other.googleFontError == googleFontError)&&(identical(other.googleFontOffline, googleFontOffline) || other.googleFontOffline == googleFontOffline)&&(identical(other.textSize, textSize) || other.textSize == textSize)&&(identical(other.previewTextSize, previewTextSize) || other.previewTextSize == previewTextSize)&&(identical(other.interfaceTextSize, interfaceTextSize) || other.interfaceTextSize == interfaceTextSize)&&(identical(other.diagramRenderer, diagramRenderer) || other.diagramRenderer == diagramRenderer)&&(identical(other.status, status) || other.status == status));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,selection,light,dark,iconSet,fonts,textSize,previewTextSize,diagramRenderer,status);
+int get hashCode => Object.hash(runtimeType,selection,light,dark,iconSet,fonts,googleFontLoading,googleFontError,googleFontOffline,textSize,previewTextSize,interfaceTextSize,diagramRenderer,status);
 
 @override
 String toString() {
-  return 'AppearanceState(selection: $selection, light: $light, dark: $dark, iconSet: $iconSet, fonts: $fonts, textSize: $textSize, previewTextSize: $previewTextSize, diagramRenderer: $diagramRenderer, status: $status)';
+  return 'AppearanceState(selection: $selection, light: $light, dark: $dark, iconSet: $iconSet, fonts: $fonts, googleFontLoading: $googleFontLoading, googleFontError: $googleFontError, googleFontOffline: $googleFontOffline, textSize: $textSize, previewTextSize: $previewTextSize, interfaceTextSize: $interfaceTextSize, diagramRenderer: $diagramRenderer, status: $status)';
 }
 
 
@@ -1110,7 +1258,7 @@ abstract mixin class $AppearanceStateCopyWith<$Res>  {
   factory $AppearanceStateCopyWith(AppearanceState value, $Res Function(AppearanceState) _then) = _$AppearanceStateCopyWithImpl;
 @useResult
 $Res call({
- ThemeSelection selection, KansoPalette light, KansoPalette dark, KansoIconSet iconSet, KansoFonts fonts, KansoTextSize textSize, KansoTextSize previewTextSize, DiagramRenderer diagramRenderer, AppearanceStatus status
+ ThemeSelection selection, KansoPalette light, KansoPalette dark, KansoIconSet iconSet, KansoFonts fonts, bool googleFontLoading, String? googleFontError, bool googleFontOffline, double textSize, double previewTextSize, double interfaceTextSize, DiagramRenderer diagramRenderer, AppearanceStatus status
 });
 
 
@@ -1127,16 +1275,20 @@ class _$AppearanceStateCopyWithImpl<$Res>
 
 /// Create a copy of AppearanceState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? selection = null,Object? light = null,Object? dark = null,Object? iconSet = null,Object? fonts = null,Object? textSize = null,Object? previewTextSize = null,Object? diagramRenderer = null,Object? status = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? selection = null,Object? light = null,Object? dark = null,Object? iconSet = null,Object? fonts = null,Object? googleFontLoading = null,Object? googleFontError = freezed,Object? googleFontOffline = null,Object? textSize = null,Object? previewTextSize = null,Object? interfaceTextSize = null,Object? diagramRenderer = null,Object? status = null,}) {
   return _then(_self.copyWith(
 selection: null == selection ? _self.selection : selection // ignore: cast_nullable_to_non_nullable
 as ThemeSelection,light: null == light ? _self.light : light // ignore: cast_nullable_to_non_nullable
 as KansoPalette,dark: null == dark ? _self.dark : dark // ignore: cast_nullable_to_non_nullable
 as KansoPalette,iconSet: null == iconSet ? _self.iconSet : iconSet // ignore: cast_nullable_to_non_nullable
 as KansoIconSet,fonts: null == fonts ? _self.fonts : fonts // ignore: cast_nullable_to_non_nullable
-as KansoFonts,textSize: null == textSize ? _self.textSize : textSize // ignore: cast_nullable_to_non_nullable
-as KansoTextSize,previewTextSize: null == previewTextSize ? _self.previewTextSize : previewTextSize // ignore: cast_nullable_to_non_nullable
-as KansoTextSize,diagramRenderer: null == diagramRenderer ? _self.diagramRenderer : diagramRenderer // ignore: cast_nullable_to_non_nullable
+as KansoFonts,googleFontLoading: null == googleFontLoading ? _self.googleFontLoading : googleFontLoading // ignore: cast_nullable_to_non_nullable
+as bool,googleFontError: freezed == googleFontError ? _self.googleFontError : googleFontError // ignore: cast_nullable_to_non_nullable
+as String?,googleFontOffline: null == googleFontOffline ? _self.googleFontOffline : googleFontOffline // ignore: cast_nullable_to_non_nullable
+as bool,textSize: null == textSize ? _self.textSize : textSize // ignore: cast_nullable_to_non_nullable
+as double,previewTextSize: null == previewTextSize ? _self.previewTextSize : previewTextSize // ignore: cast_nullable_to_non_nullable
+as double,interfaceTextSize: null == interfaceTextSize ? _self.interfaceTextSize : interfaceTextSize // ignore: cast_nullable_to_non_nullable
+as double,diagramRenderer: null == diagramRenderer ? _self.diagramRenderer : diagramRenderer // ignore: cast_nullable_to_non_nullable
 as DiagramRenderer,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as AppearanceStatus,
   ));
@@ -1146,7 +1298,7 @@ as AppearanceStatus,
 @override
 @pragma('vm:prefer-inline')
 $ThemeSelectionCopyWith<$Res> get selection {
-  
+
   return $ThemeSelectionCopyWith<$Res>(_self.selection, (value) {
     return _then(_self.copyWith(selection: value));
   });
@@ -1155,7 +1307,7 @@ $ThemeSelectionCopyWith<$Res> get selection {
 @override
 @pragma('vm:prefer-inline')
 $KansoPaletteCopyWith<$Res> get light {
-  
+
   return $KansoPaletteCopyWith<$Res>(_self.light, (value) {
     return _then(_self.copyWith(light: value));
   });
@@ -1164,7 +1316,7 @@ $KansoPaletteCopyWith<$Res> get light {
 @override
 @pragma('vm:prefer-inline')
 $KansoPaletteCopyWith<$Res> get dark {
-  
+
   return $KansoPaletteCopyWith<$Res>(_self.dark, (value) {
     return _then(_self.copyWith(dark: value));
   });
@@ -1173,7 +1325,7 @@ $KansoPaletteCopyWith<$Res> get dark {
 @override
 @pragma('vm:prefer-inline')
 $KansoIconSetCopyWith<$Res> get iconSet {
-  
+
   return $KansoIconSetCopyWith<$Res>(_self.iconSet, (value) {
     return _then(_self.copyWith(iconSet: value));
   });
@@ -1182,7 +1334,7 @@ $KansoIconSetCopyWith<$Res> get iconSet {
 @override
 @pragma('vm:prefer-inline')
 $KansoFontsCopyWith<$Res> get fonts {
-  
+
   return $KansoFontsCopyWith<$Res>(_self.fonts, (value) {
     return _then(_self.copyWith(fonts: value));
   });
@@ -1268,10 +1420,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( ThemeSelection selection,  KansoPalette light,  KansoPalette dark,  KansoIconSet iconSet,  KansoFonts fonts,  KansoTextSize textSize,  KansoTextSize previewTextSize,  DiagramRenderer diagramRenderer,  AppearanceStatus status)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( ThemeSelection selection,  KansoPalette light,  KansoPalette dark,  KansoIconSet iconSet,  KansoFonts fonts,  bool googleFontLoading,  String? googleFontError,  bool googleFontOffline,  double textSize,  double previewTextSize,  double interfaceTextSize,  DiagramRenderer diagramRenderer,  AppearanceStatus status)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _AppearanceState() when $default != null:
-return $default(_that.selection,_that.light,_that.dark,_that.iconSet,_that.fonts,_that.textSize,_that.previewTextSize,_that.diagramRenderer,_that.status);case _:
+return $default(_that.selection,_that.light,_that.dark,_that.iconSet,_that.fonts,_that.googleFontLoading,_that.googleFontError,_that.googleFontOffline,_that.textSize,_that.previewTextSize,_that.interfaceTextSize,_that.diagramRenderer,_that.status);case _:
   return orElse();
 
 }
@@ -1289,10 +1441,10 @@ return $default(_that.selection,_that.light,_that.dark,_that.iconSet,_that.fonts
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( ThemeSelection selection,  KansoPalette light,  KansoPalette dark,  KansoIconSet iconSet,  KansoFonts fonts,  KansoTextSize textSize,  KansoTextSize previewTextSize,  DiagramRenderer diagramRenderer,  AppearanceStatus status)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( ThemeSelection selection,  KansoPalette light,  KansoPalette dark,  KansoIconSet iconSet,  KansoFonts fonts,  bool googleFontLoading,  String? googleFontError,  bool googleFontOffline,  double textSize,  double previewTextSize,  double interfaceTextSize,  DiagramRenderer diagramRenderer,  AppearanceStatus status)  $default,) {final _that = this;
 switch (_that) {
 case _AppearanceState():
-return $default(_that.selection,_that.light,_that.dark,_that.iconSet,_that.fonts,_that.textSize,_that.previewTextSize,_that.diagramRenderer,_that.status);case _:
+return $default(_that.selection,_that.light,_that.dark,_that.iconSet,_that.fonts,_that.googleFontLoading,_that.googleFontError,_that.googleFontOffline,_that.textSize,_that.previewTextSize,_that.interfaceTextSize,_that.diagramRenderer,_that.status);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -1309,10 +1461,10 @@ return $default(_that.selection,_that.light,_that.dark,_that.iconSet,_that.fonts
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( ThemeSelection selection,  KansoPalette light,  KansoPalette dark,  KansoIconSet iconSet,  KansoFonts fonts,  KansoTextSize textSize,  KansoTextSize previewTextSize,  DiagramRenderer diagramRenderer,  AppearanceStatus status)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( ThemeSelection selection,  KansoPalette light,  KansoPalette dark,  KansoIconSet iconSet,  KansoFonts fonts,  bool googleFontLoading,  String? googleFontError,  bool googleFontOffline,  double textSize,  double previewTextSize,  double interfaceTextSize,  DiagramRenderer diagramRenderer,  AppearanceStatus status)?  $default,) {final _that = this;
 switch (_that) {
 case _AppearanceState() when $default != null:
-return $default(_that.selection,_that.light,_that.dark,_that.iconSet,_that.fonts,_that.textSize,_that.previewTextSize,_that.diagramRenderer,_that.status);case _:
+return $default(_that.selection,_that.light,_that.dark,_that.iconSet,_that.fonts,_that.googleFontLoading,_that.googleFontError,_that.googleFontOffline,_that.textSize,_that.previewTextSize,_that.interfaceTextSize,_that.diagramRenderer,_that.status);case _:
   return null;
 
 }
@@ -1324,8 +1476,8 @@ return $default(_that.selection,_that.light,_that.dark,_that.iconSet,_that.fonts
 
 
 class _AppearanceState extends AppearanceState {
-  const _AppearanceState({this.selection = const ThemeSelection(), this.light = KansoPalette.kansoLight, this.dark = KansoPalette.kansoDark, this.iconSet = KansoIconSet.lucide, this.fonts = const KansoFonts(), this.textSize = KansoTextSize.standard, this.previewTextSize = KansoTextSize.standard, this.diagramRenderer = DiagramRenderer.pele, this.status = AppearanceStatus.loading}): super._();
-  
+  const _AppearanceState({this.selection = const ThemeSelection(), this.light = KansoPalette.kansoLight, this.dark = KansoPalette.kansoDark, this.iconSet = KansoIconSet.lucide, this.fonts = const KansoFonts(), this.googleFontLoading = false, this.googleFontError, this.googleFontOffline = false, this.textSize = 1.0, this.previewTextSize = 1.0, this.interfaceTextSize = 1.0, this.diagramRenderer = DiagramRenderer.pele, this.status = AppearanceStatus.loading}): super._();
+
 
 /// The themes chosen.
 @override@JsonKey() final  ThemeSelection selection;
@@ -1341,11 +1493,19 @@ class _AppearanceState extends AppearanceState {
 /// The icon theme every icon is drawn in.
 @override@JsonKey() final  KansoIconSet iconSet;
 @override@JsonKey() final  KansoFonts fonts;
-/// The size of the editor's text.
-@override@JsonKey() final  KansoTextSize textSize;
-/// The size of the rendered preview's text. The preview applies it where
-/// it sets its text size; the editor does not use it.
-@override@JsonKey() final  KansoTextSize previewTextSize;
+/// Whether the selected Google Font is downloading or loading from cache.
+@override@JsonKey() final  bool googleFontLoading;
+/// A Google Fonts failure detail used by the settings feedback.
+@override final  String? googleFontError;
+/// Whether the last Google Fonts operation failed because the network
+/// could not be reached.
+@override@JsonKey() final  bool googleFontOffline;
+/// The editor's note text scale.
+@override@JsonKey() final  double textSize;
+/// The rendered preview's note text scale. The editor does not use it.
+@override@JsonKey() final  double previewTextSize;
+/// The interface's label and text scale. Note text has its own scales.
+@override@JsonKey() final  double interfaceTextSize;
 /// What draws Mermaid diagrams.
 @override@JsonKey() final  DiagramRenderer diagramRenderer;
 @override@JsonKey() final  AppearanceStatus status;
@@ -1360,16 +1520,16 @@ _$AppearanceStateCopyWith<_AppearanceState> get copyWith => __$AppearanceStateCo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppearanceState&&(identical(other.selection, selection) || other.selection == selection)&&(identical(other.light, light) || other.light == light)&&(identical(other.dark, dark) || other.dark == dark)&&(identical(other.iconSet, iconSet) || other.iconSet == iconSet)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.textSize, textSize) || other.textSize == textSize)&&(identical(other.previewTextSize, previewTextSize) || other.previewTextSize == previewTextSize)&&(identical(other.diagramRenderer, diagramRenderer) || other.diagramRenderer == diagramRenderer)&&(identical(other.status, status) || other.status == status));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppearanceState&&(identical(other.selection, selection) || other.selection == selection)&&(identical(other.light, light) || other.light == light)&&(identical(other.dark, dark) || other.dark == dark)&&(identical(other.iconSet, iconSet) || other.iconSet == iconSet)&&(identical(other.fonts, fonts) || other.fonts == fonts)&&(identical(other.googleFontLoading, googleFontLoading) || other.googleFontLoading == googleFontLoading)&&(identical(other.googleFontError, googleFontError) || other.googleFontError == googleFontError)&&(identical(other.googleFontOffline, googleFontOffline) || other.googleFontOffline == googleFontOffline)&&(identical(other.textSize, textSize) || other.textSize == textSize)&&(identical(other.previewTextSize, previewTextSize) || other.previewTextSize == previewTextSize)&&(identical(other.interfaceTextSize, interfaceTextSize) || other.interfaceTextSize == interfaceTextSize)&&(identical(other.diagramRenderer, diagramRenderer) || other.diagramRenderer == diagramRenderer)&&(identical(other.status, status) || other.status == status));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,selection,light,dark,iconSet,fonts,textSize,previewTextSize,diagramRenderer,status);
+int get hashCode => Object.hash(runtimeType,selection,light,dark,iconSet,fonts,googleFontLoading,googleFontError,googleFontOffline,textSize,previewTextSize,interfaceTextSize,diagramRenderer,status);
 
 @override
 String toString() {
-  return 'AppearanceState(selection: $selection, light: $light, dark: $dark, iconSet: $iconSet, fonts: $fonts, textSize: $textSize, previewTextSize: $previewTextSize, diagramRenderer: $diagramRenderer, status: $status)';
+  return 'AppearanceState(selection: $selection, light: $light, dark: $dark, iconSet: $iconSet, fonts: $fonts, googleFontLoading: $googleFontLoading, googleFontError: $googleFontError, googleFontOffline: $googleFontOffline, textSize: $textSize, previewTextSize: $previewTextSize, interfaceTextSize: $interfaceTextSize, diagramRenderer: $diagramRenderer, status: $status)';
 }
 
 
@@ -1380,7 +1540,7 @@ abstract mixin class _$AppearanceStateCopyWith<$Res> implements $AppearanceState
   factory _$AppearanceStateCopyWith(_AppearanceState value, $Res Function(_AppearanceState) _then) = __$AppearanceStateCopyWithImpl;
 @override @useResult
 $Res call({
- ThemeSelection selection, KansoPalette light, KansoPalette dark, KansoIconSet iconSet, KansoFonts fonts, KansoTextSize textSize, KansoTextSize previewTextSize, DiagramRenderer diagramRenderer, AppearanceStatus status
+ ThemeSelection selection, KansoPalette light, KansoPalette dark, KansoIconSet iconSet, KansoFonts fonts, bool googleFontLoading, String? googleFontError, bool googleFontOffline, double textSize, double previewTextSize, double interfaceTextSize, DiagramRenderer diagramRenderer, AppearanceStatus status
 });
 
 
@@ -1397,16 +1557,20 @@ class __$AppearanceStateCopyWithImpl<$Res>
 
 /// Create a copy of AppearanceState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? selection = null,Object? light = null,Object? dark = null,Object? iconSet = null,Object? fonts = null,Object? textSize = null,Object? previewTextSize = null,Object? diagramRenderer = null,Object? status = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? selection = null,Object? light = null,Object? dark = null,Object? iconSet = null,Object? fonts = null,Object? googleFontLoading = null,Object? googleFontError = freezed,Object? googleFontOffline = null,Object? textSize = null,Object? previewTextSize = null,Object? interfaceTextSize = null,Object? diagramRenderer = null,Object? status = null,}) {
   return _then(_AppearanceState(
 selection: null == selection ? _self.selection : selection // ignore: cast_nullable_to_non_nullable
 as ThemeSelection,light: null == light ? _self.light : light // ignore: cast_nullable_to_non_nullable
 as KansoPalette,dark: null == dark ? _self.dark : dark // ignore: cast_nullable_to_non_nullable
 as KansoPalette,iconSet: null == iconSet ? _self.iconSet : iconSet // ignore: cast_nullable_to_non_nullable
 as KansoIconSet,fonts: null == fonts ? _self.fonts : fonts // ignore: cast_nullable_to_non_nullable
-as KansoFonts,textSize: null == textSize ? _self.textSize : textSize // ignore: cast_nullable_to_non_nullable
-as KansoTextSize,previewTextSize: null == previewTextSize ? _self.previewTextSize : previewTextSize // ignore: cast_nullable_to_non_nullable
-as KansoTextSize,diagramRenderer: null == diagramRenderer ? _self.diagramRenderer : diagramRenderer // ignore: cast_nullable_to_non_nullable
+as KansoFonts,googleFontLoading: null == googleFontLoading ? _self.googleFontLoading : googleFontLoading // ignore: cast_nullable_to_non_nullable
+as bool,googleFontError: freezed == googleFontError ? _self.googleFontError : googleFontError // ignore: cast_nullable_to_non_nullable
+as String?,googleFontOffline: null == googleFontOffline ? _self.googleFontOffline : googleFontOffline // ignore: cast_nullable_to_non_nullable
+as bool,textSize: null == textSize ? _self.textSize : textSize // ignore: cast_nullable_to_non_nullable
+as double,previewTextSize: null == previewTextSize ? _self.previewTextSize : previewTextSize // ignore: cast_nullable_to_non_nullable
+as double,interfaceTextSize: null == interfaceTextSize ? _self.interfaceTextSize : interfaceTextSize // ignore: cast_nullable_to_non_nullable
+as double,diagramRenderer: null == diagramRenderer ? _self.diagramRenderer : diagramRenderer // ignore: cast_nullable_to_non_nullable
 as DiagramRenderer,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as AppearanceStatus,
   ));
@@ -1417,7 +1581,7 @@ as AppearanceStatus,
 @override
 @pragma('vm:prefer-inline')
 $ThemeSelectionCopyWith<$Res> get selection {
-  
+
   return $ThemeSelectionCopyWith<$Res>(_self.selection, (value) {
     return _then(_self.copyWith(selection: value));
   });
@@ -1426,7 +1590,7 @@ $ThemeSelectionCopyWith<$Res> get selection {
 @override
 @pragma('vm:prefer-inline')
 $KansoPaletteCopyWith<$Res> get light {
-  
+
   return $KansoPaletteCopyWith<$Res>(_self.light, (value) {
     return _then(_self.copyWith(light: value));
   });
@@ -1435,7 +1599,7 @@ $KansoPaletteCopyWith<$Res> get light {
 @override
 @pragma('vm:prefer-inline')
 $KansoPaletteCopyWith<$Res> get dark {
-  
+
   return $KansoPaletteCopyWith<$Res>(_self.dark, (value) {
     return _then(_self.copyWith(dark: value));
   });
@@ -1444,7 +1608,7 @@ $KansoPaletteCopyWith<$Res> get dark {
 @override
 @pragma('vm:prefer-inline')
 $KansoIconSetCopyWith<$Res> get iconSet {
-  
+
   return $KansoIconSetCopyWith<$Res>(_self.iconSet, (value) {
     return _then(_self.copyWith(iconSet: value));
   });
@@ -1453,7 +1617,7 @@ $KansoIconSetCopyWith<$Res> get iconSet {
 @override
 @pragma('vm:prefer-inline')
 $KansoFontsCopyWith<$Res> get fonts {
-  
+
   return $KansoFontsCopyWith<$Res>(_self.fonts, (value) {
     return _then(_self.copyWith(fonts: value));
   });

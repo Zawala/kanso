@@ -8,12 +8,15 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../ai_settings/state/ai_status/ai_status_bloc.dart';
 import '../../../assist/utils/assist_editor_extras.dart';
 import '../../../core/configs/kanso_theme.dart';
+import '../../../core/configs/kanso_theme_scope.dart';
 import '../../../core/models/repos/abs/ai_repository.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/state/library_index/library_index_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/kanso_scroll_behavior.dart';
 import '../../../core/utils/syntax_theme_id.dart';
+import '../../../core/views/widgets/kanso_feedback.dart';
+import '../../../core/views/widgets/kanso_page_route.dart';
 import '../../../dictation/views/widgets/dictation_scope.dart';
 import '../../../gen/l10n/app_localizations.dart';
 import '../../../injection.dart';
@@ -68,23 +71,16 @@ class _NoteWindowAppState extends State<NoteWindowApp> {
         repository: widget.windows,
         child: BlocBuilder<AppearanceBloc, AppearanceState>(
           builder: (context, state) {
-            return MaterialApp(
+            return WidgetsApp(
               debugShowCheckedModeBanner: false,
+              color: state.light.colors.button,
               onGenerateTitle: (context) => context.l10n.appName,
-              theme: KansoTheme.build(
-                state.light,
-                fonts: state.fonts,
-                textSize: state.textSize,
-              ),
-              darkTheme: KansoTheme.build(
-                state.dark,
-                fonts: state.fonts,
-                textSize: state.textSize,
-              ),
-              themeMode: state.themeMode,
-              scrollBehavior: const KansoScrollBehavior(),
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
+              pageRouteBuilder: <T>(settings, builder) => KansoPageRoute<T>(
+                settings: settings,
+                builder: builder,
+              ),
               builder: (context, child) {
                 final status = context.read<AiStatusBloc>();
                 assistant ??= AssistEditorExtras(
@@ -93,9 +89,38 @@ class _NoteWindowAppState extends State<NoteWindowApp> {
                   selectionLabel: context.l10n.assistSelectionAction,
                   keyLabel: context.l10n.assistAccessoryLabel,
                 );
-                return DictationScope(
-                  others: assistant,
-                  child: child ?? const SizedBox.shrink(),
+                final brightness = switch (state.themeMode) {
+                  ThemeMode.light => Brightness.light,
+                  ThemeMode.dark => Brightness.dark,
+                  ThemeMode.system => MediaQuery.platformBrightnessOf(context),
+                };
+                final theme = KansoTheme.build(
+                  brightness == Brightness.dark ? state.dark : state.light,
+                  fonts: state.fonts,
+                  textSize: state.textSize,
+                  previewTextSize: state.previewTextSize,
+                  interfaceTextSize: state.interfaceTextSize,
+                );
+                return ScrollConfiguration(
+                  behavior: const KansoScrollBehavior(),
+                  child: KansoThemeTransition(
+                    theme: theme,
+                    child: DefaultTextStyle(
+                      style: theme.typography.body,
+                      child: DefaultSelectionStyle(
+                        selectionColor: theme.colors.accent.withValues(
+                          alpha: 0.3,
+                        ),
+                        cursorColor: theme.colors.accent,
+                        child: KansoFeedbackHost(
+                          child: DictationScope(
+                            others: assistant,
+                            child: child ?? const SizedBox.shrink(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 );
               },
               home: _NoteWindowHost(

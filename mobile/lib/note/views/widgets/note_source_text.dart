@@ -36,7 +36,7 @@ class NoteSourceText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final syntax = context.syntaxColors;
-    final base = context.typography.editorBody.copyWith(color: syntax.text);
+    final base = context.typography.previewBody.copyWith(color: syntax.text);
     final blankHeight =
         MediaQuery.textScalerOf(context).scale(base.fontSize ?? 15) *
         (base.height ?? 1.4);

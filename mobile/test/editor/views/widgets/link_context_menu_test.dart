@@ -5,13 +5,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/bridge/api/types.dart';
-import 'package:kanso/core/configs/kanso_theme.dart';
 import 'package:kanso/editor/views/controllers/kanso_markdown_controller.dart';
 import 'package:kanso/editor/views/widgets/link_context_menu.dart';
 import 'package:kanso/editor/views/widgets/markdown_editor.dart';
-import 'package:kanso/gen/l10n/app_localizations.dart';
 
 import '../../../helpers/fake_editor_document.dart';
+import '../../../helpers/kanso_test_app.dart';
 
 Future<(FakeEditorDocument, List<LinkTarget>)> _pump(
   WidgetTester tester, {
@@ -35,10 +34,7 @@ Future<(FakeEditorDocument, List<LinkTarget>)> _pump(
   });
   final opened = <LinkTarget>[];
   await tester.pumpWidget(
-    MaterialApp(
-      theme: KansoTheme.light,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
+    KansoTestApp(
       home: Scaffold(
         body: MarkdownEditor(
           controller: controller,

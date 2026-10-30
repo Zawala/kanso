@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import '../../../core/configs/kanso_radii.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_progress.dart';
+import '../../../core/views/widgets/kanso_scrim.dart';
 
 /// The part of the screen a sheet points at, from [context]'s box.
 Rect? exportOriginOf(BuildContext context) {
@@ -28,7 +30,7 @@ class NoteExportProgress extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: <Widget>[
-        const ModalBarrier(dismissible: false, color: Color(0x33000000)),
+        const Positioned.fill(child: KansoScrim()),
         Center(
           child: Container(
             padding: const EdgeInsets.symmetric(
@@ -42,11 +44,7 @@ class NoteExportProgress extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+                const KansoSpinner(size: 18),
                 const SizedBox(width: KansoSpacing.sm),
                 Text(label, style: context.typography.body),
               ],

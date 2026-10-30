@@ -11,6 +11,7 @@ import '../../../core/router/settings_navigation.dart';
 import '../../../core/state/account/account_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/device_name.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/unlock/unlock_bloc.dart';
 import '../widgets/approval_wait_pane.dart';
@@ -56,7 +57,7 @@ class UnlockPage extends StatelessWidget {
           onAnswered: (context, answer) => context.read<UnlockBloc>().add(
             UnlockEvent.bindingAnswered(answer),
           ),
-          child: Scaffold(
+          child: KansoPage(
             backgroundColor: context.colors.app,
             body: BlocBuilder<AccountBloc, AccountBlocState>(
               buildWhen: (before, after) => before.locked != after.locked,

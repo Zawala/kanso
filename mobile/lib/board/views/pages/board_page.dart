@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/bridge/api/types.dart';
 import '../../../core/models/data/list_options.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/board/board_bloc.dart';
 import '../widgets/board_pane.dart';
@@ -40,7 +41,7 @@ class BoardPage extends StatelessWidget {
             kind: kind,
           ),
         ),
-      child: Scaffold(
+      child: KansoPage(
         resizeToAvoidBottomInset: false,
         backgroundColor: context.colors.editor,
         body: BoardPane(place: place, draggable: inPane),

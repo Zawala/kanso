@@ -12,6 +12,7 @@ import '../../../core/models/data/browse_location.dart';
 import '../../../core/models/data/load_status.dart';
 import '../../../core/router/kanso_routes.dart';
 import '../../../core/utils/context_extensions.dart';
+import '../../../core/views/widgets/kanso_page.dart';
 import '../../../injection.dart';
 import '../../state/daily_note/daily_note_bloc.dart';
 import '../widgets/daily_note_failed_pane.dart';
@@ -39,7 +40,7 @@ class DailyNotePage extends StatelessWidget {
           }
         },
         builder: (context, state) {
-          return Scaffold(
+          return KansoPage(
             backgroundColor: context.colors.editor,
             body: SafeArea(
               child: switch (state.status) {

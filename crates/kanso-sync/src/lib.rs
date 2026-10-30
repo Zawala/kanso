@@ -66,8 +66,8 @@ pub use binding::{
     device_name, local_library, meta_keys, plan, unbind,
 };
 pub use crypto::{
-    CollabRoots, KdfParams, PRF_INPUT, Password, PasswordError, RecoveryKey, RecoveryKeyError,
-    WrapPurpose, passkey_kek,
+    CollabRoots, KdfParams, MAX_PASSWORD_CHARS, MIN_PASSWORD_CHARS, PRF_INPUT, Password,
+    PasswordError, RecoveryKey, RecoveryKeyError, WrapPurpose, passkey_kek, password_chars,
 };
 pub use engine::{
     Schedule, SyncError, SyncOptions, SyncProblem, SyncReport, batches, problem, report_problem,

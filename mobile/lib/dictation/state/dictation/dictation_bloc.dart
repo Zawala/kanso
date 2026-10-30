@@ -17,6 +17,7 @@ import '../../models/data/dictation_status.dart';
 import '../../models/data/dictation_unavailable_reason.dart';
 import '../../models/repos/abs/dictation_repository.dart';
 import '../../models/repos/abs/dictation_text_rules.dart';
+import '../../utils/transcript_continuity.dart';
 
 part 'dictation_bloc.freezed.dart';
 part 'dictation_event.dart';
@@ -26,7 +27,10 @@ part 'dictation_state.dart';
 /// the phrases the person spoke.
 ///
 /// A phrase is a segment once the recognizer finishes it; until then its
-/// words are the partial. When the session ends with words not yet finished
+/// words are the partial. A partial that starts over instead of carrying on
+/// from the one before ([TranscriptContinuity]) makes the one before a
+/// segment, as a recognizer that starts over after a pause has finished it
+/// without saying so. When the session ends with words not yet finished
 /// (the recognizer was stopped, or failed), they are kept as the last
 /// segment, so nothing said is lost.
 @injectable
@@ -62,6 +66,9 @@ class DictationBloc extends Bloc<DictationEvent, DictationState> {
   /// Whether the person asked to be done while the session ran.
   bool finishing = false;
 
+  /// Tells a partial that starts over from one that carries on.
+  final TranscriptContinuity continuity = TranscriptContinuity();
+
   Future<void> onChecked(
     DictationCheckedEvent event,
     Emitter<DictationState> emit,
@@ -92,6 +99,7 @@ class DictationBloc extends Bloc<DictationEvent, DictationState> {
     }
     final generation = ++startGeneration;
     finishing = false;
+    continuity.reset();
     emit(
       DictationState(
         status: DictationStatus.requesting,
@@ -197,12 +205,21 @@ class DictationBloc extends Bloc<DictationEvent, DictationState> {
           emit(state.copyWith(status: DictationStatus.listening));
         }
       case DictationPartialSignal(:final text):
+        final before = state.partial.trim();
+        final startedOver = continuity.restarts(before, text);
         emit(
           await written(
-            state.copyWith(status: DictationStatus.listening, partial: text),
+            state.copyWith(
+              status: DictationStatus.listening,
+              segments: startedOver
+                  ? <String>[...state.segments, before]
+                  : state.segments,
+              partial: text,
+            ),
           ),
         );
       case DictationFinalSignal(:final text):
+        continuity.reset();
         emit(
           await written(
             state.copyWith(
@@ -223,12 +240,10 @@ class DictationBloc extends Bloc<DictationEvent, DictationState> {
         emit(
           failure == DictationFailure.permissionDenied
               ? denied(DictationPermission.denied, keeping: state)
-              : state.copyWith(
-                  status: DictationStatus.error,
-                  failure: failure,
-                ),
+              : state.copyWith(status: DictationStatus.error, failure: failure),
         );
       case DictationEndedSignal():
+        continuity.reset();
         final heard = state.partial.trim();
         emit(
           await written(
