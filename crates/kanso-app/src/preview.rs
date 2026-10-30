@@ -1229,7 +1229,7 @@ mod tests {
     /// How many characters of [`PROSE`] fit in `width`, on average, set in
     /// `family` at `size`.
     fn characters_in(family: &str, size: f32, width: f32) -> f32 {
-        let text_system = TextSystem::new(std::sync::Arc::new(gpui_apple::AppleTextSystem::new()));
+        let text_system = TextSystem::new(crate::snapshots::text_system());
         let id = text_system.resolve_font(&font(family));
         let advance = |c| f32::from(text_system.advance(id, px(size), c).unwrap().width);
         let total: f32 = PROSE.chars().map(advance).sum();

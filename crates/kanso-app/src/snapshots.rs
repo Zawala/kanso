@@ -223,9 +223,18 @@ fn demo_store(path: &Path) -> Store {
     store
 }
 
+/// The platform's real text shaping, without its main-thread-only platform.
+pub(crate) fn text_system() -> Arc<dyn gpui_kit::PlatformTextSystem> {
+    #[cfg(target_os = "macos")]
+    return Arc::new(gpui_apple::AppleTextSystem::new());
+    // The family the Linux platform falls back to.
+    #[cfg(target_os = "linux")]
+    return Arc::new(gpui_wgpu::CosmicTextSystem::new("IBM Plex Sans"));
+}
+
 pub(crate) fn context(clock: Option<Clock>) -> HeadlessAppContext {
     let mut cx = HeadlessAppContext::with_platform(
-        Arc::new(gpui_apple::AppleTextSystem::new()),
+        text_system(),
         Arc::new(KansoAssets),
         gpui_kit::platform::current_headless_renderer,
     );
