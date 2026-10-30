@@ -45,6 +45,20 @@ class PreviewStyle {
   /// The same look with running text in [color].
   PreviewStyle withText(Color color) => PreviewStyle._copy(this, color);
 
+  /// Two looks are the same when they are made of the same colours and
+  /// fonts, so that a preview drawn again in the same look doesn't draw its
+  /// blocks again.
+  @override
+  bool operator ==(Object other) =>
+      other is PreviewStyle &&
+      other.palette == palette &&
+      other.text == text &&
+      other._body == _body &&
+      other._mono == _mono;
+
+  @override
+  int get hashCode => Object.hash(palette, text, _body, _mono);
+
   /// The body text size, in points.
   double get size => _body.fontSize ?? 18;
 
@@ -156,8 +170,9 @@ class PreviewScope extends InheritedWidget {
   /// Hands the address tapped to the preview's BLoC.
   final ValueChanged<String> onLink;
 
-  /// The key of the heading whose id is given, for scrolling to it.
-  final GlobalKey Function(String id) headingKey;
+  /// The key a heading is found by when it is scrolled to: none for a
+  /// heading without an id, or after the first heading with the same id.
+  final GlobalKey? Function(PreviewBlock_Heading heading) headingKey;
 
   /// How deep in lists the blocks are, for the bullets.
   final int depth;

@@ -3,6 +3,7 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 import 'dart:async';
+import 'dart:ui' show CheckedState, SemanticsAction;
 
 import 'package:dartz/dartz.dart';
 import 'package:flutter/gestures.dart';
@@ -121,10 +122,18 @@ void main() {
     WidgetTester tester,
     List<PreviewBlock> blocks, {
     double below = 0,
+    GlobalKey<NativePreviewState>? previewKey,
+    TextScaler? textScaler,
   }) async {
-    final key = GlobalKey<NativePreviewState>();
+    final key = previewKey ?? GlobalKey<NativePreviewState>();
     await tester.pumpWidget(
       KansoTestApp(
+        builder: textScaler == null
+            ? null
+            : (context, home) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+                child: home,
+              ),
         home: SingleChildScrollView(
           child: Column(
             children: <Widget>[
@@ -377,6 +386,186 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Copy code'));
       semantics.dispose();
       expect(tapped, <String>['kanso-copy:1']);
+    });
+
+    testWidgets('lists nested as deep as the core allows fit a narrow '
+        'screen', (tester) async {
+      tester.view
+        ..physicalSize = const Size(320, 2400)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var list = PreviewBlock.list(
+        ordered: false,
+        start: 1,
+        tight: true,
+        items: <PreviewListItem>[
+          PreviewListItem(
+            blocks: <PreviewBlock>[
+              _paragraph(<PreviewInline>[_text('deepest')]),
+            ],
+          ),
+        ],
+      );
+      for (var depth = 63; depth > 0; depth--) {
+        list = PreviewBlock.list(
+          ordered: depth.isEven,
+          start: 1,
+          tight: depth % 3 != 0,
+          items: <PreviewListItem>[
+            PreviewListItem(
+              task: depth % 5 == 0
+                  ? PreviewTaskBox(checked: depth.isEven, index: depth)
+                  : null,
+              blocks: <PreviewBlock>[
+                _paragraph(<PreviewInline>[_text('level $depth')]),
+                list,
+              ],
+            ),
+          ],
+        );
+      }
+      await pump(tester, <PreviewBlock>[list]);
+      expect(tester.takeException(), isNull);
+      final deepest = tester.getRect(find.text('deepest', findRichText: true));
+      expect(deepest.left, greaterThanOrEqualTo(0));
+      expect(deepest.right, lessThanOrEqualTo(320.5));
+      expect(deepest.width, greaterThan(100));
+      // The boxes deep down can still be ticked.
+      await tester.tap(find.byType(PreviewTaskCheckbox).last);
+      expect(tapped, <String>['kanso-task:60']);
+    });
+
+    testWidgets('a screen reader can copy code and tick a task', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pump(tester, <PreviewBlock>[
+        const PreviewBlock.code(
+          runs: <PreviewCodeRun>[
+            PreviewCodeRun(text: 'x', bold: false, italic: false),
+          ],
+          copy: 3,
+        ),
+        PreviewBlock.list(
+          ordered: false,
+          start: 1,
+          tight: true,
+          items: <PreviewListItem>[
+            PreviewListItem(
+              task: const PreviewTaskBox(checked: false, index: 4),
+              blocks: <PreviewBlock>[
+                _paragraph(<PreviewInline>[_text('Sweep')]),
+              ],
+            ),
+          ],
+        ),
+      ]);
+      final copy = tester.semantics.find(find.bySemanticsLabel('Copy code'));
+      expect(copy.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+      tester.semantics.tap(find.semantics.byLabel('Copy code'));
+      final task = tester.semantics.find(find.bySemanticsLabel('Task'));
+      final data = task.getSemanticsData();
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
+      expect(data.flagsCollection.isChecked, CheckedState.isFalse);
+      tester.semantics.tap(find.semantics.byLabel('Task'));
+      await tester.pump();
+      semantics.dispose();
+      expect(tapped, <String>['kanso-copy:3', 'kanso-task:4']);
+    });
+
+    testWidgets('headings without an id, or with the same one, are drawn; '
+        'the first with an id is the one scrolled to', (tester) async {
+      PreviewBlock heading(String id, String text) => PreviewBlock.heading(
+        level: 2,
+        id: id,
+        inlines: <PreviewInline>[_text(text)],
+      );
+      final key = await pump(tester, <PreviewBlock>[
+        heading('', 'Untitled'),
+        heading('', 'Untitled'),
+        heading('again', 'Again'),
+        heading('again', 'Again'),
+      ]);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Untitled', findRichText: true), findsNWidgets(2));
+      expect(key.currentState!.headingKey(''), isNull);
+      final again = key.currentState!.headingKey('again');
+      expect(again?.currentContext, isNotNull);
+      final both = find.text('Again', findRichText: true);
+      expect(both, findsNWidgets(2));
+      expect(
+        tester.getTopLeft(find.byKey(again!)).dy,
+        closeTo(tester.getTopLeft(both.first).dy, 0.5),
+      );
+      // Drawn again, the same headings keep their key.
+      await pump(tester, <PreviewBlock>[
+        heading('', 'Untitled'),
+        heading('again', 'Again'),
+        heading('again', 'Again'),
+      ], previewKey: key);
+      expect(tester.takeException(), isNull);
+      expect(key.currentState!.headingKey('again'), same(again));
+    });
+
+    testWidgets('a link held while its text is drawn again still answers', (
+      tester,
+    ) async {
+      List<PreviewBlock> blocks() => <PreviewBlock>[
+        _paragraph(<PreviewInline>[
+          PreviewInline.link(
+            url: 'kanso-tag:work',
+            inlines: <PreviewInline>[_text('work')],
+          ),
+        ]),
+      ];
+      final key = await pump(tester, blocks());
+      final at =
+          tester.getTopLeft(find.text('work', findRichText: true)) +
+          const Offset(4, 8);
+      final gesture = await tester.startGesture(at);
+      await pump(tester, blocks(), previewKey: key);
+      await gesture.up();
+      await tester.pump();
+      expect(tapped, <String>['kanso-tag:work']);
+    });
+
+    testWidgets("math and figures grow with the system's text, figures "
+        'within the width', (tester) async {
+      const math = PreviewSvg(
+        markup: _svg,
+        width: 40,
+        height: 20,
+        baseline: 15,
+      );
+      Future<(Size, Size, Size)> sizes(double scale) async {
+        await pump(tester, <PreviewBlock>[
+          _paragraph(<PreviewInline>[
+            _text('x '),
+            const PreviewInline.math(svg: math),
+          ]),
+          const PreviewBlock.figure(kind: PreviewFigureKind.math, svg: math),
+          const PreviewBlock.figure(
+            kind: PreviewFigureKind.diagram,
+            svg: PreviewSvg(markup: _svg, width: 4000, height: 2000),
+          ),
+        ], textScaler: TextScaler.linear(scale));
+        final svgs = find.byType(SvgPicture);
+        return (
+          tester.getRect(svgs.at(0)).size,
+          tester.getRect(svgs.at(1)).size,
+          tester.getRect(svgs.at(2)).size,
+        );
+      }
+
+      final (inline1, figure1, wide1) = await sizes(1);
+      final (inline2, figure2, wide2) = await sizes(2);
+      expect(inline1, const Size(40, 20));
+      expect(inline2, const Size(80, 40));
+      expect(figure1, const Size(40, 20));
+      expect(figure2, const Size(80, 40));
+      final width = tester.getSize(find.byType(NativePreview)).width;
+      expect(wide1.width, closeTo(width, 0.5));
+      expect(wide2.width, closeTo(width, 0.5));
     });
 
     testWidgets('a double tap asks to edit', (tester) async {

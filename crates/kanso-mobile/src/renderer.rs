@@ -32,9 +32,10 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    /// A note as a standalone HTML page in `palette`'s colors, for the app's
-    /// WebView: see [`Renderer::preview_html_with`], with the default
-    /// options. [`KansoError::Locked`] while the note is locked and closed.
+    /// A note as a standalone HTML page in `palette`'s colors, as HTML
+    /// output such as export uses it (the app's preview draws
+    /// [`Renderer::preview_blocks`]): see [`Renderer::preview_html_with`],
+    /// with the default options. [`KansoError::Locked`] while the note is locked and closed.
     pub fn preview_html(&self, id: &str, palette: PaletteDto) -> Result<String, KansoError> {
         self.preview_html_with(id, palette, PreviewOptions::default())
     }

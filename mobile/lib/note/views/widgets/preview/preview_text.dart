@@ -5,6 +5,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -16,8 +17,9 @@ import 'preview_style.dart';
 /// A line of a note's text: its runs in [style], with links that hand their
 /// address to the preview, due chips, inline math and images.
 ///
-/// It keeps the recognizers of its links, and lets them go when it is drawn
-/// again or leaves.
+/// It keeps the recognizers of its links while its text stays the same, so
+/// a link held while the text is drawn again still answers its tap, and
+/// lets them go when its text changes or it leaves.
 class PreviewText extends StatefulWidget {
   const PreviewText(this.inlines, {this.style, this.textAlign, super.key});
 
@@ -35,11 +37,36 @@ class PreviewText extends StatefulWidget {
 class _PreviewTextState extends State<PreviewText> {
   final List<TapGestureRecognizer> _recognizers = <TapGestureRecognizer>[];
 
+  /// How many of [_recognizers] the text being built has used.
+  int _used = 0;
+
+  /// The recognizer of the next link in the text, whose tap hands [url]
+  /// over: one kept from the last build when there is one.
+  TapGestureRecognizer _recognizer(PreviewScope scope, String url) {
+    final TapGestureRecognizer recognizer;
+    if (_used < _recognizers.length) {
+      recognizer = _recognizers[_used];
+    } else {
+      recognizer = TapGestureRecognizer();
+      _recognizers.add(recognizer);
+    }
+    _used++;
+    return recognizer..onTap = () => scope.onLink(url);
+  }
+
   void _forget() {
     for (final recognizer in _recognizers) {
       recognizer.dispose();
     }
     _recognizers.clear();
+  }
+
+  @override
+  void didUpdateWidget(PreviewText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!listEquals(oldWidget.inlines, widget.inlines)) {
+      _forget();
+    }
   }
 
   @override
@@ -50,14 +77,16 @@ class _PreviewTextState extends State<PreviewText> {
 
   @override
   Widget build(BuildContext context) {
-    _forget();
     final scope = PreviewScope.of(context);
     final style = widget.style ?? scope.style.body;
+    _used = 0;
+    final spans = _spans(scope, style, widget.inlines, null);
+    // Links the text no longer has.
+    while (_recognizers.length > _used) {
+      _recognizers.removeLast().dispose();
+    }
     return Text.rich(
-      TextSpan(
-        style: style,
-        children: _spans(scope, style, widget.inlines, null),
-      ),
+      TextSpan(style: style, children: spans),
       textAlign: widget.textAlign,
     );
   }
@@ -69,12 +98,7 @@ class _PreviewTextState extends State<PreviewText> {
     String? url,
   ) {
     final look = scope.style;
-    final recognizer = url == null
-        ? null
-        : (TapGestureRecognizer()..onTap = () => scope.onLink(url));
-    if (recognizer != null) {
-      _recognizers.add(recognizer);
-    }
+    final recognizer = url == null ? null : _recognizer(scope, url);
     Widget tappable(Widget child) => url == null
         ? child
         : GestureDetector(onTap: () => scope.onLink(url), child: child);
@@ -150,7 +174,9 @@ class _PreviewTextState extends State<PreviewText> {
   }
 }
 
-/// Inline math: its SVG set on the text's baseline.
+/// Inline math: its SVG set on the text's baseline. The text it is in
+/// scales it, and its baseline, with the system's text, as Flutter scales
+/// every widget in a line of text.
 class PreviewInlineMath extends StatelessWidget {
   const PreviewInlineMath(this.svg, {super.key});
 

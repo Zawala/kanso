@@ -87,15 +87,14 @@ class PreviewBlockView extends StatelessWidget {
     final scope = PreviewScope.of(context);
     final style = scope.style;
     return switch (block) {
-      PreviewBlock_Heading(:final level, :final id, :final inlines) =>
-        Semantics(
-          header: true,
-          child: PreviewText(
-            inlines,
-            key: scope.headingKey(id),
-            style: style.heading(level),
-          ),
+      final PreviewBlock_Heading heading => Semantics(
+        header: true,
+        child: PreviewText(
+          heading.inlines,
+          key: scope.headingKey(heading),
+          style: style.heading(heading.level),
         ),
+      ),
       PreviewBlock_Paragraph(:final inlines) => PreviewText(inlines),
       PreviewBlock_List(
         :final ordered,

@@ -1,5 +1,8 @@
-//! The note's preview in the app (#48 step 7): the page the WebView shows,
-//! what a tap on it means, and the writes a tap makes.
+//! The note's preview in the app (#48 step 7): the blocks the app draws it
+//! from ([`Renderer::preview_blocks`]), what a tap on it means, and the
+//! writes a tap makes. The same note as an HTML page
+//! ([`Renderer::preview_html_with`]) is kept for HTML output such as
+//! export; the app's preview no longer shows a page.
 //!
 //! The page is `kanso-render`'s in-app mode ([`html::AppMode`]): the same page
 //! that is published, with the addresses the app understands kept on its
@@ -51,8 +54,9 @@ const DUE: &str = html::app::DUE_LINK_PREFIX;
 const NEW: &str = html::app::NEW_NOTE_PREFIX;
 
 impl Renderer {
-    /// A note as a standalone page for the app's WebView, in `palette`'s
-    /// colors and `options`' faces and size.
+    /// A note as a standalone HTML page, in `palette`'s colors and
+    /// `options`' faces and size: the form HTML output such as export uses.
+    /// The app's preview draws [`Renderer::preview_blocks`] instead.
     ///
     /// - Its links keep the addresses [`Renderer::link_target`] reads: a
     ///   note (a wiki-link to a heading keeps it), a note to make, a tag, an

@@ -9,8 +9,9 @@ import '../../../../core/bridge/api/types.dart';
 import '../../../../core/utils/context_extensions.dart';
 import 'preview_style.dart';
 
-/// Math, a diagram or a drawing set on its own: its SVG at its size, made
-/// smaller to fit the note's width. Display math is centred.
+/// Math, a diagram or a drawing set on its own: its SVG at its size,
+/// scaled with the system's text, made smaller to fit the note's width.
+/// Display math is centred.
 class PreviewFigure extends StatelessWidget {
   const PreviewFigure({required this.kind, required this.svg, super.key});
 
@@ -19,6 +20,12 @@ class PreviewFigure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Drawn at the note's text size, so scaled with the system's text as the
+    // text around it is.
+    final size = PreviewScope.of(context).style.size;
+    final scale = size > 0
+        ? MediaQuery.textScalerOf(context).scale(size) / size
+        : 1.0;
     return Align(
       alignment: kind == PreviewFigureKind.math
           ? Alignment.center
@@ -26,12 +33,12 @@ class PreviewFigure extends StatelessWidget {
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: SizedBox(
-          width: svg.width,
-          height: svg.height,
+          width: svg.width * scale,
+          height: svg.height * scale,
           child: SvgPicture.string(
             svg.markup,
-            width: svg.width,
-            height: svg.height,
+            width: svg.width * scale,
+            height: svg.height * scale,
           ),
         ),
       ),

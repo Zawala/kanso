@@ -154,6 +154,34 @@ void main() {
       expect(drawn, 1);
     });
 
+    test(
+      'themes asked for twice while the first draw is cut short are drawn',
+      () async {
+        final bloc = await started();
+        const PreviewThemes picked = (
+          ui: 'kanso-light',
+          syntax: 'kanso-light',
+          preview: 'kanso-light',
+          dark: false,
+        );
+        final slow = Completer<Either<ApplicationError, List<PreviewBlock>>>();
+        var calls = 0;
+        // The first draw for the new themes never ends; the second is quick.
+        when(() => renderer.previewBlocks(any(), any(), any())).thenAnswer(
+          (_) => ++calls == 1
+              ? slow.future
+              : Future.value(
+                  Right<ApplicationError, List<PreviewBlock>>(_page(++drawn)),
+                ),
+        );
+        bloc.add(const PreviewEvent.themeChanged(picked));
+        await pumpEventQueue();
+        bloc.add(const PreviewEvent.themeChanged(picked));
+        await bloc.stream.firstWhere((state) => _shown(state) == 'page 2');
+        expect(bloc.state.themes, picked);
+      },
+    );
+
     test("themes that can't be read fall back to Kanso's own", () async {
       when(() => themes.fit('gone', 'gone', 'gone')).thenAnswer(
         (_) async => const Left<ApplicationError, ThemeTokens>(_failure),
@@ -173,6 +201,53 @@ void main() {
         () => themes.fit('kanso-dark', 'kanso-dark', 'kanso-dark'),
       ).called(1);
     });
+
+    test("a fit that failed isn't kept: the next draw fits again", () async {
+      final own = tokensFor(fakePalette('kanso-dark', dark: true));
+      var fits = 0;
+      when(() => themes.fit('nord', 'nord', 'nord')).thenAnswer(
+        (_) async => ++fits == 1
+            ? const Left<ApplicationError, ThemeTokens>(_failure)
+            : Right<ApplicationError, ThemeTokens>(_tokens),
+      );
+      when(
+        () => themes.fit('kanso-dark', 'kanso-dark', 'kanso-dark'),
+      ).thenAnswer((_) async => Right<ApplicationError, ThemeTokens>(own));
+      final bloc = await started();
+      changes.add(<String>['note:other']);
+      await bloc.stream.firstWhere((state) => _shown(state) == 'page 2');
+      final options = verify(
+        () => renderer.previewBlocks(any(), any(), captureAny()),
+      ).captured.cast<PreviewOptions>();
+      expect(options.first.code, own.syntax);
+      expect(options.last.code, _tokens.syntax);
+      expect(options.last.code, isNot(own.syntax));
+      expect(fits, 2);
+    });
+
+    test(
+      "a slow draw that ends after a newer one doesn't replace it",
+      () async {
+        final bloc = await started();
+        final slow = Completer<Either<ApplicationError, List<PreviewBlock>>>();
+        var calls = 0;
+        // The first draw from here on is slow; the next is quick.
+        when(() => renderer.previewBlocks(any(), any(), any())).thenAnswer(
+          (_) => ++calls == 1
+              ? slow.future
+              : Future.value(
+                  Right<ApplicationError, List<PreviewBlock>>(_page(++drawn)),
+                ),
+        );
+        bloc.add(const PreviewEvent.styleChanged(size: 30));
+        await pumpEventQueue();
+        changes.add(<String>['note:other']);
+        await bloc.stream.firstWhere((state) => _shown(state) == 'page 2');
+        slow.complete(Right<ApplicationError, List<PreviewBlock>>(_page(99)));
+        await pumpEventQueue();
+        expect(_shown(bloc.state), 'page 2');
+      },
+    );
 
     test('a new text size draws the note again at that size', () async {
       final bloc = await started();

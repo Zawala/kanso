@@ -8,12 +8,18 @@ import 'package:flutter/widgets.dart';
 
 import '../../../../core/bridge/api/types.dart';
 import '../../../../core/configs/kanso_icons.dart';
+import '../../../../core/utils/context_extensions.dart';
 import '../../../../core/views/widgets/kanso_icon.dart';
 import 'preview_blocks.dart';
 import 'preview_style.dart';
 
 /// A list: bullets, or numbers from [start], or task boxes, each item's
 /// blocks beside its marker. A [tight] list has no paragraph gaps.
+///
+/// Each list in an item is set in by a marker's width, until the room left
+/// beside a marker would be less than [minTextWidth] body sizes: from there
+/// a list in an item is drawn below the item's text, as far in as the item,
+/// so lists nested as deep as the core allows still fit.
 class PreviewList extends StatelessWidget {
   const PreviewList({
     required this.ordered,
@@ -28,6 +34,10 @@ class PreviewList extends StatelessWidget {
   final bool tight;
   final List<PreviewListItem> items;
 
+  /// The narrowest room, in body sizes, left beside a marker before nested
+  /// lists stop being set in further.
+  static const double minTextWidth = 8;
+
   static const List<String> _bullets = <String>['•', '◦', '▪'];
 
   @override
@@ -37,46 +47,122 @@ class PreviewList extends StatelessWidget {
     final size = style.size;
     final between = tight ? 0.25 * size : math.max(0.25 * size, style.gap);
     final marker = style.body.copyWith(color: style.taskDone);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        for (var at = 0; at < items.length; at++) ...<Widget>[
-          if (at > 0) SizedBox(height: between),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              if (items[at].task case final task?)
-                PreviewTaskCheckbox(checked: task.checked, index: task.index)
-              else
-                SizedBox(
-                  width: 1.4 * size,
-                  child: Padding(
-                    padding: EdgeInsets.only(right: 0.35 * size),
-                    child: Text(
-                      ordered
-                          ? '${start + at}.'
-                          : _bullets[scope.depth % _bullets.length],
-                      textAlign: TextAlign.right,
-                      style: marker,
+    final bulletWidth = 1.4 * size;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final widest = math.max(bulletWidth, PreviewTaskCheckbox.width);
+        final flat = constraints.maxWidth - widest < minTextWidth * size;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (var at = 0; at < items.length; at++) ...<Widget>[
+              if (at > 0) SizedBox(height: between),
+              ..._item(
+                context,
+                items[at],
+                flat: flat,
+                markerWidth: items[at].task == null
+                    ? bulletWidth
+                    : PreviewTaskCheckbox.width,
+                marker: switch (items[at].task) {
+                  final task? => PreviewTaskCheckbox(
+                    checked: task.checked,
+                    index: task.index,
+                  ),
+                  null => SizedBox(
+                    width: bulletWidth,
+                    child: Padding(
+                      padding: EdgeInsets.only(right: 0.35 * size),
+                      child: Text(
+                        ordered
+                            ? '${start + at}.'
+                            : _bullets[scope.depth % _bullets.length],
+                        textAlign: TextAlign.right,
+                        style: marker,
+                      ),
                     ),
                   ),
-                ),
-              Expanded(
-                child: PreviewScope.nested(
-                  context,
-                  depth: scope.depth + 1,
-                  style: items[at].task?.checked ?? false
-                      ? style.withText(style.taskDone)
-                      : null,
-                  child: PreviewBlocks(items[at].blocks, tight: tight),
-                ),
+                },
               ),
             ],
-          ),
-        ],
+          ],
+        );
+      },
+    );
+  }
+
+  /// The item's blocks beside its [marker]; when [flat], the lists in it
+  /// below its text instead, as far in as the item.
+  List<Widget> _item(
+    BuildContext context,
+    PreviewListItem item, {
+    required bool flat,
+    required double markerWidth,
+    required Widget marker,
+  }) {
+    final scope = PreviewScope.of(context);
+    final style = scope.style;
+    Widget nested(List<PreviewBlock> blocks) => PreviewScope.nested(
+      context,
+      depth: scope.depth + 1,
+      style: item.task?.checked ?? false
+          ? style.withText(style.taskDone)
+          : null,
+      child: PreviewBlocks(blocks, tight: tight),
+    );
+    Widget beside(Widget lead, List<PreviewBlock> blocks) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        lead,
+        Expanded(child: nested(blocks)),
       ],
     );
+    if (!flat) {
+      return <Widget>[beside(marker, item.blocks)];
+    }
+    // Runs of the item's blocks: text beside the marker, each list below.
+    final runs = <List<PreviewBlock>>[];
+    for (final block in item.blocks) {
+      if (block is! PreviewBlock_List &&
+          runs.isNotEmpty &&
+          runs.last.last is! PreviewBlock_List) {
+        runs.last.add(block);
+      } else {
+        runs.add(<PreviewBlock>[block]);
+      }
+    }
+    final children = <Widget>[];
+    PreviewBlock? before;
+    for (final run in runs) {
+      final list = run.first is PreviewBlock_List;
+      if (children.isEmpty && list) {
+        // A marker with no text of its own, the list below it.
+        children.add(beside(marker, const <PreviewBlock>[]));
+      }
+      if (before != null) {
+        final (_, below) = PreviewBlocks.margins(before, style, tight: tight);
+        final (above, _) = PreviewBlocks.margins(
+          run.first,
+          style,
+          tight: tight,
+        );
+        final room = math.max(above, below);
+        if (room > 0) {
+          children.add(SizedBox(height: room));
+        }
+      }
+      children.add(
+        list
+            ? nested(run)
+            : beside(
+                children.isEmpty ? marker : SizedBox(width: markerWidth),
+                run,
+              ),
+      );
+      before = run.last;
+    }
+    return children;
   }
 }
 
@@ -88,6 +174,9 @@ class PreviewTaskCheckbox extends StatelessWidget {
 
   final bool checked;
   final int? index;
+
+  /// The room a task's box takes beside its text.
+  static const double width = 15 + 8 + 8;
 
   @override
   Widget build(BuildContext context) {
@@ -119,18 +208,22 @@ class PreviewTaskCheckbox extends StatelessWidget {
           : null,
     );
     final tappable = index;
+    final onTap = tappable == null
+        ? null
+        : () => scope.onLink('kanso-task:$tappable');
     return Semantics(
       container: true,
+      label: context.l10n.previewTask,
       checked: checked,
       enabled: tappable != null,
       button: tappable != null,
+      onTap: onTap,
+      excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: tappable == null
-            ? null
-            : () => scope.onLink('kanso-task:$tappable'),
+        onTap: onTap,
         child: SizedBox(
-          width: 15 + 8 + 8,
+          width: width,
           height: math.max(line, 15),
           child: Align(alignment: Alignment.centerLeft, child: box),
         ),

@@ -78,8 +78,19 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
   final HapticsRepository _haptics;
 
   /// The tokens last fitted, and the themes they were fitted for, so that a
-  /// note drawn again doesn't fit the same themes again.
+  /// note drawn again doesn't fit the same themes again. Kanso's own tokens,
+  /// used when the themes can't be read, are never kept, so the next draw
+  /// tries the themes again.
   (PreviewThemes, ThemeTokens)? _fitted;
+
+  /// The number of the last draw begun: a draw only shows its blocks while
+  /// no later one has begun, so an older draw that ends late can't replace
+  /// a newer one.
+  int _draws = 0;
+
+  /// The themes and size of the blocks shown, so that a change back to them
+  /// while a draw for others was cut short still draws again.
+  (PreviewThemes, double)? _drawnWith;
   StreamSubscription<List<String>>? _changes;
 
   Future<void> _onStarted(
@@ -104,10 +115,10 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     PreviewThemeChangedEvent event,
     Emitter<PreviewState> emit,
   ) async {
-    if (event.themes == state.themes) {
+    emit(state.copyWith(themes: event.themes));
+    if (_drawnWith == (state.themes, state.size)) {
       return;
     }
-    emit(state.copyWith(themes: event.themes));
     await _draw(emit);
   }
 
@@ -115,10 +126,10 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     PreviewStyleChangedEvent event,
     Emitter<PreviewState> emit,
   ) async {
-    if (event.size == state.size) {
+    emit(state.copyWith(size: event.size));
+    if (_drawnWith == (state.themes, state.size)) {
       return;
     }
-    emit(state.copyWith(size: event.size));
     await _draw(emit);
   }
 
@@ -135,22 +146,30 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     if (_fitted case (final known, final tokens) when known == themes) {
       return Right<ApplicationError, ThemeTokens>(tokens);
     }
-    var fitted = await _themes.fit(themes.ui, themes.syntax, themes.preview);
-    if (fitted.isLeft()) {
-      final own = themes.dark ? 'kanso-dark' : 'kanso-light';
-      fitted = await _themes.fit(own, own, own);
+    final fitted = await _themes.fit(
+      themes.ui,
+      themes.syntax,
+      themes.preview,
+    );
+    if (fitted case Right(value: final tokens)) {
+      _fitted = (themes, tokens);
+      return fitted;
     }
-    fitted.fold((_) {}, (tokens) => _fitted = (themes, tokens));
-    return fitted;
+    final own = themes.dark ? 'kanso-dark' : 'kanso-light';
+    return _themes.fit(own, own, own);
   }
 
   /// Draws the note's blocks with the fitted preview palette and code
-  /// colours, and keeps the revision they were drawn from.
+  /// colours, and keeps the revision they were drawn from. Only the latest
+  /// draw begun shows what it drew.
   Future<void> _draw(Emitter<PreviewState> emit) async {
+    final draw = ++_draws;
     final noteId = state.noteId;
-    final tokens = await _tokens(state.themes);
+    final themes = state.themes;
+    final size = state.size;
+    final tokens = await _tokens(themes);
     final note = await _library.note(noteId);
-    if (emit.isDone) {
+    if (emit.isDone || draw != _draws) {
       return;
     }
     final drawn = await tokens.fold(
@@ -166,7 +185,7 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
             noteId,
             tokens.palette,
             PreviewOptions(
-              size: state.size,
+              size: size,
               utcOffsetSecs: clock.now().timeZoneOffset.inSeconds,
               code: tokens.syntax,
             ),
@@ -175,8 +194,11 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
         },
       ),
     );
-    if (emit.isDone || noteId != state.noteId) {
+    if (emit.isDone || draw != _draws || noteId != state.noteId) {
       return;
+    }
+    if (drawn.isRight()) {
+      _drawnWith = (themes, size);
     }
     emit(
       drawn.fold(

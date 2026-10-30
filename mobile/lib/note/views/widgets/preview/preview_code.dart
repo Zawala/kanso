@@ -228,6 +228,7 @@ class _CopyButton extends StatelessWidget {
       container: true,
       button: true,
       label: context.l10n.previewCopyCode,
+      onTap: onTap,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,

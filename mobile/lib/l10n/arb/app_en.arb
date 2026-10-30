@@ -1781,6 +1781,10 @@
   "@previewCopyCode": {
     "description": "Read by a screen reader for the button that copies a code block in a note's preview."
   },
+  "previewTask": "Task",
+  "@previewTask": {
+    "description": "Read by a screen reader for a task's box in a note's preview, with whether it is ticked."
+  },
   "previewEmptyDrawing": "An empty drawing",
   "@previewEmptyDrawing": {
     "description": "Shown in a note's preview for a drawing with nothing in it yet."

@@ -1368,6 +1368,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get previewCopyCode => 'Copy code';
 
   @override
+  String get previewTask => 'Task';
+
+  @override
   String get previewEmptyDrawing => 'An empty drawing';
 
   @override

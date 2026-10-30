@@ -2488,6 +2488,12 @@ abstract class AppLocalizations {
   /// **'Copy code'**
   String get previewCopyCode;
 
+  /// Read by a screen reader for a task's box in a note's preview, with whether it is ticked.
+  ///
+  /// In en, this message translates to:
+  /// **'Task'**
+  String get previewTask;
+
   /// Shown in a note's preview for a drawing with nothing in it yet.
   ///
   /// In en, this message translates to:

@@ -27,15 +27,6 @@ class RustRendererRepository implements RendererRepository {
   ) => attempt(() => _renderer.previewHtml(id: id, palette: palette));
 
   @override
-  Future<Either<ApplicationError, String>> previewPage(
-    String id,
-    PaletteDto palette,
-    PreviewOptions options,
-  ) => attempt(
-    () => _renderer.previewHtmlWith(id: id, palette: palette, options: options),
-  );
-
-  @override
   Future<Either<ApplicationError, List<PreviewBlock>>> previewBlocks(
     String id,
     PaletteDto palette,

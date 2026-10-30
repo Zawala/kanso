@@ -39,8 +39,37 @@ class NativePreview extends StatefulWidget {
 class NativePreviewState extends State<NativePreview> {
   final Map<String, GlobalKey> _headings = <String, GlobalKey>{};
 
-  GlobalKey _headingKey(String id) =>
-      _headings.putIfAbsent(id, () => GlobalKey(debugLabel: 'heading $id'));
+  /// The headings drawn with a key: the first with each id that has one. A
+  /// later heading with the same id has none, and scrolling goes to the
+  /// first, as on the page.
+  final Map<PreviewBlock_Heading, GlobalKey> _keyed =
+      Map<PreviewBlock_Heading, GlobalKey>.identity();
+
+  GlobalKey? _headingKey(PreviewBlock_Heading heading) => _keyed[heading];
+
+  /// Finds the first heading with each id in [blocks], and the lists and
+  /// quotes in them, and gives it its id's key.
+  void _keyHeadings(List<PreviewBlock> blocks, Set<String> seen) {
+    for (final block in blocks) {
+      switch (block) {
+        case PreviewBlock_Heading(:final id):
+          if (id.isNotEmpty && seen.add(id)) {
+            _keyed[block] = _headings.putIfAbsent(
+              id,
+              () => GlobalKey(debugLabel: 'heading $id'),
+            );
+          }
+        case PreviewBlock_Quote(:final blocks):
+          _keyHeadings(blocks, seen);
+        case PreviewBlock_List(:final items):
+          for (final item in items) {
+            _keyHeadings(item.blocks, seen);
+          }
+        default:
+          break;
+      }
+    }
+  }
 
   /// The heading [anchor]'s key, while it is drawn.
   @visibleForTesting
@@ -61,6 +90,10 @@ class NativePreviewState extends State<NativePreview> {
 
   @override
   Widget build(BuildContext context) {
+    _keyed.clear();
+    final seen = <String>{};
+    _keyHeadings(widget.blocks, seen);
+    _headings.removeWhere((id, _) => !seen.contains(id));
     final style = PreviewStyle(
       palette: widget.palette,
       typography: context.typography,
