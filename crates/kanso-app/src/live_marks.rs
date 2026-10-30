@@ -319,6 +319,7 @@ mod tests {
                     .map(|((start, len), style)| (start..start + len, style))
                     .collect(),
                 headings,
+                ..LiveLayout::default()
             })
     }
 
