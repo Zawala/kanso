@@ -56,6 +56,7 @@ heading compares the release with the one before.
 
 ### Fixed
 
+- **mobile:** A note's preview is set in the chosen preview and code fonts. The page's policy blocked the fonts it embeds, so a downloaded Google Font fell back to the system's, and the fonts bundled with the app were never embedded at all, so Inter, Source Serif 4, Literata, Instrument Sans, JetBrains Mono and IBM Plex Mono fell back too
 - **locked:** The first time an older locked note is opened on the phones, its linked attachments are sealed and recorded in `kansoFiles`; opening it again leaves the note alone, so legacy locked notes no longer keep readable attachment bytes (#44 step 7, mobile)
 - **locked:** Locking a note copies a picture or file that an unlocked note still shows, so the unlocked note keeps its readable original and the locked note gets its own sealed copy; locking a notebook seals a shared file once for all its notes, and removing one note's lock decrypts only that note's copy (#44 step 3, mobile)
 - **export:** Published notes and exported pages keep their code readable when Kanso uses a dark theme: a light page takes the code colors of your light theme (Kanso Light's if it can't be found), where it had pale colors meant for a dark background

@@ -55,6 +55,7 @@ import 'core/models/repos/abs/ai_repository.dart' as _i84;
 import 'core/models/repos/abs/approvals_repository.dart' as _i465;
 import 'core/models/repos/abs/auth_session_repository.dart' as _i227;
 import 'core/models/repos/abs/board_repository.dart' as _i235;
+import 'core/models/repos/abs/bundled_font_repository.dart' as _i702;
 import 'core/models/repos/abs/capture_repository.dart' as _i23;
 import 'core/models/repos/abs/diagnostics_repository.dart' as _i984;
 import 'core/models/repos/abs/file_picker_repository.dart' as _i205;
@@ -76,6 +77,7 @@ import 'core/models/repos/abs/system_share_repository.dart' as _i202;
 import 'core/models/repos/abs/templates_repository.dart' as _i460;
 import 'core/models/repos/abs/themes_repository.dart' as _i40;
 import 'core/models/repos/abs/widget_colors_repository.dart' as _i978;
+import 'core/models/repos/impl/asset_bundled_font_repository.dart' as _i133;
 import 'core/models/repos/impl/channel_reminder_notifier.dart' as _i740;
 import 'core/models/repos/impl/file_google_font_repository.dart' as _i8;
 import 'core/models/repos/impl/file_preferences_repository.dart' as _i207;
@@ -276,6 +278,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i205.FilePickerRepository>(
       () => _i448.SystemFilePickerRepository(),
     );
+    gh.lazySingleton<_i702.BundledFontRepository>(
+      () => _i133.AssetBundledFontRepository(),
+    );
     gh.lazySingleton<_i272.WebLinkRepository>(
       () => _i635.UrlLauncherWebLinkRepository(),
     );
@@ -451,6 +456,17 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i732.RendererRepository>(
       () => _i820.RustRendererRepository(gh<_i832.KansoRenderer>()),
     );
+    gh.factory<_i435.PreviewBloc>(
+      () => _i435.PreviewBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i732.RendererRepository>(),
+        gh<_i272.WebLinkRepository>(),
+        gh<_i985.UndoNoticeBloc>(),
+        gh<_i1056.HapticsRepository>(),
+        googleFonts: gh<_i1009.GoogleFontRepository>(),
+        bundledFonts: gh<_i702.BundledFontRepository>(),
+      ),
+    );
     gh.lazySingleton<_i704.PaletteRepository>(
       () => _i97.RustPaletteRepository(gh<_i455.KansoLibrary>()),
     );
@@ -480,16 +496,6 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i242.ImportRepository>(
       () => _i903.RustImportRepository(gh<_i455.KansoLibrary>()),
-    );
-    gh.factory<_i435.PreviewBloc>(
-      () => _i435.PreviewBloc(
-        gh<_i38.LibraryRepository>(),
-        gh<_i732.RendererRepository>(),
-        gh<_i272.WebLinkRepository>(),
-        gh<_i985.UndoNoticeBloc>(),
-        gh<_i1056.HapticsRepository>(),
-        googleFonts: gh<_i1009.GoogleFontRepository>(),
-      ),
     );
     gh.factory<_i380.TabsBloc>(
       () => _i380.TabsBloc(

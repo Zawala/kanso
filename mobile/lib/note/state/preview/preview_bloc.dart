@@ -14,6 +14,7 @@ import 'package:injectable/injectable.dart';
 
 import '../../../core/bridge/api/types.dart';
 import '../../../core/models/data/application_error.dart';
+import '../../../core/models/repos/abs/bundled_font_repository.dart';
 import '../../../core/models/repos/abs/google_font_repository.dart';
 import '../../../core/models/repos/abs/haptics_repository.dart';
 import '../../../core/models/repos/abs/library_repository.dart';
@@ -50,6 +51,7 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     this._undoNotice,
     this._haptics, {
     this._googleFonts,
+    this._bundledFonts,
   }) : super(const PreviewState()) {
     on<PreviewStartedEvent>(_onStarted, transformer: restartable());
     on<PreviewThemeChangedEvent>(_onThemeChanged, transformer: restartable());
@@ -70,6 +72,11 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
   final UndoNoticeBloc _undoNotice;
   final HapticsRepository _haptics;
   final GoogleFontRepository? _googleFonts;
+  final BundledFontRepository? _bundledFonts;
+
+  /// The `@font-face` rules of each family embedded so far, so that a page
+  /// drawn again doesn't encode the same files again.
+  final Map<String, String> _faces = <String, String>{};
   StreamSubscription<List<String>>? _changes;
 
   Future<void> _onStarted(
@@ -149,7 +156,7 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
           return page.fold<Future<Either<ApplicationError, (String, String)>>>(
             (error) async => Left<ApplicationError, (String, String)>(error),
             (html) async => Right<ApplicationError, (String, String)>(
-              (await _withGoogleFont(html), note.rev),
+              (await _withFonts(html), note.rev),
             ),
           );
         },
@@ -166,29 +173,16 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     );
   }
 
-  /// [html] with the downloaded Google Fonts its text and code are set in
-  /// embedded, since the web view cannot see the fonts the app registered.
-  /// A bundled family has no cached file and is left to the page.
-  Future<String> _withGoogleFont(String html) async {
-    final googleFonts = _googleFonts;
-    if (googleFonts == null) {
-      return html;
-    }
+  /// [html] with the fonts its text and code are set in embedded, since
+  /// the web view cannot see the fonts the app registered: a downloaded
+  /// Google Font from its cached file, a bundled family from the app's
+  /// assets. The device's font needs nothing.
+  Future<String> _withFonts(String html) async {
     final faces = StringBuffer();
     for (final family in <String>{?state.font, ?state.mono}) {
-      try {
-        final bytes = await googleFonts.cachedBytes(family);
-        if (bytes == null) {
-          continue;
-        }
-        final safeFamily = family.replaceAll("'", r"\'");
-        faces.write(
-          "@font-face{font-family:'$safeFamily';"
-          'src:url(data:font/ttf;base64,${base64Encode(bytes)}) '
-          "format('truetype');}",
-        );
-      } on Object {
-        continue;
+      final rules = _faces[family] ?? await _facesOf(family);
+      if (rules.isNotEmpty) {
+        faces.write(_faces[family] = rules);
       }
     }
     if (faces.isEmpty) {
@@ -199,6 +193,28 @@ class PreviewBloc extends Bloc<PreviewEvent, PreviewState> {
     return head < 0
         ? '$style$html'
         : '${html.substring(0, head)}$style${html.substring(head)}';
+  }
+
+  /// The `@font-face` rules for [family], or none when it has no file.
+  Future<String> _facesOf(String family) async {
+    final safeFamily = family.replaceAll("'", r"\'");
+    String face(List<int> bytes, {String? weight}) =>
+        "@font-face{font-family:'$safeFamily';"
+        'src:url(data:font/ttf;base64,${base64Encode(bytes)}) '
+        "format('truetype');"
+        '${weight == null ? '' : 'font-weight:$weight;'}}';
+    try {
+      if (await _googleFonts?.cachedBytes(family) case final bytes?) {
+        return face(bytes);
+      }
+    } on Object {
+      // A cache that can't be read is a font the page goes without.
+    }
+    final bundled =
+        await _bundledFonts?.faces(family) ?? const <BundledFontFace>[];
+    return <String>[
+      for (final each in bundled) face(each.bytes, weight: each.weight),
+    ].join();
   }
 
   Future<void> _onLinkTapped(
