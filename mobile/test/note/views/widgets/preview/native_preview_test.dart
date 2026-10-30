@@ -8,6 +8,7 @@ import 'dart:ui' show CheckedState, SemanticsAction;
 import 'package:dartz/dartz.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +20,7 @@ import 'package:kanso/injection.dart';
 import 'package:kanso/note/state/preview/preview_bloc.dart';
 import 'package:kanso/note/views/widgets/note_preview.dart';
 import 'package:kanso/note/views/widgets/preview/native_preview.dart';
+import 'package:kanso/note/views/widgets/preview/preview_blocks.dart';
 import 'package:kanso/note/views/widgets/preview/preview_list.dart';
 import 'package:mocktail/mocktail.dart';
 
@@ -124,6 +126,7 @@ void main() {
     double below = 0,
     GlobalKey<NativePreviewState>? previewKey,
     TextScaler? textScaler,
+    ValueChanged<SelectedContent?>? onSelectionChanged,
   }) async {
     final key = previewKey ?? GlobalKey<NativePreviewState>();
     await tester.pumpWidget(
@@ -134,9 +137,10 @@ void main() {
                 data: MediaQuery.of(context).copyWith(textScaler: textScaler),
                 child: home,
               ),
-        home: SingleChildScrollView(
-          child: Column(
-            children: <Widget>[
+        home: SelectionArea(
+          onSelectionChanged: onSelectionChanged,
+          child: CustomScrollView(
+            slivers: <Widget>[
               NativePreview(
                 key: key,
                 blocks: blocks,
@@ -144,7 +148,7 @@ void main() {
                 onLink: tapped.add,
                 onEdit: () => edits++,
               ),
-              SizedBox(height: below),
+              SliverToBoxAdapter(child: SizedBox(height: below)),
             ],
           ),
         ),
@@ -282,8 +286,10 @@ void main() {
     });
 
     testWidgets('a heading can be scrolled to by its id', (tester) async {
+      // Few enough lines that the heading is built; the long note's tests
+      // scroll to headings that aren't.
       final key = await pump(tester, <PreviewBlock>[
-        for (var at = 0; at < 40; at++)
+        for (var at = 0; at < 12; at++)
           _paragraph(<PreviewInline>[_text('Line $at')]),
         PreviewBlock.heading(
           level: 1,
@@ -563,7 +569,7 @@ void main() {
       expect(inline2, const Size(80, 40));
       expect(figure1, const Size(40, 20));
       expect(figure2, const Size(80, 40));
-      final width = tester.getSize(find.byType(NativePreview)).width;
+      final width = tester.getSize(find.byType(CustomScrollView)).width;
       expect(wide1.width, closeTo(width, 0.5));
       expect(wide2.width, closeTo(width, 0.5));
     });
@@ -572,12 +578,138 @@ void main() {
       await pump(tester, <PreviewBlock>[
         _paragraph(<PreviewInline>[_text('Some text to read')]),
       ]);
-      final at = tester.getCenter(find.byType(NativePreview));
+      final at = tester.getCenter(
+        find.text('Some text to read', findRichText: true),
+      );
       await tester.tapAt(at);
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tapAt(at);
       await tester.pumpAndSettle();
       expect(edits, 1);
+    });
+  });
+
+  group('NativePreview, a long note', () {
+    PreviewBlock heading(String id, String text) => PreviewBlock.heading(
+      level: 2,
+      id: id,
+      inlines: <PreviewInline>[_text(text)],
+    );
+
+    /// 5,000 blocks: a heading `h<n>` every tenth, paragraphs between; the
+    /// paragraph at [changedAt] says "Changed".
+    List<PreviewBlock> long({int? changedAt}) => <PreviewBlock>[
+      for (var at = 0; at < 5000; at++)
+        if (at % 10 == 0)
+          heading('h$at', 'Heading $at')
+        else
+          _paragraph(<PreviewInline>[
+            _text(at == changedAt ? 'Changed' : 'Paragraph $at, some words'),
+          ]),
+    ];
+
+    testWidgets('builds only the blocks near the screen, quickly', (
+      tester,
+    ) async {
+      final watch = Stopwatch()..start();
+      await pump(tester, long());
+      watch.stop();
+      final built = find
+          .byType(PreviewBlockView, skipOffstage: false)
+          .evaluate()
+          .length;
+      expect(built, greaterThan(5));
+      expect(built, lessThan(100));
+      expect(
+        find.text('Paragraph 4999, some words', findRichText: true),
+        findsNothing,
+      );
+      // Generous: drawing all 5,000 blocks took over ten seconds.
+      expect(watch.elapsed, lessThan(const Duration(seconds: 5)));
+    });
+
+    testWidgets('a change to one block builds only that block again', (
+      tester,
+    ) async {
+      final key = await pump(tester, long());
+      NativePreview.debugBlockBuilds = 0;
+      final watch = Stopwatch()..start();
+      await pump(tester, long(changedAt: 3), previewKey: key);
+      watch.stop();
+      expect(NativePreview.debugBlockBuilds, 1);
+      expect(find.text('Changed', findRichText: true), findsOneWidget);
+      expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
+    });
+
+    testWidgets('a heading not built yet can be scrolled to, the last too', (
+      tester,
+    ) async {
+      final key = await pump(tester, long());
+      final state = key.currentState!;
+      final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+      for (final anchor in <String>['h2500', 'h4990', 'h10']) {
+        final heading = state.headingKey(anchor)!;
+        if (anchor != 'h10') {
+          expect(heading.currentContext, isNull);
+        }
+        unawaited(state.scrollTo(anchor));
+        await tester.pumpAndSettle();
+        expect(heading.currentContext, isNotNull, reason: anchor);
+        final top = tester.getTopLeft(find.byKey(heading)).dy;
+        expect(top, greaterThanOrEqualTo(-0.5), reason: anchor);
+        expect(top, lessThan(screen.height), reason: anchor);
+        if (anchor != 'h4990') {
+          expect(top, closeTo(0, 1), reason: anchor);
+        }
+      }
+    });
+
+    testWidgets('a heading that becomes a repeat loses its key safely', (
+      tester,
+    ) async {
+      final key = await pump(tester, <PreviewBlock>[
+        _paragraph(<PreviewInline>[_text('Intro')]),
+        heading('same', 'Second'),
+      ]);
+      final first = key.currentState!.headingKey('same');
+      await pump(tester, <PreviewBlock>[
+        heading('same', 'First'),
+        heading('same', 'Second'),
+      ], previewKey: key);
+      expect(tester.takeException(), isNull);
+      expect(key.currentState!.headingKey('same'), same(first));
+      expect(
+        tester.getTopLeft(find.byKey(first!)).dy,
+        closeTo(
+          tester.getTopLeft(find.text('First', findRichText: true)).dy,
+          0.5,
+        ),
+      );
+    });
+
+    testWidgets('text can be selected across two blocks', (tester) async {
+      SelectedContent? selected;
+      await pump(tester, <PreviewBlock>[
+        _paragraph(<PreviewInline>[_text('First block')]),
+        _paragraph(<PreviewInline>[_text('Second block')]),
+      ], onSelectionChanged: (content) => selected = content);
+      final from = tester.getTopLeft(
+        find.text('First block', findRichText: true),
+      );
+      final to = tester.getBottomRight(
+        find.text('Second block', findRichText: true),
+      );
+      final gesture = await tester.startGesture(
+        from + const Offset(1, 4),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveTo(to - const Offset(1, 4));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(selected?.plainText, contains('First block'));
+      expect(selected?.plainText, contains('Second block'));
     });
   });
 

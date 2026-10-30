@@ -16,7 +16,9 @@ import 'note_metadata_block.dart';
 import 'note_preview.dart';
 
 /// A note that is open: its title, a compact block of its facts, and its
-/// text, which scrolls with them.
+/// text, which scrolls with them. All of it can be selected: the selection
+/// area is round the scroll, so it spans the text's blocks, which are built
+/// only near the screen.
 class NoteBody extends StatelessWidget {
   const NoteBody({
     required this.note,
@@ -43,48 +45,50 @@ class NoteBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final now = clock.now();
-    return CustomScrollView(
-      slivers: <Widget>[
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(
-            gutter,
-            KansoSpacing.xxs,
-            gutter,
-            KansoSpacing.md,
-          ),
-          sliver: SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  note.title.trim().isEmpty ? l10n.noteUntitled : note.title,
-                  style: context.typography.previewTitle,
-                ),
-                const SizedBox(height: KansoSpacing.sm),
-                NoteMetadataBlock(
-                  notebook: index.notebookPath(note.notebookId) ?? '',
-                  status: noteStatusOf(note.status),
-                  tags: <TagRow>[
-                    for (final id in note.tags)
-                      if (index.tag(id) case final tag?) tag,
-                  ],
-                  created: dateLabel(l10n, note.createdMs),
-                  updated: dateTimeLabel(l10n, note.updatedMs, now: now),
-                ),
-              ],
+    return SelectionArea(
+      child: CustomScrollView(
+        slivers: <Widget>[
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              KansoSpacing.xxs,
+              gutter,
+              KansoSpacing.md,
+            ),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    note.title.trim().isEmpty ? l10n.noteUntitled : note.title,
+                    style: context.typography.previewTitle,
+                  ),
+                  const SizedBox(height: KansoSpacing.sm),
+                  NoteMetadataBlock(
+                    notebook: index.notebookPath(note.notebookId) ?? '',
+                    status: noteStatusOf(note.status),
+                    tags: <TagRow>[
+                      for (final id in note.tags)
+                        if (index.tag(id) case final tag?) tag,
+                    ],
+                    created: dateLabel(l10n, note.createdMs),
+                    updated: dateTimeLabel(l10n, note.updatedMs, now: now),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(
-            gutter,
-            0,
-            gutter,
-            MediaQuery.paddingOf(context).bottom + KansoSpacing.lg,
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              0,
+              gutter,
+              MediaQuery.paddingOf(context).bottom + KansoSpacing.lg,
+            ),
+            sliver: NotePreview(note: note, lines: lines, onEditAt: onEditAt),
           ),
-          sliver: NotePreview(note: note, lines: lines, onEditAt: onEditAt),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
