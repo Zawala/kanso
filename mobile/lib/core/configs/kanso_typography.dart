@@ -12,9 +12,10 @@ import 'kanso_colors.dart';
 
 /// Kanso's type scale.
 ///
-/// The interface is always in Instrument Sans. The text of notes follows
-/// the person's choices: the editor, preview and code fonts of
-/// [KansoFonts] and continuous text scales, which change note text only.
+/// Every style follows the person's choices in [KansoFonts]: the interface
+/// font (Instrument Sans by default) for the interface, and the editor,
+/// preview and code fonts for the text of notes, each a bundled family or a
+/// downloaded Google Font. Note text has its own continuous scales.
 ///
 /// The sizes are tuned for a phone, at the density of a compact notes app.
 /// Nothing clamps the text scale: dynamic type is respected everywhere.
@@ -58,6 +59,8 @@ class KansoTypography {
     double? previewTextSize,
     double interfaceTextSize = 1,
   }) {
+    final interfaceFamily =
+        fonts.interfaceGoogleFont ?? fonts.interfaceFont.family ?? systemFamily;
     TextStyle ui(
       double size,
       FontWeight weight,
@@ -66,7 +69,7 @@ class KansoTypography {
       double? letterSpacing,
     }) {
       return TextStyle(
-        fontFamily: sansFamily,
+        fontFamily: interfaceFamily,
         fontSize: size * interfaceTextSize,
         fontWeight: weight,
         height: height,
@@ -183,7 +186,14 @@ class KansoTypography {
         FontWeight.w400,
         leading(preview),
       ),
-      mono: note(fonts.codeFont, null, textSize, 13.5, FontWeight.w400, 1.5),
+      mono: note(
+        fonts.codeFont,
+        fonts.codeGoogleFont,
+        textSize,
+        13.5,
+        FontWeight.w400,
+        1.5,
+      ),
       // Theme previews are interface, not note text: not scaled.
       monoSmall: fontStyle(
         fonts.codeFont,
@@ -191,7 +201,7 @@ class KansoTypography {
         weight: FontWeight.w400,
         height: 1.55,
         color: colors.text,
-      ),
+      ).copyWith(fontFamily: fonts.codeGoogleFont),
     );
   }
 
@@ -233,7 +243,7 @@ class KansoTypography {
         : 'sans-serif';
   }
 
-  /// The family of the interface.
+  /// Kanso's own interface family, the default interface font.
   static const String sansFamily = 'Instrument Sans';
 
   /// A page's heading, at the top of what scrolls: 32, bold, set tight.

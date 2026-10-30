@@ -55,7 +55,7 @@ extension AppearanceEventPatterns on AppearanceEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppearanceStartedEvent value)?  started,TResult Function( AppearanceThemePickedEvent value)?  themePicked,TResult Function( AppearanceSyntaxPickedEvent value)?  syntaxPicked,TResult Function( AppearancePreviewPickedEvent value)?  previewPicked,TResult Function( AppearanceFollowSystemChangedEvent value)?  followSystemChanged,TResult Function( AppearanceIconThemePickedEvent value)?  iconThemePicked,TResult Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,TResult Function( AppearancePreviewTextSizeChangedEvent value)?  previewTextSizeChanged,TResult Function( AppearanceInterfaceTextSizeChangedEvent value)?  interfaceTextSizeChanged,TResult Function( AppearanceGoogleFontPickedEvent value)?  googleFontPicked,TResult Function( AppearanceDiagramRendererChangedEvent value)?  diagramRendererChanged,TResult Function( AppearanceThemeChangedEvent value)?  themeChanged,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppearanceStartedEvent value)?  started,TResult Function( AppearanceThemePickedEvent value)?  themePicked,TResult Function( AppearanceSyntaxPickedEvent value)?  syntaxPicked,TResult Function( AppearancePreviewPickedEvent value)?  previewPicked,TResult Function( AppearanceFollowSystemChangedEvent value)?  followSystemChanged,TResult Function( AppearanceIconThemePickedEvent value)?  iconThemePicked,TResult Function( AppearanceInterfaceFontChangedEvent value)?  interfaceFontChanged,TResult Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,TResult Function( AppearancePreviewTextSizeChangedEvent value)?  previewTextSizeChanged,TResult Function( AppearanceInterfaceTextSizeChangedEvent value)?  interfaceTextSizeChanged,TResult Function( AppearanceGoogleFontPickedEvent value)?  googleFontPicked,TResult Function( AppearanceGoogleFontChosenEvent value)?  googleFontChosen,TResult Function( AppearanceDiagramRendererChangedEvent value)?  diagramRendererChanged,TResult Function( AppearanceThemeChangedEvent value)?  themeChanged,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
@@ -64,14 +64,16 @@ return themePicked(_that);case AppearanceSyntaxPickedEvent() when syntaxPicked !
 return syntaxPicked(_that);case AppearancePreviewPickedEvent() when previewPicked != null:
 return previewPicked(_that);case AppearanceFollowSystemChangedEvent() when followSystemChanged != null:
 return followSystemChanged(_that);case AppearanceIconThemePickedEvent() when iconThemePicked != null:
-return iconThemePicked(_that);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
+return iconThemePicked(_that);case AppearanceInterfaceFontChangedEvent() when interfaceFontChanged != null:
+return interfaceFontChanged(_that);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
 return editorFontChanged(_that);case AppearancePreviewFontChangedEvent() when previewFontChanged != null:
 return previewFontChanged(_that);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
 return textSizeChanged(_that);case AppearancePreviewTextSizeChangedEvent() when previewTextSizeChanged != null:
 return previewTextSizeChanged(_that);case AppearanceInterfaceTextSizeChangedEvent() when interfaceTextSizeChanged != null:
 return interfaceTextSizeChanged(_that);case AppearanceGoogleFontPickedEvent() when googleFontPicked != null:
-return googleFontPicked(_that);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
+return googleFontPicked(_that);case AppearanceGoogleFontChosenEvent() when googleFontChosen != null:
+return googleFontChosen(_that);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
 return diagramRendererChanged(_that);case AppearanceThemeChangedEvent() when themeChanged != null:
 return themeChanged(_that);case _:
   return orElse();
@@ -91,7 +93,7 @@ return themeChanged(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppearanceStartedEvent value)  started,required TResult Function( AppearanceThemePickedEvent value)  themePicked,required TResult Function( AppearanceSyntaxPickedEvent value)  syntaxPicked,required TResult Function( AppearancePreviewPickedEvent value)  previewPicked,required TResult Function( AppearanceFollowSystemChangedEvent value)  followSystemChanged,required TResult Function( AppearanceIconThemePickedEvent value)  iconThemePicked,required TResult Function( AppearanceEditorFontChangedEvent value)  editorFontChanged,required TResult Function( AppearancePreviewFontChangedEvent value)  previewFontChanged,required TResult Function( AppearanceCodeFontChangedEvent value)  codeFontChanged,required TResult Function( AppearanceTextSizeChangedEvent value)  textSizeChanged,required TResult Function( AppearancePreviewTextSizeChangedEvent value)  previewTextSizeChanged,required TResult Function( AppearanceInterfaceTextSizeChangedEvent value)  interfaceTextSizeChanged,required TResult Function( AppearanceGoogleFontPickedEvent value)  googleFontPicked,required TResult Function( AppearanceDiagramRendererChangedEvent value)  diagramRendererChanged,required TResult Function( AppearanceThemeChangedEvent value)  themeChanged,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppearanceStartedEvent value)  started,required TResult Function( AppearanceThemePickedEvent value)  themePicked,required TResult Function( AppearanceSyntaxPickedEvent value)  syntaxPicked,required TResult Function( AppearancePreviewPickedEvent value)  previewPicked,required TResult Function( AppearanceFollowSystemChangedEvent value)  followSystemChanged,required TResult Function( AppearanceIconThemePickedEvent value)  iconThemePicked,required TResult Function( AppearanceInterfaceFontChangedEvent value)  interfaceFontChanged,required TResult Function( AppearanceEditorFontChangedEvent value)  editorFontChanged,required TResult Function( AppearancePreviewFontChangedEvent value)  previewFontChanged,required TResult Function( AppearanceCodeFontChangedEvent value)  codeFontChanged,required TResult Function( AppearanceTextSizeChangedEvent value)  textSizeChanged,required TResult Function( AppearancePreviewTextSizeChangedEvent value)  previewTextSizeChanged,required TResult Function( AppearanceInterfaceTextSizeChangedEvent value)  interfaceTextSizeChanged,required TResult Function( AppearanceGoogleFontPickedEvent value)  googleFontPicked,required TResult Function( AppearanceGoogleFontChosenEvent value)  googleFontChosen,required TResult Function( AppearanceDiagramRendererChangedEvent value)  diagramRendererChanged,required TResult Function( AppearanceThemeChangedEvent value)  themeChanged,}){
 final _that = this;
 switch (_that) {
 case AppearanceStartedEvent():
@@ -100,14 +102,16 @@ return themePicked(_that);case AppearanceSyntaxPickedEvent():
 return syntaxPicked(_that);case AppearancePreviewPickedEvent():
 return previewPicked(_that);case AppearanceFollowSystemChangedEvent():
 return followSystemChanged(_that);case AppearanceIconThemePickedEvent():
-return iconThemePicked(_that);case AppearanceEditorFontChangedEvent():
+return iconThemePicked(_that);case AppearanceInterfaceFontChangedEvent():
+return interfaceFontChanged(_that);case AppearanceEditorFontChangedEvent():
 return editorFontChanged(_that);case AppearancePreviewFontChangedEvent():
 return previewFontChanged(_that);case AppearanceCodeFontChangedEvent():
 return codeFontChanged(_that);case AppearanceTextSizeChangedEvent():
 return textSizeChanged(_that);case AppearancePreviewTextSizeChangedEvent():
 return previewTextSizeChanged(_that);case AppearanceInterfaceTextSizeChangedEvent():
 return interfaceTextSizeChanged(_that);case AppearanceGoogleFontPickedEvent():
-return googleFontPicked(_that);case AppearanceDiagramRendererChangedEvent():
+return googleFontPicked(_that);case AppearanceGoogleFontChosenEvent():
+return googleFontChosen(_that);case AppearanceDiagramRendererChangedEvent():
 return diagramRendererChanged(_that);case AppearanceThemeChangedEvent():
 return themeChanged(_that);}
 }
@@ -123,7 +127,7 @@ return themeChanged(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppearanceStartedEvent value)?  started,TResult? Function( AppearanceThemePickedEvent value)?  themePicked,TResult? Function( AppearanceSyntaxPickedEvent value)?  syntaxPicked,TResult? Function( AppearancePreviewPickedEvent value)?  previewPicked,TResult? Function( AppearanceFollowSystemChangedEvent value)?  followSystemChanged,TResult? Function( AppearanceIconThemePickedEvent value)?  iconThemePicked,TResult? Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult? Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult? Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult? Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,TResult? Function( AppearancePreviewTextSizeChangedEvent value)?  previewTextSizeChanged,TResult? Function( AppearanceInterfaceTextSizeChangedEvent value)?  interfaceTextSizeChanged,TResult? Function( AppearanceGoogleFontPickedEvent value)?  googleFontPicked,TResult? Function( AppearanceDiagramRendererChangedEvent value)?  diagramRendererChanged,TResult? Function( AppearanceThemeChangedEvent value)?  themeChanged,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppearanceStartedEvent value)?  started,TResult? Function( AppearanceThemePickedEvent value)?  themePicked,TResult? Function( AppearanceSyntaxPickedEvent value)?  syntaxPicked,TResult? Function( AppearancePreviewPickedEvent value)?  previewPicked,TResult? Function( AppearanceFollowSystemChangedEvent value)?  followSystemChanged,TResult? Function( AppearanceIconThemePickedEvent value)?  iconThemePicked,TResult? Function( AppearanceInterfaceFontChangedEvent value)?  interfaceFontChanged,TResult? Function( AppearanceEditorFontChangedEvent value)?  editorFontChanged,TResult? Function( AppearancePreviewFontChangedEvent value)?  previewFontChanged,TResult? Function( AppearanceCodeFontChangedEvent value)?  codeFontChanged,TResult? Function( AppearanceTextSizeChangedEvent value)?  textSizeChanged,TResult? Function( AppearancePreviewTextSizeChangedEvent value)?  previewTextSizeChanged,TResult? Function( AppearanceInterfaceTextSizeChangedEvent value)?  interfaceTextSizeChanged,TResult? Function( AppearanceGoogleFontPickedEvent value)?  googleFontPicked,TResult? Function( AppearanceGoogleFontChosenEvent value)?  googleFontChosen,TResult? Function( AppearanceDiagramRendererChangedEvent value)?  diagramRendererChanged,TResult? Function( AppearanceThemeChangedEvent value)?  themeChanged,}){
 final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
@@ -132,14 +136,16 @@ return themePicked(_that);case AppearanceSyntaxPickedEvent() when syntaxPicked !
 return syntaxPicked(_that);case AppearancePreviewPickedEvent() when previewPicked != null:
 return previewPicked(_that);case AppearanceFollowSystemChangedEvent() when followSystemChanged != null:
 return followSystemChanged(_that);case AppearanceIconThemePickedEvent() when iconThemePicked != null:
-return iconThemePicked(_that);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
+return iconThemePicked(_that);case AppearanceInterfaceFontChangedEvent() when interfaceFontChanged != null:
+return interfaceFontChanged(_that);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
 return editorFontChanged(_that);case AppearancePreviewFontChangedEvent() when previewFontChanged != null:
 return previewFontChanged(_that);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
 return textSizeChanged(_that);case AppearancePreviewTextSizeChangedEvent() when previewTextSizeChanged != null:
 return previewTextSizeChanged(_that);case AppearanceInterfaceTextSizeChangedEvent() when interfaceTextSizeChanged != null:
 return interfaceTextSizeChanged(_that);case AppearanceGoogleFontPickedEvent() when googleFontPicked != null:
-return googleFontPicked(_that);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
+return googleFontPicked(_that);case AppearanceGoogleFontChosenEvent() when googleFontChosen != null:
+return googleFontChosen(_that);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
 return diagramRendererChanged(_that);case AppearanceThemeChangedEvent() when themeChanged != null:
 return themeChanged(_that);case _:
   return null;
@@ -158,7 +164,7 @@ return themeChanged(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  started,TResult Function( String id,  bool dark)?  themePicked,TResult Function( String? id)?  syntaxPicked,TResult Function( String? id)?  previewPicked,TResult Function( bool follow)?  followSystemChanged,TResult Function( String id)?  iconThemePicked,TResult Function( KansoFontFamily font)?  editorFontChanged,TResult Function( KansoFontFamily font)?  previewFontChanged,TResult Function( KansoFontFamily font)?  codeFontChanged,TResult Function( double scale)?  textSizeChanged,TResult Function( double scale)?  previewTextSizeChanged,TResult Function( double scale)?  interfaceTextSizeChanged,TResult Function( String family)?  googleFontPicked,TResult Function( DiagramRenderer renderer)?  diagramRendererChanged,TResult Function( String id)?  themeChanged,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  started,TResult Function( String id,  bool dark)?  themePicked,TResult Function( String? id)?  syntaxPicked,TResult Function( String? id)?  previewPicked,TResult Function( bool follow)?  followSystemChanged,TResult Function( String id)?  iconThemePicked,TResult Function( KansoFontFamily font)?  interfaceFontChanged,TResult Function( KansoFontFamily font)?  editorFontChanged,TResult Function( KansoFontFamily font)?  previewFontChanged,TResult Function( KansoFontFamily font)?  codeFontChanged,TResult Function( double scale)?  textSizeChanged,TResult Function( double scale)?  previewTextSizeChanged,TResult Function( double scale)?  interfaceTextSizeChanged,TResult Function( String family)?  googleFontPicked,TResult Function( KansoFontSlot slot,  String family)?  googleFontChosen,TResult Function( DiagramRenderer renderer)?  diagramRendererChanged,TResult Function( String id)?  themeChanged,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
 return started();case AppearanceThemePickedEvent() when themePicked != null:
@@ -166,14 +172,16 @@ return themePicked(_that.id,_that.dark);case AppearanceSyntaxPickedEvent() when 
 return syntaxPicked(_that.id);case AppearancePreviewPickedEvent() when previewPicked != null:
 return previewPicked(_that.id);case AppearanceFollowSystemChangedEvent() when followSystemChanged != null:
 return followSystemChanged(_that.follow);case AppearanceIconThemePickedEvent() when iconThemePicked != null:
-return iconThemePicked(_that.id);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
+return iconThemePicked(_that.id);case AppearanceInterfaceFontChangedEvent() when interfaceFontChanged != null:
+return interfaceFontChanged(_that.font);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
 return editorFontChanged(_that.font);case AppearancePreviewFontChangedEvent() when previewFontChanged != null:
 return previewFontChanged(_that.font);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that.font);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
 return textSizeChanged(_that.scale);case AppearancePreviewTextSizeChangedEvent() when previewTextSizeChanged != null:
 return previewTextSizeChanged(_that.scale);case AppearanceInterfaceTextSizeChangedEvent() when interfaceTextSizeChanged != null:
 return interfaceTextSizeChanged(_that.scale);case AppearanceGoogleFontPickedEvent() when googleFontPicked != null:
-return googleFontPicked(_that.family);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
+return googleFontPicked(_that.family);case AppearanceGoogleFontChosenEvent() when googleFontChosen != null:
+return googleFontChosen(_that.slot,_that.family);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
 return diagramRendererChanged(_that.renderer);case AppearanceThemeChangedEvent() when themeChanged != null:
 return themeChanged(_that.id);case _:
   return orElse();
@@ -193,7 +201,7 @@ return themeChanged(_that.id);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  started,required TResult Function( String id,  bool dark)  themePicked,required TResult Function( String? id)  syntaxPicked,required TResult Function( String? id)  previewPicked,required TResult Function( bool follow)  followSystemChanged,required TResult Function( String id)  iconThemePicked,required TResult Function( KansoFontFamily font)  editorFontChanged,required TResult Function( KansoFontFamily font)  previewFontChanged,required TResult Function( KansoFontFamily font)  codeFontChanged,required TResult Function( double scale)  textSizeChanged,required TResult Function( double scale)  previewTextSizeChanged,required TResult Function( double scale)  interfaceTextSizeChanged,required TResult Function( String family)  googleFontPicked,required TResult Function( DiagramRenderer renderer)  diagramRendererChanged,required TResult Function( String id)  themeChanged,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  started,required TResult Function( String id,  bool dark)  themePicked,required TResult Function( String? id)  syntaxPicked,required TResult Function( String? id)  previewPicked,required TResult Function( bool follow)  followSystemChanged,required TResult Function( String id)  iconThemePicked,required TResult Function( KansoFontFamily font)  interfaceFontChanged,required TResult Function( KansoFontFamily font)  editorFontChanged,required TResult Function( KansoFontFamily font)  previewFontChanged,required TResult Function( KansoFontFamily font)  codeFontChanged,required TResult Function( double scale)  textSizeChanged,required TResult Function( double scale)  previewTextSizeChanged,required TResult Function( double scale)  interfaceTextSizeChanged,required TResult Function( String family)  googleFontPicked,required TResult Function( KansoFontSlot slot,  String family)  googleFontChosen,required TResult Function( DiagramRenderer renderer)  diagramRendererChanged,required TResult Function( String id)  themeChanged,}) {final _that = this;
 switch (_that) {
 case AppearanceStartedEvent():
 return started();case AppearanceThemePickedEvent():
@@ -201,14 +209,16 @@ return themePicked(_that.id,_that.dark);case AppearanceSyntaxPickedEvent():
 return syntaxPicked(_that.id);case AppearancePreviewPickedEvent():
 return previewPicked(_that.id);case AppearanceFollowSystemChangedEvent():
 return followSystemChanged(_that.follow);case AppearanceIconThemePickedEvent():
-return iconThemePicked(_that.id);case AppearanceEditorFontChangedEvent():
+return iconThemePicked(_that.id);case AppearanceInterfaceFontChangedEvent():
+return interfaceFontChanged(_that.font);case AppearanceEditorFontChangedEvent():
 return editorFontChanged(_that.font);case AppearancePreviewFontChangedEvent():
 return previewFontChanged(_that.font);case AppearanceCodeFontChangedEvent():
 return codeFontChanged(_that.font);case AppearanceTextSizeChangedEvent():
 return textSizeChanged(_that.scale);case AppearancePreviewTextSizeChangedEvent():
 return previewTextSizeChanged(_that.scale);case AppearanceInterfaceTextSizeChangedEvent():
 return interfaceTextSizeChanged(_that.scale);case AppearanceGoogleFontPickedEvent():
-return googleFontPicked(_that.family);case AppearanceDiagramRendererChangedEvent():
+return googleFontPicked(_that.family);case AppearanceGoogleFontChosenEvent():
+return googleFontChosen(_that.slot,_that.family);case AppearanceDiagramRendererChangedEvent():
 return diagramRendererChanged(_that.renderer);case AppearanceThemeChangedEvent():
 return themeChanged(_that.id);}
 }
@@ -224,7 +234,7 @@ return themeChanged(_that.id);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  started,TResult? Function( String id,  bool dark)?  themePicked,TResult? Function( String? id)?  syntaxPicked,TResult? Function( String? id)?  previewPicked,TResult? Function( bool follow)?  followSystemChanged,TResult? Function( String id)?  iconThemePicked,TResult? Function( KansoFontFamily font)?  editorFontChanged,TResult? Function( KansoFontFamily font)?  previewFontChanged,TResult? Function( KansoFontFamily font)?  codeFontChanged,TResult? Function( double scale)?  textSizeChanged,TResult? Function( double scale)?  previewTextSizeChanged,TResult? Function( double scale)?  interfaceTextSizeChanged,TResult? Function( String family)?  googleFontPicked,TResult? Function( DiagramRenderer renderer)?  diagramRendererChanged,TResult? Function( String id)?  themeChanged,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  started,TResult? Function( String id,  bool dark)?  themePicked,TResult? Function( String? id)?  syntaxPicked,TResult? Function( String? id)?  previewPicked,TResult? Function( bool follow)?  followSystemChanged,TResult? Function( String id)?  iconThemePicked,TResult? Function( KansoFontFamily font)?  interfaceFontChanged,TResult? Function( KansoFontFamily font)?  editorFontChanged,TResult? Function( KansoFontFamily font)?  previewFontChanged,TResult? Function( KansoFontFamily font)?  codeFontChanged,TResult? Function( double scale)?  textSizeChanged,TResult? Function( double scale)?  previewTextSizeChanged,TResult? Function( double scale)?  interfaceTextSizeChanged,TResult? Function( String family)?  googleFontPicked,TResult? Function( KansoFontSlot slot,  String family)?  googleFontChosen,TResult? Function( DiagramRenderer renderer)?  diagramRendererChanged,TResult? Function( String id)?  themeChanged,}) {final _that = this;
 switch (_that) {
 case AppearanceStartedEvent() when started != null:
 return started();case AppearanceThemePickedEvent() when themePicked != null:
@@ -232,14 +242,16 @@ return themePicked(_that.id,_that.dark);case AppearanceSyntaxPickedEvent() when 
 return syntaxPicked(_that.id);case AppearancePreviewPickedEvent() when previewPicked != null:
 return previewPicked(_that.id);case AppearanceFollowSystemChangedEvent() when followSystemChanged != null:
 return followSystemChanged(_that.follow);case AppearanceIconThemePickedEvent() when iconThemePicked != null:
-return iconThemePicked(_that.id);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
+return iconThemePicked(_that.id);case AppearanceInterfaceFontChangedEvent() when interfaceFontChanged != null:
+return interfaceFontChanged(_that.font);case AppearanceEditorFontChangedEvent() when editorFontChanged != null:
 return editorFontChanged(_that.font);case AppearancePreviewFontChangedEvent() when previewFontChanged != null:
 return previewFontChanged(_that.font);case AppearanceCodeFontChangedEvent() when codeFontChanged != null:
 return codeFontChanged(_that.font);case AppearanceTextSizeChangedEvent() when textSizeChanged != null:
 return textSizeChanged(_that.scale);case AppearancePreviewTextSizeChangedEvent() when previewTextSizeChanged != null:
 return previewTextSizeChanged(_that.scale);case AppearanceInterfaceTextSizeChangedEvent() when interfaceTextSizeChanged != null:
 return interfaceTextSizeChanged(_that.scale);case AppearanceGoogleFontPickedEvent() when googleFontPicked != null:
-return googleFontPicked(_that.family);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
+return googleFontPicked(_that.family);case AppearanceGoogleFontChosenEvent() when googleFontChosen != null:
+return googleFontChosen(_that.slot,_that.family);case AppearanceDiagramRendererChangedEvent() when diagramRendererChanged != null:
 return diagramRendererChanged(_that.renderer);case AppearanceThemeChangedEvent() when themeChanged != null:
 return themeChanged(_that.id);case _:
   return null;
@@ -254,7 +266,7 @@ return themeChanged(_that.id);case _:
 
 class AppearanceStartedEvent implements AppearanceEvent {
   const AppearanceStartedEvent();
-
+  
 
 
 
@@ -286,7 +298,7 @@ String toString() {
 
 class AppearanceThemePickedEvent implements AppearanceEvent {
   const AppearanceThemePickedEvent(this.id, {required this.dark});
-
+  
 
  final  String id;
  final  bool dark;
@@ -354,7 +366,7 @@ as bool,
 
 class AppearanceSyntaxPickedEvent implements AppearanceEvent {
   const AppearanceSyntaxPickedEvent(this.id);
-
+  
 
  final  String? id;
 
@@ -420,7 +432,7 @@ as String?,
 
 class AppearancePreviewPickedEvent implements AppearanceEvent {
   const AppearancePreviewPickedEvent(this.id);
-
+  
 
  final  String? id;
 
@@ -486,7 +498,7 @@ as String?,
 
 class AppearanceFollowSystemChangedEvent implements AppearanceEvent {
   const AppearanceFollowSystemChangedEvent({required this.follow});
-
+  
 
  final  bool follow;
 
@@ -552,7 +564,7 @@ as bool,
 
 class AppearanceIconThemePickedEvent implements AppearanceEvent {
   const AppearanceIconThemePickedEvent(this.id);
-
+  
 
  final  String id;
 
@@ -616,9 +628,75 @@ as String,
 /// @nodoc
 
 
+class AppearanceInterfaceFontChangedEvent implements AppearanceEvent {
+  const AppearanceInterfaceFontChangedEvent(this.font);
+  
+
+ final  KansoFontFamily font;
+
+/// Create a copy of AppearanceEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AppearanceInterfaceFontChangedEventCopyWith<AppearanceInterfaceFontChangedEvent> get copyWith => _$AppearanceInterfaceFontChangedEventCopyWithImpl<AppearanceInterfaceFontChangedEvent>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceInterfaceFontChangedEvent&&(identical(other.font, font) || other.font == font));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,font);
+
+@override
+String toString() {
+  return 'AppearanceEvent.interfaceFontChanged(font: $font)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AppearanceInterfaceFontChangedEventCopyWith<$Res> implements $AppearanceEventCopyWith<$Res> {
+  factory $AppearanceInterfaceFontChangedEventCopyWith(AppearanceInterfaceFontChangedEvent value, $Res Function(AppearanceInterfaceFontChangedEvent) _then) = _$AppearanceInterfaceFontChangedEventCopyWithImpl;
+@useResult
+$Res call({
+ KansoFontFamily font
+});
+
+
+
+
+}
+/// @nodoc
+class _$AppearanceInterfaceFontChangedEventCopyWithImpl<$Res>
+    implements $AppearanceInterfaceFontChangedEventCopyWith<$Res> {
+  _$AppearanceInterfaceFontChangedEventCopyWithImpl(this._self, this._then);
+
+  final AppearanceInterfaceFontChangedEvent _self;
+  final $Res Function(AppearanceInterfaceFontChangedEvent) _then;
+
+/// Create a copy of AppearanceEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? font = null,}) {
+  return _then(AppearanceInterfaceFontChangedEvent(
+null == font ? _self.font : font // ignore: cast_nullable_to_non_nullable
+as KansoFontFamily,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
 class AppearanceEditorFontChangedEvent implements AppearanceEvent {
   const AppearanceEditorFontChangedEvent(this.font);
-
+  
 
  final  KansoFontFamily font;
 
@@ -684,7 +762,7 @@ as KansoFontFamily,
 
 class AppearancePreviewFontChangedEvent implements AppearanceEvent {
   const AppearancePreviewFontChangedEvent(this.font);
-
+  
 
  final  KansoFontFamily font;
 
@@ -750,7 +828,7 @@ as KansoFontFamily,
 
 class AppearanceCodeFontChangedEvent implements AppearanceEvent {
   const AppearanceCodeFontChangedEvent(this.font);
-
+  
 
  final  KansoFontFamily font;
 
@@ -816,7 +894,7 @@ as KansoFontFamily,
 
 class AppearanceTextSizeChangedEvent implements AppearanceEvent {
   const AppearanceTextSizeChangedEvent(this.scale);
-
+  
 
  final  double scale;
 
@@ -882,7 +960,7 @@ as double,
 
 class AppearancePreviewTextSizeChangedEvent implements AppearanceEvent {
   const AppearancePreviewTextSizeChangedEvent(this.scale);
-
+  
 
  final  double scale;
 
@@ -948,7 +1026,7 @@ as double,
 
 class AppearanceInterfaceTextSizeChangedEvent implements AppearanceEvent {
   const AppearanceInterfaceTextSizeChangedEvent(this.scale);
-
+  
 
  final  double scale;
 
@@ -1014,7 +1092,7 @@ as double,
 
 class AppearanceGoogleFontPickedEvent implements AppearanceEvent {
   const AppearanceGoogleFontPickedEvent(this.family);
-
+  
 
  final  String family;
 
@@ -1078,9 +1156,77 @@ as String,
 /// @nodoc
 
 
+class AppearanceGoogleFontChosenEvent implements AppearanceEvent {
+  const AppearanceGoogleFontChosenEvent(this.slot, this.family);
+  
+
+ final  KansoFontSlot slot;
+ final  String family;
+
+/// Create a copy of AppearanceEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AppearanceGoogleFontChosenEventCopyWith<AppearanceGoogleFontChosenEvent> get copyWith => _$AppearanceGoogleFontChosenEventCopyWithImpl<AppearanceGoogleFontChosenEvent>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceGoogleFontChosenEvent&&(identical(other.slot, slot) || other.slot == slot)&&(identical(other.family, family) || other.family == family));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,slot,family);
+
+@override
+String toString() {
+  return 'AppearanceEvent.googleFontChosen(slot: $slot, family: $family)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AppearanceGoogleFontChosenEventCopyWith<$Res> implements $AppearanceEventCopyWith<$Res> {
+  factory $AppearanceGoogleFontChosenEventCopyWith(AppearanceGoogleFontChosenEvent value, $Res Function(AppearanceGoogleFontChosenEvent) _then) = _$AppearanceGoogleFontChosenEventCopyWithImpl;
+@useResult
+$Res call({
+ KansoFontSlot slot, String family
+});
+
+
+
+
+}
+/// @nodoc
+class _$AppearanceGoogleFontChosenEventCopyWithImpl<$Res>
+    implements $AppearanceGoogleFontChosenEventCopyWith<$Res> {
+  _$AppearanceGoogleFontChosenEventCopyWithImpl(this._self, this._then);
+
+  final AppearanceGoogleFontChosenEvent _self;
+  final $Res Function(AppearanceGoogleFontChosenEvent) _then;
+
+/// Create a copy of AppearanceEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? slot = null,Object? family = null,}) {
+  return _then(AppearanceGoogleFontChosenEvent(
+null == slot ? _self.slot : slot // ignore: cast_nullable_to_non_nullable
+as KansoFontSlot,null == family ? _self.family : family // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
 class AppearanceDiagramRendererChangedEvent implements AppearanceEvent {
   const AppearanceDiagramRendererChangedEvent(this.renderer);
-
+  
 
  final  DiagramRenderer renderer;
 
@@ -1146,7 +1292,7 @@ as DiagramRenderer,
 
 class AppearanceThemeChangedEvent implements AppearanceEvent {
   const AppearanceThemeChangedEvent(this.id);
-
+  
 
  final  String id;
 
@@ -1298,7 +1444,7 @@ as AppearanceStatus,
 @override
 @pragma('vm:prefer-inline')
 $ThemeSelectionCopyWith<$Res> get selection {
-
+  
   return $ThemeSelectionCopyWith<$Res>(_self.selection, (value) {
     return _then(_self.copyWith(selection: value));
   });
@@ -1307,7 +1453,7 @@ $ThemeSelectionCopyWith<$Res> get selection {
 @override
 @pragma('vm:prefer-inline')
 $KansoPaletteCopyWith<$Res> get light {
-
+  
   return $KansoPaletteCopyWith<$Res>(_self.light, (value) {
     return _then(_self.copyWith(light: value));
   });
@@ -1316,7 +1462,7 @@ $KansoPaletteCopyWith<$Res> get light {
 @override
 @pragma('vm:prefer-inline')
 $KansoPaletteCopyWith<$Res> get dark {
-
+  
   return $KansoPaletteCopyWith<$Res>(_self.dark, (value) {
     return _then(_self.copyWith(dark: value));
   });
@@ -1325,7 +1471,7 @@ $KansoPaletteCopyWith<$Res> get dark {
 @override
 @pragma('vm:prefer-inline')
 $KansoIconSetCopyWith<$Res> get iconSet {
-
+  
   return $KansoIconSetCopyWith<$Res>(_self.iconSet, (value) {
     return _then(_self.copyWith(iconSet: value));
   });
@@ -1334,7 +1480,7 @@ $KansoIconSetCopyWith<$Res> get iconSet {
 @override
 @pragma('vm:prefer-inline')
 $KansoFontsCopyWith<$Res> get fonts {
-
+  
   return $KansoFontsCopyWith<$Res>(_self.fonts, (value) {
     return _then(_self.copyWith(fonts: value));
   });
@@ -1477,7 +1623,7 @@ return $default(_that.selection,_that.light,_that.dark,_that.iconSet,_that.fonts
 
 class _AppearanceState extends AppearanceState {
   const _AppearanceState({this.selection = const ThemeSelection(), this.light = KansoPalette.kansoLight, this.dark = KansoPalette.kansoDark, this.iconSet = KansoIconSet.lucide, this.fonts = const KansoFonts(), this.googleFontLoading = false, this.googleFontError, this.googleFontOffline = false, this.textSize = 1.0, this.previewTextSize = 1.0, this.interfaceTextSize = 1.0, this.diagramRenderer = DiagramRenderer.pele, this.status = AppearanceStatus.loading}): super._();
-
+  
 
 /// The themes chosen.
 @override@JsonKey() final  ThemeSelection selection;
@@ -1581,7 +1727,7 @@ as AppearanceStatus,
 @override
 @pragma('vm:prefer-inline')
 $ThemeSelectionCopyWith<$Res> get selection {
-
+  
   return $ThemeSelectionCopyWith<$Res>(_self.selection, (value) {
     return _then(_self.copyWith(selection: value));
   });
@@ -1590,7 +1736,7 @@ $ThemeSelectionCopyWith<$Res> get selection {
 @override
 @pragma('vm:prefer-inline')
 $KansoPaletteCopyWith<$Res> get light {
-
+  
   return $KansoPaletteCopyWith<$Res>(_self.light, (value) {
     return _then(_self.copyWith(light: value));
   });
@@ -1599,7 +1745,7 @@ $KansoPaletteCopyWith<$Res> get light {
 @override
 @pragma('vm:prefer-inline')
 $KansoPaletteCopyWith<$Res> get dark {
-
+  
   return $KansoPaletteCopyWith<$Res>(_self.dark, (value) {
     return _then(_self.copyWith(dark: value));
   });
@@ -1608,7 +1754,7 @@ $KansoPaletteCopyWith<$Res> get dark {
 @override
 @pragma('vm:prefer-inline')
 $KansoIconSetCopyWith<$Res> get iconSet {
-
+  
   return $KansoIconSetCopyWith<$Res>(_self.iconSet, (value) {
     return _then(_self.copyWith(iconSet: value));
   });
@@ -1617,7 +1763,7 @@ $KansoIconSetCopyWith<$Res> get iconSet {
 @override
 @pragma('vm:prefer-inline')
 $KansoFontsCopyWith<$Res> get fonts {
-
+  
   return $KansoFontsCopyWith<$Res>(_self.fonts, (value) {
     return _then(_self.copyWith(fonts: value));
   });

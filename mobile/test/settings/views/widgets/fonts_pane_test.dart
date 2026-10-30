@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kanso/core/configs/kanso_icons.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
+import 'package:kanso/core/models/data/kanso_fonts.dart';
 import 'package:kanso/core/state/appearance/appearance_bloc.dart';
 import 'package:kanso/core/views/widgets/kanso_icon.dart';
 import 'package:kanso/settings/views/widgets/continuous_text_size_control.dart';
@@ -61,6 +62,7 @@ void main() {
       tester,
     ) async {
       await _pump(tester);
+      expect(find.text('Interface font'), findsOneWidget);
       expect(find.text('Editor font'), findsOneWidget);
       expect(find.text('Preview font'), findsOneWidget);
       expect(find.text('Code font'), findsOneWidget);
@@ -73,14 +75,15 @@ void main() {
       expect(
         find.byType(FontChoiceRow),
         findsNWidgets(
-          KansoFontFamily.editorChoices.length +
+          KansoFontFamily.interfaceChoices.length +
+              KansoFontFamily.editorChoices.length +
               KansoFontFamily.previewChoices.length +
               KansoFontFamily.codeChoices.length,
         ),
       );
       expect(find.text('Add a font\u2026'), findsNothing);
-      expect(find.text('Google Font'), findsOneWidget);
-      expect(find.text('Download and use'), findsOneWidget);
+      expect(find.text('Google Fonts'), findsOneWidget);
+      expect(find.text('Download'), findsOneWidget);
     });
 
     testWidgets('shows loading and offline feedback for Google Fonts', (
@@ -93,7 +96,7 @@ void main() {
         ),
         settle: false,
       );
-      expect(find.text('Loading font…'), findsOneWidget);
+      expect(find.text('Downloading…'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       final bloc = SeededAppearanceBloc(
         const AppearanceState(
@@ -119,6 +122,7 @@ void main() {
           .map((row) => row.font)
           .toList();
       expect(checked, <KansoFontFamily>[
+        KansoFontFamily.instrumentSans,
         KansoFontFamily.instrumentSans,
         KansoFontFamily.instrumentSans,
         KansoFontFamily.jetBrainsMono,
@@ -160,10 +164,11 @@ void main() {
       tester,
     ) async {
       final bloc = await _pump(tester);
-      await tester.tap(_row(KansoFontFamily.sourceSerif4, index: 1));
+      await tester.tap(_row(KansoFontFamily.sourceSerif4, index: 2));
       await tester.pump();
       expect(bloc.state.fonts.previewFont, KansoFontFamily.sourceSerif4);
       expect(bloc.state.fonts.editorFont, KansoFontFamily.instrumentSans);
+      expect(bloc.state.fonts.interfaceFont, KansoFontFamily.instrumentSans);
       final samples = find.textContaining('Calm software says less');
       expect(
         tester.widget<Text>(samples.first).style!.fontFamily,
@@ -176,9 +181,56 @@ void main() {
       await tester.tap(_row(KansoFontFamily.ibmPlexMono, index: 1));
       await tester.pump();
       expect(bloc.state.fonts.codeFont, KansoFontFamily.ibmPlexMono);
-      await tester.tap(_row(KansoFontFamily.literata));
+      await tester.tap(_row(KansoFontFamily.literata, index: 1));
       await tester.pump();
       expect(bloc.state.fonts.editorFont, KansoFontFamily.literata);
+      await tester.tap(_row(KansoFontFamily.inter));
+      await tester.pump();
+      expect(bloc.state.fonts.interfaceFont, KansoFontFamily.inter);
+      expect(bloc.state.fonts.editorFont, KansoFontFamily.literata);
+    });
+
+    testWidgets('a downloaded font is offered in every section', (
+      tester,
+    ) async {
+      final bloc = await _pump(
+        tester,
+        bloc: SeededAppearanceBloc(
+          const AppearanceState(
+            fonts: KansoFonts(
+              editorGoogleFont: 'Lora',
+              downloadedGoogleFonts: <String>['Lora'],
+            ),
+          ),
+        ),
+      );
+      final lora = find.byWidgetPredicate(
+        (widget) =>
+            widget is FontChoiceRow && widget.downloadedFamily == 'Lora',
+      );
+      expect(lora, findsNWidgets(4));
+      final rows = tester.widgetList<FontChoiceRow>(lora).toList();
+      expect(rows.map((row) => row.selected), <bool>[
+        false,
+        true,
+        false,
+        false,
+      ]);
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(of: lora.first, matching: find.text('Lora')),
+            )
+            .style!
+            .fontFamily,
+        'Lora',
+      );
+      await tester.tap(lora.at(3));
+      await tester.pump();
+      expect(bloc.state.fonts.codeGoogleFont, 'Lora');
+      await tester.tap(lora.first);
+      await tester.pump();
+      expect(bloc.state.fonts.interfaceGoogleFont, 'Lora');
     });
 
     testWidgets('the check follows the choice', (tester) async {

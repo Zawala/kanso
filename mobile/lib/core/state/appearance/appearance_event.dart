@@ -32,6 +32,10 @@ sealed class AppearanceEvent with _$AppearanceEvent {
   const factory AppearanceEvent.iconThemePicked(String id) =
       AppearanceIconThemePickedEvent;
 
+  /// The person picked [font] for the interface: menus, lists and labels.
+  const factory AppearanceEvent.interfaceFontChanged(KansoFontFamily font) =
+      AppearanceInterfaceFontChangedEvent;
+
   /// The person picked [font] for writing in the editor.
   const factory AppearanceEvent.editorFontChanged(KansoFontFamily font) =
       AppearanceEditorFontChangedEvent;
@@ -57,9 +61,16 @@ sealed class AppearanceEvent with _$AppearanceEvent {
   const factory AppearanceEvent.interfaceTextSizeChanged(double scale) =
       AppearanceInterfaceTextSizeChangedEvent;
 
-  /// Downloads [family] from Google Fonts and applies it to editor and preview.
+  /// Downloads [family] from Google Fonts, adds it to the downloaded fonts
+  /// and applies it to the editor and preview.
   const factory AppearanceEvent.googleFontPicked(String family) =
       AppearanceGoogleFontPickedEvent;
+
+  /// The person picked the downloaded Google Font [family] for [slot].
+  const factory AppearanceEvent.googleFontChosen(
+    KansoFontSlot slot,
+    String family,
+  ) = AppearanceGoogleFontChosenEvent;
 
   /// The person picked [renderer] for Mermaid diagrams.
   const factory AppearanceEvent.diagramRendererChanged(

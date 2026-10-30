@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:glados/glados.dart' show Glados, Glados2, any;
 import 'package:kanso/core/models/data/kanso_font_category.dart';
 import 'package:kanso/core/models/data/kanso_font_family.dart';
+import 'package:kanso/core/models/data/kanso_font_slot.dart';
 import 'package:kanso/core/models/data/kanso_fonts.dart';
 import 'package:kanso/core/models/data/kanso_text_size.dart';
 
@@ -164,6 +165,80 @@ void main() {
           );
         }
       }
+    });
+
+    Glados<KansoFonts>(
+      any.fontsWithGoogleFonts,
+      kansoExploreConfig(),
+    ).test('every Google Font, listed or only in a slot, is known once', (
+      fonts,
+    ) {
+      final known = fonts.googleFonts;
+      expect(known.toSet().length, known.length);
+      for (final slot in KansoFontSlot.values) {
+        final family = fonts.googleFontFor(slot);
+        if (family != null) {
+          expect(known, contains(family));
+        }
+      }
+      expect(known, containsAll(fonts.downloadedGoogleFonts));
+    });
+
+    Glados2<KansoFonts, String>(
+      any.fontsWithGoogleFonts,
+      any.googleFamily,
+      kansoExploreConfig(),
+    ).test('a downloaded font is listed once, however often it comes', (
+      fonts,
+      family,
+    ) {
+      final once = fonts.withDownloaded(family);
+      expect(once.withDownloaded(family), once);
+      expect(once.downloadedGoogleFonts.where((name) => name == family), [
+        family,
+      ]);
+    });
+
+    Glados2<KansoFonts, String>(
+      any.fontsWithGoogleFonts,
+      any.googleFamily,
+      kansoExploreConfig(),
+    ).test('a font taken away leaves no slot or list naming it', (
+      fonts,
+      family,
+    ) {
+      final without = fonts.withoutGoogleFont(family);
+      expect(without.googleFonts, isNot(contains(family)));
+      for (final slot in KansoFontSlot.values) {
+        final before = fonts.googleFontFor(slot);
+        expect(
+          without.googleFontFor(slot),
+          before == family ? isNull : before,
+        );
+      }
+    });
+
+    Glados2<KansoFonts, String>(
+      any.fontsWithGoogleFonts,
+      any.googleFamily,
+      kansoExploreConfig(),
+    ).test('setting a slot changes that slot only', (fonts, family) {
+      for (final slot in KansoFontSlot.values) {
+        final set = fonts.withGoogleFont(slot, family);
+        for (final other in KansoFontSlot.values) {
+          expect(
+            set.googleFontFor(other),
+            other == slot ? family : fonts.googleFontFor(other),
+          );
+        }
+      }
+    });
+
+    Glados<KansoFonts>(
+      any.fontsWithGoogleFonts,
+      kansoExploreConfig(),
+    ).test('every font choice survives saving and loading', (fonts) {
+      expect(KansoFonts.fromJson(fonts.toJson()), fonts);
     });
   });
 }

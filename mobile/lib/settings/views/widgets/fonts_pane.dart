@@ -8,6 +8,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/configs/kanso_typography.dart';
 import '../../../core/models/data/kanso_font_family.dart';
+import '../../../core/models/data/kanso_font_slot.dart';
+import '../../../core/models/data/kanso_fonts.dart';
 import '../../../core/models/data/kanso_text_size.dart';
 import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
@@ -19,9 +21,11 @@ import 'font_choice_row.dart';
 import 'google_font_section.dart';
 import 'text_size_section.dart';
 
-/// Settings › Fonts: the editor font, the preview font and the code font,
-/// each a list in which every family is shown in itself with the one in
-/// use checked, then the text size and the preview's text size.
+/// Settings › Fonts: the interface font, the editor font, the preview font
+/// and the code font, each a list in which every family, bundled or
+/// downloaded from Google Fonts, is shown in itself with the one in use
+/// checked; then the field that downloads a Google Font, and the text
+/// sizes.
 ///
 /// The choices are the [AppearanceBloc]'s, so choosing here restyles every
 /// note in the app at once. [startAtEnd] shows the page scrolled to its
@@ -62,59 +66,47 @@ class FontsPane extends StatelessWidget {
                         bottom + KansoSpacing.lg,
                       ),
                       children: <Widget>[
-                        const GoogleFontSection(),
+                        KansoGroupedSection(
+                          title: l10n.fontsInterfaceSection,
+                          footer: l10n.fontsInterfaceFooter,
+                          children: fontRows(
+                            context,
+                            state.fonts,
+                            KansoFontSlot.interface,
+                          ),
+                        ),
                         const SizedBox(height: KansoSpacing.lg),
                         KansoGroupedSection(
                           title: l10n.fontsEditorSection,
                           footer: l10n.fontsEditorFooter,
-                          children: <Widget>[
-                            for (final font in KansoFontFamily.editorChoices)
-                              FontChoiceRow(
-                                font: font,
-                                sample: l10n.fontsSampleText,
-                                selected:
-                                    state.fonts.editorGoogleFont == null &&
-                                    font == state.fonts.editorFont,
-                                onTap: () => bloc.add(
-                                  AppearanceEvent.editorFontChanged(font),
-                                ),
-                              ),
-                          ],
+                          children: fontRows(
+                            context,
+                            state.fonts,
+                            KansoFontSlot.editor,
+                          ),
                         ),
                         const SizedBox(height: KansoSpacing.lg),
                         KansoGroupedSection(
                           title: l10n.fontsPreviewSection,
                           footer: l10n.fontsPreviewFooter,
-                          children: <Widget>[
-                            for (final font in KansoFontFamily.previewChoices)
-                              FontChoiceRow(
-                                font: font,
-                                sample: l10n.fontsSampleText,
-                                selected:
-                                    state.fonts.previewGoogleFont == null &&
-                                    font == state.fonts.previewFont,
-                                onTap: () => bloc.add(
-                                  AppearanceEvent.previewFontChanged(font),
-                                ),
-                              ),
-                          ],
+                          children: fontRows(
+                            context,
+                            state.fonts,
+                            KansoFontSlot.preview,
+                          ),
                         ),
                         const SizedBox(height: KansoSpacing.lg),
                         KansoGroupedSection(
                           title: l10n.fontsCodeSection,
                           footer: l10n.fontsCodeFooter,
-                          children: <Widget>[
-                            for (final font in KansoFontFamily.codeChoices)
-                              FontChoiceRow(
-                                font: font,
-                                sample: l10n.fontsSampleCode,
-                                selected: font == state.fonts.codeFont,
-                                onTap: () => bloc.add(
-                                  AppearanceEvent.codeFontChanged(font),
-                                ),
-                              ),
-                          ],
+                          children: fontRows(
+                            context,
+                            state.fonts,
+                            KansoFontSlot.code,
+                          ),
                         ),
+                        const SizedBox(height: KansoSpacing.lg),
+                        const GoogleFontSection(),
                         const SizedBox(height: KansoSpacing.lg),
                         TextSizeSection(
                           title: l10n.fontsInterfaceTextSizeSection,
@@ -179,5 +171,65 @@ class FontsPane extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// The rows of the fonts that can be chosen for [slot]: the bundled
+  /// families offered there, then every downloaded Google Font, then the
+  /// device's own where it is offered, with a check on the one in use.
+  static List<Widget> fontRows(
+    BuildContext context,
+    KansoFonts fonts,
+    KansoFontSlot slot,
+  ) {
+    final l10n = context.l10n;
+    final bloc = context.read<AppearanceBloc>();
+    final (choices, chosen, sample) = switch (slot) {
+      KansoFontSlot.interface => (
+        KansoFontFamily.interfaceChoices,
+        fonts.interfaceFont,
+        l10n.fontsSampleText,
+      ),
+      KansoFontSlot.editor => (
+        KansoFontFamily.editorChoices,
+        fonts.editorFont,
+        l10n.fontsSampleText,
+      ),
+      KansoFontSlot.preview => (
+        KansoFontFamily.previewChoices,
+        fonts.previewFont,
+        l10n.fontsSampleText,
+      ),
+      KansoFontSlot.code => (
+        KansoFontFamily.codeChoices,
+        fonts.codeFont,
+        l10n.fontsSampleCode,
+      ),
+    };
+    final google = fonts.googleFontFor(slot);
+    AppearanceEvent pick(KansoFontFamily font) => switch (slot) {
+      KansoFontSlot.interface => AppearanceEvent.interfaceFontChanged(font),
+      KansoFontSlot.editor => AppearanceEvent.editorFontChanged(font),
+      KansoFontSlot.preview => AppearanceEvent.previewFontChanged(font),
+      KansoFontSlot.code => AppearanceEvent.codeFontChanged(font),
+    };
+    Widget bundled(KansoFontFamily font) => FontChoiceRow(
+      font: font,
+      sample: sample,
+      selected: google == null && font == chosen,
+      onTap: () => bloc.add(pick(font)),
+    );
+    return <Widget>[
+      for (final font in choices)
+        if (font != KansoFontFamily.system) bundled(font),
+      for (final family in fonts.downloadedGoogleFonts)
+        FontChoiceRow.downloaded(
+          family: family,
+          sample: sample,
+          selected: google == family,
+          onTap: () => bloc.add(AppearanceEvent.googleFontChosen(slot, family)),
+        ),
+      if (choices.contains(KansoFontFamily.system))
+        bundled(KansoFontFamily.system),
+    ];
   }
 }

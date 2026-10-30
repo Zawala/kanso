@@ -4,7 +4,8 @@
 
 import 'kanso_font_category.dart';
 
-/// A family of text the person can pick for writing, reading or code.
+/// A family of text the person can pick for the interface, writing, reading
+/// or code.
 ///
 /// Every family but [system] is bundled with the app (SIL Open Font
 /// Licence) and draws the same on every device. [system] is the one
@@ -102,6 +103,9 @@ enum KansoFontFamily {
     literata,
     system,
   ];
+
+  /// The families offered for the interface: the proportional ones.
+  static const List<KansoFontFamily> interfaceChoices = previewChoices;
 
   /// The families offered for code: the monospaced ones.
   static const List<KansoFontFamily> codeChoices = <KansoFontFamily>[

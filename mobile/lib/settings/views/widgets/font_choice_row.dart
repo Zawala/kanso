@@ -19,16 +19,32 @@ import '../../../core/views/widgets/kanso_pressable.dart';
 /// The device's own font ([KansoFontFamily.system]) is the exception. It
 /// differs on every platform, so its row is drawn in the interface font,
 /// says so plainly, and names what the device uses.
+///
+/// [FontChoiceRow.downloaded] is a Google Font downloaded to the device,
+/// shown the same way under the name it was downloaded as.
 class FontChoiceRow extends StatelessWidget {
   const FontChoiceRow({
-    required this.font,
+    required KansoFontFamily this.font,
     required this.sample,
     required this.selected,
     required this.onTap,
     super.key,
-  });
+  }) : downloadedFamily = null;
 
-  final KansoFontFamily font;
+  const FontChoiceRow.downloaded({
+    required String family,
+    required this.sample,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  }) : font = null,
+       downloadedFamily = family;
+
+  /// The bundled family, or null for a downloaded one.
+  final KansoFontFamily? font;
+
+  /// The downloaded Google Font's family, or null for a bundled one.
+  final String? downloadedFamily;
 
   /// The line shown under the name, in the font.
   final String sample;
@@ -44,21 +60,26 @@ class FontChoiceRow extends StatelessWidget {
     final colors = context.colors;
     final typography = context.typography;
     final l10n = context.l10n;
-    final system = font == KansoFontFamily.system;
+    final bundled = font;
+    final downloaded = downloadedFamily;
+    final system = bundled == KansoFontFamily.system;
     TextStyle set(double size, FontWeight weight, Color color) {
-      return system
-          ? typography.body.copyWith(
-              fontSize: size,
-              fontWeight: weight,
-              color: color,
-            )
-          : KansoTypography.fontStyle(
-              font,
-              size: size,
-              weight: weight,
-              height: 1.35,
-              color: color,
-            );
+      if (bundled == null || system) {
+        return typography.body.copyWith(
+          fontFamily: downloaded,
+          fontSize: size,
+          fontWeight: weight,
+          height: 1.35,
+          color: color,
+        );
+      }
+      return KansoTypography.fontStyle(
+        bundled,
+        size: size,
+        weight: weight,
+        height: 1.35,
+        color: color,
+      );
     }
 
     return Semantics(
@@ -80,7 +101,9 @@ class FontChoiceRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        system ? l10n.fontsSystemName : font.displayName,
+                        system
+                            ? l10n.fontsSystemName
+                            : downloaded ?? bundled!.displayName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: set(17, FontWeight.w600, colors.text),

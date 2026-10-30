@@ -15,6 +15,7 @@ import '../../configs/kanso_palette.dart';
 import '../../models/data/appearance_status.dart';
 import '../../models/data/application_error.dart';
 import '../../models/data/kanso_font_family.dart';
+import '../../models/data/kanso_font_slot.dart';
 import '../../models/data/kanso_fonts.dart';
 import '../../models/data/kanso_icon_set.dart';
 import '../../models/data/kanso_text_size.dart';
@@ -75,6 +76,10 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
           id,
           emit,
         ),
+        AppearanceInterfaceFontChangedEvent(:final font) => _changeFonts(
+          emit,
+          state.fonts.copyWith(interfaceFont: font, interfaceGoogleFont: null),
+        ),
         AppearanceEditorFontChangedEvent(:final font) => _changeFonts(
           emit,
           state.fonts.copyWith(editorFont: font, editorGoogleFont: null),
@@ -86,7 +91,10 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
         // Code is always monospaced: any other family is ignored.
         AppearanceCodeFontChangedEvent(:final font) =>
           font.monospaced
-              ? _changeFonts(emit, state.fonts.copyWith(codeFont: font))
+              ? _changeFonts(
+                  emit,
+                  state.fonts.copyWith(codeFont: font, codeGoogleFont: null),
+                )
               : Future<void>.value(),
         AppearanceTextSizeChangedEvent(:final scale) => _onTextSizeChanged(
           scale,
@@ -100,6 +108,10 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
           family,
           emit,
         ),
+        AppearanceGoogleFontChosenEvent(:final slot, :final family) =>
+          state.fonts.downloadedGoogleFonts.contains(family)
+              ? _changeFonts(emit, state.fonts.withGoogleFont(slot, family))
+              : Future<void>.value(),
         AppearanceDiagramRendererChangedEvent(:final renderer) =>
           _onDiagramRendererChanged(renderer, emit),
         AppearanceThemeChangedEvent(:final id) => _onThemeChanged(id, emit),
@@ -142,16 +154,24 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
     }
     final shown = await _paletteSlots(selection);
     final icons = await _iconSet(preferences.iconTheme);
-    var fonts = preferences.fonts;
+    final savedFonts = preferences.fonts;
+    // A build that kept no list of downloaded fonts saved only the ones in
+    // use: they are listed now. Every downloaded font is registered, so each
+    // can be shown in its own rows; one that cannot be loaded is dropped,
+    // and the slots that used it go back to their bundled families.
+    var fonts = savedFonts;
     String? googleFontError;
-    final googleFont = fonts.editorGoogleFont ?? fonts.previewGoogleFont;
-    if (googleFont != null) {
-      final result = await _googleFonts?.load(googleFont);
+    for (final family in savedFonts.googleFonts) {
+      final result = await _googleFonts?.load(family);
+      fonts = result == null || result.isLeft()
+          ? fonts.withoutGoogleFont(family)
+          : fonts.withDownloaded(family);
       if (result == null || result.isLeft()) {
-        fonts = fonts.copyWith(editorGoogleFont: null, previewGoogleFont: null);
         googleFontError = 'cache';
-        await _preferences.update((current) => current.copyWith(fonts: fonts));
       }
+    }
+    if (fonts != savedFonts) {
+      await _preferences.update((current) => current.copyWith(fonts: fonts));
     }
     emit(
       AppearanceState(
@@ -286,10 +306,12 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
       return;
     }
     final loadedFamily = result.getOrElse(() => family);
-    final fonts = state.fonts.copyWith(
-      editorGoogleFont: loadedFamily,
-      previewGoogleFont: loadedFamily,
-    );
+    final fonts = state.fonts
+        .withDownloaded(loadedFamily)
+        .copyWith(
+          editorGoogleFont: loadedFamily,
+          previewGoogleFont: loadedFamily,
+        );
     emit(
       state.copyWith(
         fonts: fonts,
