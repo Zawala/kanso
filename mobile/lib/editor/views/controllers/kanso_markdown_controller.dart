@@ -19,6 +19,7 @@ import '../../utils/edit_log.dart';
 import '../../utils/editor_spans.dart';
 import '../../utils/editor_timing.dart';
 import '../../utils/editor_window.dart';
+import '../../utils/live_layer.dart';
 import '../../utils/shift_marks.dart';
 import '../../utils/shift_runs.dart';
 
@@ -34,7 +35,10 @@ import '../../utils/shift_runs.dart';
 ///
 /// It also keeps the colours of the text: the last runs the core sent,
 /// moved along as the text changes ([shiftRuns]) until fresh ones arrive,
-/// asked for once a frame at most, and drawn by [buildTextSpan].
+/// asked for once a frame at most, and drawn by [buildTextSpan]. In Live
+/// mode ([live]) it keeps what Live mode draws the same way: the marks to
+/// hide and the headings to draw larger, shown again on the lines the
+/// selection touches.
 ///
 /// A text that arrives from outside ([reload]) waits for a composition to
 /// end; the text is never replaced under one.
@@ -53,6 +57,7 @@ class KansoMarkdownController extends TextEditingController {
     required EditorSnapshot snapshot,
     required this.themeId,
     int? caret,
+    bool live = false,
     this.windowUnits = WindowSizes.cap,
     this.windowMargin = WindowSizes.margin,
     this.onContext,
@@ -66,6 +71,7 @@ class KansoMarkdownController extends TextEditingController {
     this.composingStyle = const TextStyle(decoration: TextDecoration.underline),
   }) : _version = snapshot.version,
        _history = snapshot.history,
+       _liveOn = live,
        super(
          text: _firstWindow(
            snapshot.text,
@@ -145,6 +151,15 @@ class KansoMarkdownController extends TextEditingController {
   /// the screen says.
   bool darkCursors = false;
 
+  /// How inline code and a link's text are drawn in Live mode; the screen
+  /// sets their colours.
+  TextStyle liveCodeStyle = const TextStyle();
+  TextStyle liveLinkStyle = const TextStyle();
+
+  /// How much larger than body text the line the caret is on is drawn: a
+  /// heading's in Live mode, otherwise 1. For the caret's height.
+  final ValueNotifier<double> caretScale = ValueNotifier<double>(1);
+
   /// The completion being offered, and the item Return would take; set by
   /// the screen. A newline typed while there is one chooses it.
   Completion? completion;
@@ -164,6 +179,11 @@ class KansoMarkdownController extends TextEditingController {
   bool _runsDue = false;
   bool _runsScheduled = false;
   bool _runsInFlight = false;
+  bool _liveOn;
+  LiveLayer _live = LiveLayer.empty;
+  bool _liveDue = false;
+  bool _liveScheduled = false;
+  bool _liveInFlight = false;
   EditorSnapshot? _waiting;
 
   // The changes made since the colours on screen were asked for: colours
@@ -212,6 +232,10 @@ class KansoMarkdownController extends TextEditingController {
   bool? _spanDarkCursors;
   TextStyle? _spanBase;
   TextStyle? _spanMisspelled;
+  LiveLayer? _spanLive;
+  TextRange? _spanRevealed;
+  TextStyle? _spanLiveCode;
+  TextStyle? _spanLiveLink;
   TextSpan? _span;
 
   /// The version of the text Rust has, as of the last thing it said.
@@ -223,6 +247,25 @@ class KansoMarkdownController extends TextEditingController {
 
   /// The colours the text is drawn in now.
   List<EditorRun> get runs => _runs;
+
+  /// Whether the text is drawn in place (Live mode): headings larger and
+  /// the marks hidden off the lines the selection touches.
+  bool get live => _liveOn;
+
+  set live(bool on) {
+    if (on == _liveOn || _disposed) {
+      return;
+    }
+    _liveOn = on;
+    _live = LiveLayer.empty;
+    if (on) {
+      requestLive();
+    }
+    notifyListeners();
+  }
+
+  /// What Live mode draws now, in units of the field; empty outside it.
+  LiveLayer get liveLayer => _live;
 
   /// The words comments are on, in units of the note: as the Rust core last
   /// said, moved along the edits made since.
@@ -456,6 +499,11 @@ class KansoMarkdownController extends TextEditingController {
           end: diff.end,
           inserted: diff.text.length,
         );
+        _live = _live.shifted(
+          start: diff.start,
+          end: diff.end,
+          inserted: diff.text.length,
+        );
         super.value = now;
         final ended = _lastComposing && !composingAfter;
         _tell(now);
@@ -647,6 +695,11 @@ class KansoMarkdownController extends TextEditingController {
         end: replace.end - origin,
         inserted: replace.text.length,
       );
+      _live = _live.shifted(
+        start: replace.start - origin,
+        end: replace.end - origin,
+        inserted: replace.text.length,
+      );
       _comments = shiftMarks(
         _comments,
         start: replace.start,
@@ -783,6 +836,7 @@ class KansoMarkdownController extends TextEditingController {
             margin: windowMargin,
           );
     _runs = const <EditorRun>[];
+    _live = LiveLayer.empty;
     _putWindow(note, wanted, selection, keepRuns: false);
   }
 
@@ -823,6 +877,7 @@ class KansoMarkdownController extends TextEditingController {
               quiet: run.quiet,
             ),
       ];
+      _live = _live.moved(delta, text.length);
     }
     final shown = TextEditingValue(
       text: text,
@@ -1105,6 +1160,7 @@ class KansoMarkdownController extends TextEditingController {
   /// Asks for fresh colours: once a frame at most, one request at a time,
   /// and never one for a version of the text that has been left behind.
   void requestRuns() {
+    requestLive();
     _runsDue = true;
     if (_runsScheduled || _runsInFlight || _disposed) {
       return;
@@ -1191,7 +1247,81 @@ class KansoMarkdownController extends TextEditingController {
     }
   }
 
+  /// Asks for what Live mode draws afresh, in Live mode: as [requestRuns]
+  /// asks for colours.
+  void requestLive() {
+    if (!_liveOn || _disposed) {
+      return;
+    }
+    _liveDue = true;
+    if (_liveScheduled || _liveInFlight) {
+      return;
+    }
+    _liveScheduled = true;
+    SchedulerBinding.instance
+      ..addPostFrameCallback((_) {
+        _liveScheduled = false;
+        unawaited(_fetchLive());
+      })
+      ..ensureVisualUpdate();
+  }
+
+  Future<void> _fetchLive() async {
+    if (_disposed || !_liveDue || !_liveOn) {
+      return;
+    }
+    _liveDue = false;
+    _liveInFlight = true;
+    final origin = _before.length;
+    final revision = _windowRevision;
+    final result = await document.liveLayout(
+      start: origin,
+      end: origin + super.value.text.length,
+    );
+    _liveInFlight = false;
+    if (_disposed) {
+      return;
+    }
+    if (!_liveOn) {
+      // Turned off meanwhile; what is due is asked for if it is turned on.
+      if (_liveDue) {
+        requestLive();
+      }
+      return;
+    }
+    result.fold(
+      (error) {
+        if (error is LockedError) {
+          onLocked?.call();
+        }
+        // Any other error leaves the text drawn as it is.
+      },
+      (batch) {
+        if (revision != _windowRevision || batch.version != _version) {
+          // Drawn for a text that has changed since: what is on screen was
+          // moved along, and the latest is asked for next.
+          _liveDue = true;
+          return;
+        }
+        _live = LiveLayer.fromBatch(batch);
+        notifyListeners();
+      },
+    );
+    if (_liveDue) {
+      requestLive();
+    }
+  }
+
   // MARK: Drawing
+
+  @override
+  void notifyListeners() {
+    final at = super.value.selection;
+    caretScale.value = _liveOn && at.isValid
+        ? _live.scaleAt(at.extentOffset)
+        : 1;
+    super.notifyListeners();
+  }
 
   @override
   TextSpan buildTextSpan({
@@ -1215,6 +1345,9 @@ class KansoMarkdownController extends TextEditingController {
   }) {
     final text = super.value.text;
     final composing = withComposing ? super.value.composing : TextRange.empty;
+    final revealed = _liveOn
+        ? revealedLines(text, super.value.selection)
+        : TextRange.empty;
     final cached = _span;
     if (cached != null &&
         identical(text, _spanText) &&
@@ -1227,7 +1360,11 @@ class KansoMarkdownController extends TextEditingController {
         _before.length == _spanOrigin &&
         commentStyle == _spanCommentStyle &&
         style == _spanBase &&
-        misspelledStyle == _spanMisspelled) {
+        misspelledStyle == _spanMisspelled &&
+        identical(_live, _spanLive) &&
+        revealed == _spanRevealed &&
+        liveCodeStyle == _spanLiveCode &&
+        liveLinkStyle == _spanLiveLink) {
       return cached;
     }
     final span = EditorTiming.measure(
@@ -1247,6 +1384,9 @@ class KansoMarkdownController extends TextEditingController {
         ),
         commentStyle: commentStyle,
         selections: _selectionsIn(_before.length, _before.length + text.length),
+        live: _live.revealing(revealed),
+        liveCodeStyle: liveCodeStyle,
+        liveLinkStyle: liveLinkStyle,
       ),
     );
     _spanText = text;
@@ -1260,6 +1400,10 @@ class KansoMarkdownController extends TextEditingController {
     _spanDarkCursors = darkCursors;
     _spanBase = style;
     _spanMisspelled = misspelledStyle;
+    _spanLive = _live;
+    _spanRevealed = revealed;
+    _spanLiveCode = liveCodeStyle;
+    _spanLiveLink = liveLinkStyle;
     _span = span;
     return span;
   }
@@ -1269,6 +1413,7 @@ class KansoMarkdownController extends TextEditingController {
     _disposed = true;
     outsideChanged.dispose();
     hasBefore.dispose();
+    caretScale.dispose();
     super.dispose();
   }
 

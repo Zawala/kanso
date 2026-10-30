@@ -128,6 +128,7 @@ impl<M: InputModeKind> TextElement<M> {
             .zip(last_layout.lines.iter())
         {
             let line = state.text.slice_line(buffer_line);
+            let line_height = line_layout.row_height(line_height);
             let mut current_indents = vec![];
             if line.len() > 0 {
                 let indent_count = tab_size.indent_count(&line);
@@ -153,7 +154,7 @@ impl<M: InputModeKind> TextElement<M> {
                 current_indents = last_indents.clone();
             }
 
-            offset_y += line_layout.wrapped_lines.len() * line_height;
+            offset_y += line_layout.size(last_layout.line_height).height;
             last_indents = current_indents;
         }
 

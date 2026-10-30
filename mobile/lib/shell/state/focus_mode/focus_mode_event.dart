@@ -14,4 +14,8 @@ sealed class FocusModeEvent with _$FocusModeEvent {
 
   /// The person asked to leave focus mode.
   const factory FocusModeEvent.exited() = FocusModeExitedEvent;
+
+  /// The person turned Live Preview in focus mode on or off.
+  const factory FocusModeEvent.livePreviewChanged({required bool enabled}) =
+      FocusModeLivePreviewChangedEvent;
 }

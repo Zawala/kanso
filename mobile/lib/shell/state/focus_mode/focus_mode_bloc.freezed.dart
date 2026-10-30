@@ -55,13 +55,14 @@ extension FocusModeEventPatterns on FocusModeEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( FocusModeStartedEvent value)?  started,TResult Function( FocusModeToggledEvent value)?  toggled,TResult Function( FocusModeExitedEvent value)?  exited,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( FocusModeStartedEvent value)?  started,TResult Function( FocusModeToggledEvent value)?  toggled,TResult Function( FocusModeExitedEvent value)?  exited,TResult Function( FocusModeLivePreviewChangedEvent value)?  livePreviewChanged,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case FocusModeStartedEvent() when started != null:
 return started(_that);case FocusModeToggledEvent() when toggled != null:
 return toggled(_that);case FocusModeExitedEvent() when exited != null:
-return exited(_that);case _:
+return exited(_that);case FocusModeLivePreviewChangedEvent() when livePreviewChanged != null:
+return livePreviewChanged(_that);case _:
   return orElse();
 
 }
@@ -79,13 +80,14 @@ return exited(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( FocusModeStartedEvent value)  started,required TResult Function( FocusModeToggledEvent value)  toggled,required TResult Function( FocusModeExitedEvent value)  exited,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( FocusModeStartedEvent value)  started,required TResult Function( FocusModeToggledEvent value)  toggled,required TResult Function( FocusModeExitedEvent value)  exited,required TResult Function( FocusModeLivePreviewChangedEvent value)  livePreviewChanged,}){
 final _that = this;
 switch (_that) {
 case FocusModeStartedEvent():
 return started(_that);case FocusModeToggledEvent():
 return toggled(_that);case FocusModeExitedEvent():
-return exited(_that);}
+return exited(_that);case FocusModeLivePreviewChangedEvent():
+return livePreviewChanged(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -99,13 +101,14 @@ return exited(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( FocusModeStartedEvent value)?  started,TResult? Function( FocusModeToggledEvent value)?  toggled,TResult? Function( FocusModeExitedEvent value)?  exited,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( FocusModeStartedEvent value)?  started,TResult? Function( FocusModeToggledEvent value)?  toggled,TResult? Function( FocusModeExitedEvent value)?  exited,TResult? Function( FocusModeLivePreviewChangedEvent value)?  livePreviewChanged,}){
 final _that = this;
 switch (_that) {
 case FocusModeStartedEvent() when started != null:
 return started(_that);case FocusModeToggledEvent() when toggled != null:
 return toggled(_that);case FocusModeExitedEvent() when exited != null:
-return exited(_that);case _:
+return exited(_that);case FocusModeLivePreviewChangedEvent() when livePreviewChanged != null:
+return livePreviewChanged(_that);case _:
   return null;
 
 }
@@ -122,12 +125,13 @@ return exited(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  started,TResult Function()?  toggled,TResult Function()?  exited,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  started,TResult Function()?  toggled,TResult Function()?  exited,TResult Function( bool enabled)?  livePreviewChanged,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case FocusModeStartedEvent() when started != null:
 return started();case FocusModeToggledEvent() when toggled != null:
 return toggled();case FocusModeExitedEvent() when exited != null:
-return exited();case _:
+return exited();case FocusModeLivePreviewChangedEvent() when livePreviewChanged != null:
+return livePreviewChanged(_that.enabled);case _:
   return orElse();
 
 }
@@ -145,12 +149,13 @@ return exited();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  started,required TResult Function()  toggled,required TResult Function()  exited,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  started,required TResult Function()  toggled,required TResult Function()  exited,required TResult Function( bool enabled)  livePreviewChanged,}) {final _that = this;
 switch (_that) {
 case FocusModeStartedEvent():
 return started();case FocusModeToggledEvent():
 return toggled();case FocusModeExitedEvent():
-return exited();}
+return exited();case FocusModeLivePreviewChangedEvent():
+return livePreviewChanged(_that.enabled);}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -164,12 +169,13 @@ return exited();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  started,TResult? Function()?  toggled,TResult? Function()?  exited,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  started,TResult? Function()?  toggled,TResult? Function()?  exited,TResult? Function( bool enabled)?  livePreviewChanged,}) {final _that = this;
 switch (_that) {
 case FocusModeStartedEvent() when started != null:
 return started();case FocusModeToggledEvent() when toggled != null:
 return toggled();case FocusModeExitedEvent() when exited != null:
-return exited();case _:
+return exited();case FocusModeLivePreviewChangedEvent() when livePreviewChanged != null:
+return livePreviewChanged(_that.enabled);case _:
   return null;
 
 }
@@ -274,12 +280,80 @@ String toString() {
 
 
 /// @nodoc
+
+
+class FocusModeLivePreviewChangedEvent implements FocusModeEvent {
+  const FocusModeLivePreviewChangedEvent({required this.enabled});
+  
+
+ final  bool enabled;
+
+/// Create a copy of FocusModeEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$FocusModeLivePreviewChangedEventCopyWith<FocusModeLivePreviewChangedEvent> get copyWith => _$FocusModeLivePreviewChangedEventCopyWithImpl<FocusModeLivePreviewChangedEvent>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is FocusModeLivePreviewChangedEvent&&(identical(other.enabled, enabled) || other.enabled == enabled));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,enabled);
+
+@override
+String toString() {
+  return 'FocusModeEvent.livePreviewChanged(enabled: $enabled)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $FocusModeLivePreviewChangedEventCopyWith<$Res> implements $FocusModeEventCopyWith<$Res> {
+  factory $FocusModeLivePreviewChangedEventCopyWith(FocusModeLivePreviewChangedEvent value, $Res Function(FocusModeLivePreviewChangedEvent) _then) = _$FocusModeLivePreviewChangedEventCopyWithImpl;
+@useResult
+$Res call({
+ bool enabled
+});
+
+
+
+
+}
+/// @nodoc
+class _$FocusModeLivePreviewChangedEventCopyWithImpl<$Res>
+    implements $FocusModeLivePreviewChangedEventCopyWith<$Res> {
+  _$FocusModeLivePreviewChangedEventCopyWithImpl(this._self, this._then);
+
+  final FocusModeLivePreviewChangedEvent _self;
+  final $Res Function(FocusModeLivePreviewChangedEvent) _then;
+
+/// Create a copy of FocusModeEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? enabled = null,}) {
+  return _then(FocusModeLivePreviewChangedEvent(
+enabled: null == enabled ? _self.enabled : enabled // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$FocusModeState {
 
 /// Whether the open note is shown by itself.
  bool get active;/// Whether the saved choice has been read. A choice made before it was
 /// read is not overwritten by the file.
- bool get ready;
+ bool get ready;/// Whether entering focus mode shows the open note in Live, and leaving
+/// it goes back to the mode the note was in.
+ bool get livePreview;
 /// Create a copy of FocusModeState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -290,16 +364,16 @@ $FocusModeStateCopyWith<FocusModeState> get copyWith => _$FocusModeStateCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is FocusModeState&&(identical(other.active, active) || other.active == active)&&(identical(other.ready, ready) || other.ready == ready));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is FocusModeState&&(identical(other.active, active) || other.active == active)&&(identical(other.ready, ready) || other.ready == ready)&&(identical(other.livePreview, livePreview) || other.livePreview == livePreview));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,active,ready);
+int get hashCode => Object.hash(runtimeType,active,ready,livePreview);
 
 @override
 String toString() {
-  return 'FocusModeState(active: $active, ready: $ready)';
+  return 'FocusModeState(active: $active, ready: $ready, livePreview: $livePreview)';
 }
 
 
@@ -310,7 +384,7 @@ abstract mixin class $FocusModeStateCopyWith<$Res>  {
   factory $FocusModeStateCopyWith(FocusModeState value, $Res Function(FocusModeState) _then) = _$FocusModeStateCopyWithImpl;
 @useResult
 $Res call({
- bool active, bool ready
+ bool active, bool ready, bool livePreview
 });
 
 
@@ -327,10 +401,11 @@ class _$FocusModeStateCopyWithImpl<$Res>
 
 /// Create a copy of FocusModeState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? active = null,Object? ready = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? active = null,Object? ready = null,Object? livePreview = null,}) {
   return _then(_self.copyWith(
 active: null == active ? _self.active : active // ignore: cast_nullable_to_non_nullable
 as bool,ready: null == ready ? _self.ready : ready // ignore: cast_nullable_to_non_nullable
+as bool,livePreview: null == livePreview ? _self.livePreview : livePreview // ignore: cast_nullable_to_non_nullable
 as bool,
   ));
 }
@@ -416,10 +491,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool active,  bool ready)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool active,  bool ready,  bool livePreview)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _FocusModeState() when $default != null:
-return $default(_that.active,_that.ready);case _:
+return $default(_that.active,_that.ready,_that.livePreview);case _:
   return orElse();
 
 }
@@ -437,10 +512,10 @@ return $default(_that.active,_that.ready);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool active,  bool ready)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool active,  bool ready,  bool livePreview)  $default,) {final _that = this;
 switch (_that) {
 case _FocusModeState():
-return $default(_that.active,_that.ready);case _:
+return $default(_that.active,_that.ready,_that.livePreview);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -457,10 +532,10 @@ return $default(_that.active,_that.ready);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool active,  bool ready)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool active,  bool ready,  bool livePreview)?  $default,) {final _that = this;
 switch (_that) {
 case _FocusModeState() when $default != null:
-return $default(_that.active,_that.ready);case _:
+return $default(_that.active,_that.ready,_that.livePreview);case _:
   return null;
 
 }
@@ -472,7 +547,7 @@ return $default(_that.active,_that.ready);case _:
 
 
 class _FocusModeState implements FocusModeState {
-  const _FocusModeState({this.active = false, this.ready = false});
+  const _FocusModeState({this.active = false, this.ready = false, this.livePreview = false});
   
 
 /// Whether the open note is shown by itself.
@@ -480,6 +555,9 @@ class _FocusModeState implements FocusModeState {
 /// Whether the saved choice has been read. A choice made before it was
 /// read is not overwritten by the file.
 @override@JsonKey() final  bool ready;
+/// Whether entering focus mode shows the open note in Live, and leaving
+/// it goes back to the mode the note was in.
+@override@JsonKey() final  bool livePreview;
 
 /// Create a copy of FocusModeState
 /// with the given fields replaced by the non-null parameter values.
@@ -491,16 +569,16 @@ _$FocusModeStateCopyWith<_FocusModeState> get copyWith => __$FocusModeStateCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _FocusModeState&&(identical(other.active, active) || other.active == active)&&(identical(other.ready, ready) || other.ready == ready));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _FocusModeState&&(identical(other.active, active) || other.active == active)&&(identical(other.ready, ready) || other.ready == ready)&&(identical(other.livePreview, livePreview) || other.livePreview == livePreview));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,active,ready);
+int get hashCode => Object.hash(runtimeType,active,ready,livePreview);
 
 @override
 String toString() {
-  return 'FocusModeState(active: $active, ready: $ready)';
+  return 'FocusModeState(active: $active, ready: $ready, livePreview: $livePreview)';
 }
 
 
@@ -511,7 +589,7 @@ abstract mixin class _$FocusModeStateCopyWith<$Res> implements $FocusModeStateCo
   factory _$FocusModeStateCopyWith(_FocusModeState value, $Res Function(_FocusModeState) _then) = __$FocusModeStateCopyWithImpl;
 @override @useResult
 $Res call({
- bool active, bool ready
+ bool active, bool ready, bool livePreview
 });
 
 
@@ -528,10 +606,11 @@ class __$FocusModeStateCopyWithImpl<$Res>
 
 /// Create a copy of FocusModeState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? active = null,Object? ready = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? active = null,Object? ready = null,Object? livePreview = null,}) {
   return _then(_FocusModeState(
 active: null == active ? _self.active : active // ignore: cast_nullable_to_non_nullable
 as bool,ready: null == ready ? _self.ready : ready // ignore: cast_nullable_to_non_nullable
+as bool,livePreview: null == livePreview ? _self.livePreview : livePreview // ignore: cast_nullable_to_non_nullable
 as bool,
   ));
 }

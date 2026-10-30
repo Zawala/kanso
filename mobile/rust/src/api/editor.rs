@@ -10,8 +10,8 @@ use crate::frb_generated::StreamSink;
 use flutter_rust_bridge::frb;
 use kanso_mobile::{
     Completion, CursorMark, EditCommand, EditOutcome, EditorContext, EditorEvent, EditorSession,
-    EditorSnapshot, GoalSetting, KansoError, LinkTarget, Property, Range16, RunBatch, SaveState,
-    ShareFile, TextChange,
+    EditorSnapshot, GoalSetting, KansoError, LinkTarget, LiveBatch, Property, Range16, RunBatch,
+    SaveState, ShareFile, TextChange,
 };
 
 /// A note open for editing. Cheap to clone on the Rust side; Dart holds one.
@@ -84,6 +84,12 @@ impl KansoEditor {
         theme_id: String,
     ) -> Result<RunBatch, KansoError> {
         self.0.styled_runs(start, end, theme_id)
+    }
+
+    /// What Live mode draws for `start..end` of the text, in units from
+    /// `start`.
+    pub fn live_layout(&self, start: u32, end: u32) -> Result<LiveBatch, KansoError> {
+        self.0.live_layout(start, end)
     }
 
     /// What the caret completes, if anything.

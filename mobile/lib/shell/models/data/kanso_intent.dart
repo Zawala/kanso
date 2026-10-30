@@ -69,6 +69,11 @@ class PreviewNoteIntent extends KansoIntent {
   const PreviewNoteIntent();
 }
 
+/// Show the open note as text to edit, drawn in place (Live).
+class LiveNoteIntent extends KansoIntent {
+  const LiveNoteIntent();
+}
+
 /// Open or make today's daily note.
 class OpenTodayIntent extends KansoIntent {
   const OpenTodayIntent();

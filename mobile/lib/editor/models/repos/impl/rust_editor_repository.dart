@@ -90,6 +90,12 @@ class RustEditorDocument implements EditorDocument {
   );
 
   @override
+  Future<Either<ApplicationError, LiveBatch>> liveLayout({
+    required int start,
+    required int end,
+  }) => attempt(() => _editor.liveLayout(start: start, end: end));
+
+  @override
   Future<Either<ApplicationError, Completion?>> completion() =>
       attempt(_editor.completion);
 

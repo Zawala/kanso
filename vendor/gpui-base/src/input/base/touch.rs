@@ -14,7 +14,7 @@
 
 use gpui::{Context, LongPressEvent, Pixels, Point, TouchPhase, Window, point};
 
-use super::{InputBaseState, InputModeKind};
+use super::{InputBaseState, InputModeKind, RopeExt as _};
 use crate::touch_selection::{
     EdgeDrag, SelectionEdge, TouchSelectionSnapshot, caret_in_view, caret_line_box,
 };
@@ -50,8 +50,11 @@ impl<M: InputModeKind> InputBaseState<M> {
         // side, which is all the other end's drag needs to know about it.
         let caret_box = |offset: usize, stand_in_y: Pixels| {
             let (_, _, position) = self.line_and_position_for_offset(offset);
+            // A presentation's scaled line has taller rows, and so a taller caret.
+            let row = self.text.offset_to_point(offset).row;
+            let row_height = line_height * self.display_map.line_scale(row);
             match position.filter(|_| laid_out.contains(&offset) || laid_out.end == offset) {
-                Some(position) => caret_line_box(origin + position, line_height),
+                Some(position) => caret_line_box(origin + position, row_height),
                 None => caret_line_box(point(viewport.left(), stand_in_y), line_height),
             }
         };

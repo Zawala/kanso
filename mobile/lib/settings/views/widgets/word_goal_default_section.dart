@@ -13,15 +13,21 @@ import '../../../core/views/widgets/kanso_grouped_section.dart';
 import '../../../core/views/widgets/kanso_settings_row.dart';
 import '../../../palette/models/data/palette_choice.dart';
 import '../../../palette/views/widgets/palette_choice_sheet.dart';
+import '../../../shell/state/focus_mode/focus_mode_bloc.dart';
 import '../../state/word_goal_settings/word_goal_settings_bloc.dart';
+import 'focus_live_preview_row.dart';
 
-/// Settings › Editor: the goal notes follow when they do not set their own.
+/// Settings › Editor: the goal notes follow when they do not set their own,
+/// and whether focus mode shows notes in Live.
 class WordGoalDefaultSection extends StatelessWidget {
   const WordGoalDefaultSection({super.key});
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    // Focus mode's Live Preview switch sits here where the app has focus
+    // mode.
+    final focusMode = _hasFocusMode(context);
     return BlocBuilder<WordGoalSettingsBloc, WordGoalSettingsState>(
       builder: (context, state) {
         final value = switch (state.status) {
@@ -41,6 +47,7 @@ class WordGoalDefaultSection extends StatelessWidget {
               title: l10n.editorWritingSection,
               footer: l10n.editorDefaultWordGoalDetail,
               children: <Widget>[
+                if (focusMode) const FocusLivePreviewRow(),
                 KansoSettingsRow(
                   icon: KansoIcons.target,
                   label: l10n.editorDefaultWordGoal,
@@ -66,6 +73,15 @@ class WordGoalDefaultSection extends StatelessWidget {
         );
       },
     );
+  }
+
+  bool _hasFocusMode(BuildContext context) {
+    try {
+      context.read<FocusModeBloc>();
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
   }
 
   Future<void> _choose(BuildContext context, int? current) async {

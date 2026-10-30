@@ -50,6 +50,10 @@ abstract class KansoEditor implements RustOpaqueInterface {
   /// Where the link at an offset of the text leads.
   Future<LinkTarget?> linkAt({required int offset});
 
+  /// What Live mode draws for `start..end` of the text, in units from
+  /// `start`.
+  Future<LiveBatch> liveLayout({required int start, required int end});
+
   EditOutcome? redo();
 
   /// Other people's carets and selections, in units of the text.

@@ -40,8 +40,10 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 sha2.workspace = true
 # Shared assistant providers and prompt rules, without the desktop agent.
 kanso-ai = { path = "../kanso-ai", optional = true, default-features = false }
-# Markdown filtering and tool argument schemas for the phone assistant.
-markdown = { workspace = true, optional = true }
+# Markdown filtering for the phone assistant, and the marks Live mode
+# hides (live.rs).
+markdown.workspace = true
+# Tool argument schemas for the phone assistant.
 schemars = { version = "0.8", optional = true }
 # Discovery model and downloader, using the platform's TLS verifier.
 model2vec-rs = { version = "=0.3.0", default-features = false, optional = true }
@@ -131,7 +133,7 @@ test-support = ["dep:proptest"]
 # Model-backed discovery on mobile and desktop.
 discovery = ["dep:model2vec-rs", "dep:tokenizers", "dep:kanso-tls", "dep:ureq"]
 # Ask, inline assistance and summaries.
-ai = ["dep:kanso-ai", "dep:markdown", "dep:schemars"]
+ai = ["dep:kanso-ai", "dep:schemars"]
 
 [dev-dependencies]
 # An export read back by the importer (export.rs).

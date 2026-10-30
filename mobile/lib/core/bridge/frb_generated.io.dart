@@ -1061,6 +1061,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<LiveLine> dco_decode_list_live_line(dynamic raw);
+
+  @protected
+  List<LiveRun> dco_decode_list_live_run(dynamic raw);
+
+  @protected
   List<MemberRow> dco_decode_list_member_row(dynamic raw);
 
   @protected
@@ -1199,6 +1205,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
 
   @protected
   List<VisibleNotebook> dco_decode_list_visible_notebook(dynamic raw);
+
+  @protected
+  LiveBatch dco_decode_live_batch(dynamic raw);
+
+  @protected
+  LiveKind dco_decode_live_kind(dynamic raw);
+
+  @protected
+  LiveLine dco_decode_live_line(dynamic raw);
+
+  @protected
+  LiveRun dco_decode_live_run(dynamic raw);
 
   @protected
   LiveStatus dco_decode_live_status(dynamic raw);
@@ -2746,6 +2764,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  List<LiveLine> sse_decode_list_live_line(SseDeserializer deserializer);
+
+  @protected
+  List<LiveRun> sse_decode_list_live_run(SseDeserializer deserializer);
+
+  @protected
   List<MemberRow> sse_decode_list_member_row(SseDeserializer deserializer);
 
   @protected
@@ -2912,6 +2936,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   List<VisibleNotebook> sse_decode_list_visible_notebook(
     SseDeserializer deserializer,
   );
+
+  @protected
+  LiveBatch sse_decode_live_batch(SseDeserializer deserializer);
+
+  @protected
+  LiveKind sse_decode_live_kind(SseDeserializer deserializer);
+
+  @protected
+  LiveLine sse_decode_live_line(SseDeserializer deserializer);
+
+  @protected
+  LiveRun sse_decode_live_run(SseDeserializer deserializer);
 
   @protected
   LiveStatus sse_decode_live_status(SseDeserializer deserializer);
@@ -4795,6 +4831,12 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
   );
 
   @protected
+  void sse_encode_list_live_line(List<LiveLine> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_live_run(List<LiveRun> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_member_row(
     List<MemberRow> self,
     SseSerializer serializer,
@@ -5033,6 +5075,18 @@ abstract class KansoCoreApiImplPlatform extends BaseApiImpl<KansoCoreWire> {
     List<VisibleNotebook> self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_live_batch(LiveBatch self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_live_kind(LiveKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_live_line(LiveLine self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_live_run(LiveRun self, SseSerializer serializer);
 
   @protected
   void sse_encode_live_status(LiveStatus self, SseSerializer serializer);

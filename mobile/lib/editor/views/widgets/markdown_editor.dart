@@ -59,9 +59,10 @@ class MarkdownEditor extends StatefulWidget {
   /// shared to view or comment on.
   final bool readOnly;
 
-  /// How tall the caret is, in points, for an editor font [fontSize] high.
-  static double caretHeightFor(double fontSize) =>
-      (fontSize * 1.25).roundToDouble();
+  /// How tall the caret is, in points, for an editor font [fontSize] high,
+  /// on a line drawn [scale] times as large (a heading in Live mode).
+  static double caretHeightFor(double fontSize, {double scale = 1}) =>
+      (fontSize * scale * 1.25).roundToDouble();
 
   @override
   State<MarkdownEditor> createState() => _MarkdownEditorState();
@@ -94,11 +95,19 @@ class _MarkdownEditorState extends State<MarkdownEditor>
       controller: widget.controller,
       focusNode: widget.focusNode,
     )..attach();
+    widget.controller.caretScale.addListener(rescaled);
   }
+
+  /// The caret's line is drawn at another size: the caret follows it.
+  void rescaled() => setState(() {});
 
   @override
   void didUpdateWidget(MarkdownEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.caretScale.removeListener(rescaled);
+      widget.controller.caretScale.addListener(rescaled);
+    }
     if (oldWidget.controller != widget.controller ||
         oldWidget.focusNode != widget.focusNode) {
       undoClient.detach();
@@ -111,6 +120,7 @@ class _MarkdownEditorState extends State<MarkdownEditor>
 
   @override
   void dispose() {
+    widget.controller.caretScale.removeListener(rescaled);
     undoClient.detach();
     super.dispose();
   }
@@ -127,7 +137,10 @@ class _MarkdownEditorState extends State<MarkdownEditor>
     };
     // The framework draws the caret 2 points taller on Apple's platforms:
     // ask for less there, so the two carets match.
-    final caret = MarkdownEditor.caretHeightFor(style.fontSize ?? 16);
+    final caret = MarkdownEditor.caretHeightFor(
+      style.fontSize ?? 16,
+      scale: widget.controller.caretScale.value,
+    );
     final service = widget.spellCheckService;
     widget.controller.misspelledStyle = widget.controller.misspelledStyle
         .copyWith(decorationColor: colors.danger);
@@ -136,7 +149,9 @@ class _MarkdownEditorState extends State<MarkdownEditor>
       ..commentStyle = TextStyle(
         backgroundColor: colors.warning.withValues(alpha: 0.2),
       )
-      ..darkCursors = context.brightness == Brightness.dark;
+      ..darkCursors = context.brightness == Brightness.dark
+      ..liveCodeStyle = TextStyle(color: context.syntaxColors.code)
+      ..liveLinkStyle = TextStyle(color: context.syntaxColors.link);
     return Actions(
       actions: <Type, Action<Intent>>{
         UndoTextIntent: CallbackAction<UndoTextIntent>(

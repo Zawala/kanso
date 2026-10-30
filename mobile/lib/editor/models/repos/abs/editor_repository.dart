@@ -81,6 +81,13 @@ abstract interface class EditorDocument {
     required String themeId,
   });
 
+  /// What Live mode draws for [start] to [end] of the text (the field's
+  /// window), in units from [start], as of the version in the batch.
+  Future<Either<ApplicationError, LiveBatch>> liveLayout({
+    required int start,
+    required int end,
+  });
+
   /// What the caret completes (`[[` with titles, `#` with tags); null when
   /// it completes nothing. Titles only, never a note's text.
   Future<Either<ApplicationError, Completion?>> completion();

@@ -19,7 +19,8 @@
 //! status and tasks by box and writes a card's move; [`tasks`] reads due
 //! dates and decides reminders; [`edit`] turns the
 //! formatting toolbar, auto-pairing and Tab and Enter in lists and tables
-//! into one change to the text; [`saving`] decides when typing is written
+//! into one change to the text; [`live`] says which marks Live mode hides
+//! and which spans it draws bold, italic, as code or as a link; [`saving`] decides when typing is written
 //! and when another writer's version is no conflict; [`text`] converts
 //! offsets between UTF-8 and UTF-16; [`text_stats`] counts words and finds
 //! the caret's line and column; [`word_goal`] keeps a note's word goal;
@@ -85,6 +86,7 @@ pub mod history;
 pub mod icons;
 pub mod links;
 pub mod list;
+pub mod live;
 pub mod lock;
 pub mod navigate;
 pub mod notes;

@@ -95,6 +95,7 @@ Intent? intentForShortcut(ShortcutEntry entry) => switch (entry.id) {
   'show_editor' => const EditNoteIntent(),
   'show_split' => null, // A phone has no split view.
   'show_preview' => const PreviewNoteIntent(),
+  'show_live' => const LiveNoteIntent(),
   'toggle_sidebar' => const ToggleLibraryIntent(),
   'toggle_inspector' => const ToggleInspectorIntent(),
   'toggle_focus_mode' => const ToggleFocusModeIntent(),

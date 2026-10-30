@@ -36,6 +36,7 @@ void main() {
           NewNotebookIntent,
           EditNoteIntent,
           PreviewNoteIntent,
+          LiveNoteIntent,
           SaveIntent,
           OpenPaletteIntent,
           OpenTodayIntent,
@@ -49,7 +50,7 @@ void main() {
           ReopenClosedTabIntent,
           GoToTabIntent,
         });
-        expect(bindings, hasLength(32));
+        expect(bindings, hasLength(33));
       }
     });
 
@@ -100,6 +101,7 @@ void main() {
       expect(bindings[NewNotebookIntent]!.shift, isTrue);
       expect(bindings[EditNoteIntent]!.trigger, LogicalKeyboardKey.digit1);
       expect(bindings[PreviewNoteIntent]!.trigger, LogicalKeyboardKey.digit3);
+      expect(bindings[LiveNoteIntent]!.trigger, LogicalKeyboardKey.digit4);
     });
 
     test('Escape leaves focus mode only while it is on', () {

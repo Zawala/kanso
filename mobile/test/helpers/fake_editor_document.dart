@@ -61,6 +61,13 @@ class FakeEditorDocument implements EditorDocument {
   /// What the next batch of colours holds.
   List<EditorRun> batchRuns = const <EditorRun>[];
 
+  /// What Live mode draws, in units from the start of the range asked for;
+  /// the batch says it is for the current version.
+  LiveBatch? live;
+
+  /// The ranges Live mode was asked for.
+  final List<(int, int)> liveRequests = <(int, int)>[];
+
   /// The outcome of the next command, undo or redo; null for none.
   EditOutcome? nextOutcome;
 
@@ -231,6 +238,26 @@ class FakeEditorDocument implements EditorDocument {
     }
     batchVersion = null;
     return Right(RunBatch(version: asked, runs: runs));
+  }
+
+  @override
+  Future<Either<ApplicationError, LiveBatch>> liveLayout({
+    required int start,
+    required int end,
+  }) async {
+    liveRequests.add((start, end));
+    if (failAll != null) {
+      return failure();
+    }
+    final drawn = live;
+    return Right(
+      LiveBatch(
+        version: version,
+        conceal: drawn?.conceal ?? const <Range16>[],
+        runs: drawn?.runs ?? const <LiveRun>[],
+        lines: drawn?.lines ?? const <LiveLine>[],
+      ),
+    );
   }
 
   @override

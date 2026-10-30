@@ -195,6 +195,7 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
       snapshot: widget.snapshot,
       themeId: note.state.themeId,
       caret: start,
+      live: note.state.mode == NoteMode.live,
       onContext: told,
       onEdited: () => editor.add(const EditorEvent.edited()),
       onLocked: () => editor.add(
@@ -650,6 +651,14 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
             controller
               ..themeId = state.themeId
               ..requestRuns();
+          },
+        ),
+        BlocListener<NoteBloc, NoteState>(
+          listenWhen: (before, now) => before.mode != now.mode,
+          listener: (context, state) {
+            if (state.mode.isEditing) {
+              controller.live = state.mode == NoteMode.live;
+            }
           },
         ),
         BlocListener<EditorBloc, EditorState>(

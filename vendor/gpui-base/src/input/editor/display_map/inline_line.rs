@@ -66,7 +66,9 @@ impl InputLine {
                 for f in fragments {
                     if x <= f.x + f.width {
                         return f.text.as_ref().map_or(
-                            if x - f.x < f.width / 2. {
+                            // A concealed range has no width to split, so a click at
+                            // its point lands after it, past the hidden source.
+                            if f.width > px(0.) && x - f.x < f.width / 2. {
                                 f.range.start
                             } else {
                                 f.range.end
@@ -77,6 +79,15 @@ impl InputLine {
                 }
                 self.len
             }
+        }
+    }
+    /// Whether the byte at `ix` is concealed: inside a fragment drawn at zero width.
+    pub(crate) fn is_concealed(&self, ix: usize) -> bool {
+        match &self.content {
+            Content::Text(_) => false,
+            Content::Inline(fragments) => fragments
+                .iter()
+                .any(|f| f.text.is_none() && f.width <= px(0.) && f.range.contains(&ix)),
         }
     }
     pub(crate) fn index_for_x(&self, x: Pixels) -> Option<usize> {

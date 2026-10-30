@@ -128,6 +128,7 @@ abstract final class PaletteLauncher {
     'show-related',
     'edit-mode',
     'preview-mode',
+    'live-mode',
     'word-goal',
   ];
 
@@ -603,20 +604,25 @@ abstract final class PaletteLauncher {
             ),
           );
         }
-      case 'edit-mode' || 'preview-mode':
+      case 'edit-mode' || 'preview-mode' || 'live-mode':
         final noteToSwitch = note?.id ?? noteId;
         if (noteToSwitch != null) {
           _maybeRead<NoteModeIntentBloc>(context)?.add(
             NoteModeIntentEvent.requested(
               noteId: noteToSwitch,
-              mode: id == 'edit-mode' ? NoteMode.edit : NoteMode.preview,
+              mode: switch (id) {
+                'edit-mode' => NoteMode.edit,
+                'live-mode' => NoteMode.live,
+                _ => NoteMode.preview,
+              },
             ),
           );
         }
       case 'word-goal':
         final goalNote = note?.id ?? noteId;
         if (goalNote != null) {
-          if (_maybeRead<NoteBloc>(context)?.state.mode != NoteMode.edit) {
+          final mode = _maybeRead<NoteBloc>(context)?.state.mode;
+          if (mode == null || !mode.isEditing) {
             _maybeRead<NoteModeIntentBloc>(context)?.add(
               NoteModeIntentEvent.requested(
                 noteId: goalNote,

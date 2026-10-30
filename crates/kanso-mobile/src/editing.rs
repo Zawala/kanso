@@ -65,6 +65,7 @@ use kanso_engine::edit::{self, Edit, list::TabIntent, markdown};
 use kanso_engine::highlight::{Highlighter, Token};
 use kanso_engine::links::tags::{apply_inline_tags, choices, tag_query, tag_starts_at};
 use kanso_engine::links::{self, LinkAtTarget, WikiIndex};
+use kanso_engine::live::{self, LiveStyle};
 use kanso_engine::lock::LockView;
 use kanso_engine::saving::{Autosave, has_text, same_content, text_caught_up, writes_the_same};
 use kanso_engine::text::Utf16Index;
@@ -80,8 +81,9 @@ use crate::errors::KansoError;
 use crate::library::{Inner, Library};
 use crate::model::{
     Completion, CompletionItem, CompletionKind, EditCommand, EditOutcome, EditorContext,
-    EditorEvent, EditorRun, EditorSnapshot, FormatKind, HistoryState, LinkTarget, LockState,
-    Property, Range16, Replacement, RunBatch, SaveState, ShareFile, TextChange,
+    EditorEvent, EditorRun, EditorSnapshot, FormatKind, HistoryState, LinkTarget, LiveBatch,
+    LiveKind, LiveLine, LiveRun, LockState, Property, Range16, Replacement, RunBatch, SaveState,
+    ShareFile, TextChange,
 };
 use crate::notes::property_row;
 use crate::sharing::SharedNotes;
@@ -703,6 +705,77 @@ impl EditorSession {
                 })
                 .collect();
             Ok(RunBatch { version, runs })
+        })
+    }
+
+    /// What Live mode draws for `start..end` of the text (UTF-16 units), as
+    /// of the version in the batch, in units from `start`. The range is read
+    /// as a text of its own, so it should be whole lines (the field's
+    /// window). The marks are those of every line, as if no caret were in
+    /// it; the field shows them again where its caret is.
+    pub fn live_layout(&self, start: u32, end: u32) -> Result<LiveBatch, KansoError> {
+        guard(|| {
+            let (text, index, version) = self
+                .shared
+                .run(|st, _| Ok((st.text.clone(), st.index.clone(), st.version)))?;
+            let units = index.len_utf16() as u32;
+            let (start, end) = (start.min(units), end.min(units));
+            let from = index.utf16_to_byte(&text, start as usize);
+            let to = index.utf16_to_byte(&text, end as usize).max(from);
+            let layout = live::live_layout(&text[from..to], &[]);
+            let at = |byte: usize| {
+                (index.byte_to_utf16(&text, from + byte) as u32).saturating_sub(start)
+            };
+            let range = |r: &Range<usize>| Range16 {
+                start: at(r.start),
+                end: at(r.end),
+            };
+            let conceal = layout.conceal.iter().map(range).collect();
+            let runs = layout
+                .styles
+                .iter()
+                .map(|(r, style)| LiveRun {
+                    range: range(r),
+                    kind: match style {
+                        LiveStyle::Strong => LiveKind::Strong,
+                        LiveStyle::Emphasis => LiveKind::Emphasis,
+                        LiveStyle::Strikethrough => LiveKind::Strikethrough,
+                        LiveStyle::Code => LiveKind::Code,
+                        LiveStyle::Link => LiveKind::Link,
+                        LiveStyle::Heading(_) => LiveKind::Heading,
+                    },
+                })
+                .collect();
+            let window = &text[from..to];
+            let starts: Vec<usize> = std::iter::once(0)
+                .chain(window.match_indices('\n').map(|(at, _)| at + 1))
+                .collect();
+            let lines = layout
+                .headings
+                .iter()
+                .filter_map(|&(line, level)| {
+                    let first = *starts.get(line)?;
+                    let last = starts.get(line + 1).map_or(window.len(), |next| next - 1);
+                    let last = if window[first..last].ends_with('\r') {
+                        last - 1
+                    } else {
+                        last
+                    };
+                    // To two places, so that 1.6 is 1.6 on the other side.
+                    let scale = (f64::from(live::heading_scale(level)) * 100.0).round() / 100.0;
+                    Some(LiveLine {
+                        range: range(&(first..last)),
+                        level,
+                        scale,
+                    })
+                })
+                .collect();
+            Ok(LiveBatch {
+                version,
+                conceal,
+                runs,
+                lines,
+            })
         })
     }
 
