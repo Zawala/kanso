@@ -357,6 +357,15 @@ pub const SHORTCUTS: &[Shortcut] = &[
         on_mobile: true,
     },
     Shortcut {
+        id: "show_live",
+        mac: "secondary-4",
+        other: "secondary-4",
+        context: ShortcutContext::Global,
+        label: "Live Preview",
+        group: ShortcutGroup::View,
+        on_mobile: true,
+    },
+    Shortcut {
         id: "toggle_sidebar",
         mac: "secondary-\\",
         other: "secondary-\\",

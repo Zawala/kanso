@@ -2142,6 +2142,88 @@ class ListShape {
           groupPinned == other.groupPinned;
 }
 
+class LiveBatch {
+  final int version;
+  final List<Range16> conceal;
+  final List<LiveRun> runs;
+  final List<LiveLine> lines;
+
+  const LiveBatch({
+    required this.version,
+    required this.conceal,
+    required this.runs,
+    required this.lines,
+  });
+
+  @override
+  int get hashCode =>
+      version.hashCode ^ conceal.hashCode ^ runs.hashCode ^ lines.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveBatch &&
+          runtimeType == other.runtimeType &&
+          version == other.version &&
+          conceal == other.conceal &&
+          runs == other.runs &&
+          lines == other.lines;
+}
+
+enum LiveKind {
+  strong,
+  emphasis,
+  strikethrough,
+  code,
+  link,
+  heading,
+}
+
+class LiveLine {
+  final Range16 range;
+  final int level;
+  final double scale;
+
+  const LiveLine({
+    required this.range,
+    required this.level,
+    required this.scale,
+  });
+
+  @override
+  int get hashCode => range.hashCode ^ level.hashCode ^ scale.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveLine &&
+          runtimeType == other.runtimeType &&
+          range == other.range &&
+          level == other.level &&
+          scale == other.scale;
+}
+
+class LiveRun {
+  final Range16 range;
+  final LiveKind kind;
+
+  const LiveRun({
+    required this.range,
+    required this.kind,
+  });
+
+  @override
+  int get hashCode => range.hashCode ^ kind.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveRun &&
+          runtimeType == other.runtimeType &&
+          range == other.range &&
+          kind == other.kind;
+}
+
 class LiveStatus {
   final ShareRole role;
   final bool connected;

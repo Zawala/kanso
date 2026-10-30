@@ -104,6 +104,10 @@ abstract class Preferences with _$Preferences {
     /// Whether the open note is shown by itself, without the library, the
     /// list, tabs or the note's bars.
     @Default(false) bool focusMode,
+
+    /// Whether focus mode shows the open note in Live, and leaving it goes
+    /// back to the mode the note was in.
+    @Default(false) bool livePreviewInFocus,
   }) = _Preferences;
 
   factory Preferences.fromJson(Map<String, dynamic> json) =>

@@ -39,7 +39,7 @@ class NoteStage extends StatelessWidget {
     final l10n = context.l10n;
     final note = shown.note;
     final readable = shown.status == NoteScreenStatus.ready && note != null;
-    final editing = readable && shown.mode == NoteMode.edit;
+    final editing = readable && shown.mode.isEditing;
     if (editing) {
       return NoteEditorPane(
         noteId: shown.noteId,

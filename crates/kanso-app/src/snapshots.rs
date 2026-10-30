@@ -4540,7 +4540,7 @@ fn snapshots() {
     let out = PathBuf::from(std::env::var("KANSO_SNAPSHOT_DIR").expect("set KANSO_SNAPSHOT_DIR"));
     std::fs::create_dir_all(&out).unwrap();
     use ThemePreference::{Dark, Light};
-    use ViewMode::{Edit, Preview, Split};
+    use ViewMode::{Edit, Live, Preview, Split};
     let full = size(px(1440.), px(900.));
     let shot = |name, theme, view_mode, prepare: Prepare| Shot {
         name,
@@ -4565,6 +4565,8 @@ fn snapshots() {
         shot("light-split", Light, Split, open_latest),
         shot("dark-edit", Dark, Edit, open_latest),
         shot("light-edit", Light, Edit, open_latest),
+        shot("dark-live", Dark, Live, open_latest),
+        shot("light-live", Light, Live, open_latest),
         shot("dark-tabs", Dark, Edit, open_tabs),
         shot("light-tabs", Light, Edit, open_tabs),
         shot("dark-notebook-open", Dark, Edit, notebook_open),

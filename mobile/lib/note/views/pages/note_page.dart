@@ -127,7 +127,7 @@ class NotePage extends StatelessWidget {
                         return;
                       }
                       final note = context.read<NoteBloc>();
-                      if (note.state.mode != NoteMode.edit) {
+                      if (!note.state.mode.isEditing) {
                         note.add(const NoteEvent.modeChanged(NoteMode.edit));
                       }
                     },

@@ -1242,6 +1242,11 @@ fn writing_section(cx: &mut Context<SettingsView>) -> AnyElement {
                     |typewriter, _, cx| set_writing(cx, |editor| editor.typewriter = typewriter),
                     colors,
                 )),
+            Row::new(Lucide::Eye, "Live Preview in focus mode")
+                .detail("Focus mode shows the note in Live Preview, and leaving it goes back to the mode you were in.")
+                .trailing(switch("focus-live-preview", writing.live_preview_in_focus, |e, on| {
+                    e.live_preview_in_focus = on
+                })),
             Row::new(Lucide::Goal, "Word goal")
                 .detail("For notes without their own. Focus mode shows the progress; set a note's own goal from its footer.")
                 .trailing(goal_menu),

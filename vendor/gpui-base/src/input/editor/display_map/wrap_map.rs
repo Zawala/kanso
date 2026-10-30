@@ -108,7 +108,18 @@ impl WrapMap {
         cx: &mut App,
     ) {
         self.wrapper.adjust_inline_metrics(range, new_text.len());
+        self.wrapper.adjust_presentation_for_edit(range, new_text);
         self.wrapper.update(changed_text, range, new_text, cx);
+    }
+
+    /// Replace the render-only presentation. Returns whether anything changed.
+    pub(super) fn set_presentation(
+        &mut self,
+        concealed: std::rc::Rc<[Range<usize>]>,
+        line_scales: std::rc::Rc<[(usize, f32)]>,
+        cx: &mut App,
+    ) -> bool {
+        self.wrapper.set_presentation(concealed, line_scales, cx)
     }
 
     /// Update layout parameters (wrap width or font)
@@ -141,6 +152,7 @@ impl WrapMap {
 
     /// Initialize with text
     pub(super) fn set_text(&mut self, text: &Rope, cx: &mut App) {
+        self.wrapper.clear_presentation();
         self.wrapper.set_default_text(text);
         self.wrapper.prepare_if_need(text, cx);
     }

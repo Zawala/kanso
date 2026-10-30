@@ -18,13 +18,18 @@ part 'focus_mode_state.dart';
 ///
 /// The choice is kept in the preferences, as the desktop keeps it in its
 /// layout, so it is still there at the next start. A choice that cannot be
-/// saved stays for this run.
+/// saved stays for this run. So is whether focus mode shows the note in Live
+/// ([FocusModeState.livePreview]); the note's page makes the switch.
 @injectable
 class FocusModeBloc extends Bloc<FocusModeEvent, FocusModeState> {
   FocusModeBloc(this._preferences) : super(const FocusModeState()) {
     on<FocusModeStartedEvent>(_onStarted, transformer: restartable());
     on<FocusModeToggledEvent>(_onToggled, transformer: sequential());
     on<FocusModeExitedEvent>(_onExited, transformer: sequential());
+    on<FocusModeLivePreviewChangedEvent>(
+      _onLivePreviewChanged,
+      transformer: sequential(),
+    );
   }
 
   final PreferencesRepository _preferences;
@@ -42,6 +47,10 @@ class FocusModeBloc extends Bloc<FocusModeEvent, FocusModeState> {
       state.copyWith(
         active: loaded.fold((_) => false, (saved) => saved.focusMode),
         ready: true,
+        livePreview: loaded.fold(
+          (_) => state.livePreview,
+          (saved) => saved.livePreviewInFocus,
+        ),
       ),
     );
   }
@@ -58,6 +67,19 @@ class FocusModeBloc extends Bloc<FocusModeEvent, FocusModeState> {
     Emitter<FocusModeState> emit,
   ) async {
     await _set(false, emit);
+  }
+
+  Future<void> _onLivePreviewChanged(
+    FocusModeLivePreviewChangedEvent event,
+    Emitter<FocusModeState> emit,
+  ) async {
+    if (state.livePreview == event.enabled) {
+      return;
+    }
+    emit(state.copyWith(livePreview: event.enabled));
+    await _preferences.update(
+      (current) => current.copyWith(livePreviewInFocus: event.enabled),
+    );
   }
 
   Future<void> _set(bool active, Emitter<FocusModeState> emit) async {

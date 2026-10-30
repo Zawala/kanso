@@ -13,5 +13,9 @@ abstract class FocusModeState with _$FocusModeState {
     /// Whether the saved choice has been read. A choice made before it was
     /// read is not overwritten by the file.
     @Default(false) bool ready,
+
+    /// Whether entering focus mode shows the open note in Live, and leaving
+    /// it goes back to the mode the note was in.
+    @Default(false) bool livePreview,
   }) = _FocusModeState;
 }

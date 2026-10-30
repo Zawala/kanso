@@ -516,6 +516,27 @@ void main() {
         verify(() => library.note(MockIds.syncDesign)).called(1);
       });
 
+      test('Live is edited too, and Edit to Live keeps the place', () async {
+        final bloc = await started();
+        bloc.add(const NoteEvent.modeChanged(NoteMode.edit, bodyCaret: 42));
+        await bloc.stream.firstWhere((state) => state.mode == NoteMode.edit);
+        bloc.add(const NoteEvent.modeChanged(NoteMode.live));
+        final live = await bloc.stream.firstWhere(
+          (state) => state.mode == NoteMode.live,
+        );
+        expect(live.mode.isEditing, isTrue);
+        expect(live.caret, 42);
+        expect(live.caretInBody, isTrue);
+        // Writes while in Live wait for Preview, as they do in Edit.
+        clearInteractions(library);
+        changes.add(<String>[MockIds.syncDesign]);
+        await Future<void>.delayed(noteDebounce * 3);
+        verifyNever(() => library.note(any()));
+        bloc.add(const NoteEvent.modeChanged(NoteMode.preview));
+        await bloc.stream.firstWhere((state) => state.mode == NoteMode.preview);
+        expect(bloc.state.caret, isNull);
+      });
+
       test('writes that came while reading are not read again', () async {
         final bloc = await started();
         clearInteractions(library);

@@ -75,6 +75,7 @@ mod library;
 mod library_import;
 #[cfg(test)]
 mod links_tests;
+mod live_marks;
 mod locked;
 mod markdown_edit;
 mod markdown_source;

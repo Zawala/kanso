@@ -10,7 +10,8 @@ import '../../../core/views/widgets/kanso_segment.dart';
 import '../../../core/views/widgets/kanso_segmented.dart';
 import '../../models/data/note_mode.dart';
 
-/// The switch between a note to read and a note as text to edit.
+/// The switch between a note to read, a note as text to edit and a note as
+/// text drawn in place (Live).
 class NoteModeToggle extends StatelessWidget {
   const NoteModeToggle({
     required this.mode,
@@ -38,6 +39,11 @@ class NoteModeToggle extends StatelessWidget {
           value: NoteMode.edit,
           icon: KansoIcons.pencil,
           semanticLabel: l10n.noteEdit,
+        ),
+        KansoSegment<NoteMode>(
+          value: NoteMode.live,
+          icon: KansoIcons.bookOpen,
+          semanticLabel: l10n.noteLive,
         ),
       ],
     );

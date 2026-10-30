@@ -32,8 +32,8 @@ use crate::theme::Colors;
 use crate::workspace::{
     AppState, CopyKansoLink, CopyNoteLink, Dictate, ExportNote, FocusEditor, FormatTable,
     NewDrawing, NewNote, OpenCommandPalette, OpenNotePicker, PastePlainText, SaveNote,
-    SearchAllNotes, ShowBacklinks, ShowEditor, ShowHistory, ShowPreview, ShowSplit, TogglePinned,
-    TrashNote, Workspace,
+    SearchAllNotes, ShowBacklinks, ShowEditor, ShowHistory, ShowLive, ShowPreview, ShowSplit,
+    TogglePinned, TrashNote, Workspace,
 };
 
 actions!(kanso, [OpenInNewWindow, CloseNoteWindow]);
@@ -650,6 +650,9 @@ impl Render for NoteWindow {
             }))
             .on_action(cx.listener(|this, _: &ShowPreview, _, cx| {
                 this.set_view_mode(ViewMode::Preview, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ShowLive, _, cx| {
+                this.set_view_mode(ViewMode::Live, cx)
             }))
             .on_action(cx.listener(|this, _: &TogglePinned, _, cx| {
                 this.editor.update(cx, |editor, cx| editor.toggle_pinned(cx));

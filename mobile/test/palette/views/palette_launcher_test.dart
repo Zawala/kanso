@@ -133,8 +133,8 @@ class _Palette implements PaletteRepository {
     required PaletteContext context,
   }) async {
     this.context = context;
-    if ((command == 'edit-mode' || command == 'preview-mode') &&
-        context.openNoteId == null) {
+    const modeCommands = <String>{'edit-mode', 'preview-mode', 'live-mode'};
+    if (modeCommands.contains(command) && context.openNoteId == null) {
       return const Right<ApplicationError, List<PaletteSection>>(
         <PaletteSection>[],
       );
@@ -741,7 +741,18 @@ void main() {
     expect(tester.element(find.byType(NotePane)).read<NoteBloc>(), same(note));
   });
 
-  for (final command in <String>['edit-mode', 'preview-mode']) {
+  testWidgets('live-mode switches the open note to Live', (tester) async {
+    await _pump(tester, command: 'live-mode');
+    final note = tester.element(find.byType(NotePane)).read<NoteBloc>();
+
+    expect(note.state.mode, NoteMode.preview);
+    await _run(tester, 'live-mode');
+
+    expect(note.state.mode, NoteMode.live);
+    expect(tester.element(find.byType(NotePane)).read<NoteBloc>(), same(note));
+  });
+
+  for (final command in <String>['edit-mode', 'preview-mode', 'live-mode']) {
     testWidgets('$command is absent without an open note', (tester) async {
       await _pump(tester, command: command, at: '/notes');
 
