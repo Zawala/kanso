@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:glados/glados.dart' as glados;
 import 'package:kanso/core/bridge/api/types.dart';
 import 'package:kanso/core/models/data/application_error.dart';
+import 'package:kanso/core/models/repos/abs/bundled_font_repository.dart';
 import 'package:kanso/core/models/repos/abs/google_font_repository.dart';
 import 'package:kanso/core/state/undo_notice/undo_notice_bloc.dart';
 import 'package:kanso/note/models/data/preview_action.dart';
@@ -26,9 +27,26 @@ final ThemeTokens _tokens = tokensFor(fakePalette('nord'));
 
 const _failure = ApplicationError.storage(message: 'Disk error.');
 
-class FakePreviewGoogleFonts implements GoogleFontRepository {
+class FakePreviewBundledFonts implements BundledFontRepository {
   @override
-  Future<List<int>?> cachedBytes(String family) async => <int>[1, 2, 3];
+  Future<List<BundledFontFace>> faces(String family) async => family == 'Inter'
+      ? const <BundledFontFace>[
+          BundledFontFace(weight: '100 900', bytes: <int>[4, 5, 6]),
+        ]
+      : const <BundledFontFace>[];
+}
+
+class FakePreviewGoogleFonts implements GoogleFontRepository {
+  FakePreviewGoogleFonts({
+    this.cached = const <String>{'Lora', 'IBM Plex Mono'},
+  });
+
+  /// The families with a downloaded file.
+  final Set<String> cached;
+
+  @override
+  Future<List<int>?> cachedBytes(String family) async =>
+      cached.contains(family) ? <int>[1, 2, 3] : null;
 
   @override
   Future<Either<ApplicationError, String>> load(String family) async =>
@@ -74,13 +92,17 @@ void main() {
     when(() => haptics.selection()).thenAnswer((_) async {});
   });
 
-  PreviewBloc build({GoogleFontRepository? googleFonts}) => PreviewBloc(
+  PreviewBloc build({
+    GoogleFontRepository? googleFonts,
+    BundledFontRepository? bundledFonts,
+  }) => PreviewBloc(
     library,
     renderer,
     links,
     undoNotice,
     haptics,
     googleFonts: googleFonts,
+    bundledFonts: bundledFonts,
   );
 
   void answer(String url, PreviewLink target) => when(
@@ -142,6 +164,50 @@ void main() {
       expect(options.font, 'Lora');
       expect(options.mono, 'IBM Plex Mono');
       expect(options.size, 23);
+    });
+
+    test('embeds a bundled family, which the web view cannot see', () async {
+      final bloc =
+          build(
+            googleFonts: FakePreviewGoogleFonts(cached: const <String>{}),
+            bundledFonts: FakePreviewBundledFonts(),
+          )..add(
+            PreviewEvent.started(mockOpenNote.id, 'nord', font: 'Inter'),
+          );
+      addTearDown(bloc.close);
+      final state = await bloc.stream.firstWhere((value) => value.html != null);
+      expect(state.html, contains("font-family:'Inter'"));
+      expect(state.html, contains('data:font/ttf;base64,BAUG'));
+      expect(state.html, contains('font-weight:100 900;'));
+    });
+
+    test('a downloaded family is embedded before a bundled one', () async {
+      final bloc =
+          build(
+            googleFonts: FakePreviewGoogleFonts(
+              cached: const <String>{'Inter'},
+            ),
+            bundledFonts: FakePreviewBundledFonts(),
+          )..add(
+            PreviewEvent.started(mockOpenNote.id, 'nord', font: 'Inter'),
+          );
+      addTearDown(bloc.close);
+      final state = await bloc.stream.firstWhere((value) => value.html != null);
+      expect(state.html, contains('data:font/ttf;base64,AQID'));
+      expect(state.html, isNot(contains('BAUG')));
+    });
+
+    test('a family with no file leaves the page as drawn', () async {
+      final bloc =
+          build(
+            googleFonts: FakePreviewGoogleFonts(cached: const <String>{}),
+            bundledFonts: FakePreviewBundledFonts(),
+          )..add(
+            PreviewEvent.started(mockOpenNote.id, 'nord', font: 'Unknown'),
+          );
+      addTearDown(bloc.close);
+      final state = await bloc.stream.firstWhere((value) => value.html != null);
+      expect(state.html, '<p>page 1</p>');
     });
 
     test('draws it again when the library changes', () async {
