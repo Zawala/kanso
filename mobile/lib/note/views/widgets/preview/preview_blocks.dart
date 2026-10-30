@@ -46,6 +46,22 @@ class PreviewBlocks extends StatelessWidget {
     };
   }
 
+  /// The room between [before] and [block] below it, in points.
+  static double room(
+    PreviewBlock before,
+    PreviewBlock block,
+    PreviewStyle style, {
+    bool tight = false,
+  }) {
+    final (_, below) = margins(before, style, tight: tight);
+    var (above, _) = margins(block, style, tight: tight);
+    if (before is PreviewBlock_Heading && block is PreviewBlock_Heading) {
+      final (ratio, _) = PreviewStyle.headingMetrics(block.level);
+      above = 0.25 * ratio * style.size;
+    }
+    return math.max(above, below);
+  }
+
   @override
   Widget build(BuildContext context) {
     final style = PreviewScope.of(context).style;
@@ -53,16 +69,9 @@ class PreviewBlocks extends StatelessWidget {
     for (var at = 0; at < blocks.length; at++) {
       final block = blocks[at];
       if (at > 0) {
-        final before = blocks[at - 1];
-        final (_, below) = margins(before, style, tight: tight);
-        var (above, _) = margins(block, style, tight: tight);
-        if (before is PreviewBlock_Heading && block is PreviewBlock_Heading) {
-          final (ratio, _) = PreviewStyle.headingMetrics(block.level);
-          above = 0.25 * ratio * style.size;
-        }
-        final room = math.max(above, below);
-        if (room > 0) {
-          children.add(SizedBox(height: room));
+        final gap = room(blocks[at - 1], block, style, tight: tight);
+        if (gap > 0) {
+          children.add(SizedBox(height: gap));
         }
       }
       children.add(PreviewBlockView(block, tight: tight));
