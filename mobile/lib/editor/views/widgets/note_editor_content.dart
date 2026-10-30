@@ -15,19 +15,26 @@ import '../../../capture/views/widgets/capture_sheet.dart';
 import '../../../core/bridge/api/types.dart' hide EditorEvent;
 import '../../../core/bridge/api/word_goal.dart';
 import '../../../core/configs/kanso_icons.dart';
+import '../../../core/configs/kanso_palette.dart';
 import '../../../core/configs/kanso_sizes.dart';
 import '../../../core/configs/kanso_spacing.dart';
 import '../../../core/models/data/application_error.dart';
 import '../../../core/models/data/browse_location.dart';
 import '../../../core/models/data/note_drag_data.dart';
+import '../../../core/models/repos/abs/renderer_repository.dart';
+import '../../../core/models/repos/abs/themes_repository.dart';
+import '../../../core/state/appearance/appearance_bloc.dart';
 import '../../../core/utils/context_extensions.dart';
 import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../editor_extras/models/data/editor_extras.dart';
 import '../../../editor_extras/models/data/markdown_editor_text_target.dart';
 import '../../../editor_extras/views/widgets/editor_extras_scope.dart';
+import '../../../injection.dart';
 import '../../../note/models/data/note_mode.dart';
 import '../../../note/state/note/note_bloc.dart';
 import '../../../note/state/note_assist_intent/note_assist_intent_bloc.dart';
+import '../../../note/state/preview/preview_bloc.dart'
+    show PreviewThemes, previewBaseTextSize;
 import '../../../note/state/word_goal_intent/word_goal_intent_bloc.dart';
 import '../../../note_list/views/widgets/note_list_notice.dart';
 import '../../../sharing/state/comments/comments_bloc.dart';
@@ -40,7 +47,9 @@ import '../../models/data/outside_side.dart';
 import '../../models/data/word_goal_choice.dart';
 import '../../models/repos/abs/editor_repository.dart';
 import '../../state/editor/editor_bloc.dart';
+import '../../utils/live_document/live_preview_drawer.dart';
 import '../controllers/kanso_markdown_controller.dart';
+import '../controllers/live_layout_controller.dart';
 import 'completion_host.dart';
 import 'editor_conflict_strip.dart';
 import 'editor_destination_scope.dart';
@@ -50,6 +59,7 @@ import 'editor_title_field.dart';
 import 'editor_word_goal_footer.dart';
 import 'keyboard_accessory_bar.dart';
 import 'link_context_menu.dart';
+import 'live_document_editor.dart';
 import 'markdown_editor.dart';
 import 'outside_text.dart';
 import 'properties_section.dart';
@@ -113,6 +123,18 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
   late final ScrollController scroll;
   final GlobalKey<EditableTextState> editableKey =
       GlobalKey<EditableTextState>();
+  final GlobalKey<LiveDocumentEditorState> liveKey =
+      GlobalKey<LiveDocumentEditorState>();
+
+  /// Whether the note is in Live mode: drawn by the Live editor, as the
+  /// preview draws it, rather than as Markdown in a field.
+  bool live = false;
+
+  /// What the Live editor draws, while the note is in Live mode.
+  LiveLayoutController? liveLayout;
+
+  /// What draws the preview's blocks of the text for the Live editor.
+  LivePreviewDrawer? previewDrawer;
   late final AppLifecycleListener lifecycle;
   late final ValueNotifier<int> wordCount;
   Timer? wordCountTimer;
@@ -190,12 +212,13 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
           : 0;
       start = (caret - hidden).clamp(0, text.length);
     }
+    live = note.state.mode == NoteMode.live;
     controller = KansoMarkdownController(
       document: widget.document,
       snapshot: widget.snapshot,
       themeId: note.state.themeId,
       caret: start,
-      live: note.state.mode == NoteMode.live,
+      unwindowed: live,
       onContext: told,
       onEdited: () => editor.add(const EditorEvent.edited()),
       onLocked: () => editor.add(
@@ -208,6 +231,9 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
       noteId: note.state.noteId,
     );
     controller.addListener(keepPlace);
+    if (live) {
+      startLive();
+    }
     wordCount = ValueNotifier<int>(
       wordGoalWordCount(text: widget.snapshot.text),
     );
@@ -243,6 +269,70 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
         unawaited(selectComment(selecting));
       }
     }
+  }
+
+  /// Starts drawing the note in Live mode: the core's layout of the whole
+  /// text, and the preview's blocks of it for its widgets.
+  void startLive() {
+    if (liveLayout != null) {
+      return;
+    }
+    final drawer =
+        getIt.isRegistered<RendererRepository>() &&
+            getIt.isRegistered<ThemesRepository>()
+        ? previewDrawer ??= LivePreviewDrawer(
+            renderer: getIt<RendererRepository>(),
+            themes: getIt<ThemesRepository>(),
+            noteId: note.state.noteId,
+            inForce: (
+              ui: 'kanso-light',
+              syntax: 'kanso-light',
+              preview: 'kanso-light',
+              dark: false,
+            ),
+            size: previewBaseTextSize,
+          )
+        : null;
+    liveLayout = LiveLayoutController(
+      controller: controller,
+      previewSource: drawer?.draw,
+    );
+  }
+
+  void stopLive() {
+    liveLayout?.dispose();
+    liveLayout = null;
+  }
+
+  /// The themes and the preview's text size in force, from the appearance
+  /// above the editor where there is one; Kanso's own otherwise.
+  (PreviewThemes, double, PaletteDto) liveLook(BuildContext context) {
+    final dark = context.brightness == Brightness.dark;
+    AppearanceState? appearance;
+    try {
+      appearance = context.watch<AppearanceBloc>().state;
+    } on ProviderNotFoundException {
+      appearance = null;
+    }
+    if (appearance == null) {
+      final own = dark ? 'kanso-dark' : 'kanso-light';
+      return (
+        (ui: own, syntax: own, preview: own, dark: dark),
+        previewBaseTextSize,
+        (dark ? KansoPalette.kansoDark : KansoPalette.kansoLight).preview,
+      );
+    }
+    final selection = appearance.selection;
+    return (
+      (
+        ui: selection.uiFor(systemDark: dark),
+        syntax: selection.syntaxFor(systemDark: dark),
+        preview: selection.previewFor(systemDark: dark),
+        dark: dark,
+      ),
+      previewBaseTextSize * appearance.previewTextSize,
+      (dark ? appearance.dark : appearance.light).preview,
+    );
   }
 
   @override
@@ -420,6 +510,7 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
     titleFocus.dispose();
     textFocus.dispose();
     title.dispose();
+    stopLive();
     controller.dispose();
     super.dispose();
   }
@@ -517,6 +608,322 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
         scroll.jumpTo(scroll.offset + (after - before));
       }
     });
+  }
+
+  /// The title and the properties, above the text.
+  Widget header(double gutter) {
+    return SliverPadding(
+      key: headerKey,
+      padding: EdgeInsets.fromLTRB(
+        gutter,
+        KansoSpacing.xxs,
+        gutter,
+        0,
+      ),
+      sliver: SliverToBoxAdapter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            EditorTitleField(
+              controller: title,
+              focusNode: titleFocus,
+              onChanged: onTitleChanged,
+              onSubmitted: focusText,
+              readOnly: readOnly,
+            ),
+            BlocBuilder<EditorBloc, EditorState>(
+              buildWhen: (before, now) =>
+                  before.properties != now.properties ||
+                  before.propertiesOpen != now.propertiesOpen ||
+                  before.propertyError != now.propertyError,
+              builder: (context, state) => PropertiesSection(
+                properties: state.properties,
+                open: state.propertiesOpen,
+                failed: state.propertyError != null,
+                readOnly: readOnly,
+                onToggle: () => editor.add(
+                  const EditorEvent.propertiesToggled(),
+                ),
+                onSet: (key, value, {index}) => editor.add(
+                  EditorEvent.propertySet(
+                    key: key,
+                    value: value,
+                    index: index,
+                  ),
+                ),
+                onRemove: (index) => editor.add(
+                  EditorEvent.propertyRemoved(index),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The room below the text, where a tap puts the caret at its end.
+  Widget room() {
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: focusEnd,
+        child: SizedBox(
+          height: MediaQuery.paddingOf(context).bottom + KansoSpacing.xl,
+          width: double.infinity,
+        ),
+      ),
+    );
+  }
+
+  /// The page in Edit mode: the title and properties, then the field, in
+  /// one scroll view; with a long note the field holds a window of it and
+  /// the rest is drawn around it.
+  Widget editScroll(BuildContext context, double gutter) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: controller.hasBefore,
+      // A page that starts at the top (the whole note, or its
+      // start, is in the field) grows down from its title. With
+      // text before the window it grows from the editor, up and
+      // down, so that text far from where the page is scrolled
+      // to costs nothing to lay out.
+      builder: (context, hasBefore, _) => CustomScrollView(
+        controller: scroll,
+        center: hasBefore ? editorSliverKey : headerKey,
+        slivers: <Widget>[
+          header(gutter),
+          SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: gutter),
+            sliver: OutsideText(
+              controller: controller,
+              side: OutsideSide.before,
+              reverse: true,
+              onTapAt: (y) => tappedY = y,
+            ),
+          ),
+          SliverPadding(
+            key: editorSliverKey,
+            padding: EdgeInsets.symmetric(horizontal: gutter),
+            sliver: SliverToBoxAdapter(
+              child: EditorShortcuts(
+                controller: controller,
+                completionOpen: () => controller.completion != null,
+                onSave: () => editor.add(
+                  const EditorEvent.flushRequested(
+                    FlushReason.shortcut,
+                  ),
+                ),
+                onDismissCompletion: () => editor.add(
+                  const EditorEvent.completionDismissed(),
+                ),
+                onEscape: () {
+                  textFocus.unfocus();
+                  note.add(
+                    const NoteEvent.modeChanged(
+                      NoteMode.preview,
+                    ),
+                  );
+                },
+                child: CompletionHost(
+                  controller: controller,
+                  editableKey: editableKey,
+                  reservedBottom: KansoSizes.touchTarget + 1,
+                  child: Stack(
+                    children: <Widget>[
+                      DragTarget<NoteDragData>(
+                        onWillAcceptWithDetails: (_) => !readOnly,
+                        onAcceptWithDetails: dropLinks,
+                        builder: (context, hovering, rejected) {
+                          return DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: hovering.isEmpty
+                                  ? null
+                                  : Border.all(
+                                      color: context.colors.accent,
+                                      width: 2,
+                                    ),
+                            ),
+                            child: MarkdownEditor(
+                              controller: controller,
+                              focusNode: textFocus,
+                              editableKey: editableKey,
+                              readOnly: readOnly,
+                              // The platform checks what the field
+                              // holds: a window of a long note,
+                              // never the whole.
+                              spellCheckService: DefaultSpellCheckService(),
+                              menuBuilder: (context, state) {
+                                final selectionActions = readOnly
+                                    ? const <EditorSelectionAction>[]
+                                    : editorExtras?.selectionActions(
+                                            textTarget,
+                                          ) ??
+                                          const <EditorSelectionAction>[];
+                                return LinkContextMenu(
+                                  state: state,
+                                  document: widget.document,
+                                  windowStart: controller.windowStart,
+                                  extraActions: [
+                                    for (final action in selectionActions)
+                                      (
+                                        action.label,
+                                        () {
+                                          state.hideToolbar();
+                                          action.onPressed(
+                                            context,
+                                            textTarget,
+                                          );
+                                        },
+                                      ),
+                                  ],
+                                  onOpen: (target) => editor.add(
+                                    EditorEvent.linkOpenRequested(
+                                      target,
+                                    ),
+                                  ),
+                                  onComment: comments?.state.mayComment ?? false
+                                      ? commentOnSelection
+                                      : null,
+                                );
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                      // Where the others in a shared note are.
+                      if (status != null)
+                        Positioned.fill(
+                          child: RemoteCarets(
+                            controller: controller,
+                            editableKey: editableKey,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: gutter),
+            sliver: OutsideText(
+              controller: controller,
+              side: OutsideSide.after,
+              onTapAt: (y) => tappedY = y,
+            ),
+          ),
+          room(),
+        ],
+      ),
+    );
+  }
+
+  /// The page in Live mode: the title and properties, then the note drawn
+  /// by the Live editor, in one scroll view that lays out only the blocks on
+  /// screen.
+  Widget liveScroll(BuildContext context, double gutter) {
+    final layout = liveLayout;
+    if (layout == null) {
+      return const SizedBox.shrink();
+    }
+    final (themes, size, palette) = liveLook(context);
+    final drawer = previewDrawer;
+    if (drawer != null && (drawer.inForce != themes || drawer.size != size)) {
+      drawer
+        ..inForce = themes
+        ..size = size;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        liveLayout?.redrawPreview();
+      });
+    }
+    return DragTarget<NoteDragData>(
+      onWillAcceptWithDetails: (_) => !readOnly,
+      onAcceptWithDetails: dropLinks,
+      builder: (context, hovering, rejected) => CompletionHost(
+        controller: controller,
+        caretOnScreen: () => liveKey.currentState?.caretOnScreen(),
+        reservedBottom: KansoSizes.touchTarget + 1,
+        child: CustomScrollView(
+          controller: scroll,
+          slivers: <Widget>[
+            header(gutter),
+            SliverPadding(
+              key: editorSliverKey,
+              padding: EdgeInsets.symmetric(horizontal: gutter),
+              sliver: EditorShortcuts(
+                controller: controller,
+                includeSemantics: false,
+                completionOpen: () => controller.completion != null,
+                onSave: () => editor.add(
+                  const EditorEvent.flushRequested(FlushReason.shortcut),
+                ),
+                onDismissCompletion: () =>
+                    editor.add(const EditorEvent.completionDismissed()),
+                onEscape: () {
+                  textFocus.unfocus();
+                  note.add(const NoteEvent.modeChanged(NoteMode.preview));
+                },
+                child: LiveDocumentEditor(
+                  key: liveKey,
+                  controller: controller,
+                  layout: layout,
+                  focusNode: textFocus,
+                  palette: palette,
+                  readOnly: readOnly,
+                  menuExtras: () {
+                    final actions = readOnly
+                        ? const <EditorSelectionAction>[]
+                        : editorExtras?.selectionActions(textTarget) ??
+                              const <EditorSelectionAction>[];
+                    return <(String, VoidCallback)>[
+                      for (final action in actions)
+                        (
+                          action.label,
+                          () => action.onPressed(context, textTarget),
+                        ),
+                    ];
+                  },
+                  linkAt: (offset) => widget.document
+                      .linkAt(offset)
+                      .then(
+                        (found) =>
+                            found.fold<LinkTarget?>((_) => null, (hit) => hit),
+                      ),
+                  onOpenLink: (target) =>
+                      editor.add(EditorEvent.linkOpenRequested(target)),
+                  onComment: comments?.state.mayComment ?? false
+                      ? commentOnSelection
+                      : null,
+                ),
+              ),
+            ),
+            room(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Notes dropped on the text: links to them where the selection is.
+  void dropLinks(DragTargetDetails<NoteDragData> details) {
+    final links = <String>[
+      for (final title in details.data.titles)
+        if (title.isNotEmpty) '[[$title]]',
+    ];
+    if (links.isEmpty) {
+      return;
+    }
+    final selection = controller.noteSelection;
+    final start = selection.isValid ? selection.start : controller.noteLength;
+    final end = selection.isValid ? selection.end : controller.noteLength;
+    controller.run(
+      EditCommand.insert(
+        range: Range16(start: start, end: end),
+        text: links.join(' '),
+      ),
+    );
+    textFocus.requestFocus();
   }
 
   @override
@@ -657,7 +1064,19 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
           listenWhen: (before, now) => before.mode != now.mode,
           listener: (context, state) {
             if (state.mode.isEditing) {
-              controller.live = state.mode == NoteMode.live;
+              final next = state.mode == NoteMode.live;
+              if (next == live) {
+                return;
+              }
+              setState(() {
+                live = next;
+                controller.unwindowed = next;
+                if (next) {
+                  startLive();
+                } else {
+                  stopLive();
+                }
+              });
             }
           },
         ),
@@ -734,227 +1153,9 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
               },
             ),
             Expanded(
-              child: ValueListenableBuilder<bool>(
-                valueListenable: controller.hasBefore,
-                // A page that starts at the top (the whole note, or its
-                // start, is in the field) grows down from its title. With
-                // text before the window it grows from the editor, up and
-                // down, so that text far from where the page is scrolled
-                // to costs nothing to lay out.
-                builder: (context, hasBefore, _) => CustomScrollView(
-                  controller: scroll,
-                  center: hasBefore ? editorSliverKey : headerKey,
-                  slivers: <Widget>[
-                    SliverPadding(
-                      key: headerKey,
-                      padding: EdgeInsets.fromLTRB(
-                        gutter,
-                        KansoSpacing.xxs,
-                        gutter,
-                        0,
-                      ),
-                      sliver: SliverToBoxAdapter(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: <Widget>[
-                            EditorTitleField(
-                              controller: title,
-                              focusNode: titleFocus,
-                              onChanged: onTitleChanged,
-                              onSubmitted: focusText,
-                              readOnly: readOnly,
-                            ),
-                            BlocBuilder<EditorBloc, EditorState>(
-                              buildWhen: (before, now) =>
-                                  before.properties != now.properties ||
-                                  before.propertiesOpen != now.propertiesOpen ||
-                                  before.propertyError != now.propertyError,
-                              builder: (context, state) => PropertiesSection(
-                                properties: state.properties,
-                                open: state.propertiesOpen,
-                                failed: state.propertyError != null,
-                                readOnly: readOnly,
-                                onToggle: () => editor.add(
-                                  const EditorEvent.propertiesToggled(),
-                                ),
-                                onSet: (key, value, {index}) => editor.add(
-                                  EditorEvent.propertySet(
-                                    key: key,
-                                    value: value,
-                                    index: index,
-                                  ),
-                                ),
-                                onRemove: (index) => editor.add(
-                                  EditorEvent.propertyRemoved(index),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SliverPadding(
-                      padding: EdgeInsets.symmetric(horizontal: gutter),
-                      sliver: OutsideText(
-                        controller: controller,
-                        side: OutsideSide.before,
-                        reverse: true,
-                        onTapAt: (y) => tappedY = y,
-                      ),
-                    ),
-                    SliverPadding(
-                      key: editorSliverKey,
-                      padding: EdgeInsets.symmetric(horizontal: gutter),
-                      sliver: SliverToBoxAdapter(
-                        child: EditorShortcuts(
-                          controller: controller,
-                          completionOpen: () => controller.completion != null,
-                          onSave: () => editor.add(
-                            const EditorEvent.flushRequested(
-                              FlushReason.shortcut,
-                            ),
-                          ),
-                          onDismissCompletion: () => editor.add(
-                            const EditorEvent.completionDismissed(),
-                          ),
-                          onEscape: () {
-                            textFocus.unfocus();
-                            note.add(
-                              const NoteEvent.modeChanged(NoteMode.preview),
-                            );
-                          },
-                          child: CompletionHost(
-                            controller: controller,
-                            editableKey: editableKey,
-                            reservedBottom: KansoSizes.touchTarget + 1,
-                            child: Stack(
-                              children: <Widget>[
-                                DragTarget<NoteDragData>(
-                                  onWillAcceptWithDetails: (_) => !readOnly,
-                                  onAcceptWithDetails: (details) {
-                                    final links = <String>[
-                                      for (final title in details.data.titles)
-                                        if (title.isNotEmpty) '[[$title]]',
-                                    ];
-                                    if (links.isEmpty) {
-                                      return;
-                                    }
-                                    final selection = controller.noteSelection;
-                                    final start = selection.isValid
-                                        ? selection.start
-                                        : controller.noteLength;
-                                    final end = selection.isValid
-                                        ? selection.end
-                                        : controller.noteLength;
-                                    controller.run(
-                                      EditCommand.insert(
-                                        range: Range16(start: start, end: end),
-                                        text: links.join(' '),
-                                      ),
-                                    );
-                                    textFocus.requestFocus();
-                                  },
-                                  builder: (context, hovering, rejected) {
-                                    return DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        border: hovering.isEmpty
-                                            ? null
-                                            : Border.all(
-                                                color: context.colors.accent,
-                                                width: 2,
-                                              ),
-                                      ),
-                                      child: MarkdownEditor(
-                                        controller: controller,
-                                        focusNode: textFocus,
-                                        editableKey: editableKey,
-                                        readOnly: readOnly,
-                                        // The platform checks what the field
-                                        // holds: a window of a long note,
-                                        // never the whole.
-                                        spellCheckService:
-                                            DefaultSpellCheckService(),
-                                        menuBuilder: (context, state) {
-                                          final selectionActions = readOnly
-                                              ? const <EditorSelectionAction>[]
-                                              : editorExtras?.selectionActions(
-                                                      textTarget,
-                                                    ) ??
-                                                    const <
-                                                      EditorSelectionAction
-                                                    >[];
-                                          return LinkContextMenu(
-                                            state: state,
-                                            document: widget.document,
-                                            windowStart: controller.windowStart,
-                                            extraActions: [
-                                              for (final action
-                                                  in selectionActions)
-                                                (
-                                                  action.label,
-                                                  () {
-                                                    state.hideToolbar();
-                                                    action.onPressed(
-                                                      context,
-                                                      textTarget,
-                                                    );
-                                                  },
-                                                ),
-                                            ],
-                                            onOpen: (target) => editor.add(
-                                              EditorEvent.linkOpenRequested(
-                                                target,
-                                              ),
-                                            ),
-                                            onComment:
-                                                comments?.state.mayComment ??
-                                                    false
-                                                ? commentOnSelection
-                                                : null,
-                                          );
-                                        },
-                                      ),
-                                    );
-                                  },
-                                ),
-                                // Where the others in a shared note are.
-                                if (status != null)
-                                  Positioned.fill(
-                                    child: RemoteCarets(
-                                      controller: controller,
-                                      editableKey: editableKey,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SliverPadding(
-                      padding: EdgeInsets.symmetric(horizontal: gutter),
-                      sliver: OutsideText(
-                        controller: controller,
-                        side: OutsideSide.after,
-                        onTapAt: (y) => tappedY = y,
-                      ),
-                    ),
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: focusEnd,
-                        child: SizedBox(
-                          height:
-                              MediaQuery.paddingOf(context).bottom +
-                              KansoSpacing.xl,
-                          width: double.infinity,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              child: live
+                  ? liveScroll(context, gutter)
+                  : editScroll(context, gutter),
             ),
             BlocBuilder<EditorBloc, EditorState>(
               buildWhen: (before, now) =>

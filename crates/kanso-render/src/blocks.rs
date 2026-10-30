@@ -201,8 +201,28 @@ pub fn blocks(
     mode: &AppMode<'_>,
     highlight: Option<&dyn Highlighter>,
 ) -> Vec<Block> {
+    blocks_with_sources(markdown, attachments, palette, mode, highlight)
+        .into_iter()
+        .map(|(block, _)| block)
+        .collect()
+}
+
+/// [`blocks`], each with the bytes of `markdown` it is drawn from: the
+/// top-level node (a heading, a list, a fence) as the parser spans it. The
+/// footnotes listed after the note, and the paragraphs of text Markdown
+/// can't parse, come from nowhere in particular: `None`. Pure.
+pub fn blocks_with_sources(
+    markdown: &str,
+    attachments: Attachments<'_>,
+    palette: &Palette,
+    mode: &AppMode<'_>,
+    highlight: Option<&dyn Highlighter>,
+) -> Vec<(Block, Option<std::ops::Range<usize>>)> {
     let Ok(root) = crate::markdown_safe::to_mdast(markdown, &html::parse_options()) else {
-        return plain(markdown);
+        return plain(markdown)
+            .into_iter()
+            .map(|block| (block, None))
+            .collect();
     };
     let facts = app::facts(&root);
     let tasks = html::task_boxes(&root, markdown, mode.tasks)
@@ -225,9 +245,19 @@ pub fn blocks(
         depth: 0,
     };
     walk.gather(&root);
-    let mut out = walk.children(&root);
+    let mut out = Vec::new();
+    let mut sourced = Vec::new();
+    for node in root.children().into_iter().flatten() {
+        walk.block(node, &mut out);
+        let source = node
+            .position()
+            .map(|p| p.start.offset..p.end.offset)
+            .filter(|range| markdown.get(range.clone()).is_some());
+        sourced.extend(out.drain(..).map(|block| (block, source.clone())));
+    }
     walk.footnote_list(&mut out);
-    out
+    sourced.extend(out.into_iter().map(|block| (block, None)));
+    sourced
 }
 
 /// What the page shows for text Markdown can't parse: its paragraphs, line

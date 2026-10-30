@@ -268,7 +268,7 @@ class _TopBlock extends StatelessWidget {
     final style = scope.style;
     final room = before == null
         ? 0.0
-        : PreviewBlocks.room(before!, block, style);
+        : PreviewBlocks.between(before!, block, style);
     Widget child = PreviewBlockView(block);
     if (keys.isNotEmpty) {
       final keyed = Map<PreviewBlock_Heading, GlobalKey>.identity();

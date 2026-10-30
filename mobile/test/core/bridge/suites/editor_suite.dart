@@ -97,6 +97,38 @@ void editorSuite(OpenLibrary open) {
       );
     });
 
+    test(
+      "Live's layout is worked out in Rust, the caret's marks shown",
+      () async {
+        final library = await open();
+        final id = await makeNote(
+          library,
+          'Live',
+          '# Title\n\nSome **bold** text.\n\n```js\nlet a = 1;\n```\n',
+        );
+        final editor = await library.edit(id: id);
+        final version = (await editor.snapshot()).version;
+
+        // Off the caret: the marks hidden, the code block a widget.
+        final away = await editor.liveDocument(reveal: <Range16>[_caret(0)]);
+        expect(away.version, version);
+        expect(away.widgets.map((w) => w.kind), <LiveDocBlockKind>[
+          LiveDocBlockKind.code,
+        ]);
+        expect(
+          away.conceal.any((r) => r.start == 14 && r.end == 16),
+          isTrue,
+        );
+        // On the bold word: its marks show.
+        final on = await editor.liveDocument(reveal: <Range16>[_caret(18)]);
+        expect(on.conceal.any((r) => r.start == 14 && r.end == 16), isFalse);
+        // The windowed layout of the first version is still there.
+        final batch = await editor.liveLayout(start: 0, end: 7);
+        expect(batch.version, version);
+        await editor.close();
+      },
+    );
+
     test('commands, undo and redo are decided in Rust', () async {
       final library = await open();
       final id = await makeNote(library, 'List', '- one');

@@ -82,8 +82,8 @@ use crate::library::{Inner, Library};
 use crate::model::{
     Completion, CompletionItem, CompletionKind, EditCommand, EditOutcome, EditorContext,
     EditorEvent, EditorRun, EditorSnapshot, FormatKind, HistoryState, LinkTarget, LiveBatch,
-    LiveKind, LiveLine, LiveRun, LockState, Property, Range16, Replacement, RunBatch, SaveState,
-    ShareFile, TextChange,
+    LiveDocument, LiveKind, LiveLine, LiveRun, LockState, Property, Range16, Replacement, RunBatch,
+    SaveState, ShareFile, TextChange,
 };
 use crate::notes::property_row;
 use crate::sharing::SharedNotes;
@@ -776,6 +776,35 @@ impl EditorSession {
                 runs,
                 lines,
             })
+        })
+    }
+
+    /// What Live mode draws for the whole text with carets and selections
+    /// at `reveal` (UTF-16 units of the text; a caret is an empty range, a
+    /// range can run backwards), as of the version in it, in units of the
+    /// whole text: the marks the reveal ranges are at shown, the rest
+    /// hidden, the blocks off them drawn as widgets, and bullets and
+    /// numbers as the phone's preview draws them. A wiki-link to a title no
+    /// note has is `missing`.
+    pub fn live_document(&self, reveal: Vec<Range16>) -> Result<LiveDocument, KansoError> {
+        guard(|| {
+            let (text, index, version) = self
+                .shared
+                .run(|st, _| Ok((st.text.clone(), st.index.clone(), st.version)))?;
+            // Titles are read only for a text with wiki-links, after the lock.
+            let titles = if text.contains("[[") {
+                Some(WikiIndex::new(self.shared.inner.store.note_titles()?))
+            } else {
+                None
+            };
+            let missing = |title: &str| {
+                titles
+                    .as_ref()
+                    .is_some_and(|titles| titles.resolve(title).is_none())
+            };
+            Ok(crate::live_document::live_document(
+                &text, &index, version, &reveal, &missing,
+            ))
         })
     }
 

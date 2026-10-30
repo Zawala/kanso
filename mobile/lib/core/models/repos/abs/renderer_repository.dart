@@ -29,6 +29,18 @@ abstract interface class RendererRepository {
     PreviewOptions options,
   );
 
+  /// [text], the editor's text of the note [id] as it is now (saved or
+  /// not), as the blocks [previewBlocks] draws, each top-level block with
+  /// the lines of [text] it was drawn from: what the Live editor draws its
+  /// widgets from. Query views leave the note [id] out.
+  Future<Either<ApplicationError, List<PreviewSourcedBlock>>>
+  previewBlocksForText(
+    String id,
+    String text,
+    PaletteDto palette,
+    PreviewOptions options,
+  );
+
   /// The note [id] as the page the desktop exports, to print: one
   /// self-contained file whose links anyone who opens it can follow, and the
   /// name a file of it gets, which names a PDF. Locked while the note is

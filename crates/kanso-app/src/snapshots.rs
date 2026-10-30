@@ -223,9 +223,18 @@ fn demo_store(path: &Path) -> Store {
     store
 }
 
+/// The platform's real text shaping, without its main-thread-only platform.
+pub(crate) fn text_system() -> Arc<dyn gpui_kit::PlatformTextSystem> {
+    #[cfg(target_os = "macos")]
+    return Arc::new(gpui_apple::AppleTextSystem::new());
+    // The family the Linux platform falls back to.
+    #[cfg(target_os = "linux")]
+    return Arc::new(gpui_wgpu::CosmicTextSystem::new("IBM Plex Sans"));
+}
+
 pub(crate) fn context(clock: Option<Clock>) -> HeadlessAppContext {
     let mut cx = HeadlessAppContext::with_platform(
-        Arc::new(gpui_apple::AppleTextSystem::new()),
+        text_system(),
         Arc::new(KansoAssets),
         gpui_kit::platform::current_headless_renderer,
     );
@@ -1241,6 +1250,50 @@ fn rich_note(
     store: &Store,
 ) {
     open_new_note(cx, workspace, store, "Orbits", RICH_NOTE);
+    settle_drawings(cx, window);
+}
+
+/// Everything Live mode draws as the preview does. `{{PICTURE}}` stands for
+/// an attached image sized with `|300`, `{{DRAWING}}` for an Excalidraw
+/// drawing. The note ends on an empty line, where the caret sits, so
+/// nothing is revealed.
+const LIVE_NOTE: &str = "---\ntags: [demo]\n---\n# Live parity\n\nA paragraph with **bold**, *italic*, ~~struck~~, `inline code`, a [link](https://example.com), a [[MCP support model]] and a [[Nowhere note]], with $x^2$ due @2026-06-02.\n\nA second paragraph that runs on long enough to wrap onto another line in the readable measure of the page.\n\n## Lists\n\n- First item\n- Second item\n  - Nested item\n  - Another nested item\n- Third item\n\n1. Ordered one\n2. Ordered two\n\n- [x] Done task\n- [ ] Open task due @2026-06-02\n\n### Quote and rule\n\n> A quote that carries a thought across a line.\n>\n> And a second paragraph in it.\n\n---\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\n| Name | Count |\n|:-----|------:|\n| Alpha | 3 |\n| Beta | 12 |\n\n$$\n\\int_0^1 x\\,dx = \\frac{1}{2}\n$$\n\n```mermaid\nflowchart LR\n  Draft --> Review\n```\n\n{{DRAWING}}\n\n{{PICTURE}}\n\nThe end.\n";
+
+/// The Live parity note, open, with the caret on its last, empty line.
+fn live_note(
+    cx: &mut HeadlessAppContext,
+    window: AnyWindowHandle,
+    workspace: &Entity<Workspace>,
+    store: &Store,
+) {
+    let picture =
+        crate::smart_paste::attach_image(store, &sample_picture(600, 300), "png", Some("Live.png"))
+            .unwrap();
+    let drawing = DRAWING_NOTE
+        .split("\n\n")
+        .find(|part| part.starts_with("```excalidraw"))
+        .unwrap();
+    let body = LIVE_NOTE
+        .replace(
+            "{{PICTURE}}",
+            &format!("![A picture|300](inkdrop://{picture})"),
+        )
+        .replace("{{DRAWING}}", drawing);
+    open_new_note(cx, workspace, store, "Live parity", &body);
+    cx.run_until_parked();
+    // The titles wiki-links resolve against load after a pause.
+    cx.advance_clock(std::time::Duration::from_secs(1));
+    cx.run_until_parked();
+    cx.update_window(window, |_, _, cx| {
+        let editor = workspace.read(cx).editor.clone();
+        editor.update(cx, |editor, cx| {
+            let end = body.len();
+            editor
+                .body_state()
+                .update(cx, |state, cx| state.set_selected_range(end..end, cx));
+        });
+    })
+    .unwrap();
     settle_drawings(cx, window);
 }
 
@@ -4237,7 +4290,11 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot, inspector: bool) {
     let list_width = fitted.list * zoom;
     // The bands are part of their panes: one surface from top to bottom.
     let mut checks = vec![
-        ((width - 4., 4.), right, "right pane's top band"),
+        (
+            (width - 4., TOP_BAND_SAMPLE),
+            right,
+            "right pane's top band",
+        ),
         (
             (width - 12., height / 2.),
             right,
@@ -4300,6 +4357,12 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot, inspector: bool) {
             ),
         ]),
     }
+    // The top band is laid out around the traffic lights, which only macOS
+    // has: elsewhere its surfaces are another layout's, so only the rest is
+    // checked.
+    if !crate::layout::LIGHTS_IN_BAND {
+        checks.retain(|((_, y), _, _)| *y > TOP_BAND_SAMPLE);
+    }
     for (at, expected, what) in checks {
         assert_surface(
             image,
@@ -4311,6 +4374,9 @@ fn check_surfaces(image: &image::RgbaImage, shot: &Shot, inspector: bool) {
         );
     }
 }
+
+/// How far down the top band's surfaces are sampled.
+const TOP_BAND_SAMPLE: f32 = 4.;
 
 /// One theme's three cards, as the Themes page draws them.
 struct ThemeCards(Arc<crate::themes::ThemeEntry>);
@@ -4785,6 +4851,24 @@ fn snapshots() {
         shot("light-images-sized", Light, Preview, sized_images),
         // Math, diagrams and drawings in the preview.
         shot("dark-rich-preview", Dark, Preview, rich_note),
+        // Live mode against the preview, on a note of everything it draws,
+        // tall enough to show all of it.
+        Shot {
+            size: size(px(1440.), px(2400.)),
+            ..shot("light-live-rich", Light, Live, live_note)
+        },
+        Shot {
+            size: size(px(1440.), px(2400.)),
+            ..shot("dark-live-rich", Dark, Live, live_note)
+        },
+        Shot {
+            size: size(px(1440.), px(2400.)),
+            ..shot("light-preview-rich", Light, Preview, live_note)
+        },
+        Shot {
+            size: size(px(1440.), px(2400.)),
+            ..shot("dark-preview-rich", Dark, Preview, live_note)
+        },
         shot("light-rich-preview", Light, Preview, rich_note),
         shot("light-page-preview", Light, Preview, page_preview),
         shot("light-rich-split", Light, Split, rich_note),

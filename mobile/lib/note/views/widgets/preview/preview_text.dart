@@ -12,6 +12,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../core/bridge/api/types.dart';
+import 'preview_due_chip.dart';
 import 'preview_style.dart';
 
 /// A line of a note's text: its runs in [style], with links that hand their
@@ -134,7 +135,7 @@ class _PreviewTextState extends State<PreviewText> {
           ) =>
             WidgetSpan(
               alignment: PlaceholderAlignment.middle,
-              child: _DueChip(
+              child: PreviewDueChip(
                 label: label,
                 title: title,
                 tone: tone,
@@ -224,64 +225,6 @@ class _RenderBaseline extends RenderProxyBox {
 
   @override
   double? computeDistanceToActualBaseline(TextBaseline baseline) => _baseline;
-}
-
-/// A due date as the page draws it: a small rounded chip in its tone.
-class _DueChip extends StatelessWidget {
-  const _DueChip({
-    required this.label,
-    required this.title,
-    required this.tone,
-    required this.size,
-    required this.onTap,
-  });
-
-  final String label;
-  final String title;
-  final DueTone tone;
-  final double size;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final look = PreviewScope.of(context).style;
-    final red = look.palette.dark
-        ? const Color(0xFFF2766B)
-        : const Color(0xFFB3261E);
-    Color tint(Color color) => previewOver(color, look.background, 0.16);
-    final (Color text, Color fill) = switch (tone) {
-      DueTone.plain => (look.muted, look.surface),
-      DueTone.today => (look.accent, tint(look.accent)),
-      DueTone.overdue => (red, tint(red)),
-      DueTone.done => (
-        look.muted,
-        previewOver(look.surface, look.background, 0.6),
-      ),
-    };
-    final fontSize = size * 0.8667;
-    final chip = GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: fontSize * 0.55),
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          style: look.body.copyWith(
-            fontSize: fontSize,
-            height: 1.5,
-            color: text,
-            fontWeight: FontWeight.w400,
-            fontStyle: FontStyle.normal,
-            decoration: TextDecoration.none,
-          ),
-        ),
-      ),
-    );
-    return title.isEmpty ? chip : Tooltip(message: title, child: chip);
-  }
 }
 
 /// An attached image, at its width when it has one, never wider than the

@@ -615,7 +615,7 @@ mod tests {
     /// monospaced face from a proportional one or a missing family.
     #[test]
     fn system_mono_font_loads() {
-        let text_system = TextSystem::new(std::sync::Arc::new(gpui_apple::AppleTextSystem::new()));
+        let text_system = TextSystem::new(crate::snapshots::text_system());
         assert!(loads_monospaced(&text_system, SYSTEM_MONO));
         assert!(loads_monospaced(&text_system, "Menlo"));
         assert!(!loads_monospaced(&text_system, "Helvetica"));

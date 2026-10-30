@@ -851,6 +851,44 @@ fn footnotes_follow_the_note() {
     );
 }
 
+fn sourced(markdown: &str) -> Vec<(Block, Option<std::ops::Range<usize>>)> {
+    let slots = slots(markdown);
+    let mode = AppMode {
+        tasks: &slots,
+        ..AppMode::default()
+    };
+    blocks_with_sources(markdown, &none, &Palette::LIGHT, &mode, None)
+}
+
+#[test]
+fn each_top_level_block_says_where_it_is_written() {
+    let md = "# Head\n\n- a\n  - b\n\n```rust\nfn x() {}\n```\n\n[r]: https://example.com\n\n| a |\n| - |\n| 1 |\n\nCite[^1].\n\n[^1]: note\n";
+    let drawn = sourced(md);
+    let written: Vec<Option<&str>> = drawn
+        .iter()
+        .map(|(_, source)| source.clone().map(|range| &md[range]))
+        .collect();
+    assert_eq!(
+        written,
+        vec![
+            Some("# Head"),
+            // A list's span runs to the line after it.
+            Some("- a\n  - b\n"),
+            Some("```rust\nfn x() {}\n```"),
+            Some("| a |\n| - |\n| 1 |"),
+            Some("Cite[^1]."),
+            None,
+            None,
+        ]
+    );
+    assert!(matches!(drawn[0].0, Block::Heading { level: 1, .. }));
+    assert!(matches!(drawn[2].0, Block::Code { .. }));
+    assert!(matches!(drawn[3].0, Block::Table { .. }));
+    // The footnotes after the note: a rule and their list.
+    assert!(matches!(drawn[5].0, Block::Rule));
+    assert!(matches!(drawn[6].0, Block::List { ordered: true, .. }));
+}
+
 mod props {
     use super::*;
     use proptest::prelude::*;
@@ -871,6 +909,45 @@ mod props {
             let runs = code_runs(&code, &spans);
             let joined: String = runs.iter().map(|run| run.text.as_str()).collect();
             prop_assert_eq!(joined, code);
+        }
+
+        /// The sourced blocks are the blocks, and their sources are in
+        /// order, apart and inside the text.
+        #[test]
+        fn prop_sources_are_ordered_and_inside(
+            lines in prop::collection::vec(0u8..8, 0..14),
+        ) {
+            let md: String = lines.iter().map(|kind| match kind {
+                0 => "- [ ] a\n",
+                1 => "# h\n",
+                2 => "\n```\ncode\n```\n\n",
+                3 => "\n> q\n> r\n\n",
+                4 => "| a |\n| - |\n",
+                5 => "\n$$\nx\n$$\n\n",
+                6 => "[^n]: f\n\nsee[^n]\n",
+                _ => "\npara é🙂\n\n",
+            }).collect();
+            let slots = slots(&md);
+            let mode = AppMode { tasks: &slots, ..AppMode::default() };
+            let drawn = blocks(&md, &none, &Palette::LIGHT, &mode, None);
+            let with = sourced(&md);
+            prop_assert_eq!(
+                with.iter().map(|(block, _)| block.clone()).collect::<Vec<_>>(),
+                drawn
+            );
+            let mut last_end = 0;
+            let mut last: Option<std::ops::Range<usize>> = None;
+            for (_, source) in &with {
+                let Some(source) = source else { continue };
+                prop_assert!(source.start <= source.end && source.end <= md.len());
+                prop_assert!(md.is_char_boundary(source.start) && md.is_char_boundary(source.end));
+                // Blocks from one node share its source; others follow it.
+                if last.as_ref() != Some(source) {
+                    prop_assert!(source.start >= last_end, "{:?} after {}", source, last_end);
+                    last_end = source.end;
+                    last = Some(source.clone());
+                }
+            }
         }
 
         /// Task indices and copy numbers match the page's for notes of

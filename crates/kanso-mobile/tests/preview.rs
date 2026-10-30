@@ -7,7 +7,7 @@ use common::*;
 use kanso_core::DocType;
 use kanso_mobile::{
     DiagramRenderer, KansoError, PaletteDto, PreviewBlock, PreviewInline, PreviewLink,
-    PreviewOptions, Renderer, Ticked,
+    PreviewOptions, Range16, Renderer, Ticked,
 };
 use kanso_store::{Origin, Put};
 use proptest::prelude::*;
@@ -497,6 +497,153 @@ fn the_diagram_renderer_is_set_and_read() {
     assert_eq!(Renderer::diagram_renderer(), DiagramRenderer::Kanso);
     Renderer::set_diagram_renderer(DiagramRenderer::Pele);
     assert_eq!(Renderer::diagram_renderer(), DiagramRenderer::Pele);
+}
+
+// MARK: The blocks of an editor's text
+
+#[test]
+fn an_editors_text_is_drawn_with_its_lines() {
+    let phone = lone_phone();
+    let library = &phone.library;
+    note(library, "Other", "x");
+    let body = "# Home\n\n[[Other]] and [[Missing]] #tag @2020-01-01\n\n- [ ] one\n- [x] two\n\n```rust\nfn main() {}\n```\n\nCite[^1] é🙂\n\n[^1]: note\n";
+    let id = note(library, "Home", body);
+    let renderer = library.renderer();
+    let saved = renderer
+        .preview_blocks(&id, palette(), PreviewOptions::default())
+        .unwrap();
+    let sourced = renderer
+        .preview_blocks_for_text(&id, body, palette(), PreviewOptions::default())
+        .unwrap();
+    // The same blocks as the saved note's, addresses and all.
+    let blocks: Vec<PreviewBlock> = sourced.iter().map(|b| b.block.clone()).collect();
+    assert_eq!(blocks, saved);
+    let lines: Vec<_> = sourced.iter().map(|b| (b.first_line, b.end_line)).collect();
+    assert_eq!(
+        lines,
+        vec![
+            (Some(0), Some(1)),
+            (Some(2), Some(3)),
+            (Some(4), Some(6)),
+            (Some(7), Some(10)),
+            (Some(11), Some(12)),
+            // The footnotes after the note come from nowhere.
+            (None, None),
+            (None, None),
+        ]
+    );
+    let units = |s: &str| s.encode_utf16().count() as u32;
+    let fence = units(&body[..body.find("```rust").unwrap()]);
+    assert_eq!(
+        sourced[3].lines,
+        Some(Range16 {
+            start: fence,
+            end: fence + units("```rust\nfn main() {}\n```"),
+        })
+    );
+    // A list's whole lines, without the line break after its last.
+    let list = units(&body[..body.find("- [ ]").unwrap()]);
+    assert_eq!(
+        sourced[2].lines,
+        Some(Range16 {
+            start: list,
+            end: list + units("- [ ] one\n- [x] two"),
+        })
+    );
+
+    // Text not saved yet is drawn as it is, for a locked note too.
+    library
+        .locks()
+        .lock_note(&id, LOCK_PASSWORD.into())
+        .unwrap();
+    library.locks().lock().unwrap();
+    let unsaved = renderer
+        .preview_blocks_for_text(
+            &id,
+            "$$\nx\n$$\n\n| a |\n| - |\n",
+            palette(),
+            PreviewOptions::default(),
+        )
+        .unwrap();
+    assert!(matches!(unsaved[0].block, PreviewBlock::Figure { .. }));
+    assert_eq!(
+        (unsaved[0].first_line, unsaved[0].end_line),
+        (Some(0), Some(3))
+    );
+    assert!(matches!(unsaved[1].block, PreviewBlock::Table { .. }));
+    assert_eq!(
+        (unsaved[1].first_line, unsaved[1].end_line),
+        (Some(4), Some(6))
+    );
+    let empty = renderer
+        .preview_blocks_for_text(&id, "", palette(), PreviewOptions::default())
+        .unwrap();
+    assert!(empty.is_empty());
+}
+
+fn piece() -> impl Strategy<Value = &'static str> {
+    prop::sample::select(vec![
+        "# Head é [[Other]]\n",
+        "para **b** #tag @2020-01-01 [[Gone]] 🙂\n",
+        "- a\n  - b\n",
+        "- [ ] t\n- [x] d\n",
+        "> q\n",
+        "```js\nlet a;\n```\n",
+        "| a | b |\n| - | - |\n| 1 | 2 |\n",
+        "$$\nx^2\n$$\n",
+        "<div>x</div>\n",
+        "text\n",
+        "\n",
+    ])
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(24))]
+
+    /// For any text, the blocks are the saved note's, their lines in order
+    /// and inside the text, and each top-level widget Live mode draws has
+    /// the block drawn from its lines.
+    #[test]
+    fn prop_editor_blocks_match_their_lines(pieces in prop::collection::vec(piece(), 0..8)) {
+        let body: String = pieces.concat();
+        let phone = lone_phone();
+        let library = &phone.library;
+        note(library, "Other", "x");
+        let id = note(library, "N", &body);
+        let renderer = library.renderer();
+        let saved = renderer.preview_blocks(&id, palette(), PreviewOptions::default()).unwrap();
+        let sourced = renderer
+            .preview_blocks_for_text(&id, &body, palette(), PreviewOptions::default())
+            .unwrap();
+        prop_assert_eq!(sourced.iter().map(|b| b.block.clone()).collect::<Vec<_>>(), saved);
+        let total = body.encode_utf16().count() as u32;
+        let count = body.split('\n').count() as u32;
+        let mut last = 0;
+        for block in &sourced {
+            let (Some(first), Some(end), Some(lines)) = (block.first_line, block.end_line, block.lines) else {
+                continue;
+            };
+            prop_assert!(first >= last && end > first && end <= count);
+            last = first;
+            prop_assert!(lines.start <= lines.end && lines.end <= total);
+        }
+        let session = library.edit(&id).unwrap();
+        prop_assert_eq!(session.snapshot().unwrap().text, body.clone());
+        let doc = session.live_document(Vec::new()).unwrap();
+        for widget in &doc.widgets {
+            let top_level = doc.blocks.iter().any(|block| block.first_line == widget.first_line
+                && block.list_depth == 0 && block.quote_depth == 0);
+            if !top_level {
+                continue;
+            }
+            prop_assert!(
+                sourced.iter().any(|block| block.first_line == Some(widget.first_line)
+                    && block.end_line == Some(widget.end_line)
+                    && block.lines == Some(widget.lines)),
+                "{:?} in {:?}", widget, body
+            );
+        }
+    }
 }
 
 proptest! {

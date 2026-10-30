@@ -11,6 +11,7 @@ import '../../../../core/configs/kanso_icons.dart';
 import '../../../../core/utils/context_extensions.dart';
 import '../../../../core/views/widgets/kanso_icon.dart';
 import 'preview_blocks.dart';
+import 'preview_list_marker.dart';
 import 'preview_style.dart';
 
 /// A list: bullets, or numbers from [start], or task boxes, each item's
@@ -40,14 +41,23 @@ class PreviewList extends StatelessWidget {
 
   static const List<String> _bullets = <String>['•', '◦', '▪'];
 
+  /// The bullet of an item [depth] lists deep.
+  static String bulletAt(int depth) => _bullets[depth % _bullets.length];
+
+  /// The room a bullet or a number takes beside its item's text.
+  static double markerWidth(PreviewStyle style) => 1.4 * style.size;
+
+  /// The room between two items of a list, [tight] or not.
+  static double itemGap(PreviewStyle style, {required bool tight}) =>
+      tight ? 0.25 * style.size : math.max(0.25 * style.size, style.gap);
+
   @override
   Widget build(BuildContext context) {
     final scope = PreviewScope.of(context);
     final style = scope.style;
     final size = style.size;
-    final between = tight ? 0.25 * size : math.max(0.25 * size, style.gap);
-    final marker = style.body.copyWith(color: style.taskDone);
-    final bulletWidth = 1.4 * size;
+    final between = itemGap(style, tight: tight);
+    final bulletWidth = markerWidth(style);
     return LayoutBuilder(
       builder: (context, constraints) {
         final widest = math.max(bulletWidth, PreviewTaskCheckbox.width);
@@ -70,18 +80,8 @@ class PreviewList extends StatelessWidget {
                     checked: task.checked,
                     index: task.index,
                   ),
-                  null => SizedBox(
-                    width: bulletWidth,
-                    child: Padding(
-                      padding: EdgeInsets.only(right: 0.35 * size),
-                      child: Text(
-                        ordered
-                            ? '${start + at}.'
-                            : _bullets[scope.depth % _bullets.length],
-                        textAlign: TextAlign.right,
-                        style: marker,
-                      ),
-                    ),
+                  null => PreviewListMarker(
+                    ordered ? '${start + at}.' : bulletAt(scope.depth),
                   ),
                 },
               ),

@@ -115,11 +115,10 @@ impl WrapMap {
     /// Replace the render-only presentation. Returns whether anything changed.
     pub(super) fn set_presentation(
         &mut self,
-        concealed: std::rc::Rc<[Range<usize>]>,
-        line_scales: std::rc::Rc<[(usize, f32)]>,
+        presentation: crate::input::presentation::ValidPresentation,
         cx: &mut App,
     ) -> bool {
-        self.wrapper.set_presentation(concealed, line_scales, cx)
+        self.wrapper.set_presentation(presentation, cx)
     }
 
     /// Update layout parameters (wrap width or font)

@@ -65,6 +65,13 @@ class FakeEditorDocument implements EditorDocument {
   /// the batch says it is for the current version.
   LiveBatch? live;
 
+  /// What the Live editor draws; an empty layout of the current version
+  /// when null.
+  LiveDocument? liveDoc;
+
+  /// The reveal ranges the Live editor asked with.
+  final List<List<Range16>> liveDocumentRequests = <List<Range16>>[];
+
   /// The ranges Live mode was asked for.
   final List<(int, int)> liveRequests = <(int, int)>[];
 
@@ -257,6 +264,28 @@ class FakeEditorDocument implements EditorDocument {
         runs: drawn?.runs ?? const <LiveRun>[],
         lines: drawn?.lines ?? const <LiveLine>[],
       ),
+    );
+  }
+
+  @override
+  Future<Either<ApplicationError, LiveDocument>> liveDocument(
+    List<Range16> reveal,
+  ) async {
+    liveDocumentRequests.add(reveal);
+    if (failAll != null) {
+      return failure();
+    }
+    return Right(
+      liveDoc ??
+          LiveDocument(
+            version: version,
+            conceal: const <Range16>[],
+            blocks: const <LiveDocBlock>[],
+            markers: const <LiveDocMarker>[],
+            styles: const <LiveDocStyle>[],
+            links: const <LiveDocLink>[],
+            widgets: const <LiveDocWidget>[],
+          ),
     );
   }
 
