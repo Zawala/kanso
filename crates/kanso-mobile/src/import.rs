@@ -138,6 +138,7 @@ impl Library {
         sink: impl FnMut(ImportEvent) -> bool + Send + 'static,
     ) {
         let store = self.inner.store.clone();
+        let metrics = self.inner.metrics();
         let (kind, path) = (kind.to_owned(), PathBuf::from(path));
         // The sink is shared with the thread's start, in case it can't start.
         let sink = std::sync::Arc::new(std::sync::Mutex::new(sink));
@@ -160,7 +161,16 @@ impl Library {
                     }))
                 });
                 let last = match ran {
-                    Ok(Ok(summary)) => ImportEvent::Done(summary),
+                    Ok(Ok(summary)) => {
+                        if !summary.dry_run
+                            && let Some(kind) = SourceKind::parse(&kind)
+                        {
+                            metrics.count(crate::metrics::Feature::Import(
+                                crate::metrics::import_source(kind),
+                            ));
+                        }
+                        ImportEvent::Done(summary)
+                    }
                     Ok(Err(message)) => ImportEvent::Failed(message),
                     Err(err) => ImportEvent::Failed(err.to_string()),
                 };

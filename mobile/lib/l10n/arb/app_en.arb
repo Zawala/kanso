@@ -1502,6 +1502,26 @@
       }
     }
   },
+  "metricsNoticeTitle": "Kanso counts, it doesn’t watch",
+  "@metricsNoticeTitle": {
+    "description": "The title of the one-time notice about the anonymous usage count."
+  },
+  "metricsNoticeMessage": "To know how many people use Kanso and on which devices, Kanso sends a small anonymous count once a day: the kind of device, Kanso’s version and which features were used. Never your notes, titles, tags, files, name or anything you type. Devices signed in to the same account count as one person, with an ID that can’t be traced back to the account.",
+  "@metricsNoticeMessage": {
+    "description": "Says exactly what the anonymous usage count sends and what it never sends."
+  },
+  "metricsNoticeWhat": "What’s sent, and what isn’t",
+  "@metricsNoticeWhat": {
+    "description": "Opens the page that lists exactly what the usage count sends."
+  },
+  "metricsNoticeCode": "The code",
+  "@metricsNoticeCode": {
+    "description": "Opens the source and rules for the usage count."
+  },
+  "metricsNoticeOk": "OK",
+  "@metricsNoticeOk": {
+    "description": "Acknowledges the anonymous usage notice and starts counting."
+  },
   "backupNoticeTitle": "Notes stay on this device",
   "@backupNoticeTitle": {
     "description": "The title of the card that says the notes are not in device backups."

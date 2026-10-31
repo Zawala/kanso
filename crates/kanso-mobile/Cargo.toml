@@ -26,6 +26,8 @@ kanso-core.workspace = true
 kanso-engine = { workspace = true, features = ["discovery"] }
 # Importing: another app's export, or a folder of Markdown, and opening files.
 kanso-import.workspace = true
+# The shared anonymous usage count (docs/METRICS.md), as on the desktop.
+kanso-metrics.workspace = true
 # The theme gallery: the signed catalog, its checks and the installer, and the
 # updater's fetch (every redirect hop is held to the gallery's address rules).
 kanso-gallery.workspace = true

@@ -19,6 +19,7 @@ import 'package:kanso/dictation/views/widgets/voice_note_pane.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../../helpers/close_bloc_later.dart';
+import '../../../helpers/fake_usage_metrics.dart';
 import '../../../helpers/mock_repositories.dart';
 import '../../../helpers/pump_routed.dart';
 import '../../helpers/fake_dictation_text_rules.dart';
@@ -46,7 +47,7 @@ void main() {
 
   Future<GoRouterHandle> pump(WidgetTester tester) async {
     final dictation = DictationBloc(spoken.repository, PassThroughRules());
-    final voice = VoiceNoteBloc(library);
+    final voice = VoiceNoteBloc(library, FakeUsageMetrics());
     closeBlocLater(dictation);
     closeBlocLater(voice);
     final router = await pumpRouted(

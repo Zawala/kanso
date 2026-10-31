@@ -117,7 +117,9 @@ impl Publisher {
         let api = HttpShares;
         let palette = crate::renderer::palette_of(palette);
         let style = page_style(options);
-        self.publish_note_with(&api, id, expiry, &palette, &style, now_ms())
+        let publish = self.publish_note_with(&api, id, expiry, &palette, &style, now_ms())?;
+        self.inner.metrics().count(crate::metrics::Feature::Publish);
+        Ok(publish)
     }
 
     /// Uses an injected API so tests never perform network requests.
@@ -177,7 +179,10 @@ impl Publisher {
     ) -> Result<KansoPublish, PublishError> {
         let palette = crate::renderer::palette_of(palette);
         let style = page_style(options);
-        self.publish_notebook_with(&HttpShares, id, expiry, &palette, &style, now_ms())
+        let publish =
+            self.publish_notebook_with(&HttpShares, id, expiry, &palette, &style, now_ms())?;
+        self.inner.metrics().count(crate::metrics::Feature::Publish);
+        Ok(publish)
     }
 
     /// Uses an injected API so tests never perform network requests.

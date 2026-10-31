@@ -28,7 +28,7 @@ Each batch carries one `id`:
 | `id` | When | What it is |
 |---|---|---|
 | `a_` + 32 hex | the device is signed in to an account and holds its data key | the first 16 bytes of HKDF-SHA256(data key, no salt, info `"kanso/v1/metrics-id"`). Every device of the account computes the same value, so they count as one person. The sync server never holds the data key, so neither it nor PostHog can tell which account an ID belongs to. |
-| `i_` + 32 hex | otherwise | 16 random bytes made the first time it is needed and kept on this device (desktop: `metrics.installId` in the config; phones: `metricsInstallId` in `preferences.json`). Never sent anywhere else. |
+| `i_` + 32 hex | otherwise | 16 random bytes made the first time it is needed and kept on this device (desktop: `metrics.installId` in the config; phones: `mobile.metrics.ledger` in the library's SQLite metadata). Never sent anywhere else. |
 
 Signing in changes a device's ID from its `i_` to the account's `a_`; that day it can be counted
 under both. Signing out goes back to the same `i_`.
@@ -117,8 +117,9 @@ The whole body is at most 16 KiB. No other field is allowed, at any level.
 ## Sending
 
 `POST https://sync.kansoapp.app/v1/metrics` with `content-type: application/json` and the batch
-as the body, whichever sync server the device uses (a self-hosted server isn't sent counts). No
-session, cookie or device ID is sent.
+as the body. This is Kanso's metrics Worker even when the person's notes sync with a self-hosted
+server, so the `sync` property stays a property of the library, not the metrics destination. No
+session, cookie, advertising ID or hardware identifier is sent.
 
 | Status | Meaning | The app |
 |---|---|---|
@@ -165,8 +166,10 @@ The first time Kanso opens with this feature (a new install or an update), it sh
 >
 > **OK**
 
-Desktop remembers it in `nudges.metricsNoticeSeen`, the phones in `metricsNoticeSeen` in
-`preferences.json`. Nothing is sent until OK.
+Desktop remembers it in `nudges.metricsNoticeSeen`; the phones keep
+`mobile.metrics.notice_seen` in the library's SQLite metadata. Nothing is sent until OK. The
+phones show the notice only in a production release, start the first send 20 seconds after the
+notice was already seen (or immediately after OK), and then retry hourly while the app is open.
 
 ## Reading the numbers
 

@@ -13,6 +13,7 @@ import 'editor.dart';
 import 'gallery.dart';
 import 'linking.dart';
 import 'locks.dart';
+import 'metrics.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'publish.dart';
 import 'renderer.dart';
@@ -168,6 +169,9 @@ abstract class KansoLibrary implements RustOpaqueInterface {
   Future<NoteList> list({required ListQuery query});
 
   KansoLocks locks();
+
+  /// The anonymous usage count and its notice state for this library.
+  KansoMetrics metrics();
 
   Future<CardMoved> moveCard({
     required CardKey card,

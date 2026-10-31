@@ -25,6 +25,8 @@ import 'gen/l10n/app_localizations.dart';
 import 'import/views/widgets/opened_documents_host.dart';
 import 'injection.dart';
 import 'lock/views/widgets/lock_lifecycle_host.dart';
+import 'metrics/models/repos/abs/usage_metrics_repository.dart';
+import 'metrics/views/widgets/metrics_host.dart';
 import 'reminders/utils/reminders_coordinator.dart';
 import 'reminders/views/widgets/reminders_host.dart';
 import 'settings/views/widgets/backup_notice_host.dart';
@@ -34,13 +36,17 @@ import 'settings/views/widgets/backup_notice_host.dart';
 /// let another device in and the notices about crashes and device backups
 /// over them.
 class App extends StatefulWidget {
-  const App({required this.router, this.reminders, super.key});
+  const App({required this.router, this.reminders, this.metrics, super.key});
 
   /// The routes of the app, and how many panes there is room for.
   final KansoRouter router;
 
   /// Runs the local reminder plan in production; omitted in app shell tests.
   final RemindersCoordinator? reminders;
+
+  /// The anonymous count, present only in a production release. Omitted in
+  /// tests and development, where no notice is shown and nothing is sent.
+  final UsageMetricsRepository? metrics;
 
   @override
   State<App> createState() => _AppState();
@@ -120,7 +126,12 @@ class _AppState extends State<App> {
                     child: KansoFeedbackHost(
                       child: DictationScope(
                         others: assistant,
-                        child: hosted,
+                        child: widget.metrics == null
+                            ? hosted
+                            : MetricsHost(
+                                metrics: widget.metrics!,
+                                child: hosted,
+                              ),
                       ),
                     ),
                   ),

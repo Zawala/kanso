@@ -1,1 +1,3 @@
 Kanso is now on iPhone and iPad. Write in Markdown, keep notes in notebooks and tags, search them, lock the private ones, and sync with your computers, end-to-end encrypted. It's the same Kanso as on the Mac, Windows and Linux, drawn the same way.
+
+This release adds a one-time notice about a small anonymous daily usage count. It never includes your notes, titles, tags, files or anything you type; the notice links to the full list and the code.

@@ -171,7 +171,11 @@ impl SharedNotes {
             let share_id = engine
                 .share(&note_id, &invites)
                 .map_err(|err| collab_error(&err))?;
-            self.settled(&engine, &share_id)
+            let info = self.settled(&engine, &share_id)?;
+            self.inner
+                .metrics()
+                .count(crate::metrics::Feature::SharedNote);
+            Ok(info)
         })
     }
 

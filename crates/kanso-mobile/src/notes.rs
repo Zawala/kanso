@@ -255,10 +255,14 @@ impl Library {
                 .inner
                 .store
                 .put(DocType::Note, value, Put::Upsert, Origin::Ui)?;
-            Ok(Saved {
+            let saved = Saved {
                 id: written.id,
                 rev: written.rev,
-            })
+            };
+            self.inner
+                .metrics()
+                .count(crate::metrics::Feature::NoteCreated);
+            Ok(saved)
         })
     }
 

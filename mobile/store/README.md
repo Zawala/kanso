@@ -52,7 +52,7 @@ has not shipped.
 | Ask your notes | implemented; keep out of public copy until live-model QA |
 | Not claimed (drop-in later): canvases and ink (11), recordings (12) | |
 | Kept out of iCloud and device backups | 5 (merged) |
-| No ads, trackers or analytics | true while crash reporting stays undecided |
+| No ads or third-party tracking SDKs; a one-time notice explains the anonymous daily usage count | metrics (`docs/METRICS.md`) |
 
 If Ask your notes ships in 0.9.0 after live-model QA, add it to the descriptions and to the
 privacy answers.
