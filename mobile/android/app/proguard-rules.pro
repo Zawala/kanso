@@ -10,3 +10,8 @@
 -keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }
 # The share activity and the widget are started by the system by name; the
 # manifest keeps them, and captureInbox is covered by KansoNative's rule above.
+
+# WorkManager's Room database is opened by name, and the generated class's
+# no-argument constructor is looked up reflectively. Room's consumer rule
+# keeps the class, but R8 can still remove that constructor.
+-keep class * extends androidx.room.RoomDatabase { <init>(); }
