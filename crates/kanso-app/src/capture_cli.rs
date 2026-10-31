@@ -57,7 +57,7 @@ pub fn pick_book<'a>(
 }
 
 /// `--book <name or id>` taken out of the arguments.
-fn book_arg(rest: &[String]) -> Result<(Option<String>, Vec<String>)> {
+pub(crate) fn book_arg(rest: &[String]) -> Result<(Option<String>, Vec<String>)> {
     let mut book = None;
     let mut words = Vec::new();
     let mut args = rest.iter();

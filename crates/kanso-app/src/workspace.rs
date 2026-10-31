@@ -294,6 +294,7 @@ pub fn set_menus(cx: &mut App) {
         Menu::new("Note").items([
             MenuItem::action("Pin / Unpin Note", TogglePinned),
             MenuItem::action("Open in New Window", crate::note_window::OpenInNewWindow),
+            MenuItem::action("Open as Sticky", crate::note_window::OpenAsSticky),
             MenuItem::action("Move to Trash", TrashNote),
             MenuItem::action("Show History…", ShowHistory),
             MenuItem::action("Voice Input", Dictate),
@@ -1161,6 +1162,7 @@ impl Workspace {
             | NoteCommand::CopyLink
             | NoteCommand::CopyKansoLink
             | NoteCommand::OpenInNewWindow
+            | NoteCommand::OpenAsSticky
             | NoteCommand::OpenInNewTab => {
                 if let Some(id) = self.library.read(cx).selected.clone() {
                     self.run_note_command(&id, command, window, cx);
@@ -1264,6 +1266,7 @@ impl Workspace {
             NoteCommand::CopyKansoLink => self.copy_link_of(id, true, window, cx),
             NoteCommand::OpenInNewTab => self.open_note_in_new_tab(id, window, cx),
             NoteCommand::OpenInNewWindow => self.open_in_new_window(id, window, cx),
+            NoteCommand::OpenAsSticky => self.open_as_sticky(id, window, cx),
             // These work on the open note, so the note opens first.
             NoteCommand::ShowHistory => {
                 if self.open_note(id, window, cx) {
@@ -1311,7 +1314,21 @@ impl Workspace {
             f32::from(bounds.size.height),
         );
         // The windows can't be looked through from inside this one's update.
-        cx.defer(move |cx| crate::note_window::open_note_window(&id, Some(from), cx));
+        cx.defer(move |cx| crate::note_window::open_note_window(&id, Some(from), false, cx));
+    }
+
+    /// Opens note `id` as a sticky note, near this window's top right.
+    pub(crate) fn open_as_sticky(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.flush(cx);
+        let id = id.to_owned();
+        let bounds = window.bounds();
+        let from = (
+            f32::from(bounds.origin.x),
+            f32::from(bounds.origin.y),
+            f32::from(bounds.size.width),
+            f32::from(bounds.size.height),
+        );
+        cx.defer(move |cx| crate::note_window::open_note_window(&id, Some(from), true, cx));
     }
 
     /// For a note's own window: opens note `id` here and the palette's
@@ -2492,6 +2509,15 @@ impl Render for Workspace {
                 this.close_settings(window, cx);
                 this.show_history(window, cx);
             }))
+            .on_action(cx.listener(
+                |this, _: &crate::note_window::OpenAsSticky, window, cx| {
+                    this.close_settings(window, cx);
+                    let id = this.editor.read(cx).note_id().map(str::to_owned);
+                    if let Some(id) = id {
+                        this.open_as_sticky(&id, window, cx);
+                    }
+                },
+            ))
             .on_action(cx.listener(
                 |this, _: &crate::note_window::OpenInNewWindow, window, cx| {
                     this.close_settings(window, cx);

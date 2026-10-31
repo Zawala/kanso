@@ -23,6 +23,8 @@ pub enum NoteCommand {
     OpenInNewTab,
     /// The note in a window of its own (`note_window.rs`).
     OpenInNewWindow,
+    /// The note as a sticky note, above other windows (`sticky.rs`).
+    OpenAsSticky,
     SetStatus(NoteStatus),
     ShowHistory,
     Export,
@@ -63,6 +65,7 @@ pub fn items(
     .item(item("Copy Kanso Link", NoteCommand::CopyKansoLink))
     .item(item("Open in New Tab", NoteCommand::OpenInNewTab))
     .item(item("Open in New Window", NoteCommand::OpenInNewWindow))
+    .item(item("Open as Sticky", NoteCommand::OpenAsSticky))
     .submenu("Status", window, cx, move |mut menu, _, _| {
         for option in NoteStatus::ALL {
             let run = statuses.clone();

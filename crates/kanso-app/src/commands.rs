@@ -283,6 +283,19 @@ static COMMANDS: &[Command] = &[
         needs: Needs::Note,
     },
     Command {
+        id: "open-as-sticky",
+        label: "Open as sticky",
+        label_when_pinned: None,
+        description: "Opens the note as a small sticky note that stays above other windows, in Preview so code blocks copy with a click. It opens again where you left it.",
+        icon: IconName::StickyNote,
+        keywords: &[
+            "sticky", "post-it", "on top", "float", "pin", "snippet", "always",
+        ],
+        group: Group::Note,
+        run: action!(crate::note_window::OpenAsSticky),
+        needs: Needs::Note,
+    },
+    Command {
         id: "move",
         label: "Move to notebook…",
         label_when_pinned: None,
