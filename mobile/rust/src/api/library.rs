@@ -26,6 +26,7 @@ use super::editor::KansoEditor;
 use super::gallery::KansoGallery;
 use super::linking::KansoLinking;
 use super::locks::KansoLocks;
+use super::metrics::KansoMetrics;
 use super::publish::KansoPublisher;
 use super::renderer::KansoRenderer;
 use super::shared::KansoShared;
@@ -47,6 +48,12 @@ impl KansoLibrary {
     #[frb(sync)]
     pub fn ai(&self) -> KansoAi {
         KansoAi::new(self.0.ai())
+    }
+
+    /// The anonymous usage count and its notice state for this library.
+    #[frb(sync)]
+    pub fn metrics(&self) -> KansoMetrics {
+        KansoMetrics::new(self.0.metrics())
     }
 
     /// Voice dictation settings saved beside the library database.

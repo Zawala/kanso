@@ -3,9 +3,11 @@
 <plist version="1.0">
 <dict>
 	<!-- Kanso's own privacy manifest (docs/RELEASING-MOBILE.md, "Privacy"). It
-	     matches mobile/store/app-store/privacy.md: no tracking, and the one
-	     thing a sync server holds in the clear is the account's username.
-	     Flutter's engine and the plugins carry manifests of their own. -->
+	     matches mobile/store/app-store/privacy.md: no tracking; the account's
+	     username for sync; the anonymous daily count (Product Interaction,
+	     pseudonymous Device ID and coarse country); note excerpts only when the
+	     person uses Ask your notes; and Crash Data. Flutter's engine and the
+	     plugins carry manifests of their own. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
@@ -22,6 +24,62 @@
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<!-- Ask your notes: only the excerpts and question the person chooses to
+		     send, to the model provider they configured with their own key. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<!-- The anonymous daily count (docs/METRICS.md): closed feature names,
+		     versions and device form, never note content. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<!-- The pseudonymous metrics ID (a_ account-derived, or a random i_
+		     install ID), never an advertising or hardware identifier. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeDeviceID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<!-- The two-letter country Cloudflare reports for the metrics request.
+		     No IP address is kept or sent to PostHog. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeCoarseLocation</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
 		</dict>
 		<!-- A crash report the person chose to send (docs/CRASH-REPORTS.md):

@@ -2140,6 +2140,36 @@ abstract class AppLocalizations {
   /// **'Couldn’t import the icon theme. {message}'**
   String iconThemesImportFailed(String message);
 
+  /// The title of the one-time notice about the anonymous usage count.
+  ///
+  /// In en, this message translates to:
+  /// **'Kanso counts, it doesn’t watch'**
+  String get metricsNoticeTitle;
+
+  /// Says exactly what the anonymous usage count sends and what it never sends.
+  ///
+  /// In en, this message translates to:
+  /// **'To know how many people use Kanso and on which devices, Kanso sends a small anonymous count once a day: the kind of device, Kanso’s version and which features were used. Never your notes, titles, tags, files, name or anything you type. Devices signed in to the same account count as one person, with an ID that can’t be traced back to the account.'**
+  String get metricsNoticeMessage;
+
+  /// Opens the page that lists exactly what the usage count sends.
+  ///
+  /// In en, this message translates to:
+  /// **'What’s sent, and what isn’t'**
+  String get metricsNoticeWhat;
+
+  /// Opens the source and rules for the usage count.
+  ///
+  /// In en, this message translates to:
+  /// **'The code'**
+  String get metricsNoticeCode;
+
+  /// Acknowledges the anonymous usage notice and starts counting.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get metricsNoticeOk;
+
   /// The title of the card that says the notes are not in device backups.
   ///
   /// In en, this message translates to:

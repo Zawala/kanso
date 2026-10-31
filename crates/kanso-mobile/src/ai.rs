@@ -291,6 +291,7 @@ impl AiHandle {
             let (before, selection) = split_selection(action, before, selection)?;
             let prompt =
                 kanso_ai::features::inline_prompt(action, &note.title, &before, &selection);
+            self.inner.metrics().count(crate::metrics::Feature::Ai);
             let emitter = Arc::new(Emitter::new(sink, run.cancel.clone()));
             let worker = emitter.clone();
             let cancel = run.cancel.clone();
@@ -334,6 +335,7 @@ impl AiHandle {
             } else {
                 note.title.trim().to_owned()
             };
+            self.inner.metrics().count(crate::metrics::Feature::Ai);
             let emitter = Arc::new(Emitter::new(sink, run.cancel.clone()));
             let worker = emitter.clone();
             let cancel = run.cancel.clone();
@@ -460,6 +462,7 @@ impl AskConversation {
             }
             let settings = self.ai.enabled()?;
             let provider = self.ai.provider_for(&settings)?;
+            self.ai.inner.metrics().count(crate::metrics::Feature::Ai);
             self.stop();
             // A different provider, address or model is a different
             // conversation; what can no longer be sent is dropped.

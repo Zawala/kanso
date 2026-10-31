@@ -2,6 +2,8 @@
 // Created 2026-10-27.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'dart:async';
+
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 
@@ -11,6 +13,7 @@ import '../../../core/utils/context_extensions.dart';
 import '../../../core/utils/preview_themes_of.dart';
 import '../../../core/views/widgets/kanso_feedback.dart';
 import '../../../injection.dart';
+import '../../../metrics/models/repos/abs/usage_metrics_repository.dart';
 import '../../state/export/note_pdf_exporter.dart';
 import 'note_export_progress.dart';
 
@@ -44,6 +47,9 @@ Future<void> exportNotePdf(
     switch (written) {
       case Right(value: final path):
         await sharePdf(path, path.split('/').last, origin: origin);
+        unawaited(
+          getIt<UsageMetricsRepository>().record(UsageFeature.export),
+        );
       case Left():
         KansoFeedback.show(
           context,
