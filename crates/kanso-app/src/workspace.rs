@@ -860,6 +860,7 @@ impl Workspace {
         }
         match self.store.put(DocType::Note, note, Put::Upsert, Origin::Ui) {
             Ok(created) => {
+                crate::metrics::record(cx, crate::metrics::Feature::NoteCreated);
                 self.library
                     .update(cx, |library, cx| library.select(Some(created.id), cx));
                 self.editor
@@ -930,6 +931,7 @@ impl Workspace {
         let note = json!({"title": title, "body": "", "bookId": book});
         match self.store.put(DocType::Note, note, Put::Upsert, Origin::Ui) {
             Ok(created) => {
+                crate::metrics::record(cx, crate::metrics::Feature::NoteCreated);
                 self.library
                     .update(cx, |library, cx| library.select(Some(created.id), cx));
                 self.editor
@@ -1696,6 +1698,7 @@ impl Workspace {
                 .await;
             cx.update(|window, cx| match result {
                 Ok(report) => {
+                    crate::metrics::record(cx, crate::metrics::Feature::Export);
                     window.push_notification(
                         Notification::success(format!(
                             "Exported {} notes and {} attachments.{}",
