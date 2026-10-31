@@ -11,7 +11,7 @@ heading compares the release with the one before.
 
 ### New
 
-- **app:** A note can open as a sticky note that stays above other windows, with a kanso sticky command, shortcuts and a Linux XWayland option ([963174e](https://github.com/iamngoni/kanso/commit/963174e146c69c04acfc2d67df6f77748477b855)) by @Zawala
+- **app:** A note can open as a sticky note that stays above other windows, with a kanso sticky command, shortcuts and a Linux XWayland option ([963174e](https://github.com/iamngoni/kanso/commit/963174e146c69c04acfc2d67df6f77748477b855)) by @Zawala (Kelvin Zawala)
 - **sidebar:** A notebook can be washed in a color, chosen from swatches, a picker or typed hex, so it's easy to find ([bae7c9d](https://github.com/iamngoni/kanso/commit/bae7c9d953160ac2b68246f8edf78000d8f34fb7)) by @gtchakama
 - **preview:** Mermaid diagrams are drawn by Pele, with Kanso's own renderer a choice in Settings › Editor › Preview ([5c2f6af](https://github.com/iamngoni/kanso/commit/5c2f6af8b9709a44e99b533f9ae0f3ce4f5ecc73))
 - **preview:** Math in Mermaid labels is typeset, and MathJax and Pele share one QuickJS engine ([df428f9](https://github.com/iamngoni/kanso/commit/df428f9670a92fc49d40c02fe22e960ae4d70bef))
