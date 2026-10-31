@@ -154,6 +154,8 @@ mod spellcheck;
 #[cfg(all(target_os = "macos", not(test)))]
 mod spellcheck_macos;
 mod split;
+mod sticky;
+mod sticky_cli;
 mod sync_nudge;
 mod tab_bar;
 #[cfg(test)]
@@ -224,6 +226,10 @@ Commands:
   capture [text]    Save a note to the Inbox, or [--book <name or id>];
                     with no text, from standard input. Works with
                     Kanso open or closed
+  sticky [text]     Save a note to the Stickies notebook and show it as
+                    a sticky note that stays above other windows;
+                    [--book <name or id>] [--color <colour>]. Opens
+                    Kanso if it's closed
   mcp               Serve Kanso's MCP tools over standard input and
                     output, for AI agents that start a program; needs
                     Kanso open with its local API on
@@ -367,6 +373,7 @@ fn main() -> Result<()> {
         Some("theme") => theme_import::run_cli(&args.data_dir, &args.rest),
         Some("icon-theme") => icon_theme_import::run_cli(&args.data_dir, &args.rest),
         Some("capture") => capture_cli::run_cli(&args.data_dir, &args.rest),
+        Some("sticky") => sticky_cli::run_cli(&args.data_dir, &args.rest),
         Some("mcp") => mcp_cli::run_cli(&args.data_dir, &args.rest),
         Some("plugin") => plugins::run_cli(&args.data_dir, &args.rest),
         Some("help") => {
@@ -421,6 +428,28 @@ fn attach_parent_console() {
     unsafe {
         AttachConsole(ATTACH_PARENT_PROCESS);
     }
+}
+
+/// X11 in place of the session's Wayland, when `KANSO_BACKEND=x11` or
+/// Settings › General asks for it (`KANSO_BACKEND=wayland` overrides the
+/// setting): under XWayland, GNOME lets sticky notes stay on top. `None`
+/// keeps what the session names, as does a session with no X server.
+#[cfg(target_os = "linux")]
+fn forced_x11(config: &AppConfig) -> Option<WindowingRequest> {
+    let asked = std::env::var("KANSO_BACKEND").ok();
+    let x11 = match asked.as_deref().map(str::trim) {
+        Some(backend) if backend.eq_ignore_ascii_case("x11") => true,
+        Some(backend) if backend.eq_ignore_ascii_case("wayland") => false,
+        _ => config.linux.backend == config::LinuxBackend::X11,
+    };
+    let session = GraphicalEnvironment::detect();
+    if !x11 || session.wayland_display.is_none() || session.x11_display.is_none() {
+        return None;
+    }
+    Some(WindowingRequest::Windowed(GraphicalEnvironment {
+        wayland_display: None,
+        ..session
+    }))
 }
 
 /// Runs the local API until the process is stopped.
@@ -493,6 +522,19 @@ fn run_app(
     // here until the main window exists.
     let (opener, opened) = open_documents::channel();
     opener.paths(files);
+    // Stickies a second `kanso sticky` asks for: saved as they arrive,
+    // shown once the windows are open.
+    let (sticky_sender, stickies) = async_channel::unbounded();
+    {
+        let store = store.clone();
+        url_callback::on_stickies(Arc::new(move |request| {
+            let (id, _) = sticky_cli::save(&store, &request, kanso_store::Origin::Api)
+                .map_err(|err| format!("{err:#}"))?;
+            sticky_sender
+                .try_send((id, request.color.unwrap_or_default()))
+                .map_err(|_| "Kanso is quitting".to_owned())
+        }));
+    }
     // Sign in with Apple returns through the browser and `kanso://` outside
     // macOS, and files come from a second `kanso`; the second one forwards
     // them here.
@@ -517,6 +559,11 @@ fn run_app(
     });
 
     let app = application().with_assets(assets::KansoAssets);
+    #[cfg(target_os = "linux")]
+    let app = match forced_x11(&config) {
+        Some(request) => app.with_windowing(request),
+        None => app,
+    };
     // The Dock's icon brings the main window back, even while notes are
     // open in windows of their own.
     app.on_open_urls({
@@ -598,6 +645,7 @@ fn run_app(
         open_main_window(cx);
         note_window::restore(cx);
         open_documents::serve(opened, open_main_window, cx);
+        note_window::serve_stickies(stickies, cx);
         cx.activate(true);
         // Held until the process exits so no second Kanso opens this folder.
         let _ = &lock;

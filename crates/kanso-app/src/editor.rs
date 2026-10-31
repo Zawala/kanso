@@ -352,6 +352,9 @@ pub struct NoteEditor {
     /// In a note's own window (`note_window.rs`): the leftmost pane, with
     /// no inspector beside it.
     standalone: bool,
+    /// In a sticky note (`sticky.rs`): the text alone, with no band, title,
+    /// tags, toolbar or footer. The sticky's own header names the note.
+    compact: bool,
     /// Shows the hidden header in focus mode, as a hover would.
     #[cfg(test)]
     pub(crate) reveal_chrome: bool,
@@ -590,6 +593,7 @@ impl NoteEditor {
             peer_echo: None,
             from_peer: false,
             standalone: false,
+            compact: false,
             #[cfg(test)]
             reveal_chrome: false,
             _subscriptions: subscriptions,
@@ -606,6 +610,14 @@ impl NoteEditor {
     /// inspector to open.
     pub fn set_standalone(&mut self, cx: &mut Context<Self>) {
         self.standalone = true;
+        cx.notify();
+    }
+
+    /// Puts the editor in a sticky note: in its own window, showing only
+    /// the text.
+    pub fn set_compact(&mut self, cx: &mut Context<Self>) {
+        self.standalone = true;
+        self.compact = true;
         cx.notify();
     }
 
@@ -4339,24 +4351,32 @@ impl Render for NoteEditor {
                     .group_hover(TOP_GROUP, |style| style.opacity(1.))
             })
         };
+        let compact = self.compact;
         let top = v_flex()
             .flex_none()
             .group(TOP_GROUP)
-            .child(chrome(v_flex()).child(self.render_band(&note, band_inset, cx)))
-            .child(
-                div()
-                    .flex_none()
-                    .pl(px(TEXT_INSET))
-                    .pr_4()
-                    .pb(px(8.))
-                    .child(self.render_title(window, cx)),
-            )
-            .when(!focus_mode, |el| {
+            .when(!compact, |el| {
+                el.child(chrome(v_flex()).child(self.render_band(&note, band_inset, cx)))
+                    .child(
+                        div()
+                            .flex_none()
+                            .pl(px(TEXT_INSET))
+                            .pr_4()
+                            .pb(px(8.))
+                            .child(self.render_title(window, cx)),
+                    )
+            })
+            .when(!focus_mode && !compact, |el| {
                 el.child(v_flex().flex_none().child(self.render_meta(&note, cx)))
             })
             // Live has no toolbar: the note reads as the preview does.
             .when(
-                mode.source_alone() && !live && !trashed && !focus_mode && !self.lock.is_closed(),
+                mode.source_alone()
+                    && !live
+                    && !trashed
+                    && !focus_mode
+                    && !compact
+                    && !self.lock.is_closed(),
                 |el| el.child(v_flex().flex_none().child(self.render_format_bar(cx))),
             );
 
@@ -4539,14 +4559,16 @@ impl Render for NoteEditor {
             .children(self.render_problems(cx))
             .child(div().flex_1().min_h_0().w_full().child(body))
             // Redrawn only when the cursor or the counts change.
-            .child(
-                AnyView::from(self.footer.clone()).cached(
-                    StyleRefinement::default()
-                        .w_full()
-                        .flex_none()
-                        .h(px(BOTTOM_BAND_HEIGHT)),
-                ),
-            );
+            .when(!compact, |el| {
+                el.child(
+                    AnyView::from(self.footer.clone()).cached(
+                        StyleRefinement::default()
+                            .w_full()
+                            .flex_none()
+                            .h(px(BOTTOM_BAND_HEIGHT)),
+                    ),
+                )
+            });
         if !focus_mode {
             return column.into_any_element();
         }

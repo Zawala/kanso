@@ -318,6 +318,83 @@ pub struct NoteWindowFrame {
     pub y: f32,
     pub width: f32,
     pub height: f32,
+    /// A sticky note (`sticky.rs`): small, kept above other windows.
+    #[serde(default)]
+    pub sticky: bool,
+    /// The sticky's paper. Ignored for a note's ordinary window.
+    #[serde(default)]
+    pub color: StickyColor,
+}
+
+/// A sticky note's paper colour, cycled from its header.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StickyColor {
+    #[default]
+    Yellow,
+    Blue,
+    Green,
+    Pink,
+    Purple,
+    Gray,
+}
+
+impl StickyColor {
+    pub const ALL: [StickyColor; 6] = [
+        StickyColor::Yellow,
+        StickyColor::Blue,
+        StickyColor::Green,
+        StickyColor::Pink,
+        StickyColor::Purple,
+        StickyColor::Gray,
+    ];
+
+    /// The colour after this one, back to the first after the last.
+    pub fn next(self) -> StickyColor {
+        let at = Self::ALL.iter().position(|c| *c == self).unwrap_or(0);
+        Self::ALL[(at + 1) % Self::ALL.len()]
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            StickyColor::Yellow => "yellow",
+            StickyColor::Blue => "blue",
+            StickyColor::Green => "green",
+            StickyColor::Pink => "pink",
+            StickyColor::Purple => "purple",
+            StickyColor::Gray => "gray",
+        }
+    }
+
+    /// The colour `name` names, ignoring case (`grey` too).
+    pub fn parse(name: &str) -> Option<StickyColor> {
+        let name = name.trim().to_lowercase();
+        let name = if name == "grey" {
+            "gray"
+        } else {
+            name.as_str()
+        };
+        Self::ALL.into_iter().find(|c| c.as_str() == name)
+    }
+}
+
+/// Which display server Kanso talks to on Linux.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LinuxBackend {
+    /// The one the session names: Wayland when there is one.
+    #[default]
+    Auto,
+    /// X11, through XWayland in a Wayland session: GNOME then lets sticky
+    /// notes stay above other windows. `KANSO_BACKEND` overrides it.
+    X11,
+}
+
+/// Settings only Linux reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LinuxSettings {
+    pub backend: LinuxBackend,
 }
 
 impl Default for WindowLayout {
@@ -590,6 +667,7 @@ pub struct AppConfig {
     pub locked: LockedSettings,
     pub ai: AiSettings,
     pub nudges: Nudges,
+    pub linux: LinuxSettings,
 }
 
 /// What Kanso has told someone about, so it says it once.
@@ -600,6 +678,8 @@ pub struct Nudges {
     pub first_seen_ms: Option<i64>,
     /// The note list's sync offer was put away.
     pub sync_offer_dismissed: bool,
+    /// A sticky note said how to keep it on top where Kanso can't.
+    pub sticky_hint_seen: bool,
 }
 
 impl Default for AppConfig {
@@ -622,6 +702,7 @@ impl Default for AppConfig {
             locked: LockedSettings::default(),
             ai: AiSettings::default(),
             nudges: Nudges::default(),
+            linux: LinuxSettings::default(),
         }
     }
 }
@@ -715,6 +796,43 @@ impl AppConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Frames saved before stickies read as ordinary windows; a sticky's
+    /// colour and flag survive a save.
+    #[test]
+    fn note_window_frames_keep_whether_they_are_sticky() {
+        let old: NoteWindowFrame = serde_json::from_str(
+            r#"{"noteId":"note:a","x":1.0,"y":2.0,"width":600.0,"height":500.0}"#,
+        )
+        .unwrap();
+        assert!(!old.sticky);
+        assert_eq!(old.color, StickyColor::Yellow);
+        let sticky = NoteWindowFrame {
+            sticky: true,
+            color: StickyColor::Purple,
+            ..old
+        };
+        let json = serde_json::to_string(&sticky).unwrap();
+        assert!(json.contains(r#""color":"purple""#), "{json}");
+        assert_eq!(
+            serde_json::from_str::<NoteWindowFrame>(&json).unwrap(),
+            sticky
+        );
+    }
+
+    #[test]
+    fn sticky_colours_cycle_and_parse() {
+        let mut color = StickyColor::Yellow;
+        for _ in StickyColor::ALL {
+            color = color.next();
+        }
+        assert_eq!(color, StickyColor::Yellow);
+        for color in StickyColor::ALL {
+            assert_eq!(StickyColor::parse(color.as_str()), Some(color));
+        }
+        assert_eq!(StickyColor::parse(" Grey "), Some(StickyColor::Gray));
+        assert_eq!(StickyColor::parse("teal"), None);
+    }
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
 
@@ -833,6 +951,8 @@ mod tests {
                     -4000.0f32..4000.,
                     0.0f32..4000.,
                     0.0f32..4000.,
+                    any::<bool>(),
+                    prop::sample::select(StickyColor::ALL.to_vec()),
                 ),
                 0..3,
             ),
@@ -861,13 +981,17 @@ mod tests {
                         open_books: Vec::new(),
                         note_windows: note_windows
                             .into_iter()
-                            .map(|(note_id, x, y, width, height)| NoteWindowFrame {
-                                note_id,
-                                x,
-                                y,
-                                width,
-                                height,
-                            })
+                            .map(
+                                |(note_id, x, y, width, height, sticky, color)| NoteWindowFrame {
+                                    note_id,
+                                    x,
+                                    y,
+                                    width,
+                                    height,
+                                    sticky,
+                                    color,
+                                },
+                            )
                             .collect(),
                         open_tabs,
                         active_tab,
@@ -1013,6 +1137,14 @@ mod tests {
                     nudges: super::Nudges {
                         first_seen_ms: login.then_some(i64::from(version) * 1_000),
                         sync_offer_dismissed: version % 2 == 0,
+                        sticky_hint_seen: version % 3 == 0,
+                    },
+                    linux: super::LinuxSettings {
+                        backend: if numbers {
+                            super::LinuxBackend::X11
+                        } else {
+                            super::LinuxBackend::Auto
+                        },
                     },
                 },
             )

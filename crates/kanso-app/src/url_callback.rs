@@ -26,6 +26,9 @@
 //!   token, with at most [`MAX_FILES`] absolute paths of at most
 //!   [`MAX_PATH`] bytes. The app opens only paths that are existing note
 //!   files ([`crate::open_documents::note_files`]), whatever it is sent.
+//! - And sticky notes to make (`kanso sticky`): a third kind, with the
+//!   colour, the notebook and at most [`MAX_STICKY_TEXT`] bytes of text,
+//!   which the app saves as a note and opens as a sticky (`sticky.rs`).
 //! - Each connection is served on its own thread and gets [`IO_TIMEOUT`] in
 //!   all, however it trickles bytes, so a silent or slow local client can't
 //!   hold up a real forward; at most [`MAX_SERVING`] are served at once.
@@ -70,6 +73,37 @@ const OPEN_FILES: &str = "open-files";
 
 /// Where the app sends the files a forwarder asks it to open.
 pub type FileSink = Arc<dyn Fn(Vec<PathBuf>) + Send + Sync>;
+
+/// The kind line of a message that makes a sticky note.
+const OPEN_STICKY: &str = "open-sticky";
+
+/// The most text a sticky note sent here may have, in bytes. With the
+/// lines before it, well inside [`MAX_OPEN_MESSAGE`].
+pub const MAX_STICKY_TEXT: usize = 64 * 1024;
+
+/// The longest notebook name or ID a sticky message may carry, in bytes.
+const MAX_BOOK: usize = 1024;
+
+/// A sticky note `kanso sticky` asks the running app to make.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StickyRequest {
+    pub text: String,
+    /// The notebook's name or ID; the Stickies notebook when `None`.
+    pub book: Option<String>,
+    pub color: Option<crate::config::StickyColor>,
+}
+
+/// Where the app makes the stickies a forwarder asks for: `Err` says why
+/// it didn't, and goes back to the forwarder.
+pub type StickySink = Arc<dyn Fn(StickyRequest) -> Result<(), String> + Send + Sync>;
+
+/// The app's [`StickySink`], set once it can make notes.
+static STICKIES: std::sync::OnceLock<StickySink> = std::sync::OnceLock::new();
+
+/// Makes `sink` take the stickies forwarders send from now on.
+pub fn on_stickies(sink: StickySink) {
+    STICKIES.set(sink).ok();
+}
 
 /// The endpoint file in the data folder.
 const ENDPOINT_FILE: &str = "sign-in-callback";
@@ -358,6 +392,20 @@ fn serve(
     }
     let mut kind = String::new();
     reader.read_line(&mut kind)?;
+    if kind.trim_end() == OPEN_STICKY {
+        let answer = match read_sticky(&mut reader)? {
+            None => "no".to_owned(),
+            Some(request) => match STICKIES.get() {
+                // Still starting: the forwarder tries again.
+                None => "no".to_owned(),
+                Some(sink) => match sink(request) {
+                    Ok(()) => "ok".to_owned(),
+                    Err(reason) => format!("no {}", reason.replace(['\n', '\r'], " ")),
+                },
+            },
+        };
+        return writer.write_all(format!("{answer}\n").as_bytes());
+    }
     let accepted = if kind.trim_end() == OPEN_FILES {
         match read_paths(&mut reader)? {
             Some(paths) => {
@@ -404,6 +452,47 @@ fn read_paths(reader: &mut impl std::io::BufRead) -> std::io::Result<Option<Vec<
     Ok(Some(paths))
 }
 
+/// One line without its line break.
+fn read_line_trimmed(reader: &mut impl std::io::BufRead) -> std::io::Result<String> {
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    let line = line.strip_suffix('\n').unwrap_or(&line);
+    Ok(line.strip_suffix('\r').unwrap_or(line).to_owned())
+}
+
+/// A sticky message after its kind line: the colour (or an empty line),
+/// the notebook (or an empty line), the text's length in bytes, and the
+/// text. `None` for a colour that isn't one, a notebook or text too long,
+/// or text that isn't UTF-8.
+fn read_sticky(reader: &mut impl std::io::BufRead) -> std::io::Result<Option<StickyRequest>> {
+    let color = read_line_trimmed(reader)?;
+    let color = match color.as_str() {
+        "" => None,
+        name => match crate::config::StickyColor::parse(name) {
+            Some(color) => Some(color),
+            None => return Ok(None),
+        },
+    };
+    let book = read_line_trimmed(reader)?;
+    if book.len() > MAX_BOOK {
+        return Ok(None);
+    }
+    let book = (!book.trim().is_empty()).then_some(book);
+    let Some(length) = read_line_trimmed(reader)?
+        .parse::<usize>()
+        .ok()
+        .filter(|n| *n <= MAX_STICKY_TEXT)
+    else {
+        return Ok(None);
+    };
+    let mut text = vec![0; length];
+    reader.read_exact(&mut text)?;
+    let Ok(text) = String::from_utf8(text) else {
+        return Ok(None);
+    };
+    Ok(Some(StickyRequest { text, book, color }))
+}
+
 /// Why a URL couldn't be forwarded to the running app.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ForwardError {
@@ -419,6 +508,11 @@ pub enum ForwardError {
     /// A path that can't be sent: not absolute, too long, or with a line
     /// break.
     BadPath,
+    /// A sticky note too long to send, or a notebook name with a line
+    /// break.
+    BadSticky,
+    /// The running Kanso said why it refused.
+    Said(String),
     Io(String),
 }
 
@@ -430,6 +524,12 @@ impl std::fmt::Display for ForwardError {
             ForwardError::NotWaiting => f.write_str("Kanso isn't waiting for this sign-in"),
             ForwardError::Refused => f.write_str("Kanso didn't open the files"),
             ForwardError::BadPath => f.write_str("a file's path can't be passed to Kanso"),
+            ForwardError::BadSticky => write!(
+                f,
+                "a sticky note can have at most {} KB of text, and a notebook's name no line break",
+                MAX_STICKY_TEXT / 1024
+            ),
+            ForwardError::Said(reason) => f.write_str(reason),
             ForwardError::Io(error) => f.write_str(error),
         }
     }
@@ -471,6 +571,23 @@ pub fn forward_files(data_dir: &Path, paths: &[PathBuf]) -> Result<(), ForwardEr
     Ok(())
 }
 
+/// Asks the Kanso running with `data_dir` to make the sticky note
+/// `request` and show it.
+pub fn forward_sticky(data_dir: &Path, request: &StickyRequest) -> Result<(), ForwardError> {
+    let book = request.book.as_deref().unwrap_or("");
+    if request.text.len() > MAX_STICKY_TEXT || book.len() > MAX_BOOK || book.contains(['\n', '\r'])
+    {
+        return Err(ForwardError::BadSticky);
+    }
+    let color = request.color.map_or("", |color| color.as_str());
+    let body = format!(
+        "{OPEN_STICKY}\n{color}\n{book}\n{}\n{}",
+        request.text.len(),
+        request.text
+    );
+    send(data_dir, &body)
+}
+
 /// Connects to the running app, proves it is Kanso by its greeting, and
 /// sends the client token and then `body`.
 fn send(data_dir: &Path, body: &str) -> Result<(), ForwardError> {
@@ -499,7 +616,12 @@ fn send(data_dir: &Path, body: &str) -> Result<(), ForwardError> {
     reader.read_line(&mut answer).map_err(io)?;
     match answer.trim_end() {
         "ok" => Ok(()),
-        _ => Err(ForwardError::Refused),
+        answer => match answer.strip_prefix("no ") {
+            Some(reason) if !reason.trim().is_empty() => {
+                Err(ForwardError::Said(reason.trim().to_owned()))
+            }
+            _ => Err(ForwardError::Refused),
+        },
     }
 }
 
@@ -762,6 +884,82 @@ mod tests {
         assert!(
             lasted < IO_TIMEOUT + Duration::from_millis(1500),
             "{lasted:?}"
+        );
+    }
+
+    /// A sticky message after its kind line, as `forward_sticky` writes it.
+    fn sticky_message(color: &str, book: &str, text: &str) -> Vec<u8> {
+        format!("{color}\n{book}\n{}\n{text}", text.len()).into_bytes()
+    }
+
+    #[test]
+    fn a_sticky_message_reads_back() {
+        let read = |bytes: Vec<u8>| read_sticky(&mut std::io::Cursor::new(bytes)).unwrap();
+        assert_eq!(
+            read(sticky_message("pink", "Work", "docker ps -a\nline two")),
+            Some(StickyRequest {
+                text: "docker ps -a\nline two".into(),
+                book: Some("Work".into()),
+                color: Some(crate::config::StickyColor::Pink),
+            })
+        );
+        // No colour and no notebook: the defaults.
+        assert_eq!(
+            read(sticky_message("", "", "hi")),
+            Some(StickyRequest {
+                text: "hi".into(),
+                book: None,
+                color: None,
+            })
+        );
+        // A colour that isn't one, text past the limit, a notebook name
+        // too long, and bytes that aren't text: refused.
+        assert_eq!(read(sticky_message("teal", "", "hi")), None);
+        assert_eq!(
+            read(format!("\n\n{}\n", MAX_STICKY_TEXT + 1).into_bytes()),
+            None
+        );
+        assert_eq!(
+            read(sticky_message("", &"b".repeat(MAX_BOOK + 1), "hi")),
+            None
+        );
+        let mut bad = b"\n\n2\n".to_vec();
+        bad.extend([0xff, 0xfe]);
+        assert_eq!(read(bad), None);
+        // Shorter than it says: an error, not a note.
+        assert!(read_sticky(&mut std::io::Cursor::new(b"\n\n9\nshort".to_vec())).is_err());
+    }
+
+    #[test]
+    fn a_sticky_too_long_is_not_sent() {
+        let dir = tempfile::tempdir().unwrap();
+        let long = StickyRequest {
+            text: "x".repeat(MAX_STICKY_TEXT + 1),
+            book: None,
+            color: None,
+        };
+        assert_eq!(
+            forward_sticky(dir.path(), &long),
+            Err(ForwardError::BadSticky)
+        );
+        let broken_book = StickyRequest {
+            text: "x".into(),
+            book: Some("a\nb".into()),
+            color: None,
+        };
+        assert_eq!(
+            forward_sticky(dir.path(), &broken_book),
+            Err(ForwardError::BadSticky)
+        );
+        // Nothing listening: not running.
+        let fine = StickyRequest {
+            text: "x".into(),
+            book: None,
+            color: None,
+        };
+        assert_eq!(
+            forward_sticky(dir.path(), &fine),
+            Err(ForwardError::NotRunning)
         );
     }
 
