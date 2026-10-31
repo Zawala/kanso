@@ -62,9 +62,13 @@ void main() {
   locksSuite(
     openDeviceLibrary,
     answer: biometricAnswerOf(
+      // The library is loaded on its own, not into the process's symbols:
+      // opened by name, as the lock plugin falls back to.
       Platform.isAndroid
           ? DynamicLibrary.open('libkanso_mobile_bridge.so')
-          : DynamicLibrary.process(),
+          : DynamicLibrary.open(
+              'kanso_mobile_bridge.framework/kanso_mobile_bridge',
+            ),
     ),
   );
   syncSuite(openDeviceLibrary);
