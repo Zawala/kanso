@@ -122,8 +122,23 @@ pub fn keeps_on_top(layer_shell: bool, cx: &App) -> bool {
     }
 }
 
-/// The window kind a sticky asks for at `bounds`.
-pub fn window_kind(bounds: Bounds<Pixels>, layer_shell: bool) -> WindowKind {
+/// Which of `displays` the sticky at `frame` is on: the one holding its
+/// middle, else the first. Pure.
+pub fn home_display(frame: Frame, displays: &[Frame]) -> usize {
+    let (x, y) = (frame.0 + frame.2 / 2., frame.1 + frame.3 / 2.);
+    displays
+        .iter()
+        .position(|d| x >= d.0 && x < d.0 + d.2 && y >= d.1 && y < d.1 + d.3)
+        .unwrap_or(0)
+}
+
+/// The window kind a sticky asks for at `bounds`. A layer surface is
+/// placed from its display's top left, `on_display` points away.
+pub fn window_kind(
+    bounds: Bounds<Pixels>,
+    on_display: (f32, f32),
+    layer_shell: bool,
+) -> WindowKind {
     #[cfg(target_os = "linux")]
     if layer_shell {
         use gpui_kit::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions};
@@ -133,11 +148,11 @@ pub fn window_kind(bounds: Bounds<Pixels>, layer_shell: bool) -> WindowKind {
             anchor: Anchor::TOP | Anchor::LEFT,
             exclusive_zone: None,
             exclusive_edge: None,
-            margin: Some((bounds.origin.y, px(0.), px(0.), bounds.origin.x)),
+            margin: Some((px(on_display.1), px(0.), px(0.), px(on_display.0))),
             keyboard_interactivity: KeyboardInteractivity::OnDemand,
         });
     }
-    let _ = (bounds, layer_shell);
+    let _ = (bounds, on_display, layer_shell);
     if cfg!(any(target_os = "macos", target_os = "windows")) {
         WindowKind::PopUp
     } else {
@@ -180,34 +195,89 @@ mod x11 {
     const MOVE: u32 = 10 | 0b0011 << 8 | FROM_APPLICATION << 12;
     const RESIZE: u32 = 10 | 0b1100 << 8 | FROM_APPLICATION << 12;
 
+    /// A connection of Kanso's own to the X server, and the atoms asked
+    /// for, made once: GPUI's isn't reachable, and any client may ask these.
+    struct Server {
+        conn: x11rb::rust_connection::RustConnection,
+        root: u32,
+        state: u32,
+        above: u32,
+        sticky: u32,
+        move_to: u32,
+    }
+
+    impl Server {
+        fn connect() -> Result<Self> {
+            let (conn, screen) = x11rb::connect(None).context("connecting to the X server")?;
+            let root = conn.setup().roots[screen].root;
+            // Asked together: one round trip for the four.
+            let cookies = [
+                b"_NET_WM_STATE".as_slice(),
+                b"_NET_WM_STATE_ABOVE",
+                b"_NET_WM_STATE_STICKY",
+                b"_NET_MOVERESIZE_WINDOW",
+            ]
+            .map(|name| conn.intern_atom(false, name));
+            let mut atoms = [0; 4];
+            for (atom, cookie) in atoms.iter_mut().zip(cookies) {
+                *atom = cookie?.reply()?.atom;
+            }
+            let [state, above, sticky, move_to] = atoms;
+            Ok(Server {
+                conn,
+                root,
+                state,
+                above,
+                sticky,
+                move_to,
+            })
+        }
+    }
+
+    static SERVER: std::sync::Mutex<Option<Server>> = std::sync::Mutex::new(None);
+
     /// Sends the root window the EWMH requests to add `_NET_WM_STATE_ABOVE`
     /// and `_NET_WM_STATE_STICKY` to `window`'s state, and to put it at
-    /// `[x, y, width, height]` (pixels). On a connection of its own: GPUI's
-    /// isn't reachable, and any client may ask these.
+    /// `[x, y, width, height]` (pixels).
     pub fn stay_on_top(window: &gpui_kit::Window, [x, y, width, height]: [i32; 4]) -> Result<()> {
         let handle = HasWindowHandle::window_handle(window).context("the window has no handle")?;
         let RawWindowHandle::Xcb(handle) = handle.as_raw() else {
             bail!("not an X11 window");
         };
         let xid = handle.window.get();
-        let (conn, screen) = x11rb::connect(None).context("connecting to the X server")?;
-        let root = conn.setup().roots[screen].root;
-        let atom =
-            |name: &[u8]| -> Result<u32> { Ok(conn.intern_atom(false, name)?.reply()?.atom) };
-        let state = atom(b"_NET_WM_STATE")?;
-        let above = atom(b"_NET_WM_STATE_ABOVE")?;
-        let sticky = atom(b"_NET_WM_STATE_STICKY")?;
-        let move_to = atom(b"_NET_MOVERESIZE_WINDOW")?;
+        let mut server = SERVER
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if server.is_none() {
+            *server = Some(Server::connect()?);
+        }
+        let Some(x11) = server.as_ref() else {
+            bail!("no connection to the X server");
+        };
+        let sent = send(x11, xid, [x, y, width, height]);
+        if sent.is_err() {
+            // Made again next time.
+            *server = None;
+        }
+        sent
+    }
+
+    fn send(x11: &Server, xid: u32, [x, y, width, height]: [i32; 4]) -> Result<()> {
+        let conn = &x11.conn;
         let to_root = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
-        let event =
-            ClientMessageEvent::new(32, xid, state, [ADD, above, sticky, FROM_APPLICATION, 0]);
-        conn.send_event(false, root, to_root, event)?;
+        let event = ClientMessageEvent::new(
+            32,
+            xid,
+            x11.state,
+            [ADD, x11.above, x11.sticky, FROM_APPLICATION, 0],
+        );
+        conn.send_event(false, x11.root, to_root, event)?;
         for data in [
             [MOVE, x as u32, y as u32, 0, 0],
             [RESIZE, 0, 0, width as u32, height as u32],
         ] {
-            let event = ClientMessageEvent::new(32, xid, move_to, data);
-            conn.send_event(false, root, to_root, event)?;
+            let event = ClientMessageEvent::new(32, xid, x11.move_to, data);
+            conn.send_event(false, x11.root, to_root, event)?;
         }
         conn.flush()?;
         Ok(())
@@ -259,7 +329,7 @@ mod tests {
     // Not `super::*`: GPUI's `test` would stand in for the standard one.
     use kanso_store::{Origin, Store};
 
-    use super::{BOOK_NAME, Frame, MARGIN, SIZE, beside, corner_frame, save_sticky};
+    use super::{BOOK_NAME, Frame, MARGIN, SIZE, beside, corner_frame, home_display, save_sticky};
 
     const LAPTOP: Frame = (0., 0., 1440., 900.);
 
@@ -272,6 +342,15 @@ mod tests {
         // On a display beside the main one, it stays on that display.
         let beside_display = corner_frame((1440., 0., 1920., 1080.), 0);
         assert!(beside_display.0 > 1440.);
+    }
+
+    #[test]
+    fn a_sticky_belongs_to_the_display_under_its_middle() {
+        let displays = [LAPTOP, (1440., 0., 1920., 1080.)];
+        assert_eq!(home_display((100., 100., 300., 220.), &displays), 0);
+        assert_eq!(home_display((2000., 300., 300., 220.), &displays), 1);
+        // Off every display: the main one.
+        assert_eq!(home_display((-9000., 0., 300., 220.), &displays), 0);
     }
 
     #[test]

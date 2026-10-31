@@ -324,6 +324,10 @@ pub struct NoteWindowFrame {
     /// The sticky's paper. Ignored for a note's ordinary window.
     #[serde(default)]
     pub color: StickyColor,
+    /// Closed, kept only for where it was (and a sticky's colour), so it
+    /// opens there again. Not opened at launch.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub closed: bool,
 }
 
 /// A sticky note's paper colour, cycled from its header.
@@ -953,6 +957,7 @@ mod tests {
                     0.0f32..4000.,
                     any::<bool>(),
                     prop::sample::select(StickyColor::ALL.to_vec()),
+                    any::<bool>(),
                 ),
                 0..3,
             ),
@@ -981,8 +986,8 @@ mod tests {
                         open_books: Vec::new(),
                         note_windows: note_windows
                             .into_iter()
-                            .map(
-                                |(note_id, x, y, width, height, sticky, color)| NoteWindowFrame {
+                            .map(|(note_id, x, y, width, height, sticky, color, closed)| {
+                                NoteWindowFrame {
                                     note_id,
                                     x,
                                     y,
@@ -990,8 +995,9 @@ mod tests {
                                     height,
                                     sticky,
                                     color,
-                                },
-                            )
+                                    closed,
+                                }
+                            })
                             .collect(),
                         open_tabs,
                         active_tab,

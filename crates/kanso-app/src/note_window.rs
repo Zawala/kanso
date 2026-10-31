@@ -131,13 +131,23 @@ fn bounds_of(frame: Frame) -> Bounds<Pixels> {
     )
 }
 
-/// The displays' frames, the main display first.
-fn display_frames(cx: &App) -> Vec<Frame> {
+/// The displays, the main display first.
+fn displays(cx: &App) -> Vec<std::rc::Rc<dyn gpui_kit::PlatformDisplay>> {
     let mut displays = cx.displays();
     if let Some(primary) = cx.primary_display() {
         displays.sort_by_key(|d| d.id() != primary.id());
     }
-    displays.iter().map(|d| frame_of(d.bounds())).collect()
+    displays
+}
+
+/// The displays' frames, the main display first.
+fn display_frames(cx: &App) -> Vec<Frame> {
+    displays(cx).iter().map(|d| frame_of(d.bounds())).collect()
+}
+
+/// The displays' IDs, in the order of [`display_frames`].
+fn display_ids(cx: &App) -> Vec<gpui_kit::DisplayId> {
+    displays(cx).iter().map(|d| d.id()).collect()
 }
 
 /// Every note window open now, with its note.
@@ -174,12 +184,13 @@ pub fn open_note_window(id: &str, from: Option<Frame>, sticky: bool, cx: &mut Ap
                 .ok();
             return;
         }
-        // Saved, forgotten and closed, to open again the other way.
+        // Saved and closed, to open again the other way; where it was is
+        // kept for when it opens this way again.
         handle
             .update(cx, |_, window, cx| {
                 view.update(cx, |view, cx| {
                     view.editor.update(cx, |editor, cx| editor.flush(cx));
-                    view.forget_frame(cx);
+                    view.put_away(true, cx);
                 });
                 window.remove_window();
             })
@@ -239,7 +250,7 @@ pub fn restore(cx: &mut App) {
                 .retain(|f| !gone.iter().any(|g| g.note_id == f.note_id));
         });
     }
-    for frame in live {
+    for frame in live.into_iter().filter(|f| !f.closed) {
         let at = (frame.x, frame.y, frame.width, frame.height);
         let sticky = frame.sticky.then_some(frame.color);
         open_window(frame.note_id, Some(at), sticky, store.clone(), cx);
@@ -317,7 +328,7 @@ fn after_open(handle: AnyWindowHandle, view: Entity<NoteWindow>, cx: &mut App) {
             window.on_window_should_close(cx, move |_, cx| {
                 view.update(cx, |view, cx| {
                     view.editor.update(cx, |editor, cx| editor.flush(cx));
-                    view.forget_frame(cx);
+                    view.put_away(false, cx);
                 });
                 true
             });
@@ -351,10 +362,16 @@ fn open_sticky_window(
     let layer_shell = crate::sticky::tries_layer_shell(cx);
     #[cfg(not(target_os = "linux"))]
     let layer_shell = false;
+    // A layer surface is placed on one display, from its top left.
+    let home = crate::sticky::home_display(frame, &displays);
+    let display = display_ids(cx).get(home).copied();
+    let origin = displays.get(home).map_or((0., 0.), |d| (d.0, d.1));
+    let on_display = (frame.0 - origin.0, frame.1 - origin.1);
     let options = |layer_shell: bool| WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: None,
-        kind: crate::sticky::window_kind(bounds, layer_shell),
+        kind: crate::sticky::window_kind(bounds, on_display, layer_shell),
+        display_id: display.filter(|_| layer_shell),
         is_minimizable: false,
         window_min_size: Some(size(
             px(crate::sticky::MIN_SIZE.0),
@@ -697,8 +714,10 @@ impl NoteWindow {
     /// place of this window, from where it is.
     fn reopen(&mut self, sticky: bool, window: &mut Window, cx: &mut Context<Self>) {
         let id = self.note_id.clone();
-        let from = frame_of(window.bounds());
-        cx.defer(move |cx| open_note_window(&id, Some(from), sticky, cx));
+        // A sticky's small frame is no place for its ordinary window, which
+        // opens centred when it has no frame of its own.
+        let from = sticky.then(|| frame_of(window.bounds()));
+        cx.defer(move |cx| open_note_window(&id, from, sticky, cx));
     }
 
     /// Keeps where the window is, to open it there next time.
@@ -717,6 +736,7 @@ impl NoteWindow {
             height,
             sticky: self.sticky.is_some(),
             color: self.sticky.unwrap_or_default(),
+            closed: false,
         };
         let frames = &cx.global::<AppState>().config.layout.note_windows;
         if frames.contains(&frame) {
@@ -724,19 +744,44 @@ impl NoteWindow {
         }
         AppState::update_config_soon(cx, move |config| {
             let frames = &mut config.layout.note_windows;
-            match frames.iter_mut().find(|f| f.note_id == frame.note_id) {
+            let kept = frames
+                .iter_mut()
+                .find(|f| f.note_id == frame.note_id && f.sticky == frame.sticky);
+            match kept {
                 Some(kept) => *kept = frame,
                 None => frames.push(frame),
             }
         });
     }
 
-    /// The window won't open again at the next launch.
+    /// The window won't open again at the next launch, and nothing about
+    /// it is kept.
     fn forget_frame(&mut self, cx: &mut Context<Self>) {
         self.closing = true;
         let id = self.note_id.clone();
         AppState::update_config(cx, |config| {
             config.layout.note_windows.retain(|f| f.note_id != id)
+        });
+    }
+
+    /// The window won't open again at the next launch. A sticky keeps
+    /// where it was and its colour, to open there again; so does an
+    /// ordinary window that becomes a sticky (`switching`).
+    fn put_away(&mut self, switching: bool, cx: &mut Context<Self>) {
+        self.closing = true;
+        let id = self.note_id.clone();
+        let sticky = self.sticky.is_some();
+        AppState::update_config(cx, |config| {
+            let frames = &mut config.layout.note_windows;
+            if sticky || switching {
+                for f in frames.iter_mut() {
+                    if f.note_id == id && f.sticky == sticky {
+                        f.closed = true;
+                    }
+                }
+            } else {
+                frames.retain(|f| f.note_id != id || f.sticky);
+            }
         });
     }
 
@@ -826,9 +871,9 @@ impl Render for NoteWindow {
                 cx.listener(|this, _: &MouseUpEvent, _, _| this.band_drag.up()),
             )
             .on_action(cx.listener(|this, _: &CloseNoteWindow, window, cx| {
-                // As the close button does: saved, and forgotten.
+                // As the close button does: saved, and put away.
                 this.editor.update(cx, |editor, cx| editor.flush(cx));
-                this.forget_frame(cx);
+                this.put_away(false, cx);
                 window.defer(cx, |window, _| window.remove_window());
             }))
             .on_action(cx.listener(|this, _: &SaveNote, _, cx| {
