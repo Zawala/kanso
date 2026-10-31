@@ -91,11 +91,16 @@ impl Fixture {
 
     /// "Open in New Window" from note `id`'s menu in the main window.
     fn open_window_for(&self, cx: &mut TestAppContext, id: &str) {
+        self.run_in_main(cx, id, NoteCommand::OpenInNewWindow);
+    }
+
+    /// `command` from note `id`'s menu in the main window.
+    fn run_in_main(&self, cx: &mut TestAppContext, id: &str, command: NoteCommand) {
         let (workspace, id) = (self.workspace.clone(), id.to_owned());
         self.main
             .update(cx, |_, window, cx| {
                 workspace.update(cx, |workspace, cx| {
-                    workspace.run_note_command(&id, NoteCommand::OpenInNewWindow, window, cx)
+                    workspace.run_note_command(&id, command, window, cx)
                 })
             })
             .unwrap();
@@ -328,6 +333,9 @@ fn note_windows_open_again_where_they_were(cx: &mut TestAppContext) {
         y: 60.,
         width: 600.,
         height: 500.,
+        sticky: false,
+        color: Default::default(),
+        closed: false,
     };
     cx.update(|cx| {
         AppState::update_config(cx, |config| {
@@ -445,4 +453,131 @@ proptest! {
     fn prop_two_windows_never_fight(ops in prop::collection::vec(op(), 1..20)) {
         both_windows_agree(&ops)?;
     }
+}
+
+/// "Open as Sticky": one small window for the note, remembered as a sticky;
+/// asked for its ordinary window, the note moves there and the sticky goes.
+#[gpui_kit::test]
+fn a_note_opens_as_a_sticky_and_back(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    f.run_in_main(cx, &f.note.clone(), NoteCommand::OpenAsSticky);
+    let windows = f.windows(cx);
+    assert_eq!(windows.len(), 1, "one sticky");
+    assert!(cx.read(|cx| windows[0].1.read(cx).is_sticky()));
+    // It opens in Preview, and leaves the view mode new windows use alone.
+    let editor = cx.read(|cx| windows[0].1.read(cx).editor.clone());
+    assert_eq!(
+        cx.read(|cx| editor.read(cx).view_mode),
+        crate::config::ViewMode::Preview
+    );
+    cx.run_until_parked();
+    let saved = kept_frames(cx);
+    assert_eq!(saved.len(), 1);
+    assert!(saved[0].sticky);
+    assert_eq!(saved[0].note_id, f.note);
+    // Asked again, the same sticky comes forward.
+    f.run_in_main(cx, &f.note.clone(), NoteCommand::OpenAsSticky);
+    assert_eq!(f.windows(cx).len(), 1);
+    // Its ordinary window replaces it.
+    f.open_window_for(cx, &f.note.clone());
+    let windows = f.windows(cx);
+    assert_eq!(windows.len(), 1, "the sticky became a window");
+    assert!(!cx.read(|cx| windows[0].1.read(cx).is_sticky()));
+    cx.run_until_parked();
+    // The window is open; the sticky is only kept, for where it was.
+    let saved = kept_frames(cx);
+    assert_eq!(saved.len(), 2);
+    let open: Vec<_> = saved.iter().filter(|f| !f.closed).collect();
+    assert_eq!(open.len(), 1);
+    assert!(!open[0].sticky);
+    assert!(saved.iter().any(|f| f.sticky && f.closed));
+}
+
+/// A closed sticky isn't opened at launch, and opens again in its colour
+/// when asked for; closed again, it is kept, not forgotten.
+#[gpui_kit::test]
+fn a_closed_sticky_keeps_its_colour(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    cx.update(|cx| {
+        AppState::update_config(cx, |config| {
+            config.layout.note_windows = vec![NoteWindowFrame {
+                note_id: f.note.clone(),
+                x: 900.,
+                y: 40.,
+                width: 300.,
+                height: 220.,
+                sticky: true,
+                color: crate::config::StickyColor::Purple,
+                closed: true,
+            }];
+        });
+        crate::note_window::restore(cx);
+    });
+    cx.run_until_parked();
+    assert!(f.windows(cx).is_empty());
+    f.run_in_main(cx, &f.note.clone(), NoteCommand::OpenAsSticky);
+    let windows = f.windows(cx);
+    assert_eq!(windows.len(), 1);
+    assert!(cx.read(|cx| windows[0].1.read(cx).is_sticky()));
+    cx.run_until_parked();
+    let saved = kept_frames(cx);
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].color, crate::config::StickyColor::Purple);
+    assert!(!saved[0].closed);
+    let (handle, view) = windows[0].clone();
+    let editor = cx.read(|cx| view.read(cx).editor.clone());
+    handle
+        .update(cx, |_, window, cx| {
+            // Its editor showing and focused, as when the user types.
+            editor.update(cx, |editor, cx| {
+                editor.set_view_mode(crate::config::ViewMode::Edit, cx);
+                editor.focus_body(window, cx);
+            });
+        })
+        .unwrap();
+    cx.run_until_parked();
+    handle
+        .update(cx, |_, window, cx| {
+            window.dispatch_action(Box::new(crate::note_window::CloseNoteWindow), cx);
+        })
+        .unwrap();
+    cx.run_until_parked();
+    assert!(f.windows(cx).is_empty());
+    let saved = kept_frames(cx);
+    assert_eq!(saved.len(), 1);
+    assert!(saved[0].closed);
+    assert_eq!(saved[0].color, crate::config::StickyColor::Purple);
+}
+
+/// A sticky open at quit opens again as a sticky of its colour.
+#[gpui_kit::test]
+fn stickies_open_again_as_stickies(cx: &mut TestAppContext) {
+    let f = setup(cx);
+    cx.update(|cx| {
+        AppState::update_config(cx, |config| {
+            config.layout.note_windows = vec![NoteWindowFrame {
+                note_id: f.note.clone(),
+                x: 900.,
+                y: 40.,
+                width: 300.,
+                height: 220.,
+                sticky: true,
+                color: crate::config::StickyColor::Blue,
+                closed: false,
+            }];
+        });
+        crate::note_window::restore(cx);
+    });
+    cx.run_until_parked();
+    let windows = f.windows(cx);
+    assert_eq!(windows.len(), 1);
+    assert!(cx.read(|cx| windows[0].1.read(cx).is_sticky()));
+    let saved = kept_frames(cx);
+    assert_eq!(saved[0].color, crate::config::StickyColor::Blue);
+    assert!(saved[0].sticky);
+}
+
+/// The note windows the config keeps now, saved or about to be.
+fn kept_frames(cx: &mut TestAppContext) -> Vec<NoteWindowFrame> {
+    cx.read(|cx| cx.global::<AppState>().config.layout.note_windows.clone())
 }

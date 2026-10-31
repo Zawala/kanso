@@ -321,6 +321,16 @@ pub const SHORTCUTS: &[Shortcut] = &[
         on_mobile: true,
     },
     Shortcut {
+        id: "open_as_sticky",
+        mac: "secondary-alt-o",
+        other: "secondary-alt-o",
+        context: ShortcutContext::Global,
+        label: "Open as Sticky",
+        group: ShortcutGroup::Window,
+        // A phone has no windows to keep a note above.
+        on_mobile: false,
+    },
+    Shortcut {
         id: "close_note_window",
         mac: "secondary-w",
         other: "secondary-w",
@@ -1258,9 +1268,10 @@ mod tests {
     }
 
     #[test]
-    fn only_quit_and_capture_stay_off_the_phone() {
+    fn only_quit_stickies_and_capture_stay_off_the_phone() {
         for shortcut in SHORTCUTS {
-            let off = shortcut.id == "quit" || shortcut.context == ShortcutContext::Capture;
+            let off = matches!(shortcut.id, "quit" | "open_as_sticky")
+                || shortcut.context == ShortcutContext::Capture;
             assert_eq!(shortcut.on_mobile, !off, "{}", shortcut.id);
         }
     }

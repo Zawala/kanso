@@ -1029,7 +1029,29 @@ impl SettingsView {
             ],
             colors,
         );
-        [zoom].into_iter().chain(startup).chain([
+        // Linux only: GNOME keeps sticky notes on top only for X11 windows.
+        let stickies = cfg!(target_os = "linux").then(|| {
+            let x11 = state.config.linux.backend == crate::config::LinuxBackend::X11;
+            section(
+                "Sticky Notes",
+                vec![
+                    Row::new(Lucide::StickyNote, "Run under XWayland")
+                        .detail(
+                            "Lets sticky notes stay above other windows on GNOME. Applies the next time Kanso opens; text can look softer with fractional scaling.",
+                        )
+                        .trailing(Switch::new("x11-backend").checked(x11).on_click(|on, _, cx| {
+                            let backend = if *on {
+                                crate::config::LinuxBackend::X11
+                            } else {
+                                crate::config::LinuxBackend::Auto
+                            };
+                            AppState::update_config(cx, |config| config.linux.backend = backend);
+                        })),
+                ],
+                colors,
+            )
+        });
+        [zoom].into_iter().chain(startup).chain(stickies).chain([
             crate::settings_capture::capture_section(&self.shortcut, cx),
             crate::settings_capture::journal_section(cx),
             crate::reminders::reminders_section(cx),

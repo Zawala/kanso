@@ -14,16 +14,20 @@
 //! (`WindowLayout::note_windows`), moved onto a display if that one has
 //! gone. What the note window can't do itself (the palette, a new note, the
 //! inspector) it does in the main window.
+//!
+//! The same window is a sticky note (`sticky.rs`): small, kept above other
+//! windows, showing only the note's text under a header of its colour.
 
 use std::sync::Arc;
 
 use gpui_kit::base::GlobalState;
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use kanso_store::Store;
 
-use crate::config::{NoteWindowFrame, ViewMode};
+use crate::config::{NoteWindowFrame, StickyColor, ViewMode};
 use crate::editor::{EditorEvent, NoteEditor};
 use crate::layout::{BandAction, BandDrag};
 use crate::library::{Library, LibraryEvent};
@@ -36,7 +40,7 @@ use crate::workspace::{
     TogglePinned, TrashNote, Workspace,
 };
 
-actions!(kanso, [OpenInNewWindow, CloseNoteWindow]);
+actions!(kanso, [OpenInNewWindow, OpenAsSticky, CloseNoteWindow]);
 
 /// A new note window's size, in points: about a readable column of text
 /// beside its margins.
@@ -52,6 +56,8 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         // ⌘⇧N is taken by New Notebook; O for open.
         KeyBinding::new("secondary-shift-o", OpenInNewWindow, None),
+        // ⌥ beside ⌘⇧O's Open in New Window; ⌘⇧K is Insert Link.
+        KeyBinding::new("secondary-alt-o", OpenAsSticky, None),
         KeyBinding::new("secondary-w", CloseNoteWindow, Some("NoteWindow")),
     ]);
 }
@@ -125,13 +131,23 @@ fn bounds_of(frame: Frame) -> Bounds<Pixels> {
     )
 }
 
-/// The displays' frames, the main display first.
-fn display_frames(cx: &App) -> Vec<Frame> {
+/// The displays, the main display first.
+fn displays(cx: &App) -> Vec<std::rc::Rc<dyn gpui_kit::PlatformDisplay>> {
     let mut displays = cx.displays();
     if let Some(primary) = cx.primary_display() {
         displays.sort_by_key(|d| d.id() != primary.id());
     }
-    displays.iter().map(|d| frame_of(d.bounds())).collect()
+    displays
+}
+
+/// The displays' frames, the main display first.
+fn display_frames(cx: &App) -> Vec<Frame> {
+    displays(cx).iter().map(|d| frame_of(d.bounds())).collect()
+}
+
+/// The displays' IDs, in the order of [`display_frames`].
+fn display_ids(cx: &App) -> Vec<gpui_kit::DisplayId> {
+    displays(cx).iter().map(|d| d.id()).collect()
 }
 
 /// Every note window open now, with its note.
@@ -152,19 +168,33 @@ pub fn note_windows(cx: &mut App) -> Vec<(AnyWindowHandle, Entity<NoteWindow>)> 
     found
 }
 
-/// Opens note `id` in a window of its own, or brings forward the one it is
-/// already in. `from` is the frame of the window it was asked for in, to
-/// open beside it. Not done from inside a window's update: the windows
-/// can't be looked through then.
-pub fn open_note_window(id: &str, from: Option<Frame>, cx: &mut App) {
-    if let Some((handle, _)) = note_windows(cx)
+/// Opens note `id` in a window of its own (a sticky note when `sticky`),
+/// or brings forward the one it is already in. A note open the other way
+/// moves to the window asked for. `from` is the frame of the window it was
+/// asked for in, to open beside it. Not done from inside a window's update:
+/// the windows can't be looked through then.
+pub fn open_note_window(id: &str, from: Option<Frame>, sticky: bool, cx: &mut App) {
+    if let Some((handle, view)) = note_windows(cx)
         .into_iter()
         .find(|(_, view)| view.read(cx).note_id() == id)
     {
+        if view.read(cx).is_sticky() == sticky {
+            handle
+                .update(cx, |_, window, _| window.activate_window())
+                .ok();
+            return;
+        }
+        // Saved and closed, to open again the other way; where it was is
+        // kept for when it opens this way again.
         handle
-            .update(cx, |_, window, _| window.activate_window())
+            .update(cx, |_, window, cx| {
+                view.update(cx, |view, cx| {
+                    view.editor.update(cx, |editor, cx| editor.flush(cx));
+                    view.put_away(true, cx);
+                });
+                window.remove_window();
+            })
             .ok();
-        return;
     }
     let store = cx.global::<AppState>().store.clone();
     if !matches!(store.note(id), Ok(Some(_))) {
@@ -176,10 +206,32 @@ pub fn open_note_window(id: &str, from: Option<Frame>, cx: &mut App) {
         .layout
         .note_windows
         .iter()
-        .find(|f| f.note_id == id)
-        .map(|f| (f.x, f.y, f.width, f.height));
-    let frame = saved.or(from.map(cascade));
-    open_window(id.to_owned(), frame, store, cx);
+        .find(|f| f.note_id == id && f.sticky == sticky)
+        .cloned();
+    let color = saved.as_ref().map(|f| f.color).unwrap_or_default();
+    let frame = saved.map(|f| (f.x, f.y, f.width, f.height)).or_else(|| {
+        from.map(if sticky {
+            crate::sticky::beside
+        } else {
+            cascade
+        })
+    });
+    open_window(id.to_owned(), frame, sticky.then_some(color), store, cx);
+}
+
+/// Opens each note that arrives on `stickies` as a sticky of its colour
+/// (`kanso sticky`), in a corner of the main display. What arrived at
+/// launch waits in the channel until this is called.
+pub fn serve_stickies(stickies: async_channel::Receiver<(String, StickyColor)>, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        while let Ok((id, color)) = stickies.recv().await {
+            cx.update(|cx| {
+                let store = cx.global::<AppState>().store.clone();
+                open_window(id, None, Some(color), store, cx);
+            });
+        }
+    })
+    .detach();
 }
 
 /// Opens the note windows open when Kanso last quit, where they were. A
@@ -198,13 +250,24 @@ pub fn restore(cx: &mut App) {
                 .retain(|f| !gone.iter().any(|g| g.note_id == f.note_id));
         });
     }
-    for frame in live {
+    for frame in live.into_iter().filter(|f| !f.closed) {
         let at = (frame.x, frame.y, frame.width, frame.height);
-        open_window(frame.note_id, Some(at), store.clone(), cx);
+        let sticky = frame.sticky.then_some(frame.color);
+        open_window(frame.note_id, Some(at), sticky, store.clone(), cx);
     }
 }
 
-fn open_window(id: String, frame: Option<Frame>, store: Arc<Store>, cx: &mut App) {
+fn open_window(
+    id: String,
+    frame: Option<Frame>,
+    sticky: Option<StickyColor>,
+    store: Arc<Store>,
+    cx: &mut App,
+) {
+    if let Some(color) = sticky {
+        open_sticky_window(id, frame, color, store, cx);
+        return;
+    }
     let bounds = match frame {
         Some(frame) => bounds_of(clamp_frame(frame, &display_frames(cx), MIN_SIZE)),
         None => Bounds::centered(None, size(px(WINDOW_SIZE.0), px(WINDOW_SIZE.1)), cx),
@@ -235,32 +298,140 @@ fn open_window(id: String, frame: Option<Frame>, store: Arc<Store>, cx: &mut App
         app_id: Some(crate::flavour::CURRENT.xdg_name.into()),
         ..Default::default()
     };
-    let library = crate::workspace::main_workspace(cx)
-        .map(|(_, workspace)| workspace.read(cx).library.clone())
-        .unwrap_or_else(|| cx.new(|cx| Library::new(store, cx)));
+    let library = shared_library(store, cx);
     let opened = gpui_kit::open_window(options, cx, |window, cx| {
         crate::themes::apply(Some(window), cx);
-        cx.new(|cx| NoteWindow::new(id, library, window, cx))
+        cx.new(|cx| NoteWindow::new(id, library, None, window, cx))
     });
     match opened {
-        Ok((handle, view)) => {
-            handle
-                .update(cx, |_, window, cx| {
-                    view.update(cx, |view, cx| view.remember_frame(window, cx));
-                    let view = view.clone();
-                    // Closed by the user: saved, and not opened again.
-                    window.on_window_should_close(cx, move |_, cx| {
-                        view.update(cx, |view, cx| {
-                            view.editor.update(cx, |editor, cx| editor.flush(cx));
-                            view.forget_frame(cx);
-                        });
-                        true
-                    });
-                })
-                .ok();
-        }
+        Ok((handle, view)) => after_open(handle, view, cx),
         Err(err) => eprintln!("kanso: couldn't open a note window: {err:#}"),
     }
+}
+
+/// The main window's library, so both windows show the same notes, or one
+/// of the note window's own when the main window is closed.
+fn shared_library(store: Arc<Store>, cx: &mut App) -> Entity<Library> {
+    crate::workspace::main_workspace(cx)
+        .map(|(_, workspace)| workspace.read(cx).library.clone())
+        .unwrap_or_else(|| cx.new(|cx| Library::new(store, cx)))
+}
+
+/// What every note window does once open: keeps where it is, and is saved
+/// and forgotten when the user closes it.
+fn after_open(handle: AnyWindowHandle, view: Entity<NoteWindow>, cx: &mut App) {
+    handle
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| view.remember_frame(window, cx));
+            let view = view.clone();
+            // Closed by the user: saved, and not opened again.
+            window.on_window_should_close(cx, move |_, cx| {
+                view.update(cx, |view, cx| {
+                    view.editor.update(cx, |editor, cx| editor.flush(cx));
+                    view.put_away(false, cx);
+                });
+                true
+            });
+        })
+        .ok();
+}
+
+/// Opens note `id` as a sticky note of `color` at `frame`, or in a corner
+/// of the main display when it has none.
+fn open_sticky_window(
+    id: String,
+    frame: Option<Frame>,
+    color: StickyColor,
+    store: Arc<Store>,
+    cx: &mut App,
+) {
+    let displays = display_frames(cx);
+    let frame = match frame {
+        Some(frame) => clamp_frame(frame, &displays, crate::sticky::MIN_SIZE),
+        None => {
+            let open = note_windows(cx)
+                .iter()
+                .filter(|(_, view)| view.read(cx).is_sticky())
+                .count();
+            let display = displays.first().copied().unwrap_or((0., 0., 1280., 800.));
+            crate::sticky::corner_frame(display, open)
+        }
+    };
+    let bounds = bounds_of(frame);
+    #[cfg(target_os = "linux")]
+    let layer_shell = crate::sticky::tries_layer_shell(cx);
+    #[cfg(not(target_os = "linux"))]
+    let layer_shell = false;
+    // A layer surface is placed on one display, from its top left.
+    let home = crate::sticky::home_display(frame, &displays);
+    let display = display_ids(cx).get(home).copied();
+    let origin = displays.get(home).map_or((0., 0.), |d| (d.0, d.1));
+    let on_display = (frame.0 - origin.0, frame.1 - origin.1);
+    let options = |layer_shell: bool| WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        titlebar: None,
+        kind: crate::sticky::window_kind(bounds, on_display, layer_shell),
+        display_id: display.filter(|_| layer_shell),
+        is_minimizable: false,
+        window_min_size: Some(size(
+            px(crate::sticky::MIN_SIZE.0),
+            px(crate::sticky::MIN_SIZE.1),
+        )),
+        window_decorations: Some(WindowDecorations::Client),
+        #[cfg(target_os = "linux")]
+        app_id: Some(crate::flavour::CURRENT.xdg_name.into()),
+        ..Default::default()
+    };
+    let library = shared_library(store, cx);
+    let build = |layer_shell: bool, cx: &mut App| {
+        let (id, library) = (id.clone(), library.clone());
+        gpui_kit::open_window(options(layer_shell), cx, move |window, cx| {
+            crate::themes::apply(Some(window), cx);
+            cx.new(|cx| {
+                let mut view = NoteWindow::new(id, library, Some(color), window, cx);
+                // The compositor places a layer surface: it stays where it
+                // was opened.
+                view.fixed_frame = layer_shell.then_some(frame);
+                view
+            })
+        })
+    };
+    let mut opened = build(layer_shell, cx).map(|opened| (opened, layer_shell));
+    if layer_shell && opened.is_err() {
+        // No layer-shell after all: an ordinary window.
+        opened = build(false, cx).map(|opened| (opened, false));
+    }
+    let ((handle, view), layer_shell) = match opened {
+        Ok(opened) => opened,
+        Err(err) => {
+            eprintln!("kanso: couldn't open a sticky note: {err:#}");
+            return;
+        }
+    };
+    after_open(handle, view.clone(), cx);
+    let hint = !crate::sticky::keeps_on_top(layer_shell, cx)
+        && !cx.global::<AppState>().config.nudges.sticky_hint_seen;
+    handle
+        .update(cx, |_, window, cx| {
+            // Mapped by the next frame, when the window manager listens.
+            window.on_next_frame(move |window, cx| crate::sticky::stay_on_top(window, frame, cx));
+            // Again once the window manager has drawn its frame and shadow
+            // around it, which can move and grow it.
+            window
+                .spawn(cx, async move |cx| {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(400))
+                        .await;
+                    cx.update(|window, cx| crate::sticky::stay_on_top(window, frame, cx))
+                        .ok();
+                })
+                .detach();
+            if hint {
+                window.push_notification(Notification::info(crate::sticky::ON_TOP_HINT), cx);
+                AppState::update_config(cx, |config| config.nudges.sticky_hint_seen = true);
+            }
+        })
+        .ok();
 }
 
 /// Does `f` in the main window, brought forward; opens one when there is
@@ -296,6 +467,12 @@ pub struct NoteWindow {
     title: String,
     /// The note went: the window is closing.
     closing: bool,
+    /// A sticky note of this colour (`sticky.rs`); `None` for the note's
+    /// ordinary window.
+    sticky: Option<StickyColor>,
+    /// Where a window the compositor places (a layer surface) was opened:
+    /// its frame, as it can't be read back. It can't be moved either.
+    fixed_frame: Option<Frame>,
     /// Draws stand-ins for the traffic lights in headless snapshots.
     #[cfg(test)]
     pub(crate) placeholder_traffic_lights: bool,
@@ -307,6 +484,7 @@ impl NoteWindow {
     pub fn new(
         note_id: String,
         library: Entity<Library>,
+        sticky: Option<StickyColor>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -318,6 +496,12 @@ impl NoteWindow {
             let mut editor =
                 NoteEditor::new(store, library.clone(), links_tx, &appearance, window, cx);
             editor.set_standalone(cx);
+            // A sticky shows only the text, in Preview, where code blocks
+            // copy with a click.
+            if sticky.is_some() {
+                editor.set_compact(cx);
+                editor.set_view_mode(ViewMode::Preview, cx);
+            }
             editor.open(Some(&note_id), window, cx);
             editor.refresh_wiki(cx);
             editor
@@ -391,6 +575,8 @@ impl NoteWindow {
             band_drag: BandDrag::default(),
             title: String::new(),
             closing: false,
+            sticky,
+            fixed_frame: None,
             #[cfg(test)]
             placeholder_traffic_lights: false,
             _subscriptions: subscriptions,
@@ -400,6 +586,10 @@ impl NoteWindow {
 
     pub fn note_id(&self) -> &str {
         &self.note_id
+    }
+
+    pub fn is_sticky(&self) -> bool {
+        self.sticky.is_some()
     }
 
     fn on_editor_event(
@@ -466,7 +656,14 @@ impl NoteWindow {
             NoteCommand::RemoveLock => {
                 crate::locked::remove_lock(self.editor.clone(), window, cx);
             }
-            NoteCommand::OpenInNewWindow => window.activate_window(),
+            NoteCommand::OpenInNewWindow | NoteCommand::OpenAsSticky => {
+                let sticky = matches!(command, NoteCommand::OpenAsSticky);
+                if sticky == self.is_sticky() {
+                    window.activate_window();
+                } else {
+                    self.reopen(sticky, window, cx);
+                }
+            }
             NoteCommand::OpenInNewTab => {
                 let id = self.note_id.clone();
                 in_main_window(cx, move |workspace, window, cx| {
@@ -503,10 +700,24 @@ impl NoteWindow {
         });
     }
 
+    /// Shows the note in `mode`; a sticky's mode is its own, not the one
+    /// windows open in.
     fn set_view_mode(&mut self, mode: ViewMode, cx: &mut Context<Self>) {
         self.editor
             .update(cx, |editor, cx| editor.set_view_mode(mode, cx));
-        AppState::update_config(cx, |config| config.appearance.view_mode = mode);
+        if self.sticky.is_none() {
+            AppState::update_config(cx, |config| config.appearance.view_mode = mode);
+        }
+    }
+
+    /// Opens this note the other way (a sticky, or its ordinary window) in
+    /// place of this window, from where it is.
+    fn reopen(&mut self, sticky: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let id = self.note_id.clone();
+        // A sticky's small frame is no place for its ordinary window, which
+        // opens centred when it has no frame of its own.
+        let from = sticky.then(|| frame_of(window.bounds()));
+        cx.defer(move |cx| open_note_window(&id, from, sticky, cx));
     }
 
     /// Keeps where the window is, to open it there next time.
@@ -514,13 +725,18 @@ impl NoteWindow {
         if self.closing || window.is_fullscreen() {
             return;
         }
-        let (x, y, width, height) = frame_of(window.bounds());
+        let (x, y, width, height) = self
+            .fixed_frame
+            .unwrap_or_else(|| frame_of(window.bounds()));
         let frame = NoteWindowFrame {
             note_id: self.note_id.clone(),
             x,
             y,
             width,
             height,
+            sticky: self.sticky.is_some(),
+            color: self.sticky.unwrap_or_default(),
+            closed: false,
         };
         let frames = &cx.global::<AppState>().config.layout.note_windows;
         if frames.contains(&frame) {
@@ -528,19 +744,44 @@ impl NoteWindow {
         }
         AppState::update_config_soon(cx, move |config| {
             let frames = &mut config.layout.note_windows;
-            match frames.iter_mut().find(|f| f.note_id == frame.note_id) {
+            let kept = frames
+                .iter_mut()
+                .find(|f| f.note_id == frame.note_id && f.sticky == frame.sticky);
+            match kept {
                 Some(kept) => *kept = frame,
                 None => frames.push(frame),
             }
         });
     }
 
-    /// The window won't open again at the next launch.
+    /// The window won't open again at the next launch, and nothing about
+    /// it is kept.
     fn forget_frame(&mut self, cx: &mut Context<Self>) {
         self.closing = true;
         let id = self.note_id.clone();
         AppState::update_config(cx, |config| {
             config.layout.note_windows.retain(|f| f.note_id != id)
+        });
+    }
+
+    /// The window won't open again at the next launch. A sticky keeps
+    /// where it was and its colour, to open there again; so does an
+    /// ordinary window that becomes a sticky (`switching`).
+    fn put_away(&mut self, switching: bool, cx: &mut Context<Self>) {
+        self.closing = true;
+        let id = self.note_id.clone();
+        let sticky = self.sticky.is_some();
+        AppState::update_config(cx, |config| {
+            let frames = &mut config.layout.note_windows;
+            if sticky || switching {
+                for f in frames.iter_mut() {
+                    if f.note_id == id && f.sticky == sticky {
+                        f.closed = true;
+                    }
+                }
+            } else {
+                frames.retain(|f| f.note_id != id || f.sticky);
+            }
         });
     }
 
@@ -630,9 +871,9 @@ impl Render for NoteWindow {
                 cx.listener(|this, _: &MouseUpEvent, _, _| this.band_drag.up()),
             )
             .on_action(cx.listener(|this, _: &CloseNoteWindow, window, cx| {
-                // As the close button does: saved, and forgotten.
+                // As the close button does: saved, and put away.
                 this.editor.update(cx, |editor, cx| editor.flush(cx));
-                this.forget_frame(cx);
+                this.put_away(false, cx);
                 window.defer(cx, |window, _| window.remove_window());
             }))
             .on_action(cx.listener(|this, _: &SaveNote, _, cx| {
@@ -678,7 +919,12 @@ impl Render for NoteWindow {
                 this.editor
                     .update(cx, |editor, cx| editor.insert_drawing(window, cx));
             }))
-            .on_action(|_: &OpenInNewWindow, window, _| window.activate_window())
+            .on_action(cx.listener(|this, _: &OpenInNewWindow, window, cx| {
+                this.run_command(NoteCommand::OpenInNewWindow, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &OpenAsSticky, window, cx| {
+                this.run_command(NoteCommand::OpenAsSticky, window, cx);
+            }))
             .on_action(cx.listener(|this, _: &ExportNote, window, cx| {
                 this.run_command(NoteCommand::Export, window, cx);
             }))
@@ -712,9 +958,233 @@ impl Render for NoteWindow {
             .on_action(|_: &OpenCommandPalette, _, cx| forward(OpenCommandPalette, cx))
             .on_action(|_: &OpenNotePicker, _, cx| forward(OpenNotePicker, cx))
             .on_action(|_: &SearchAllNotes, _, cx| forward(SearchAllNotes, cx))
-            .child(editor)
+            .when(self.sticky.is_none(), |el| el.child(editor.clone()))
+            .when_some(self.sticky, |el, color| {
+                let dark = cx.theme().is_dark();
+                el.flex()
+                    .flex_col()
+                    .child(self.render_sticky_header(color, dark, cx))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .relative()
+                            .child(editor.clone())
+                            // Paper of the note's colour over the text;
+                            // it takes no clicks.
+                            .child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .bg(crate::sticky::wash(color, dark)),
+                            ),
+                    )
+                    .when(self.fixed_frame.is_none(), |el| {
+                        el.children(resize_handles())
+                    })
+            })
             .children(self.render_placeholder_traffic_lights())
     }
+}
+
+impl NoteWindow {
+    /// A sticky's header: the note's title, where the window is dragged,
+    /// and its buttons: Edit or Preview, Copy, the colour, and Close.
+    fn render_sticky_header(
+        &self,
+        color: StickyColor,
+        dark: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        use gpui_kit::assets::IconName as Lucide;
+        use gpui_kit::component::button::{Button, ButtonVariants as _};
+        use gpui_kit::component::{Icon, Sizable as _, h_flex};
+
+        let colors = Colors::get(cx);
+        let editing = self.editor.read(cx).view_mode != ViewMode::Preview;
+        let movable = self.fixed_frame.is_none();
+        let button = |id: &'static str, icon: Lucide, tooltip: &'static str| {
+            Button::new(id)
+                .ghost()
+                .xsmall()
+                .icon(Icon::new(icon).text_color(colors.text_secondary))
+                .tooltip(tooltip)
+        };
+        h_flex()
+            .id("sticky-header")
+            .flex_none()
+            .h(px(crate::sticky::HEADER_HEIGHT))
+            .w_full()
+            .pl_3()
+            .pr_1()
+            .gap_0p5()
+            .items_center()
+            .bg(crate::sticky::paper(color, dark))
+            .child(
+                div()
+                    .id("sticky-title")
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .text_sm()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(colors.text)
+                    .when(movable, |el| el.cursor_move())
+                    .on_mouse_down(MouseButton::Left, move |event, window, _| {
+                        if !movable {
+                            return;
+                        }
+                        if event.click_count == 2 {
+                            window.titlebar_double_click();
+                        } else {
+                            window.start_window_move();
+                        }
+                    })
+                    .child(self.title.clone()),
+            )
+            .child(
+                button(
+                    "sticky-mode",
+                    if editing { Lucide::Eye } else { Lucide::Pencil },
+                    if editing { "Preview" } else { "Edit" },
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    let mode = if editing {
+                        ViewMode::Preview
+                    } else {
+                        ViewMode::Edit
+                    };
+                    this.set_view_mode(mode, cx);
+                    if mode == ViewMode::Edit {
+                        this.editor
+                            .update(cx, |editor, cx| editor.focus_body(window, cx));
+                    }
+                    cx.notify();
+                })),
+            )
+            .child(
+                button("sticky-copy", Lucide::Copy, "Copy note").on_click(cx.listener(
+                    |this, _, window, cx| {
+                        this.editor.update(cx, |editor, cx| editor.flush(cx));
+                        let body = this.editor.read(cx).current_note(cx).map(|note| note.body);
+                        if let Some(body) = body {
+                            cx.write_to_clipboard(ClipboardItem::new_string(body));
+                            window.push_notification(Notification::info("Copied the note."), cx);
+                        }
+                    },
+                )),
+            )
+            .child(
+                button("sticky-color", Lucide::Palette, "Change colour").on_click(cx.listener(
+                    |this, _, window, cx| {
+                        this.sticky = this.sticky.map(StickyColor::next);
+                        this.remember_frame(window, cx);
+                        cx.notify();
+                    },
+                )),
+            )
+            .child(
+                button("sticky-close", Lucide::Close, "Close").on_click(|_, window, cx| {
+                    window.dispatch_action(CloseNoteWindow.boxed_clone(), cx);
+                }),
+            )
+    }
+}
+
+/// How thick the edges are that resize a window without a frame.
+const RESIZE_EDGE: f32 = 5.;
+
+/// Edges and corners that resize a sticky, which has no frame of its own
+/// to drag.
+fn resize_handles() -> Vec<AnyElement> {
+    let edge = px(RESIZE_EDGE);
+    let corner = px(RESIZE_EDGE * 2.);
+    let handle = |id: &'static str, resize: ResizeEdge, cursor: CursorStyle| {
+        div().id(id).absolute().cursor(cursor).on_mouse_down(
+            MouseButton::Left,
+            move |_, window, cx| {
+                cx.stop_propagation();
+                window.start_window_resize(resize);
+            },
+        )
+    };
+    vec![
+        handle("resize-top", ResizeEdge::Top, CursorStyle::ResizeUpDown)
+            .top_0()
+            .left(corner)
+            .right(corner)
+            .h(edge)
+            .into_any_element(),
+        handle(
+            "resize-bottom",
+            ResizeEdge::Bottom,
+            CursorStyle::ResizeUpDown,
+        )
+        .bottom_0()
+        .left(corner)
+        .right(corner)
+        .h(edge)
+        .into_any_element(),
+        handle(
+            "resize-left",
+            ResizeEdge::Left,
+            CursorStyle::ResizeLeftRight,
+        )
+        .left_0()
+        .top(corner)
+        .bottom(corner)
+        .w(edge)
+        .into_any_element(),
+        handle(
+            "resize-right",
+            ResizeEdge::Right,
+            CursorStyle::ResizeLeftRight,
+        )
+        .right_0()
+        .top(corner)
+        .bottom(corner)
+        .w(edge)
+        .into_any_element(),
+        handle(
+            "resize-top-left",
+            ResizeEdge::TopLeft,
+            CursorStyle::ResizeUpLeftDownRight,
+        )
+        .top_0()
+        .left_0()
+        .size(corner)
+        .into_any_element(),
+        handle(
+            "resize-top-right",
+            ResizeEdge::TopRight,
+            CursorStyle::ResizeUpRightDownLeft,
+        )
+        .top_0()
+        .right_0()
+        .size(corner)
+        .into_any_element(),
+        handle(
+            "resize-bottom-left",
+            ResizeEdge::BottomLeft,
+            CursorStyle::ResizeUpRightDownLeft,
+        )
+        .bottom_0()
+        .left_0()
+        .size(corner)
+        .into_any_element(),
+        handle(
+            "resize-bottom-right",
+            ResizeEdge::BottomRight,
+            CursorStyle::ResizeUpLeftDownRight,
+        )
+        .bottom_0()
+        .right_0()
+        .size(corner)
+        .into_any_element(),
+    ]
 }
 
 /// Dispatches `action` in the main window, brought forward.

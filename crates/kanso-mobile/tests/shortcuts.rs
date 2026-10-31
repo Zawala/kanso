@@ -20,9 +20,13 @@ fn the_catalog_crosses_whole() {
 }
 
 #[test]
-fn quit_and_the_capture_window_stay_behind() {
+fn quit_stickies_and_the_capture_window_stay_behind() {
     let crossed = shortcut_catalog();
-    assert!(crossed.iter().all(|entry| entry.id != "quit"));
+    assert!(
+        crossed
+            .iter()
+            .all(|entry| entry.id != "quit" && entry.id != "open_as_sticky")
+    );
     assert!(
         crossed
             .iter()
@@ -30,7 +34,9 @@ fn quit_and_the_capture_window_stay_behind() {
     );
     let held_back = SHORTCUTS
         .iter()
-        .filter(|s| s.id == "quit" || s.context == ShortcutContext::Capture)
+        .filter(|s| {
+            matches!(s.id, "quit" | "open_as_sticky") || s.context == ShortcutContext::Capture
+        })
         .count();
     assert_eq!(crossed.len() + held_back, SHORTCUTS.len());
 }
