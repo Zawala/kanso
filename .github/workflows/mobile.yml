@@ -129,6 +129,10 @@ jobs:
       # generated from rust/src/api and committed. Freezed's output for the
       # bridge's enums is made by build_runner next.
       - run: flutter_rust_bridge_codegen generate
+        env:
+          # The codegen only knows the plain levels; the runner may set a
+          # filter such as `warn,kanso=debug`.
+          RUST_LOG: info
       # Generated code (Freezed, Injectable, json_serializable) is committed.
       # Regenerate it and fail if anything changed or is missing.
       - run: dart run build_runner build --delete-conflicting-outputs

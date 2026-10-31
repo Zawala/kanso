@@ -243,8 +243,9 @@ pub fn platform_ceremony(
 pub fn native_window(window: &gpui_kit::Window) -> isize {
     #[cfg(target_os = "windows")]
     {
-        use raw_window_handle::{HasWindowHandle as _, RawWindowHandle};
-        match window.window_handle().map(|handle| handle.as_raw()) {
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        // The trait's, not GPUI's own `Window::window_handle`.
+        match HasWindowHandle::window_handle(window).map(|handle| handle.as_raw()) {
             Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get(),
             _ => 0,
         }

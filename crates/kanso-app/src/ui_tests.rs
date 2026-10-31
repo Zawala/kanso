@@ -2643,6 +2643,7 @@ fn live_mode_is_chosen_with_its_key_and_kept(cx: &mut TestAppContext) {
     use crate::config::ViewMode;
 
     let f = setup(cx);
+    cx.update(crate::workspace::bind_keys);
     f.select(cx, &f.notes[0]);
     f.type_body(cx, "## Plan\n\n- [ ] **Ship** it\n");
     f.draw(cx);
