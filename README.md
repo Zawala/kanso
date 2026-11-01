@@ -104,6 +104,22 @@ needs Vulkan graphics drivers (Mesa's are fine). Notes live in `~/.local/share/k
 (`$XDG_DATA_HOME/kanso`); sign-ins go to the Secret Service (GNOME Keyring or KWallet), so one must be
 running to stay signed in.
 
+**Linux with apt** (Debian 12+, Ubuntu 22.04+, x64 and arm64): add Kanso's repository once, and
+`sudo apt upgrade` updates Kanso with the rest of your system.
+
+```bash
+curl -fsSL https://kansoapp.app/apt/kanso.gpg | sudo tee /usr/share/keyrings/kanso.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/kanso.gpg] https://kansoapp.app/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/kanso.list
+sudo apt update && sudo apt install kanso
+```
+
+It installs `kanso` and `kanso-plugin-host` in `/usr/bin` and Kanso in your applications menu. It needs
+glibc 2.35 or newer, Vulkan drivers and a Secret Service, as above. If you used `install.sh` before, run
+`./install.sh --uninstall` first: `~/.local/bin` comes before `/usr/bin` in `PATH`. Kanso still tells
+you when a release is out, and leaves installing it to apt. The repository holds the latest release
+only ([docs/APT.md](docs/APT.md)).
+
 To build the macOS app yourself:
 
 ```bash
