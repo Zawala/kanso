@@ -1,0 +1,5 @@
+# Static files' headers (Workers static assets). The apt signing key is a
+# binary OpenPGP key; apt doesn't mind the type, browsers and curl say it.
+/apt/kanso.gpg
+  Content-Type: application/pgp-keys
+  Cache-Control: public, max-age=3600

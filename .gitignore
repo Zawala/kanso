@@ -4,3 +4,7 @@
 .DS_Store
 .env
 /.claude/worktrees/
+
+# The apt signing key's backup (scripts/apt-setup.sh) belongs outside the
+# repository; never commit one that ends up here.
+kanso-apt-signing-key-BACKUP.*

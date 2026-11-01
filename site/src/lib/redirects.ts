@@ -2,8 +2,11 @@
  * The site's redirects, answered before TanStack Start sees the request:
  * www.kansoapp.app to the apex (permanent), and /metrics, the link the apps'
  * usage-count notice opens, to the note that explains it (temporary, so the
- * target can move without browsers remembering the old one).
+ * target can move without browsers remembering the old one). And the apt
+ * repository's files, under /apt, to the GitHub Release assets that hold
+ * them (lib/apt.ts).
  */
+import { aptResponse } from "./apt";
 import { REPOSITORY_URL } from "./release";
 
 export const APEX = "kansoapp.app";
@@ -23,5 +26,5 @@ export function redirectFor(url: URL): Response | null {
     return Response.redirect(apex.toString(), 301);
   }
   if (url.pathname === "/metrics" || url.pathname === "/metrics/") return Response.redirect(METRICS_NOTE_URL, 302);
-  return null;
+  return aptResponse(url);
 }

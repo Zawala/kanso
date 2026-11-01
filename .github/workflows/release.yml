@@ -2,7 +2,8 @@ name: Release
 
 # A `v*` tag builds every platform and publishes a GitHub Release with the
 # downloads, the update archives, the signed update feed (latest.json and
-# latest.json.sig) and SHA256SUMS, once every check passes; everyone's Kanso
+# latest.json.sig), the .debs with the apt repository's signed index
+# (docs/APT.md) and SHA256SUMS, once every check passes; everyone's Kanso
 # then sees the update. If any check fails, nothing is published.
 # Run by hand (workflow_dispatch), it builds the same downloads as artifacts
 # only, without a feed. docs/RELEASING.md has the whole flow.
@@ -285,6 +286,20 @@ jobs:
           install -m 755 assets/linux/install.sh "$stem/install.sh"
           tar -czf "dist/$stem.tar.gz" "$stem"
 
+      # The .deb for apt (docs/APT.md), from the same binaries. It never
+      # stops a release: without it the tarball ships as before, and the apt
+      # job finds no .deb to index.
+      - name: Package (Debian)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ "$(cargo deb --version 2>/dev/null)" != "cargo-deb 3.8.0" ]; then
+            cargo install cargo-deb --version 3.8.0 --locked
+          fi
+          scripts/deb-build.sh "$VERSION" dist
+
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ${{ steps.version.outputs.stem }}
@@ -322,7 +337,7 @@ jobs:
   feed:
     name: Signed update feed
     if: github.ref_type == 'tag'
-    needs: build
+    needs: [build, apt]
     runs-on: [self-hosted, Linux]
     environment: release
     permissions:
@@ -386,6 +401,56 @@ jobs:
             notes/notes.md
           if-no-files-found: error
 
+  # The apt repository's signed index (docs/APT.md): Packages, Release,
+  # InRelease and Release.gpg as release assets, which kansoapp.app/apt
+  # redirects to. A job of its own, so the apt key and the update key are
+  # never in reach of the same steps; in the `release` environment, so only
+  # a v* tag reaches the key. Until scripts/apt-setup.sh has stored the key
+  # it publishes nothing and says so, and the release goes on as before.
+  apt:
+    name: apt repository
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: [self-hosted, Linux]
+    environment: release
+    permissions:
+      contents: read
+    outputs:
+      published: ${{ steps.index.outputs.published }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          path: dist
+          merge-multiple: true
+          pattern: Kanso-*
+
+      - name: apt tools
+        run: scripts/apt-tools.sh
+
+      - name: Signed index
+        id: index
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
+        run: scripts/apt-release.sh dist "$GITHUB_REF_NAME" apt
+
+      - name: Forget the key
+        if: always()
+        run: |
+          GNUPGHOME="$RUNNER_TEMP/kanso-apt-gnupg" gpgconf --kill gpg-agent 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/kanso-apt-gnupg"
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: steps.index.outputs.published == 'true'
+        with:
+          name: apt-metadata
+          path: apt/*
+          if-no-files-found: error
+
   # Publishes the release once everything above passed: each platform
   # built (macOS signed, notarized and accepted by Gatekeeper), the update
   # feed signed and verified against the app's trusted key, and every file
@@ -394,7 +459,7 @@ jobs:
   # The only job that can write, and it runs no code from the repository.
   publish:
     name: Publish release
-    needs: [build, feed]
+    needs: [build, apt, feed]
     runs-on: [self-hosted, Linux]
     permissions:
       contents: write
@@ -409,6 +474,14 @@ jobs:
         with:
           name: release-feed
           path: feed
+
+      # The feed job's SHA256SUMS covers these too: it downloads every
+      # artifact.
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        if: needs.apt.outputs.published == 'true'
+        with:
+          name: apt-metadata
+          path: dist
 
       - name: Check every file against SHA256SUMS
         run: |

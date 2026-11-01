@@ -1,6 +1,7 @@
 [package]
 name = "kanso-app"
-description = "The Kanso desktop app."
+description = "Markdown notes with sync and end-to-end encryption"
+homepage = "https://kansoapp.app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +10,30 @@ rust-version.workspace = true
 [[bin]]
 name = "kanso"
 path = "src/main.rs"
+
+# The .deb for apt (docs/APT.md), made by `cargo deb -p kanso-app --no-build`
+# from the binaries `cargo build --release` already made. The plugin host
+# sits beside `kanso`, where Kanso looks for it. Vulkan is loaded at run
+# time, so dpkg-shlibdeps ($auto) can't see it; a keyring is only
+# recommended: without one Kanso runs but doesn't stay signed in.
+[package.metadata.deb]
+name = "kanso"
+maintainer = "Ngonidzashe Mangudya <imngonii@gmail.com>"
+copyright = "Ngonidzashe Mangudya and the Kanso contributors"
+license-file = ["../../LICENSE", "0"]
+# Written by scripts/deb-build.sh, which runs cargo deb.
+changelog = "../../target/deb/changelog"
+section = "editors"
+priority = "optional"
+extended-description = "Local-first Markdown notes with end-to-end encrypted sync."
+depends = "$auto, libvulkan1"
+recommends = "mesa-vulkan-drivers, gnome-keyring | kwalletmanager"
+assets = [
+    ["target/release/kanso", "usr/bin/", "755"],
+    ["target/release/kanso-plugin-host", "usr/bin/", "755"],
+    ["../../assets/linux/kanso.desktop", "usr/share/applications/", "644"],
+    ["../../assets/icon/kanso.png", "usr/share/icons/hicolor/512x512/apps/", "644"],
+]
 
 [features]
 # Kanso Dev: its own name, bundle ID, data folder, Keychain service and API

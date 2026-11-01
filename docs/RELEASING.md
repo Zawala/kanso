@@ -21,6 +21,8 @@ Every release carries, beside the downloads:
 | `Kanso-<v>-linux-x64.tar.gz`, `…-linux-arm64.tar.gz` | the folder with `kanso`, the download and the update |
 | `latest.json` | the feed: schema 1, version, date, release page, notes, and for each platform the update's URL, SHA-256 and size |
 | `latest.json.sig` | an Ed25519 signature over the feed's exact bytes, base64 |
+| `kanso_<v>-1_amd64.deb`, `…_arm64.deb` | the Debian packages, for apt ([apt repository](#the-apt-repository)) |
+| `apt-stable-*` | the apt repository's signed index: `Packages` per architecture, `Release`, `InRelease`, `Release.gpg` (once the apt key is set up) |
 | `SHA256SUMS` | every file's checksum |
 
 The app (`crates/kanso-app/src/updates.rs`, with the logic in
@@ -70,7 +72,9 @@ says why: a debug or `cargo` build, Kanso Dev (never updated, see
 [DEVELOPING.md](DEVELOPING.md)), an app macOS is running from a temporary
 copy (App Translocation) or from its disk image, an AppImage, a folder
 Kanso can't write to (Program Files, say), or an install that belongs to
-another account on the computer.
+another account on the computer. A copy apt installed (under `/usr`, not
+`/usr/local`) is apt's: it still says a release is out, and its button
+copies `sudo apt upgrade` rather than downloading or opening anything.
 
 Failures stay quiet and in words: offline, rate limited, no release yet, an
 update that failed a check, no space. The sidebar only mentions the ones that
@@ -314,6 +318,64 @@ Kanso Dark and Lucide, but only with a migration that installs gallery copies
 of any selected theme before removing the built-in one. Mark the gallery
 entries for those ids as **Built in** until then; the gallery never installs
 over a built-in id.
+
+### 5. The apt repository (optional)
+
+Until this is done, releases carry the `.deb`s and the release job logs
+"apt signing key not configured; skipping apt metadata". Once:
+
+1. Run `scripts/apt-setup.sh` from the repository's root, signed in to `gh`
+   as an admin of the repository. It makes an ed25519 signing key in a
+   temporary GnuPG home, stores it and a random passphrase as
+   `APT_SIGNING_KEY` and `APT_SIGNING_PASSPHRASE` in the `release`
+   environment (only `v*` tags reach them), offers a backup to a folder
+   outside the repository, and writes `site/public/apt/kanso.gpg` and
+   `packaging/linux/apt.conf`. It never writes the private key or the
+   passphrase into the repository.
+2. Commit those two files.
+3. Deploy the site once (`cd site && npm run deploy`), so
+   `https://kansoapp.app/apt/kanso.gpg` exists. The site needs no deploy per
+   release.
+4. Tag a release: it publishes the repository.
+
+The key expires after the time you chose (2 years by default). Before then,
+extend it from the backup (`gpg --quick-set-expire`), store it again with
+`gh secret set APT_SIGNING_KEY --env release`, and commit the re-exported
+`kanso.gpg`. `scripts/apt-setup.sh --rotate` replaces the key outright;
+everyone who installed with apt must then download `kanso.gpg` again, so
+avoid it unless the key is lost or leaked.
+
+## The apt repository
+
+`kansoapp.app/apt` is an apt repository whose files all live on the GitHub
+Release; the site only redirects ([APT.md](APT.md) has the design):
+
+| URL under `https://kansoapp.app/apt/` | Served as |
+|---|---|
+| `kanso.gpg` | `site/public/apt/kanso.gpg`, a static file |
+| `dists/stable/InRelease`, `Release`, `Release.gpg`, `main/binary-{amd64,arm64}/Packages(.gz)` | 302 to `releases/latest/download/apt-stable-…`, never cached |
+| `pool/<tag>/kanso_<v>_<arch>.deb` | 302 to `releases/download/<tag>/…` |
+
+Anything else under `/apt` is a 404 (`site/src/lib/apt.ts`). The redirects
+can't change what apt gets: `InRelease` is checked against the key, and
+`Packages` pins each `.deb`'s SHA-256. Since `releases/latest` is the newest
+published release, the index holds the latest release only; older versions
+aren't installable through apt.
+
+In the release workflow, each Linux build runs `scripts/deb-build.sh` after
+the tarball (cargo-deb 3.8.0, `[package.metadata.deb]` in
+`crates/kanso-app/Cargo.toml`); a failure there leaves the release without
+`.deb`s rather than stopping it. The `apt` job then runs
+`scripts/apt-release.sh`, which imports the key and runs
+`scripts/apt-index.sh`: `apt-ftparchive packages` over `pool/<tag>/`, then
+`Release` over the index, then the signatures, nothing touched after. Its
+files reach the feed job's `SHA256SUMS` and the release like every other.
+
+To try it without GitHub: build the `.deb` (`scripts/deb-build.sh 0.9.0
+/tmp/debs`), make a throwaway key in a temporary `GNUPGHOME`, run
+`APT_SIGNING_FINGERPRINT=<fpr> scripts/apt-index.sh /tmp/debs v0.9.0
+/tmp/apt`, and serve `/tmp/apt` behind redirects shaped like the Worker's
+([APT.md](APT.md) › Local testing).
 
 ## Testing an update
 

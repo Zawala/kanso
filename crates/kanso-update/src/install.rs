@@ -54,6 +54,8 @@ pub enum NotInstallable {
     Translocated,
     DiskImage,
     AppImage,
+    /// Installed from a package (apt), which updates it: `/usr/bin`.
+    PackageManaged,
     NotWritable(PathBuf),
     /// The install belongs to another account on this computer.
     OwnedByAnother(PathBuf),
@@ -74,6 +76,9 @@ impl NotInstallable {
             }
             NotInstallable::DiskImage => "Kanso is running from its disk image. Drag it to Applications first.".into(),
             NotInstallable::AppImage => "AppImages update by downloading the new image.".into(),
+            NotInstallable::PackageManaged => format!(
+                "Kanso was installed by your package manager. Update it with {APT_UPGRADE}."
+            ),
             NotInstallable::NotWritable(dir) => format!(
                 "Kanso can't write to {}, so it can't replace itself. Download the update instead.",
                 dir.display()
@@ -106,6 +111,9 @@ pub fn locate(
     }
     if options.appimage {
         return Err(NotInstallable::AppImage);
+    }
+    if is_package_managed(exe, platform) {
+        return Err(NotInstallable::PackageManaged);
     }
     let target = if platform.is_bundle() {
         let app = exe
@@ -145,6 +153,21 @@ pub fn locate(
         target,
         platform,
     })
+}
+
+/// What updates a copy apt installed.
+pub const APT_UPGRADE: &str = "sudo apt upgrade";
+
+/// Whether `exe` is a Linux copy a package installed: under `/usr`, which
+/// dpkg owns, but not `/usr/local`, which is the administrator's own.
+/// Symbolic links are followed first, so a link in `~/.local/bin` to the
+/// packaged copy counts too.
+pub fn is_package_managed(exe: &Path, platform: Platform) -> bool {
+    if !matches!(platform, Platform::LinuxX64 | Platform::LinuxArm64) {
+        return false;
+    }
+    let real = exe.canonicalize().unwrap_or_else(|_| exe.to_path_buf());
+    real.starts_with("/usr") && !real.starts_with("/usr/local")
 }
 
 /// Whether `exe` sits in a Cargo target folder: `target/debug`,
@@ -743,11 +766,48 @@ mod tests {
         }
         for reason in [
             NotInstallable::DevFlavour,
+            NotInstallable::PackageManaged,
             NotInstallable::NotWritable("/x".into()),
             NotInstallable::OwnedByAnother("/x/kanso".into()),
         ] {
             assert!(reason.reason().ends_with('.'));
         }
+    }
+
+    /// A copy apt put in /usr/bin is left to apt; a copy the tarball's
+    /// installer put in ~/.local/bin, or one in /usr/local, is as before;
+    /// macOS and Windows never count as packaged.
+    #[test]
+    fn a_packaged_copy_is_left_to_apt() {
+        for linux in [Platform::LinuxX64, Platform::LinuxArm64] {
+            assert_eq!(
+                locate(Path::new("/usr/bin/kanso"), Some(linux), opts()),
+                Err(NotInstallable::PackageManaged)
+            );
+            assert!(is_package_managed(Path::new("/usr/lib/kanso/kanso"), linux));
+            assert!(!is_package_managed(
+                Path::new("/usr/local/bin/kanso"),
+                linux
+            ));
+            assert!(!is_package_managed(Path::new("/usrx/bin/kanso"), linux));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join(".local/bin");
+        fs::create_dir_all(&local).unwrap();
+        let install = locate(&local.join("kanso"), Some(Platform::LinuxX64), opts()).unwrap();
+        assert_eq!(install.target, local.join("kanso"));
+        for other in [Platform::MacosArm64, Platform::WindowsX64] {
+            assert!(!is_package_managed(Path::new("/usr/bin/kanso"), other));
+            assert_ne!(
+                locate(Path::new("/usr/bin/kanso"), Some(other), opts()),
+                Err(NotInstallable::PackageManaged)
+            );
+        }
+        assert!(
+            NotInstallable::PackageManaged
+                .reason()
+                .contains("sudo apt upgrade")
+        );
     }
 
     fn fake_install(dir: &Path, platform: Platform) -> (Install, Pending) {
