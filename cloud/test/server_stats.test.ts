@@ -6,12 +6,13 @@
 import { env } from "cloudflare:workers";
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import worker, { runCron } from "../src/index";
+import worker, { handle, runCron } from "../src/index";
 import { resetKeyChecks } from "../src/metrics";
 import {
 	CLASSES,
 	FLUSH_EVERY_MS,
 	GROUPS,
+	MAX_WINDOWS_PER_RUN,
 	LATENCY_BUCKETS,
 	RequestCounter,
 	WINDOW_MS,
@@ -87,8 +88,8 @@ describe("grouping", () => {
 		const groups = fc.constantFrom(...GROUPS);
 		const row = fc.record({ route_group: groups, status_class: fc.constantFrom(...CLASSES), latency_bucket: fc.constantFrom(...LATENCY_BUCKETS), count: fc.integer({ min: 1, max: 1000 }) });
 		fc.assert(
-			fc.property(fc.array(row, { maxLength: 40 }), fc.nat(50), fc.nat(50), (list, accounts, devices) => {
-				const props = statsProps({ rows: list, newAccounts: accounts, devicesSynced: devices });
+			fc.property(fc.array(row, { maxLength: 40 }), fc.nat(50), fc.option(fc.nat(50), { nil: null }), (list, accounts, devices) => {
+				const props = statsProps({ rows: list, newAccounts: accounts, devicesSeen: devices });
 				const total = list.reduce((n, r) => n + r.count, 0);
 				expect(props.requests_total).toBe(total);
 				expect(props.errors_5xx).toBe(list.filter((r) => r.status_class === "5xx").reduce((n, r) => n + r.count, 0));
@@ -132,6 +133,29 @@ describe("counting", () => {
 			{ window_start: START, route_group: "sync", status_class: "2xx", latency_bucket: "<50ms", count: 102 },
 			{ window_start: START, route_group: "sync", status_class: "5xx", latency_bucket: "500-1000ms", count: 1 },
 		]);
+	});
+
+	it("counts a minute from the first counted request, not from the cold start", () => {
+		const c = new RequestCounter();
+		expect(c.due(START)).toBe(false);
+		c.record("push", 200, 1, START);
+		expect(c.due(START)).toBe(false);
+		expect(c.due(START + FLUSH_EVERY_MS - 1)).toBe(false);
+		expect(c.due(START + FLUSH_EVERY_MS)).toBe(true);
+		c.take(START + FLUSH_EVERY_MS);
+		c.record("push", 200, 1, START + FLUSH_EVERY_MS + 1);
+		expect(c.due(START + FLUSH_EVERY_MS + 2)).toBe(false);
+	});
+
+	it("matches the route once: handle reports the name it matched", async () => {
+		const named = async (path: string) => {
+			const matched = { name: "?" };
+			await handle(new Request(`${ORIGIN}${path}`), testEnv(), START, matched);
+			return matched.name;
+		};
+		expect(await named("/p/abc")).toBe("viewer");
+		expect(await named("/j/abc")).toBe("invite");
+		expect(await named("/nowhere")).toBe("unknown");
 	});
 
 	it("keeps requests of different windows apart, and does nothing without a context", async () => {
@@ -191,7 +215,8 @@ describe("the cron's server_stats event", () => {
 		expect(sent[0].body.batch).toHaveLength(1);
 		const [event] = sent[0].body.batch;
 		expect(event).toMatchObject({ event: "server_stats", distinct_id: "kanso-sync-server" });
-		expect(event.timestamp).toBe(new Date(at).toISOString());
+		// Stamped where its window ended.
+		expect(event.timestamp).toBe(new Date(START + WINDOW_MS).toISOString());
 		const p = event.properties;
 		expect(p).toMatchObject({
 			window_minutes: 15,
@@ -206,7 +231,6 @@ describe("the cron's server_stats event", () => {
 			latency_p50: "<50ms",
 			latency_p95: "1000ms+",
 			new_accounts: 2,
-			devices_synced: 2,
 			share_views: 1,
 			publish_views: 2,
 			$process_person_profile: false,
@@ -214,6 +238,8 @@ describe("the cron's server_stats event", () => {
 			$lib: "kanso-worker",
 		});
 		expect(p).not.toHaveProperty("country");
+		// The window doesn't end on the hour, so it doesn't report devices.
+		expect(p).not.toHaveProperty("devices_seen");
 		const wire = JSON.stringify(sent[0].body);
 		for (const leak of [alice.token, alice.device.id, alice.creds.username, "198.51"]) expect(wire).not.toContain(leak);
 		expect(wire).not.toMatch(/[ad]_[0-9a-f]{32}/);
@@ -230,7 +256,62 @@ describe("the cron's server_stats event", () => {
 
 	it("reports a quiet window as zeros", async () => {
 		await runCron(posthog(), at);
-		expect(sent[0].body.batch[0].properties).toMatchObject({ requests_total: 0, errors_5xx: 0, latency_p50: "none", latency_p95: "none", new_accounts: 0, devices_synced: 0 });
+		expect(sent[0].body.batch[0].properties).toMatchObject({ requests_total: 0, errors_5xx: 0, latency_p50: "none", latency_p95: "none", new_accounts: 0 });
+	});
+
+	it("catches up: every unsent window goes oldest first, capped, and none is dropped", async () => {
+		const c = new RequestCounter();
+		for (let i = 0; i < 12; i++) c.record("push", 200, 20, START + i * WINDOW_MS + 5);
+		await flush(testEnv(), c.take(START));
+		const later = START + 14 * WINDOW_MS;
+		await runCron(posthog(), later);
+		const stamps = sent.map((s) => s.body.batch[0].timestamp);
+		expect(stamps).toHaveLength(MAX_WINDOWS_PER_RUN);
+		expect(stamps).toEqual([...stamps].sort());
+		expect(stamps[0]).toBe(new Date(START + WINDOW_MS).toISOString());
+		const left = (await rows()).map((r) => r.window_start);
+		expect(left).toEqual(Array.from({ length: 12 - (MAX_WINDOWS_PER_RUN - 1) }, (_, i) => START + (MAX_WINDOWS_PER_RUN - 1 + i) * WINDOW_MS));
+		// The next run sends the rest: nothing is lost between them.
+		sent.length = 0;
+		await runCron(posthog(), later + WINDOW_MS);
+		expect(sent.length).toBeGreaterThan(0);
+		expect((await rows()).map((r) => r.window_start)).toEqual([START + 11 * WINDOW_MS].filter((w) => w > windowOf(later + WINDOW_MS) - 2 * WINDOW_MS));
+	});
+
+	it("keeps a window PostHog refused, and sends it on the next run", async () => {
+		await seed();
+		vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => (String(input).includes("/flags/") ? Response.json({ flags: {} }) : new Response("no", { status: 503 })));
+		await runCron(posthog(), at);
+		expect([...new Set((await rows()).map((r) => r.window_start))]).toEqual([START, START + WINDOW_MS]);
+		vi.restoreAllMocks();
+		vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+			if (String(input).includes("/flags/")) return Response.json({ flags: {} });
+			sent.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+			return Response.json({ status: "Ok" });
+		});
+		await runCron(posthog(), at + WINDOW_MS);
+		expect(sent.map((s) => s.body.batch[0].timestamp)).toEqual([new Date(START + WINDOW_MS).toISOString(), new Date(START + 2 * WINDOW_MS).toISOString()]);
+		expect(await rows()).toEqual([]);
+	});
+
+	it("drops a window that stayed unsent for a day", async () => {
+		await seed();
+		await runCron(posthog(), START + 2 * 24 * 60 * 60_000);
+		expect(sent.map((s) => s.body.batch[0].timestamp)).toEqual([new Date(START + 2 * 24 * 60 * 60_000 - 2 * WINDOW_MS + WINDOW_MS).toISOString()]);
+		expect(await rows()).toEqual([]);
+	});
+
+	it("reports devices_seen over the hour, only on the window that ends on it", async () => {
+		await signUp("alice");
+		await signUp("bob");
+		const hourEnd = START + 3_600_000;
+		// The newest finished window is the one ending on the hour.
+		await runCron(posthog(), hourEnd + 2 * WINDOW_MS - WINDOW_MS);
+		expect(sent).toHaveLength(1);
+		expect(sent[0].body.batch[0].properties.devices_seen).toBe(2);
+		sent.length = 0;
+		await runCron(posthog(), hourEnd + 2 * WINDOW_MS);
+		expect(sent[0].body.batch[0].properties).not.toHaveProperty("devices_seen");
 	});
 
 	it("the window it reads is a whole one that ended a window ago", () => {

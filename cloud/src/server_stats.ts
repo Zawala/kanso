@@ -4,8 +4,11 @@
 // token or a path. A route group is a name from the router, never the URL.
 //
 // Counting must not slow a request, so each isolate adds to a map in memory and writes the map to
-// D1 in one batch, at most once a minute, after the response (ctx.waitUntil). An isolate that is
-// recycled before its flush loses its last minute; these are statistics, not accounts.
+// D1 in one batch, at most once a minute, after the response (ctx.waitUntil). The minute is counted
+// from the isolate's first counted request, so a cold start does not flush at once; the cron also
+// writes what its own isolate holds. An isolate that is recycled, or goes idle and is evicted,
+// before its next flush loses what it held (up to a minute of its requests): these are statistics,
+// not accounts.
 
 import type { Env } from "./env";
 import { forward, checkKey } from "./metrics";
@@ -15,6 +18,11 @@ export const WINDOW_MS = 15 * 60_000;
 /** An isolate writes its counts at most this often. */
 export const FLUSH_EVERY_MS = 60_000;
 export const SENDER = "kanso-sync-server";
+/** The most windows one cron run sends, oldest first; the rest wait for the next run. */
+export const MAX_WINDOWS_PER_RUN = 8;
+/** A window not sent after this long is dropped (PostHog has been refusing it). */
+export const WINDOW_KEEP_MS = 24 * 60 * 60_000;
+const HOUR_MS = 60 * 60_000;
 
 export const GROUPS = ["auth", "account", "sync", "publish", "publish_page", "share_page", "collab", "telemetry", "other"] as const;
 export type Group = (typeof GROUPS)[number];
@@ -71,9 +79,11 @@ export interface CountRow {
 /** The counts one isolate holds between flushes. */
 export class RequestCounter {
 	private rows = new Map<string, CountRow>();
-	private lastFlush = 0;
+	/** When the isolate last wrote, or first counted: null until it counts. */
+	private lastFlush: number | null = null;
 
 	record(routeName: string, status: number, ms: number, at: number): void {
+		this.lastFlush ??= at;
 		const row: CountRow = { window: windowOf(at), group: routeGroup(routeName), status: statusClass(status), latency: latencyBucket(ms), count: 1 };
 		const key = `${row.window}|${row.group}|${row.status}|${row.latency}`;
 		const held = this.rows.get(key);
@@ -87,7 +97,7 @@ export class RequestCounter {
 
 	/** Whether a flush is due: something is held and the last one was a minute ago. */
 	due(at: number): boolean {
-		return this.rows.size > 0 && at - this.lastFlush >= FLUSH_EVERY_MS;
+		return this.rows.size > 0 && this.lastFlush !== null && at - this.lastFlush >= FLUSH_EVERY_MS;
 	}
 
 	/** Hands over what is held, emptying it. */
@@ -128,7 +138,8 @@ export function observe(env: Env, ctx: Pick<ExecutionContext, "waitUntil"> | und
 export interface WindowCounts {
 	rows: { route_group: string; status_class: string; latency_bucket: string; count: number }[];
 	newAccounts: number;
-	devicesSynced: number;
+	/** Sessions seen in the hour ending with this window, or null when the window doesn't end on the hour. */
+	devicesSeen: number | null;
 }
 
 /** The bucket holding the `p`th percentile (0 to 1) of the counts, in bucket order. */
@@ -166,51 +177,75 @@ export function statsProps(w: WindowCounts): Record<string, string | number> {
 	props.latency_p50 = percentileBucket(buckets, 0.5);
 	props.latency_p95 = percentileBucket(buckets, 0.95);
 	props.new_accounts = w.newAccounts;
-	props.devices_synced = w.devicesSynced;
+	if (w.devicesSeen !== null) props.devices_seen = w.devicesSeen;
 	// A page view is a page that was served.
 	props.share_views = groups.get("share_page_2xx") ?? 0;
 	props.publish_views = groups.get("publish_page_2xx") ?? 0;
 	return props;
 }
 
-/** PostHog's batch body for one `server_stats` event (no country, no person profile). */
-export function statsBody(key: string, props: Record<string, string | number>, now: number): unknown {
+/** PostHog's batch body for one `server_stats` event (no country, no person profile), stamped `at`. */
+export function statsBody(key: string, props: Record<string, string | number>, at: number): unknown {
 	return {
 		api_key: key,
 		batch: [
 			{
 				event: "server_stats",
 				distinct_id: SENDER,
-				timestamp: new Date(now).toISOString(),
+				timestamp: new Date(at).toISOString(),
 				properties: { ...props, $process_person_profile: false, $geoip_disable: true, $lib: "kanso-worker" },
 			},
 		],
 	};
 }
 
+/** What one window holds, read from D1; nothing but counts leaves the database. */
+async function readWindow(env: Env, start: number): Promise<WindowCounts> {
+	const end = start + WINDOW_MS;
+	const [rows, accounts, devices] = await Promise.all([
+		env.DB.prepare("SELECT route_group, status_class, latency_bucket, count FROM request_counts WHERE window_start = ?1").bind(start).all(),
+		env.DB.prepare("SELECT count(*) AS n FROM accounts WHERE created_at >= ?1 AND created_at < ?2").bind(start, end).first<{ n: number }>(),
+		// Sessions are stamped when a device is seen, at most once an hour, so the hour is the
+		// smallest span that counts each device about once. Only a window that ends on the hour
+		// reports it, over that hour, so the events don't overlap; the index keeps it to the hour.
+		end % HOUR_MS === 0
+			? env.DB.prepare("SELECT count(*) AS n FROM sessions WHERE last_seen_at >= ?1 AND last_seen_at < ?2").bind(end - HOUR_MS, end).first<{ n: number }>()
+			: Promise.resolve(null),
+	]);
+	return { rows: rows.results as WindowCounts["rows"], newAccounts: accounts?.n ?? 0, devicesSeen: end % HOUR_MS === 0 ? (devices?.n ?? 0) : null };
+}
+
+/** Writes what this isolate holds, so the cron's own counts are not left behind. */
+export async function flushHeld(env: Env, at: number): Promise<void> {
+	await flush(env, counter.take(at));
+}
+
 /**
- * The cron's part: reads the window that ended at least one window ago (so every isolate's last
- * flush has landed), sends it as one `server_stats` event, then deletes it and everything older.
- * Without POSTHOG_KEY and POSTHOG_HOST it only does the deleting.
+ * The cron's part. A window is finished once a whole window has passed since it ended (every
+ * isolate's last flush has landed). Every finished window that still has rows is sent as one
+ * `server_stats` event, oldest first, at most MAX_WINDOWS_PER_RUN of them, and the newest finished
+ * window is sent even when empty so a quiet period reads as zeros. A window's rows are deleted only
+ * after PostHog took its event, so a missed cron, a throw or a refusal leaves it for the next run.
+ * A window older than a day is dropped unsent. Without POSTHOG_KEY and POSTHOG_HOST it only deletes.
  */
 export async function runServerStats(env: Env, now: number): Promise<void> {
-	const start = windowOf(now) - 2 * WINDOW_MS;
-	const end = start + WINDOW_MS;
+	await flushHeld(env, now);
+	const newest = windowOf(now) - 2 * WINDOW_MS;
 	const key = env.POSTHOG_KEY?.trim();
-	if (key && env.POSTHOG_HOST) {
-		const [rows, accounts, devices] = await Promise.all([
-			env.DB.prepare("SELECT route_group, status_class, latency_bucket, count FROM request_counts WHERE window_start = ?1").bind(start).all(),
-			env.DB.prepare("SELECT count(*) AS n FROM accounts WHERE created_at >= ?1 AND created_at < ?2").bind(start, end).first<{ n: number }>(),
-			// Sessions are stamped when a device is seen, at most once an hour, so a device counts
-			// in the window it was refreshed in. Only the number leaves the database.
-			env.DB.prepare("SELECT count(*) AS n FROM sessions WHERE last_seen_at >= ?1 AND last_seen_at < ?2").bind(start, end).first<{ n: number }>(),
-		]);
-		const props = statsProps({
-			rows: rows.results as WindowCounts["rows"],
-			newAccounts: accounts?.n ?? 0,
-			devicesSynced: devices?.n ?? 0,
-		});
-		await Promise.all([checkKey(env.POSTHOG_HOST, key), forward(env.POSTHOG_HOST, statsBody(key, props, now))]);
+	if (!key || !env.POSTHOG_HOST) {
+		await env.DB.prepare("DELETE FROM request_counts WHERE window_start <= ?1").bind(newest).run();
+		return;
 	}
-	await env.DB.prepare("DELETE FROM request_counts WHERE window_start <= ?1").bind(start).run();
+	await env.DB.prepare("DELETE FROM request_counts WHERE window_start < ?1").bind(now - WINDOW_KEEP_MS).run();
+	const waiting = await env.DB.prepare("SELECT DISTINCT window_start FROM request_counts WHERE window_start < ?1 ORDER BY window_start LIMIT ?2")
+		.bind(newest, MAX_WINDOWS_PER_RUN - 1)
+		.all<{ window_start: number }>();
+	const starts = [...waiting.results.map((r) => r.window_start), newest];
+	await checkKey(env.POSTHOG_HOST, key);
+	for (const start of starts) {
+		const props = statsProps(await readWindow(env, start));
+		// Stamped where the window ended: never later than now, and on its own day.
+		if (!(await forward(env.POSTHOG_HOST, statsBody(key, props, start + WINDOW_MS)))) return;
+		await env.DB.prepare("DELETE FROM request_counts WHERE window_start = ?1").bind(start).run();
+	}
 }

@@ -335,8 +335,8 @@ export function checkKey(host: string, key: string): Promise<void> {
 	return check;
 }
 
-/** Sends the batch to PostHog; any failure is logged by status or error name only, and dropped. */
-export async function forward(host: string, body: unknown): Promise<void> {
+/** Sends the batch to PostHog; any failure is logged by status or error name only. Says whether PostHog took it. */
+export async function forward(host: string, body: unknown): Promise<boolean> {
 	let outcome: string | number;
 	try {
 		const response = await fetch(`${host.trim().replace(/\/+$/, "")}/batch/`, {
@@ -351,7 +351,7 @@ export async function forward(host: string, body: unknown): Promise<void> {
 			// Counts only, so a quiet PostHog can be told from a quiet Kanso.
 			const events = (body as { batch?: unknown[] }).batch?.length ?? 0;
 			console.log(JSON.stringify({ route: "posthog", outcome: "ok", events }));
-			return;
+			return true;
 		}
 		outcome = response.status;
 	} catch (err) {
@@ -359,6 +359,7 @@ export async function forward(host: string, body: unknown): Promise<void> {
 	}
 	// Statuses only: never IDs, props or the key.
 	console.error(JSON.stringify({ route: "posthog", outcome }));
+	return false;
 }
 
 /**

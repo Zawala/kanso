@@ -284,7 +284,7 @@ the last run. Requests are counted into D1 counter rows per window, batched off 
 - requests by route group and status class (`2xx`, `3xx`, `4xx`, `5xx`);
 - p50 and p95 latency, as buckets;
 - new accounts;
-- distinct devices that synced in the window, counted from the existing tables (a number only);
+- distinct devices seen in the hour, counted from the existing tables (a number only);
 - share and publish page views;
 - the number of 5xx responses.
 
@@ -299,16 +299,22 @@ present (zero when unused):
 | `req_<group>_<class>` | one count for each route group (`auth`, `account`, `sync`, `publish`, `publish_page`, `share_page`, `collab`, `telemetry`, `other`) and status class (`2xx`, `3xx`, `4xx`, `5xx`) |
 | `latency_p50`, `latency_p95` | one of `<50ms`, `50-100ms`, `100-250ms`, `250-500ms`, `500-1000ms`, `1000ms+`, or `none` for an empty window |
 | `new_accounts` | accounts created in the window |
-| `devices_synced` | distinct devices whose session was seen in the window (counted, never sent) |
+| `devices_seen` | distinct devices whose session was seen in the hour ending with the window (counted, never sent). Present only on the event whose window ends on the hour, so events don't overlap; sessions are stamped at most hourly, so each device is counted about once an hour |
 | `share_views` | successful share page views |
 | `publish_views` | successful publish page views |
 | `$process_person_profile`, `$geoip_disable`, `$lib` | as for client events (`false`, `true`, `kanso-worker`); no `country` |
 
 Each isolate counts in memory and writes the counts to the `request_counts` table in D1 in one batch
-at most once a minute (off the request path); rows are keyed by 15-minute window, route group,
-status class and latency bucket. The cron sends the window that ended at least 15 minutes earlier,
-then deletes it. `last_seen_at` refreshes about hourly, so `devices_synced` is approximate; an
-isolate recycled before its flush loses up to a minute of counts.
+at most once a minute (off the request path, after the response), counting the minute from its first
+counted request; the cron also writes what its own isolate holds. Rows are keyed by 15-minute window,
+route group, status class and latency bucket. A window is finished once a whole window has passed
+since it ended. Each cron run sends every finished window that still has rows, oldest first and at
+most 8 per run, plus the newest finished window even when empty (a quiet period reads as zeros), each
+stamped where its window ended. A window's rows are deleted only after PostHog took its event, so a
+missed cron or a refusal leaves it for the next run; a window still unsent after a day is dropped.
+`devices_seen` reads the sessions seen in one hour through an index on `last_seen_at`. Residual loss:
+an isolate that is recycled or evicted before its next flush loses what it held (up to a minute of
+its requests), and an idle isolate is not flushed until a later request or the cron reaches it.
 
 No IP address, account or device ID, token or path with a token is counted or sent: route groups
 are fixed names, never paths.
