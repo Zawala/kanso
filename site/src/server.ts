@@ -1,6 +1,6 @@
 /**
  * The Worker's entry. It answers the redirects (www.kansoapp.app to the apex,
- * /metrics to the usage-count note; lib/redirects.ts), hands every other
+ * /metrics to the usage-count note, the apt repository's files; lib/redirects.ts), hands every other
  * request to TanStack Start, and adds the security headers every response
  * should carry. Pages vary by User-Agent (the download button), so HTML is
  * never cached publicly.
