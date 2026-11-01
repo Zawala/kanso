@@ -2,6 +2,7 @@
 // Created 2026-10-25.
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'app.dart';
@@ -14,6 +15,7 @@ import 'core/utils/license_registration.dart';
 import 'crash/models/repos/abs/crash_report_repository.dart';
 import 'crash/utils/crash_capture.dart';
 import 'injection.dart';
+import 'metrics/models/repos/abs/usage_metrics_repository.dart';
 import 'providers.dart';
 import 'reminders/utils/reminders_coordinator.dart';
 import 'window/models/repos/abs/note_window_repository.dart';
@@ -49,6 +51,9 @@ Future<void> bootstrap(
   await beforeRun?.call();
   final windows = getIt<NoteWindowRepository>();
   final router = getIt<KansoRouter>();
+  final metrics = environment == AppEnvironment.production && kReleaseMode
+      ? getIt<UsageMetricsRepository>()
+      : null;
   runApp(
     AppProviders(
       appearance: appearance,
@@ -60,6 +65,7 @@ Future<void> bootstrap(
           child: App(
             router: router,
             reminders: getIt<RemindersCoordinator>(),
+            metrics: metrics,
           ),
         ),
       ),

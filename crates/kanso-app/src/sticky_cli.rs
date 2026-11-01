@@ -26,43 +26,56 @@ Usage: kanso sticky [--book <name or id>] [--color <colour>] [text…]
 Saves a note to the Stickies notebook, or to the notebook --book names, and
 shows it as a sticky note that stays above other windows. The first line is
 its title. With no text, or `-`, the text is read from standard input.
-Colours: yellow, blue, green, pink, purple, gray.";
+Put --book and --color before the text; after it, or after `--`, they
+are part of the note. Colours: yellow, blue, green, pink, purple, gray.";
 
 /// How long a Kanso started here gets to start listening.
 const START_WAIT: Duration = Duration::from_secs(20);
 const POLL: Duration = Duration::from_millis(250);
 
-/// `--color <name>` taken out of the arguments.
-fn color_arg(rest: &[String]) -> Result<(Option<StickyColor>, Vec<String>)> {
-    let mut color = None;
-    let mut words = Vec::new();
+/// `--book` and `--color` read from the front of the arguments, and the
+/// words after them. Flags stop at the first word or at `--`, so a snippet
+/// such as `ls --color=auto` is kept as it is.
+fn options(rest: &[String]) -> Result<(Option<String>, Option<StickyColor>, Vec<String>)> {
+    let (mut book, mut color) = (None, None);
     let mut args = rest.iter();
+    let mut words = Vec::new();
     while let Some(arg) = args.next() {
-        let value = if arg == "--color" || arg == "--colour" {
-            Some(args.next().context("--color needs a colour")?.clone())
-        } else {
-            arg.strip_prefix("--color=")
-                .or_else(|| arg.strip_prefix("--colour="))
-                .map(str::to_owned)
+        let (flag, inline) = match arg.split_once('=') {
+            Some((flag, value)) => (flag, Some(value.to_owned())),
+            None => (arg.as_str(), None),
         };
-        match value {
-            Some(value) => {
+        let mut value = |needs: &str| match inline.clone() {
+            Some(value) => Ok(value),
+            None => args.next().cloned().context(needs.to_owned()),
+        };
+        match flag {
+            "--book" => book = Some(value("--book needs a notebook's name or ID")?),
+            "--color" | "--colour" => {
+                let value = value("--color needs a colour")?;
                 color = Some(
                     StickyColor::parse(&value)
                         .with_context(|| format!("“{value}” isn't a sticky colour\n\n{USAGE}"))?,
                 );
             }
-            None => words.push(arg.clone()),
+            "--" => {
+                words.extend(args.cloned());
+                break;
+            }
+            _ => {
+                words.push(arg.clone());
+                words.extend(args.cloned());
+                break;
+            }
         }
     }
-    Ok((color, words))
+    Ok((book, color, words))
 }
 
 /// What `kanso sticky` was asked for: the text read, the notebook and the
 /// colour.
 fn request(rest: &[String]) -> Result<StickyRequest> {
-    let (book, rest) = crate::capture_cli::book_arg(rest)?;
-    let (color, rest) = color_arg(&rest)?;
+    let (book, color, rest) = options(rest)?;
     let text = if rest.is_empty() || rest == ["-"] {
         let mut text = String::new();
         std::io::stdin()
@@ -85,7 +98,7 @@ fn request(rest: &[String]) -> Result<StickyRequest> {
 }
 
 pub fn run_cli(data_dir: &Path, rest: &[String]) -> Result<()> {
-    if rest.iter().any(|arg| arg == "help" || arg == "--help") {
+    if matches!(rest.first().map(String::as_str), Some("help" | "--help")) {
         println!("{USAGE}");
         return Ok(());
     }
@@ -117,9 +130,28 @@ pub fn run_cli(data_dir: &Path, rest: &[String]) -> Result<()> {
         std::thread::sleep(POLL);
     }
     // Kanso didn't start: saved here, to open with it next time.
-    let place = save_for_later(data_dir, &request)?;
-    println!("Saved “{title}” to {place}; it opens as a sticky note when Kanso starts.");
-    Ok(())
+    match save_for_later(data_dir, &request) {
+        Ok(place) => {
+            println!("Saved “{title}” to {place}; it opens as a sticky note when Kanso starts.");
+            Ok(())
+        }
+        // Read from standard input, the text can't be asked for again.
+        Err(error) => match keep_text(&request.text) {
+            Ok(kept) => bail!("{error:#}\nThe text is kept in {}", kept.display()),
+            Err(_) => Err(error),
+        },
+    }
+}
+
+/// Writes `text` to a file of its own in the temporary folder. Returns it.
+fn keep_text(text: &str) -> Result<std::path::PathBuf> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let path = std::env::temp_dir().join(format!("kanso-sticky-{stamp}.txt"));
+    std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
+    Ok(path)
 }
 
 /// Starts the app on `data_dir` in the background, on its own.
@@ -155,6 +187,7 @@ fn save_for_later(data_dir: &Path, request: &StickyRequest) -> Result<String> {
         height: crate::sticky::SIZE.1,
         sticky: true,
         color: request.color.unwrap_or_default(),
+        closed: false,
     });
     config.save(&path)?;
     Ok(place)
@@ -198,9 +231,32 @@ mod tests {
             }
         );
         assert!(request(&args(&["--color", "teal", "x"])).is_err());
+        // Flags after the text are part of it.
+        let snippet = request(&args(&["ls", "--color=auto", "--book", "X"])).unwrap();
+        assert_eq!(snippet.text, "ls --color=auto --book X");
+        assert_eq!((snippet.book, snippet.color), (None, None));
+        let dashed = request(&args(&["--colour", "blue", "--", "--book", "x"])).unwrap();
+        assert_eq!(dashed.text, "--book x");
+        assert_eq!(dashed.color, Some(StickyColor::Blue));
         assert!(request(&args(&["   "])).is_err());
         let long = "x".repeat(MAX_STICKY_TEXT + 1);
         assert!(request(&args(&[long.as_str()])).is_err());
+    }
+
+    #[test]
+    fn help_inside_the_text_is_kept() {
+        // Inside the text, `help` is a word of the note.
+        assert_eq!(
+            request(&args(&["git", "help", "commit"])).unwrap().text,
+            "git help commit"
+        );
+    }
+
+    #[test]
+    fn kept_text_can_be_read_back() {
+        let kept = keep_text("docker ps").unwrap();
+        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "docker ps");
+        std::fs::remove_file(kept).unwrap();
     }
 
     #[test]

@@ -324,6 +324,10 @@ pub struct NoteWindowFrame {
     /// The sticky's paper. Ignored for a note's ordinary window.
     #[serde(default)]
     pub color: StickyColor,
+    /// Closed, kept only for where it was (and a sticky's colour), so it
+    /// opens there again. Not opened at launch.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub closed: bool,
 }
 
 /// A sticky note's paper colour, cycled from its header.
@@ -668,6 +672,10 @@ pub struct AppConfig {
     pub ai: AiSettings,
     pub nudges: Nudges,
     pub linux: LinuxSettings,
+    /// The anonymous daily count's bookkeeping (docs/METRICS.md): this
+    /// install's ID and what was counted today. A damaged entry reads as
+    /// empty, never as an unreadable file.
+    pub metrics: kanso_metrics::Ledger,
 }
 
 /// What Kanso has told someone about, so it says it once.
@@ -680,6 +688,9 @@ pub struct Nudges {
     pub sync_offer_dismissed: bool,
     /// A sticky note said how to keep it on top where Kanso can't.
     pub sticky_hint_seen: bool,
+    /// The usage metrics notice was shown and OK pressed; nothing is sent
+    /// before (docs/METRICS.md › The notice).
+    pub metrics_notice_seen: bool,
 }
 
 impl Default for AppConfig {
@@ -703,6 +714,7 @@ impl Default for AppConfig {
             ai: AiSettings::default(),
             nudges: Nudges::default(),
             linux: LinuxSettings::default(),
+            metrics: kanso_metrics::Ledger::default(),
         }
     }
 }
@@ -953,6 +965,7 @@ mod tests {
                     0.0f32..4000.,
                     any::<bool>(),
                     prop::sample::select(StickyColor::ALL.to_vec()),
+                    any::<bool>(),
                 ),
                 0..3,
             ),
@@ -981,8 +994,8 @@ mod tests {
                         open_books: Vec::new(),
                         note_windows: note_windows
                             .into_iter()
-                            .map(
-                                |(note_id, x, y, width, height, sticky, color)| NoteWindowFrame {
+                            .map(|(note_id, x, y, width, height, sticky, color, closed)| {
+                                NoteWindowFrame {
                                     note_id,
                                     x,
                                     y,
@@ -990,8 +1003,9 @@ mod tests {
                                     height,
                                     sticky,
                                     color,
-                                },
-                            )
+                                    closed,
+                                }
+                            })
                             .collect(),
                         open_tabs,
                         active_tab,
@@ -1138,6 +1152,7 @@ mod tests {
                         first_seen_ms: login.then_some(i64::from(version) * 1_000),
                         sync_offer_dismissed: version % 2 == 0,
                         sticky_hint_seen: version % 3 == 0,
+                        metrics_notice_seen: version % 3 == 0,
                     },
                     linux: super::LinuxSettings {
                         backend: if numbers {
@@ -1145,6 +1160,17 @@ mod tests {
                         } else {
                             super::LinuxBackend::Auto
                         },
+                    },
+                    metrics: {
+                        let mut ledger = kanso_metrics::Ledger::default();
+                        if login {
+                            ledger.install_id();
+                            ledger.record(
+                                kanso_metrics::Day::from_unix_ms(i64::from(version) * 86_400_000),
+                                kanso_metrics::Feature::Import(kanso_metrics::ImportSource::Bear),
+                            );
+                        }
+                        ledger
                     },
                 },
             )
@@ -1406,6 +1432,33 @@ mod tests {
             let debug = format!("{settings:?}");
             prop_assert!(!debug.contains(&password));
         }
+    }
+
+    /// A file from before usage metrics hasn't seen the notice and has no
+    /// install ID; a damaged `metrics` entry costs the count, not the file.
+    #[test]
+    fn metrics_settings_default_and_survive_damage() {
+        let old: AppConfig =
+            serde_json::from_str(r#"{"version": 5, "nudges": {"syncOfferDismissed": true}}"#)
+                .unwrap();
+        assert!(!old.nudges.metrics_notice_seen);
+        assert_eq!(old.metrics, kanso_metrics::Ledger::default());
+        let damaged: AppConfig = serde_json::from_str(
+            r#"{"version": 5, "nudges": {"metricsNoticeSeen": true}, "metrics": {"installId": 7, "pending": ["ai", "nope"]}, "ai": {"enabled": true}}"#,
+        )
+        .unwrap();
+        assert!(damaged.nudges.metrics_notice_seen);
+        assert!(damaged.ai.enabled);
+        assert_eq!(damaged.metrics.existing_install_id(), None);
+        let mut ledger = kanso_metrics::Ledger::default();
+        let id = ledger.install_id();
+        let written = serde_json::to_value(AppConfig {
+            metrics: ledger,
+            ..AppConfig::default()
+        })
+        .unwrap();
+        assert_eq!(written["metrics"]["installId"], id.as_str());
+        assert_eq!(written["nudges"]["metricsNoticeSeen"], false);
     }
 
     /// Auto writes in the proportional face (Live too) and switches to

@@ -1158,6 +1158,22 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get metricsNoticeTitle => 'Kanso counts, it doesn’t watch';
+
+  @override
+  String get metricsNoticeMessage =>
+      'To know how many people use Kanso and on which devices, Kanso sends a small anonymous count once a day: the kind of device, Kanso’s version and which features were used. Never your notes, titles, tags, files, name or anything you type. Devices signed in to the same account count as one person, with an ID that can’t be traced back to the account.';
+
+  @override
+  String get metricsNoticeWhat => 'What’s sent, and what isn’t';
+
+  @override
+  String get metricsNoticeCode => 'The code';
+
+  @override
+  String get metricsNoticeOk => 'OK';
+
+  @override
   String get backupNoticeTitle => 'Notes stay on this device';
 
   @override

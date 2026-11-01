@@ -26,6 +26,7 @@ import '../test/core/bridge/suites/journal_suite.dart';
 import '../test/core/bridge/suites/library_suite.dart';
 import '../test/core/bridge/suites/linking_suite.dart';
 import '../test/core/bridge/suites/locks_suite.dart';
+import '../test/core/bridge/suites/metrics_suite.dart';
 import '../test/core/bridge/suites/publish_suite.dart';
 import '../test/core/bridge/suites/reminders_suite.dart';
 import '../test/core/bridge/suites/renderer_suite.dart';
@@ -59,12 +60,17 @@ void main() {
 
   librarySuite(openDeviceLibrary);
   linkingSuite(openDeviceLibrary);
+  metricsSuite(openDeviceLibrary);
   locksSuite(
     openDeviceLibrary,
     answer: biometricAnswerOf(
+      // The library is loaded on its own, not into the process's symbols:
+      // opened by name, as the lock plugin falls back to.
       Platform.isAndroid
           ? DynamicLibrary.open('libkanso_mobile_bridge.so')
-          : DynamicLibrary.process(),
+          : DynamicLibrary.open(
+              'kanso_mobile_bridge.framework/kanso_mobile_bridge',
+            ),
     ),
   );
   syncSuite(openDeviceLibrary);

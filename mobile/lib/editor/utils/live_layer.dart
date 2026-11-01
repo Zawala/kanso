@@ -70,8 +70,7 @@ class LiveLayer {
     }
     final kept = <TextRange>[
       for (final range in conceal)
-        if (range.end <= revealed.start || range.start >= revealed.end)
-          range,
+        if (range.end <= revealed.start || range.start >= revealed.end) range,
     ];
     return kept.length == conceal.length
         ? this

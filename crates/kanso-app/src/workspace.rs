@@ -860,6 +860,7 @@ impl Workspace {
         }
         match self.store.put(DocType::Note, note, Put::Upsert, Origin::Ui) {
             Ok(created) => {
+                crate::metrics::record(cx, crate::metrics::Feature::NoteCreated);
                 self.library
                     .update(cx, |library, cx| library.select(Some(created.id), cx));
                 self.editor
@@ -930,6 +931,7 @@ impl Workspace {
         let note = json!({"title": title, "body": "", "bookId": book});
         match self.store.put(DocType::Note, note, Put::Upsert, Origin::Ui) {
             Ok(created) => {
+                crate::metrics::record(cx, crate::metrics::Feature::NoteCreated);
                 self.library
                     .update(cx, |library, cx| library.select(Some(created.id), cx));
                 self.editor
@@ -1304,6 +1306,17 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.open_beside(id, false, window, cx);
+    }
+
+    /// Opens note `id` as a sticky note, near this window's top right.
+    pub(crate) fn open_as_sticky(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_beside(id, true, window, cx);
+    }
+
+    /// Opens note `id` in a window of its own (a sticky when `sticky`),
+    /// placed from this one.
+    fn open_beside(&mut self, id: &str, sticky: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.flush(cx);
         let id = id.to_owned();
         let bounds = window.bounds();
@@ -1314,21 +1327,7 @@ impl Workspace {
             f32::from(bounds.size.height),
         );
         // The windows can't be looked through from inside this one's update.
-        cx.defer(move |cx| crate::note_window::open_note_window(&id, Some(from), false, cx));
-    }
-
-    /// Opens note `id` as a sticky note, near this window's top right.
-    pub(crate) fn open_as_sticky(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.flush(cx);
-        let id = id.to_owned();
-        let bounds = window.bounds();
-        let from = (
-            f32::from(bounds.origin.x),
-            f32::from(bounds.origin.y),
-            f32::from(bounds.size.width),
-            f32::from(bounds.size.height),
-        );
-        cx.defer(move |cx| crate::note_window::open_note_window(&id, Some(from), true, cx));
+        cx.defer(move |cx| crate::note_window::open_note_window(&id, Some(from), sticky, cx));
     }
 
     /// For a note's own window: opens note `id` here and the palette's
@@ -1699,6 +1698,7 @@ impl Workspace {
                 .await;
             cx.update(|window, cx| match result {
                 Ok(report) => {
+                    crate::metrics::record(cx, crate::metrics::Feature::Export);
                     window.push_notification(
                         Notification::success(format!(
                             "Exported {} notes and {} attachments.{}",

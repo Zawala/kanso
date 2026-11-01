@@ -12,4 +12,12 @@ abstract final class KansoLinks {
 
   /// Help with using Kanso, on the website.
   static final Uri help = Uri.parse('https://kansoapp.app/help');
+
+  /// Exactly what the anonymous usage count sends, and what it does not.
+  static final Uri metrics = Uri.parse('https://kansoapp.app/metrics');
+
+  /// The source and rules behind that count.
+  static final Uri metricsCode = Uri.parse(
+    'https://github.com/iamngoni/kanso/blob/master/docs/METRICS.md',
+  );
 }

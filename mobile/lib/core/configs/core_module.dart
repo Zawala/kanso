@@ -19,6 +19,7 @@ import '../bridge/api/approvals.dart';
 import '../bridge/api/gallery.dart';
 import '../bridge/api/library.dart';
 import '../bridge/api/locks.dart';
+import '../bridge/api/metrics.dart';
 import '../bridge/api/renderer.dart';
 import '../bridge/api/shared.dart';
 import '../bridge/api/sync.dart';
@@ -133,6 +134,9 @@ abstract class CoreModule {
 
   @lazySingleton
   KansoAi ai(KansoLibrary library) => library.ai();
+
+  @lazySingleton
+  KansoMetrics metrics(KansoLibrary library) => library.metrics();
 
   @lazySingleton
   KansoSync sync(KansoLibrary library) => library.syncing();

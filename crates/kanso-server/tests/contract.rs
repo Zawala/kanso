@@ -52,6 +52,10 @@ const TOOL_NAMES: [&str; 18] = [
     "read-file",
 ];
 
+/// Tools in the list above that the pinned Node server (1.5.0) hasn't got;
+/// a newer one installed here has them.
+const KANSO_ADDED: [&str; 1] = ["list-templates"];
+
 /// An MCP client: one JSON-RPC request in, its answer out.
 trait Mcp {
     fn request(&mut self, method: &str, params: Value) -> Value;
@@ -745,18 +749,21 @@ fn node_mcp_server_and_native_mcp_agree() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, TOOL_NAMES);
+    let expected: Vec<&str> = TOOL_NAMES
+        .into_iter()
+        .filter(|name| !KANSO_ADDED.contains(name))
+        .collect();
+    assert!(names == TOOL_NAMES || names == expected, "{names:?}");
     failures.extend(node.unexpected());
     verify_store(node.name, &node_server.store, &node.ids, &node.out_path);
 
     // Same tool definitions and resource template.
-    for (n, k) in node
-        .tools
-        .as_array()
-        .unwrap()
-        .iter()
-        .zip(native.tools.as_array().unwrap())
-    {
+    let native_tools = native.tools.as_array().unwrap();
+    for n in node.tools.as_array().unwrap() {
+        let Some(k) = native_tools.iter().find(|k| k["name"] == n["name"]) else {
+            failures.push(format!("tools/list {} is missing from /mcp", n["name"]));
+            continue;
+        };
         for key in ["name", "description", "inputSchema"] {
             if n[key] != k[key] {
                 failures.push(format!("tools/list {} differs in {key}", n["name"]));

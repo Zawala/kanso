@@ -113,8 +113,7 @@ void main() {
     await pumpUntilWindows(
       tester,
       windows,
-      (open) =>
-          open.length == 1 && open.single.title == 'Sprint plan, shared',
+      (open) => open.length == 1 && open.single.title == 'Sprint plan, shared',
     );
 
     // The window of a locked note is named "Locked note", whatever its

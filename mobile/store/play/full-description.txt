@@ -28,4 +28,4 @@ ONE LOOK, EVERYWHERE
 • Phones and tablets, with three panes on a big screen and the desktop's shortcuts on a keyboard.
 • Add a note from anywhere with the share sheet, and open the right note from a widget.
 
-Kanso is free, open-source software. There are no ads, no trackers and no analytics. The source is at github.com/iamngoni/kanso.
+Kanso is free, open-source software. There are no ads and no third-party tracking SDKs. After a one-time notice, Kanso sends a small anonymous usage count once a day; the notice lists exactly what it sends, and the source is at github.com/iamngoni/kanso.

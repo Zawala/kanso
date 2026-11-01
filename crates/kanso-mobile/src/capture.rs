@@ -53,7 +53,15 @@ impl Library {
     /// refused for good. See the module's docs. A folder that isn't there
     /// has no drops.
     pub fn save_drops(&self, inbox: &Path) -> Result<DropsSaved, KansoError> {
-        guard(|| save_drops_at(&self.inner.store, inbox, SystemTime::now()))
+        guard(|| {
+            let saved = save_drops_at(&self.inner.store, inbox, SystemTime::now())?;
+            if !saved.notes.is_empty() {
+                self.inner
+                    .metrics()
+                    .count(crate::metrics::Feature::QuickCapture);
+            }
+            Ok(saved)
+        })
     }
 
     /// Saves something shared from inside the app (photos, the camera, a
@@ -65,7 +73,13 @@ impl Library {
     /// written. A share with nothing Kanso can save is
     /// [`KansoError::Invalid`], saying why.
     pub fn capture(&self, share: Share) -> Result<CaptureOutcome, KansoError> {
-        guard(|| capture_at(&self.inner.store, share, &new_drop_id()))
+        guard(|| {
+            let captured = capture_at(&self.inner.store, share, &new_drop_id())?;
+            self.inner
+                .metrics()
+                .count(crate::metrics::Feature::QuickCapture);
+            Ok(captured)
+        })
     }
 
     /// Today's daily note, made in the Journal (from its daily template

@@ -288,6 +288,7 @@ impl LockSession {
             // Sealed with the key just typed, never one the session held.
             let saved = self.seal_note(note, &key)?;
             self.add_key(key, since);
+            self.inner.metrics().count(crate::metrics::Feature::Lock);
             Ok(saved)
         })
     }
@@ -300,7 +301,9 @@ impl LockSession {
         guard(|| {
             let note = self.lockable(id)?;
             let key = self.session_lock_key().ok_or(KansoError::Locked)?;
-            self.seal_note(note, &key)
+            let saved = self.seal_note(note, &key)?;
+            self.inner.metrics().count(crate::metrics::Feature::Lock);
+            Ok(saved)
         })
     }
 
@@ -477,6 +480,7 @@ impl LockSession {
                     sealed
                 }
             };
+            self.inner.metrics().count(crate::metrics::Feature::Lock);
             Ok(sealed)
         })
     }

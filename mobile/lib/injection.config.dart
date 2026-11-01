@@ -40,6 +40,7 @@ import 'core/bridge/api/approvals.dart' as _i283;
 import 'core/bridge/api/gallery.dart' as _i783;
 import 'core/bridge/api/library.dart' as _i455;
 import 'core/bridge/api/locks.dart' as _i983;
+import 'core/bridge/api/metrics.dart' as _i575;
 import 'core/bridge/api/renderer.dart' as _i832;
 import 'core/bridge/api/shared.dart' as _i315;
 import 'core/bridge/api/sync.dart' as _i591;
@@ -166,6 +167,8 @@ import 'lock/state/lock_setup/lock_setup_bloc.dart' as _i249;
 import 'lock/state/lock_status/lock_status_bloc.dart' as _i57;
 import 'lock/state/privacy_cover/privacy_cover_bloc.dart' as _i330;
 import 'lock/state/unlock/unlock_bloc.dart' as _i797;
+import 'metrics/models/repos/abs/usage_metrics_repository.dart' as _i314;
+import 'metrics/models/repos/impl/rust_usage_metrics_repository.dart' as _i931;
 import 'note/models/repos/abs/note_place_repository.dart' as _i930;
 import 'note/models/repos/impl/memory_note_place_repository.dart' as _i503;
 import 'note/state/note/note_bloc.dart' as _i618;
@@ -425,6 +428,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i35.KansoAi>(
       () => coreModule.ai(gh<_i455.KansoLibrary>()),
     );
+    gh.lazySingleton<_i575.KansoMetrics>(
+      () => coreModule.metrics(gh<_i455.KansoLibrary>()),
+    );
     gh.lazySingleton<_i591.KansoSync>(
       () => coreModule.sync(gh<_i455.KansoLibrary>()),
     );
@@ -460,9 +466,6 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i38.LibraryRepository>(),
         gh<_i673.DiscoveryRepository>(),
       ),
-    );
-    gh.factory<_i284.VoiceNoteBloc>(
-      () => _i284.VoiceNoteBloc(gh<_i38.LibraryRepository>()),
     );
     gh.lazySingleton<_i937.PushRepository>(
       () => _i506.PluginPushRepository(
@@ -674,6 +677,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.factory<_i828.TemplatePickerBloc>(
       () => _i828.TemplatePickerBloc(gh<_i460.TemplatesRepository>()),
     );
+    gh.lazySingleton<_i314.UsageMetricsRepository>(
+      () => _i931.RustUsageMetricsRepository(gh<_i575.KansoMetrics>()),
+    );
     gh.factory<_i797.UnlockBloc>(
       () => _i797.UnlockBloc(
         gh<_i333.SessionRepository>(),
@@ -828,6 +834,12 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i314.AccountSettingsRepository>(),
         gh<_i1035.AccountRepository>(),
         gh<_i227.AuthSessionRepository>(),
+      ),
+    );
+    gh.factory<_i284.VoiceNoteBloc>(
+      () => _i284.VoiceNoteBloc(
+        gh<_i38.LibraryRepository>(),
+        gh<_i314.UsageMetricsRepository>(),
       ),
     );
     gh.factory<_i477.BiometricsBloc>(
