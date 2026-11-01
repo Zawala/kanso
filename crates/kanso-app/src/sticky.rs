@@ -41,21 +41,26 @@ pub const BOOK_NAME: &str = "Stickies";
 /// What a sticky says once where Kanso can't keep it on top.
 pub const ON_TOP_HINT: &str = "GNOME doesn't let apps keep a window on top. Press Alt+Space and choose Always on Top, or turn on Run under XWayland in Settings › General and restart Kanso.";
 
-/// The header's paper: strong enough to read as the note's colour.
-pub fn paper(color: StickyColor, dark: bool) -> Hsla {
+/// The header's paper: the theme's own surface (`base`, its editor
+/// background) tinted with the note's colour, so it reads as that colour
+/// in every theme and keeps the theme's text readable on it. Pure.
+pub fn paper(color: StickyColor, base: Hsla) -> Hsla {
     let (h, s) = hue(color);
-    if dark {
-        hsla(h, s * 0.45, 0.26, 1.)
+    if base.l < 0.5 {
+        hsla(h, s * 0.45, (base.l + PAPER_STEP).min(0.5), 1.)
     } else {
-        hsla(h, s, 0.80, 1.)
+        hsla(h, s, (base.l - PAPER_STEP).max(0.5), 1.)
     }
 }
 
+/// How far the paper sits from the theme's surface in lightness.
+const PAPER_STEP: f32 = 0.1;
+
 /// A wash of the colour laid over the text, so the whole note reads as
-/// paper of that colour without the text views knowing.
-pub fn wash(color: StickyColor, dark: bool) -> Hsla {
+/// paper of that colour without the text views knowing. Pure.
+pub fn wash(color: StickyColor, base: Hsla) -> Hsla {
     let (h, s) = hue(color);
-    if dark {
+    if base.l < 0.5 {
         hsla(h, s * 0.6, 0.5, 0.07)
     } else {
         hsla(h, s, 0.6, 0.12)
@@ -329,7 +334,15 @@ mod tests {
     // Not `super::*`: GPUI's `test` would stand in for the standard one.
     use kanso_store::{Origin, Store};
 
-    use super::{BOOK_NAME, Frame, MARGIN, SIZE, beside, corner_frame, home_display, save_sticky};
+    use gpui_kit::hsla;
+    use proptest::prelude::*;
+    use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
+
+    use super::{
+        BOOK_NAME, Frame, MARGIN, SIZE, beside, corner_frame, home_display, paper, save_sticky,
+        wash,
+    };
+    use crate::config::StickyColor;
 
     const LAPTOP: Frame = (0., 0., 1440., 900.);
 
@@ -391,6 +404,65 @@ mod tests {
         assert_eq!(
             (note.title.as_str(), note.body.as_str()),
             ("docker ps -a", "docker ps -a")
+        );
+    }
+
+    /// Runs `property` over random colours and theme surfaces from a
+    /// pinned seed.
+    fn check(property: impl Fn(StickyColor, gpui_kit::Hsla) -> Result<(), TestCaseError>) {
+        let config = Config {
+            cases: 256,
+            failure_persistence: None,
+            ..Config::default()
+        };
+        let rng = TestRng::from_seed(RngAlgorithm::ChaCha, &[7; 32]);
+        let mut runner = TestRunner::new_with_rng(config, rng);
+        let strategy = (
+            0..StickyColor::ALL.len(),
+            0.0f32..=1.0,
+            0.0f32..=1.0,
+            0.0f32..=1.0,
+        );
+        runner
+            .run(&strategy, |(i, h, s, l)| {
+                property(StickyColor::ALL[i], hsla(h, s, l, 1.))
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn paper_stays_on_its_side_of_the_themes_surface() {
+        check(|color, base| {
+            let p = paper(color, base);
+            prop_assert_eq!(p.a, 1.0);
+            // Dark themes get dark paper, light themes light paper, so
+            // the theme's text stays readable on it.
+            prop_assert_eq!(p.l <= 0.5, base.l < 0.5 || p.l == 0.5);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn the_wash_is_faint_and_follows_the_theme() {
+        check(|color, base| {
+            let w = wash(color, base);
+            prop_assert!(w.a > 0.0 && w.a <= 0.12);
+            prop_assert_eq!(w.l <= 0.5, base.l < 0.5);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn colours_differ_on_one_theme_and_themes_on_one_colour() {
+        let light = hsla(0.6, 0.1, 0.95, 1.);
+        assert_ne!(
+            paper(StickyColor::Yellow, light),
+            paper(StickyColor::Blue, light)
+        );
+        let dark = hsla(0.6, 0.1, 0.1, 1.);
+        assert_ne!(
+            paper(StickyColor::Yellow, light),
+            paper(StickyColor::Yellow, dark)
         );
     }
 }
