@@ -785,6 +785,13 @@ impl NoteWindow {
         });
     }
 
+    /// Saves the note, puts it away and closes the window.
+    fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.editor.update(cx, |editor, cx| editor.flush(cx));
+        self.put_away(false, cx);
+        window.defer(cx, |window, _| window.remove_window());
+    }
+
     /// Closes the window for a note that is gone.
     fn close_for_good(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.closing {
@@ -871,10 +878,7 @@ impl Render for NoteWindow {
                 cx.listener(|this, _: &MouseUpEvent, _, _| this.band_drag.up()),
             )
             .on_action(cx.listener(|this, _: &CloseNoteWindow, window, cx| {
-                // As the close button does: saved, and put away.
-                this.editor.update(cx, |editor, cx| editor.flush(cx));
-                this.put_away(false, cx);
-                window.defer(cx, |window, _| window.remove_window());
+                this.close(window, cx);
             }))
             .on_action(cx.listener(|this, _: &SaveNote, _, cx| {
                 this.editor.update(cx, |editor, cx| editor.flush(cx));
@@ -1087,9 +1091,10 @@ impl NoteWindow {
                 )),
             )
             .child(
-                button("sticky-close", Lucide::Close, "Close").on_click(|_, window, cx| {
-                    window.dispatch_action(CloseNoteWindow.boxed_clone(), cx);
-                }),
+                // Closed directly: a sticky is a non-activating panel, so
+                // nothing in it may hold focus for an action to reach.
+                button("sticky-close", Lucide::Close, "Close")
+                    .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
             )
     }
 }
