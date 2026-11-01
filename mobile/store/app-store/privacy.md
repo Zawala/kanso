@@ -16,7 +16,7 @@ are not collected by sync.
 ## Do you or your third-party partners collect data from this app?
 
 **Yes.** After the one-time notice is acknowledged, Kanso sends a small anonymous
-usage count once a day. With a sync account, the sync service also holds the
+usage count (at launch, every hour while open, and when the app goes to the background). With a sync account, the sync service also holds the
 account's username. A crash report is sent only when the person taps Send.
 
 No account is needed for the usage count, and no advertising, attribution or
@@ -54,7 +54,7 @@ request is declared below.
 
 | Data type (Apple's name) | What it is here | Purpose | Linked to identity | Tracking |
 |---|---|---|---|---|
-| Usage Data › **Product Interaction** | Anonymous daily use: app active, platform, phone/tablet/desktop form, app version, OS version, sync mode, whether AI is on, a note-count range, and a closed list of feature names used that day. Never note text, titles, tags, file names or anything typed (`docs/METRICS.md`) | Analytics | No | No |
+| Usage Data › **Product Interaction** | Anonymous use: app active once a day, app opened, session length as a range, platform, phone/tablet form, app version and release channel, OS version, sync mode, sync errors and note, notebook and attachment-size ranges, whether AI is on, the UI language and theme or editor mode as plain labels (a custom theme is just "custom"), and a closed list of feature names with how often they were used as a range. Never note text, titles, tags, file names, theme or plugin names, or anything typed (`docs/METRICS.md`) | Analytics | No | No |
 | Identifiers › **Device ID** | The pseudonymous metrics ID: `a_` plus a value derived from the account's encryption key while signed in, else a random `i_` install ID kept in the local library. It is not an advertising or hardware ID, and neither Kanso nor PostHog can trace it back to an account | Analytics | No | No |
 | Location › **Coarse Location** | The two-letter country Cloudflare reports for the metrics request, added by the Worker before PostHog. No IP address is stored or sent to PostHog | Analytics | No | No |
 | Diagnostics › **Crash Data** | A crash report the person chose to send: where in Kanso's code it failed (stack frames), the app and OS versions and the device model. Never note text, titles or file names (`docs/CRASH-REPORTS.md`). Sent without a session or device ID; the server stores no IP address with it and deletes it after 90 days | App Functionality | No | No |
