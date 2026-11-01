@@ -1005,6 +1005,14 @@ impl NotificationList {
     }
 }
 
+/// The toast's width in a window `window` wide: `width` unless that
+/// leaves less than `gutter` around it, then the window less the gutter
+/// (never under 120px, or the window if it is narrower still).
+fn fit_width(width: Pixels, window: Pixels, gutter: Pixels) -> Pixels {
+    let room = (window - gutter).max(px(120.)).min(window);
+    width.min(room)
+}
+
 impl Render for NotificationList {
     fn render(
         &mut self,
@@ -1015,6 +1023,9 @@ impl Render for NotificationList {
         let settings = &cx.theme().notification;
         let (placement, margins, width) =
             (settings.placement, settings.margins.clone(), settings.width);
+        // A window narrower than the toast (a sticky note): the toast fits
+        // inside it, with the margins either side, and its text wraps.
+        let width = fit_width(width, size.width, margins.left + margins.right);
 
         let groups = self.grouped(cx);
         self.stacks
@@ -1078,6 +1089,23 @@ mod tests {
     use super::*;
     use crate::theme::Theme;
     use gpui::{TestAppContext, VisualTestContext};
+
+    #[test]
+    fn a_toast_fits_a_narrow_window_and_keeps_its_width_in_a_wide_one() {
+        // A wide window: the toast's own width.
+        assert_eq!(fit_width(px(382.), px(1200.), px(32.)), px(382.));
+        // A sticky note: the window less the gutter.
+        assert_eq!(fit_width(px(382.), px(300.), px(32.)), px(268.));
+        // Narrower than the floor: never wider than the window itself.
+        assert_eq!(fit_width(px(382.), px(100.), px(32.)), px(100.));
+        // Never wider than asked, nor than the window, over a sweep.
+        for window in (50..1500).step_by(7) {
+            for gutter in [0., 16., 32., 80.] {
+                let got = fit_width(px(382.), px(window as f32), px(gutter));
+                assert!(got <= px(382.) && got <= px(window as f32) && got > px(0.));
+            }
+        }
+    }
 
     struct FooKind;
     struct BarKind;

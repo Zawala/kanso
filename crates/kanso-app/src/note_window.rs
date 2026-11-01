@@ -960,10 +960,10 @@ impl Render for NoteWindow {
             .on_action(|_: &SearchAllNotes, _, cx| forward(SearchAllNotes, cx))
             .when(self.sticky.is_none(), |el| el.child(editor.clone()))
             .when_some(self.sticky, |el, color| {
-                let dark = cx.theme().is_dark();
+                let base = Hsla::from(Colors::get(cx).editor);
                 el.flex()
                     .flex_col()
-                    .child(self.render_sticky_header(color, dark, cx))
+                    .child(self.render_sticky_header(color, base, cx))
                     .child(
                         div()
                             .flex_1()
@@ -977,7 +977,7 @@ impl Render for NoteWindow {
                                 div()
                                     .absolute()
                                     .inset_0()
-                                    .bg(crate::sticky::wash(color, dark)),
+                                    .bg(crate::sticky::wash(color, base)),
                             ),
                     )
                     .when(self.fixed_frame.is_none(), |el| {
@@ -994,7 +994,7 @@ impl NoteWindow {
     fn render_sticky_header(
         &self,
         color: StickyColor,
-        dark: bool,
+        base: Hsla,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         use gpui_kit::assets::IconName as Lucide;
@@ -1020,7 +1020,7 @@ impl NoteWindow {
             .pr_1()
             .gap_0p5()
             .items_center()
-            .bg(crate::sticky::paper(color, dark))
+            .bg(crate::sticky::paper(color, base))
             .child(
                 div()
                     .id("sticky-title")
