@@ -24,7 +24,10 @@ if ! [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
 	echo "$0: '$version' isn't a release version (x.y.z or x.y.z-pre)" >&2
 	exit 2
 fi
-deb_version="${version/-/\~}-1"
+# A literal tilde from a variable: \~ in the replacement keeps the backslash
+# before bash 5.2.
+tilde='~'
+deb_version="${version/-/$tilde}-1"
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 
