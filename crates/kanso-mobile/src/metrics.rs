@@ -120,17 +120,17 @@ impl MobileMetrics {
         guard(|| self.send_due_if(enabled(), tablet, os_version, ai, locale, theme_mode, theme))
     }
 
-    /// The internal count path, with the build gate passed in so tests can
-    /// exercise the ledger without being release builds.
-    pub(crate) fn record_feature(&self, feature: Feature) -> Result<(), KansoError> {
-        guard(|| self.record_if(enabled(), feature))
-    }
-
     /// Counts a feature from product code. Metrics are best effort: a write
     /// failure must never turn a successful note, lock, share or import into
     /// an error.
     pub(crate) fn count(&self, feature: Feature) {
-        let _ = self.record_feature(feature);
+        self.count_n(feature, 1);
+    }
+
+    /// Counts `n` uses of a feature at once (a change to many notes counts
+    /// each note). Buffered in memory and written to the ledger in a batch.
+    pub(crate) fn count_n(&self, feature: Feature, n: u32) {
+        let _ = guard(|| self.count_n_if(enabled(), feature, n));
     }
 
     /// Counts that the note `id` was edited, once per note until the next
@@ -174,6 +174,7 @@ impl MobileMetrics {
         if !enabled || !self.notice_seen_now()? {
             return Ok(());
         }
+        self.flush_buffer()?;
         let _gate = crate::boundary::held(&self.inner.metrics_gate);
         let mut ledger = self.read_ledger()?;
         ledger.end_session(Day::today(), secs);
@@ -181,16 +182,46 @@ impl MobileMetrics {
     }
 
     fn record_if(&self, enabled: bool, feature: Feature) -> Result<(), KansoError> {
-        if !enabled || !self.notice_seen_now()? {
+        self.count_n_if(enabled, feature, 1)
+    }
+
+    /// Adds `n` uses to the in-memory buffer; the buffer is written to the
+    /// ledger at most every 30 seconds, and on every send and every end of
+    /// a session, so a hot action isn't a SQLite write.
+    fn count_n_if(&self, enabled: bool, feature: Feature, n: u32) -> Result<(), KansoError> {
+        if !enabled || n == 0 || !self.notice_seen_now()? {
             return Ok(());
         }
-        let now = Day::today();
-        let _gate = crate::boundary::held(&self.inner.metrics_gate);
-        let mut ledger = self.read_ledger()?;
-        if ledger.record(now, feature) {
-            self.write_ledger(&ledger)?;
+        let due = {
+            let mut buffer = crate::boundary::held(&self.inner.metrics_buffer);
+            buffer.add(Day::today(), feature, n);
+            buffer.flush_due()
+        };
+        if due {
+            self.flush_buffer()?;
         }
         Ok(())
+    }
+
+    /// Writes the buffered counts into the ledger in one read and one write.
+    /// If the write fails they go back in the buffer.
+    pub(crate) fn flush_buffer(&self) -> Result<(), KansoError> {
+        let pending = crate::boundary::held(&self.inner.metrics_buffer).take();
+        if pending.is_empty() {
+            return Ok(());
+        }
+        let written = (|| {
+            let _gate = crate::boundary::held(&self.inner.metrics_gate);
+            let mut ledger = self.read_ledger()?;
+            for (day, feature, n) in &pending {
+                ledger.record_n(*day, *feature, *n);
+            }
+            self.write_ledger(&ledger)
+        })();
+        if written.is_err() {
+            crate::boundary::held(&self.inner.metrics_buffer).put_back(pending);
+        }
+        written
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -210,6 +241,7 @@ impl MobileMetrics {
         let Some(platform) = Platform::current() else {
             return Ok(false);
         };
+        self.flush_buffer()?;
         let today = Day::today();
         let form = if tablet { Form::Tablet } else { Form::Phone };
         let device = Device::new(platform, form, env!("CARGO_PKG_VERSION"));
@@ -380,6 +412,8 @@ fn feature_named(name: &str) -> Option<Feature> {
         "quick_capture" => Feature::QuickCapture,
         "shared_note" => Feature::SharedNote,
         "export" => Feature::Export,
+        // Counted once per search, when a result is opened.
+        "search" => Feature::Search,
         // Counted by the Flutter shell, where the action happens.
         "graph_opened" => Feature::GraphOpened,
         "theme_changed" => Feature::ThemeChanged,
@@ -555,6 +589,35 @@ mod tests {
         assert!(is_builtin_theme("kanso-dark"));
         assert!(!is_builtin_theme("my-own-theme"));
         assert!(!is_builtin_theme(""));
+    }
+
+    #[test]
+    fn counts_are_buffered_and_written_together() {
+        let (_dir, library) = library();
+        let metrics = library.metrics();
+        metrics.mark_notice_seen().unwrap();
+        metrics.count_n_if(true, Feature::NoteMoved, 3).unwrap();
+        metrics.count_n_if(true, Feature::NoteMoved, 2).unwrap();
+        metrics.record_if(true, Feature::Search).unwrap();
+        // Nothing is in the ledger yet: no SQLite write per action.
+        assert_eq!(metrics.read_ledger().unwrap(), Ledger::default());
+        metrics.flush_buffer().unwrap();
+        let ledger = metrics.read_ledger().unwrap();
+        let id = kanso_metrics::install_id();
+        let device = Device::new(Platform::Ios, Form::Phone, "0.9.0");
+        let active = Active::new("17.0", SyncMode::Off, false, 0);
+        let batch = ledger.due(Day::today(), &id, &device, &active).unwrap();
+        let counts: Vec<_> = batch
+            .events
+            .iter()
+            .filter_map(|e| match &e.kind {
+                kanso_metrics::EventKind::FeatureUsed(f, n) => Some((f.name(), *n)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(counts, [("note_moved", 5), ("search", 1)]);
+        // A flush with nothing waiting writes nothing.
+        metrics.flush_buffer().unwrap();
     }
 
     #[test]

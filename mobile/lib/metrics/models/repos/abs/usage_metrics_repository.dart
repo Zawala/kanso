@@ -14,6 +14,7 @@ enum UsageFeature {
   quickCapture('quick_capture'),
   sharedNote('shared_note'),
   export('export'),
+  search('search'),
   graphOpened('graph_opened'),
   themeChanged('theme_changed'),
   wikilinkFollowed('wikilink_followed'),

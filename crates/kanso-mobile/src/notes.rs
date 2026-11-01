@@ -150,14 +150,16 @@ impl Library {
             let feature = match &change {
                 NoteChange::TogglePin => Some(Feature::NotePinned),
                 NoteChange::Move { .. } => Some(Feature::NoteMoved),
-                NoteChange::Trash | NoteChange::DeleteForever => Some(Feature::NoteDeleted),
+                // Deleting for good follows a trashing that already counted.
+                NoteChange::Trash => Some(Feature::NoteDeleted),
                 NoteChange::AddTag { .. } => Some(Feature::TagAdded),
                 NoteChange::Restore => Some(Feature::NoteRestored),
                 _ => None,
             };
             let applied = self.apply(ids, change)?;
+            // One count for each note the change wrote, in one buffered add.
             if let Some(feature) = feature.filter(|_| applied.count > 0) {
-                self.inner.metrics().count(feature);
+                self.inner.metrics().count_n(feature, applied.count);
             }
             Ok(Changed {
                 count: applied.count,
@@ -380,7 +382,6 @@ impl Library {
             if typed.is_empty() {
                 return Ok(Vec::new());
             }
-            self.inner.metrics().count(crate::metrics::Feature::Search);
             let query = scoped(typed, &scope);
             let by_content = query.clauses.iter().any(|clause| {
                 matches!(
