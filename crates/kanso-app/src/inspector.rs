@@ -200,6 +200,9 @@ impl Inspector {
                 self.ask.update(cx, |ask, cx| ask.end_conversation(cx));
             }
             self.tab = tab;
+            if tab == InspectorTab::Backlinks {
+                crate::metrics::record(cx, crate::metrics::Feature::BacklinksOpened);
+            }
             self.scroll.set_offset(point(px(0.), px(0.)));
             cx.emit(InspectorEvent::Tab(tab));
             cx.notify();

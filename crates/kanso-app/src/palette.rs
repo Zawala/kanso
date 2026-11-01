@@ -1320,6 +1320,10 @@ impl Palette {
                     .update(cx, |library, cx| library.set_filter(filter, cx));
             }
             Target::Note(note) => {
+                // A search that ended in opening a note; the words aren't kept.
+                if !self.query(cx).is_empty() {
+                    crate::metrics::record(cx, crate::metrics::Feature::Search);
+                }
                 self.close(window, cx);
                 self.library
                     .update(cx, |library, cx| library.select(Some(note.id), cx));

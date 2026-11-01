@@ -969,6 +969,9 @@ impl Workspace {
         self.close_settings(window, cx);
         self.close_board(window, cx);
         self.set_focus_mode(false, window, cx);
+        if !self.graph_open {
+            crate::metrics::record(cx, crate::metrics::Feature::GraphOpened);
+        }
         let graph = match &self.graph {
             Some(graph) => graph.clone(),
             None => {

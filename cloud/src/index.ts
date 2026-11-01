@@ -103,6 +103,7 @@ import * as passkeys from "./passkeys";
 import * as proofs from "./proofs";
 import * as pushes from "./push";
 import { runCron } from "./purge";
+import { observe } from "./server_stats";
 import * as shares from "./shares";
 import * as signIn from "./sign_in";
 import * as sync from "./sync";
@@ -279,9 +280,14 @@ function match(path: string): Route | null {
 	return null;
 }
 
-/** Answers one request as of `now` (Unix ms); tests pass their own clock. */
-export async function handle(request: Request, env: Env, now: number): Promise<Response> {
+/**
+ * Answers one request as of `now` (Unix ms); tests pass their own clock. `matched`, when given,
+ * receives the router's name for the route (for counting; `unknown` when none matched), so the
+ * path is matched once.
+ */
+export async function handle(request: Request, env: Env, now: number, matched?: { name: string }): Promise<Response> {
 	let name = "unknown";
+	if (matched) matched.name = name;
 	try {
 		const route = match(new URL(request.url).pathname);
 		// Browsers always send Origin on the requests that matter; the native client never does (M7).
@@ -291,6 +297,7 @@ export async function handle(request: Request, env: Env, now: number): Promise<R
 		}
 		if (!route) return notFound();
 		name = route.name;
+		if (matched) matched.name = name;
 		const method = route.methods[request.method];
 		if (!method) return methodNotAllowed(Object.keys(route.methods).join(", "));
 		if (route.binding) {
@@ -318,8 +325,13 @@ export async function handle(request: Request, env: Env, now: number): Promise<R
 }
 
 export default {
-	fetch(request, env): Promise<Response> {
-		return handle(request, env, Date.now());
+	async fetch(request, env, ctx): Promise<Response> {
+		const started = Date.now();
+		const matched = { name: "unknown" };
+		const response = await handle(request, env, started, matched);
+		// Counted in memory, written in batches after the response (src/server_stats.ts).
+		observe(env, ctx, matched.name, response.status, Date.now() - started, started);
+		return response;
 	},
 	scheduled(_controller, env, ctx): void {
 		ctx.waitUntil(

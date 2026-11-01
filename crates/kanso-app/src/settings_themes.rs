@@ -106,10 +106,14 @@ pub fn select_installed(name: &str, dark: bool, cx: &mut App) {
     } else {
         ThemePreference::Light
     };
+    let changed = cx.global::<AppState>().config.appearance.themes != next;
     AppState::update_config(cx, |config| {
         config.appearance.themes = next;
         config.appearance.theme = legacy;
     });
+    if changed {
+        crate::metrics::record(cx, crate::metrics::Feature::ThemeChanged);
+    }
     themes::apply(None, cx);
 }
 
@@ -129,10 +133,14 @@ fn update(window: &mut Window, cx: &mut App, change: impl FnOnce(&ThemeSettings)
             ThemePreference::Light
         }
     };
+    let changed = cx.global::<AppState>().config.appearance.themes != next;
     AppState::update_config(cx, |config| {
         config.appearance.themes = next;
         config.appearance.theme = legacy;
     });
+    if changed {
+        crate::metrics::record(cx, crate::metrics::Feature::ThemeChanged);
+    }
     themes::apply(Some(window), cx);
 }
 

@@ -244,6 +244,9 @@ impl TasksView {
         }
         self.editor.update(cx, |editor, cx| editor.flush(cx));
         let outcome = self.board.toggle(id, &self.store, Clock::now_ms(cx));
+        if matches!(outcome, Toggled::Done(_)) {
+            crate::metrics::record(cx, crate::metrics::Feature::TaskToggled);
+        }
         self.after(outcome, cx);
     }
 

@@ -238,6 +238,9 @@ impl SyncHandle {
             cancel,
         );
         *held(&self.inner.sync_cancel) = None;
+        if result.is_err() {
+            self.inner.metrics().count_sync_error();
+        }
         let now = now_ms();
         let state = match &result {
             Ok(report) => SyncState::Synced {

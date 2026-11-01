@@ -146,7 +146,21 @@ impl Library {
     /// and moved between unlocked notebooks.
     pub fn change(&self, ids: Vec<String>, change: NoteChange) -> Result<Changed, KansoError> {
         guard(|| {
+            use crate::metrics::Feature;
+            let feature = match &change {
+                NoteChange::TogglePin => Some(Feature::NotePinned),
+                NoteChange::Move { .. } => Some(Feature::NoteMoved),
+                // Deleting for good follows a trashing that already counted.
+                NoteChange::Trash => Some(Feature::NoteDeleted),
+                NoteChange::AddTag { .. } => Some(Feature::TagAdded),
+                NoteChange::Restore => Some(Feature::NoteRestored),
+                _ => None,
+            };
             let applied = self.apply(ids, change)?;
+            // One count for each note the change wrote, in one buffered add.
+            if let Some(feature) = feature.filter(|_| applied.count > 0) {
+                self.inner.metrics().count_n(feature, applied.count);
+            }
             Ok(Changed {
                 count: applied.count,
                 undo: if applied.edits.is_empty() {
@@ -276,6 +290,9 @@ impl Library {
                 Put::Merge,
                 Origin::Ui,
             )?;
+            self.inner
+                .metrics()
+                .count(crate::metrics::Feature::NoteDeleted);
             Ok(())
         })
     }
@@ -315,6 +332,9 @@ impl Library {
                 Put::Upsert,
                 Origin::Ui,
             )?;
+            self.inner
+                .metrics()
+                .count(crate::metrics::Feature::NotebookCreated);
             notebook_rows(&self.inner.store.books()?)
                 .into_iter()
                 .find(|row| row.id == created.id)

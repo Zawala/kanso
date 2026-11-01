@@ -19,6 +19,7 @@ import { refusal } from "./http";
 import { expiredLimitsSql } from "./limits";
 import { DAY, FILE_ROW_COST, HOUR, MAX_SEALED_FILE, MIN_SEALED_FILE, REVOKED_KEEP_MS, SESSION_IDLE_MS } from "./protocol";
 import { runShortLinkPurges } from "./rerout";
+import { runServerStats } from "./server_stats";
 import { MAX_SEALED_SHARE, MIN_SEALED_SHARE, checksumHex, expireShares, runSharePurges, unpublishStatements } from "./shares";
 
 export const PURGE_LIST_LIMIT = 1000;
@@ -329,6 +330,12 @@ export async function runCron(env: Env, now: number): Promise<CronReport> {
 	const collabPurged = await runCollabPurges(env, now);
 	await env.DB.prepare(expiredLimitsSql()).bind(now).run();
 	await purgeCrashReports(env, now);
+	try {
+		await runServerStats(env, now);
+	} catch (err) {
+		// The numbers are best effort: a failure here never stops the other jobs.
+		console.error(JSON.stringify({ route: "server_stats", outcome: "failed", kind: (err as Error)?.name ?? "error" }));
+	}
 	const reconciled = await reconcile(env, now);
 	const housekeeping = await env.DB.batch([
 		// Sign-in ceremonies and approvals are dead a day after they expire; the

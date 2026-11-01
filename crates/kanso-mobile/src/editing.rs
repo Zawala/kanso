@@ -619,6 +619,10 @@ impl EditorSession {
                 }
             };
             self.shared.run(|st, _| plain(st))?;
+            self.shared
+                .inner
+                .metrics()
+                .count(crate::metrics::Feature::AttachmentAdded);
             // Written with the state let go: typing goes on meanwhile.
             let attached = kanso_engine::attach::attach_file(
                 &self.shared.inner.store,
@@ -991,6 +995,10 @@ impl EditorSession {
         guard(|| {
             self.shared.run(|_, _| Ok(()))?;
             let mut events = Vec::new();
+            self.shared
+                .inner
+                .metrics()
+                .count(crate::metrics::Feature::SyncConflictResolved);
             self.shared.keep_mine_now(&mut events);
             self.shared.send(events);
             self.shared.run(|st, _| Ok(st.save.clone()))
@@ -1007,6 +1015,10 @@ impl EditorSession {
                 let Some(incoming) = st.incoming.take() else {
                     return Ok(st.snapshot());
                 };
+                self.shared
+                    .inner
+                    .metrics()
+                    .count(crate::metrics::Feature::SyncConflictResolved);
                 self.shared.stash_draft(st, events);
                 match incoming {
                     Incoming::Changed(theirs) => {
@@ -1431,6 +1443,8 @@ impl Shared {
             st.history.close_step();
         }
         self.changed(st);
+        // Once per note until the next send, so typing costs nothing.
+        self.inner.metrics().count_note_edited(&st.note.id);
         self.outcome(st, Some(replacement))
     }
 

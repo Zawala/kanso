@@ -691,6 +691,10 @@ pub struct Nudges {
     /// The usage metrics notice was shown and OK pressed; nothing is sent
     /// before (docs/METRICS.md › The notice).
     pub metrics_notice_seen: bool,
+    /// Which version of the notice was acknowledged. The notice shows again
+    /// when what is sent changes (`metrics::NOTICE_VERSION`): a config from
+    /// before versions reads as 0 and sees it once more.
+    pub metrics_notice_version: u8,
 }
 
 impl Default for AppConfig {
@@ -1153,6 +1157,7 @@ mod tests {
                         sync_offer_dismissed: version % 2 == 0,
                         sticky_hint_seen: version % 3 == 0,
                         metrics_notice_seen: version % 3 == 0,
+                        metrics_notice_version: u8::try_from(version % 4).unwrap_or(0),
                     },
                     linux: super::LinuxSettings {
                         backend: if numbers {

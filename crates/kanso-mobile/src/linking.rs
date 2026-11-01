@@ -65,6 +65,9 @@ impl Linking {
     pub fn backlinks(&self, id: &str) -> Result<Vec<LinkRef>, KansoError> {
         guard(|| {
             let locks = self.locked_notes()?;
+            self.inner
+                .metrics()
+                .count(crate::metrics::Feature::BacklinksOpened);
             let found = backlinks::backlinks(&self.inner.store, id, &locks)?;
             Ok(found.into_iter().map(link_ref).collect())
         })

@@ -7,7 +7,27 @@ import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { utcDay } from "../src/crash_reports";
 import { type Env, handle } from "../src/index";
-import { FEATURES, FORMS, MAX_BATCH_BYTES, NOTES, PLATFORMS, SOURCES, SYNCS, resetKeyChecks } from "../src/metrics";
+import {
+	ACTIVE_OPTIONAL,
+	ATTACHMENTS_MB,
+	CHANNELS,
+	COUNTS,
+	DURATIONS,
+	EDITOR_MODES,
+	FEATURES,
+	FORMS,
+	MAX_BATCH_BYTES,
+	NOTEBOOKS,
+	NOTES,
+	PLATFORMS,
+	PLUGINS,
+	SOURCES,
+	SYNCS,
+	SYNC_ERRORS,
+	THEME_MODES,
+	eventTimestamp,
+	resetKeyChecks,
+} from "../src/metrics";
 import { ORIGIN, START, call, resetServer, testEnv } from "./helpers";
 
 const runs = (n: number) => ({ numRuns: Math.min(n, Number(env.FAST_CHECK_RUNS)) });
@@ -33,6 +53,21 @@ const BATCH = {
 			props: { platform: "macos", form: "desktop", app_version: "0.9.0", feature: "import", source: "obsidian" },
 		},
 	],
+};
+
+const COMMON = { platform: "ios", form: "phone", app_version: "0.10.0" };
+const OPENED = { event: "app_opened", day: TODAY, props: COMMON };
+const SESSION = { event: "session", day: TODAY, props: { ...COMMON, duration: "5-15m" } };
+const EXTRAS = {
+	locale_lang: "pt",
+	theme_mode: "dark",
+	theme: "kanso-dark",
+	editor_mode: "live",
+	plugins: "1-2",
+	notebooks: "5-19",
+	attachments_mb: "100-1000",
+	sync_errors: "0",
+	channel: "stable",
 };
 
 type Json = Record<string, any>;
@@ -104,7 +139,7 @@ describe("accepting", () => {
 				{
 					event: "app_active",
 					distinct_id: ID,
-					timestamp: `${TODAY}T12:00:00Z`,
+					timestamp: new Date(START).toISOString(),
 					properties: {
 						platform: "macos",
 						form: "desktop",
@@ -122,7 +157,7 @@ describe("accepting", () => {
 				{
 					event: "feature_used",
 					distinct_id: ID,
-					timestamp: `${TODAY}T12:00:00Z`,
+					timestamp: new Date(START).toISOString(),
 					properties: {
 						platform: "macos",
 						form: "desktop",
@@ -196,11 +231,50 @@ describe("accepting", () => {
 			props: { platform: "ios", form: "phone", app_version: "0.9.0", feature: "note_created" },
 		}));
 		expect((await post(batch)).status).toBe(204);
-		expect(sent[0].body.batch.map((e: Json) => e.timestamp)).toEqual([-2, -1, 0, 1, 2].map((d) => `${utcDay(START + d * DAY)}T12:00:00Z`));
+		// Stamped with the receipt time; an earlier day stays on its day; never later than receipt.
+		expect(sent[0].body.batch.map((e: Json) => e.timestamp)).toEqual([
+			`${utcDay(START - 2 * DAY)}T23:59:59Z`,
+			`${utcDay(START - DAY)}T23:59:59Z`,
+			new Date(START).toISOString(),
+			new Date(START).toISOString(),
+			new Date(START).toISOString(),
+		]);
 		expect(sent[0].body.batch[0].properties).not.toHaveProperty("source");
 		// The Worker's day is its UTC day, whatever the hour.
 		expect((await post(batch, { now: START + DAY - 1 })).status).toBe(204);
 		expect((await post(batch, { now: START + DAY })).body.field).toBe("events[0].day");
+	});
+
+	it("accepts the 0.9.0 batch unchanged: no count, none of the new props", async () => {
+		expect((await post(BATCH)).status).toBe(204);
+		const [active, used] = sent[0].body.batch;
+		expect(Object.keys(active.properties).slice(0, 7)).toEqual(["platform", "form", "app_version", "os_version", "sync", "ai", "notes"]);
+		expect(used.properties).not.toHaveProperty("count");
+	});
+
+	it("accepts every new event and prop exactly as the page defines them, in the page's order", async () => {
+		const batch = clone();
+		batch.events = [
+			{ ...batch.events[0], props: { ...Object.fromEntries(Object.entries(EXTRAS).reverse()), ...batch.events[0].props } },
+			OPENED,
+			SESSION,
+			{ event: "feature_used", day: TODAY, props: { ...COMMON, feature: "note_edited", count: "21+" } },
+			{ event: "feature_used", day: TODAY, props: { ...COMMON, feature: "import", source: "bear", count: "2-5" } },
+		];
+		expect((await post(batch)).status).toBe(204);
+		const forwarded = sent[0].body.batch as Json[];
+		const own = (e: Json) => Object.keys(e.properties).filter((k) => !k.startsWith("$") && k !== "country");
+		expect(own(forwarded[0])).toEqual(["platform", "form", "app_version", "os_version", "sync", "ai", "notes", ...ACTIVE_OPTIONAL]);
+		expect(own(forwarded[1])).toEqual(["platform", "form", "app_version"]);
+		expect(own(forwarded[2])).toEqual(["platform", "form", "app_version", "duration"]);
+		expect(own(forwarded[3])).toEqual(["platform", "form", "app_version", "feature", "count"]);
+		expect(own(forwarded[4])).toEqual(["platform", "form", "app_version", "feature", "source", "count"]);
+		// Any subset of the optional props is fine.
+		sent = [];
+		const some = clone();
+		some.events[0].props.theme = "custom";
+		some.events[0].props.locale_lang = "other";
+		expect((await post(some)).status).toBe(204);
 	});
 
 	it("checks and sends nothing without POSTHOG_KEY", async () => {
@@ -273,6 +347,35 @@ describe("refusing", () => {
 	const feature = (edit: (p: Json) => void) => mutate((b) => edit(b.events[1].props));
 	const P0 = "events[0].props";
 	const P1 = "events[1].props";
+	const opened = (edit: (p: Json) => void) => mutate((b) => ((b.events[0] = structuredClone(OPENED)), edit(b.events[0].props)));
+	const session = (edit: (p: Json) => void) => mutate((b) => ((b.events[0] = structuredClone(SESSION)), edit(b.events[0].props)));
+	const NEW_CASES: [string, string, Json][] = [
+		...(
+			[
+				["locale_lang", "english"],
+				["locale_lang", "EN"],
+				["locale_lang", 5],
+				["theme_mode", "auto"],
+				["theme", "My Theme"],
+				["theme", "-dark"],
+				["theme", "a".repeat(33)],
+				["editor_mode", "wysiwyg"],
+				["plugins", "2"],
+				["notebooks", "1-5"],
+				["attachments_mb", "10"],
+				["sync_errors", "7"],
+				["channel", "nightly"],
+			] as [string, unknown][]
+		).map(([key, value]): [string, string, Json] => [`optional ${key} out of its list`, `${P0}.${key}`, active((p) => (p[key] = value))]),
+		["app_opened with an extra prop", P0, opened((p) => (p.duration = "<1m"))],
+		["app_opened without a form", `${P0}.form`, opened((p) => delete p.form)],
+		["session without a duration", `${P0}.duration`, session((p) => delete p.duration)],
+		["session duration out of its list", `${P0}.duration`, session((p) => (p.duration = "2m"))],
+		["session with an extra prop", P0, session((p) => (p.notes = "0"))],
+		["count out of its list", `${P1}.count`, feature((p) => (p.count = "5"))],
+		["count as a number", `${P1}.count`, feature((p) => (p.count = 3))],
+		["an unknown feature", `${P1}.feature`, feature((p) => ((p.feature = "keystrokes"), delete p.source))],
+	];
 	const cases: [string, string, Json][] = [
 		["v", "v", mutate((b) => (b.v = 2))],
 		["v as text", "v", mutate((b) => (b.v = "1"))],
@@ -284,7 +387,7 @@ describe("refusing", () => {
 		["events not an array", "events", mutate((b) => (b.events = b.events[0]))],
 		["too many events", "events", mutate((b) => (b.events = Array(33).fill(b.events[1])))],
 		["event not an object", "events[1]", mutate((b) => (b.events[1] = "app_active"))],
-		["event name", "events[0].event", mutate((b) => (b.events[0].event = "app_opened"))],
+		["event name", "events[0].event", mutate((b) => (b.events[0].event = "server_stats"))],
 		["day with a time", "events[0].day", mutate((b) => (b.events[0].day = `${TODAY}T10:00`))],
 		["day not a calendar day", "events[0].day", mutate((b) => (b.events[0].day = "2027-02-30"))],
 		["day three days back", "events[0].day", mutate((b) => (b.events[0].day = utcDay(START - 3 * DAY)))],
@@ -302,11 +405,12 @@ describe("refusing", () => {
 		["notes as a count", `${P0}.notes`, active((p) => (p.notes = 120))],
 		["notes out of the list", `${P0}.notes`, active((p) => (p.notes = "100-1000"))],
 		["missing prop", `${P0}.notes`, active((p) => delete p.notes)],
-		["feature", `${P1}.feature`, feature((p) => ((p.feature = "search"), delete p.source))],
+		["feature", `${P1}.feature`, feature((p) => ((p.feature = "telemetry"), delete p.source))],
 		["source", `${P1}.source`, feature((p) => (p.source = "roam"))],
 		["import without a source", `${P1}.source`, feature((p) => delete p.source)],
 		["a source without import", P1, feature((p) => (p.feature = "export"))],
 		["app_active props on feature_used", `${P1}.feature`, mutate((b) => (b.events[1].props = structuredClone(b.events[0].props)))],
+		...NEW_CASES,
 		["missing day", "events[0].day", mutate((b) => delete b.events[0].day)],
 		["missing id", "id", mutate((b) => delete b.id)],
 	];
@@ -402,18 +506,18 @@ describe("size", () => {
 });
 
 describe("rate limit", () => {
-	it("allows 60 an hour per address, then 429 with retry_after, and resets with the window", async () => {
-		for (let i = 0; i < 60; i++) expect((await post(BATCH, { now: START + i })).status).toBe(204);
+	it("allows 600 an hour per address, then 429 with retry_after, and resets with the window", async () => {
+		for (let i = 0; i < 600; i++) expect((await post(BATCH, { now: START + i })).status).toBe(204);
 		const over = await post(BATCH, { now: START + 100 });
 		expect(over.status).toBe(429);
 		expect(over.body).toMatchObject({ error: "rate_limited", limit: "metrics-ip" });
 		expect(over.headers.get("retry-after")).toBe(String(over.body.retry_after));
-		expect(sent).toHaveLength(60);
+		expect(sent).toHaveLength(600);
 		expect((await post(BATCH, { now: START + 3_600_000 })).status).toBe(204);
 	});
 
 	it("counts invalid batches too, keeps addresses apart, and is separate from crash reports", async () => {
-		for (let i = 0; i < 60; i++) expect((await post({ ...BATCH, v: 2 })).status).toBe(400);
+		for (let i = 0; i < 600; i++) expect((await post({ ...BATCH, v: 2 })).status).toBe(400);
 		expect((await post(BATCH)).status).toBe(429);
 		expect((await post(BATCH, { ip: "203.0.113.10" })).status).toBe(204);
 		const crash = await call("/v1/crash-reports", { method: "POST", json: {}, ip: "203.0.113.9" });
@@ -429,20 +533,39 @@ const platformForm = fc.constantFrom(...PLATFORMS).chain((platform) =>
 	fc.record({ platform: fc.constant(platform), form: ["macos", "windows", "linux"].includes(platform) ? fc.constant("desktop") : fc.constantFrom(...FORMS) }),
 );
 const day = fc.integer({ min: -2, max: 2 }).map((d) => utcDay(START + d * DAY));
+const common = fc.tuple(platformForm, version).map(([pf, app_version]) => ({ ...pf, app_version }));
+const optionalProps = fc
+	.record(
+		{
+			locale_lang: fc.oneof(fc.constant("other"), fc.stringMatching(/^[a-z]{2}$/)),
+			theme_mode: fc.constantFrom(...THEME_MODES),
+			theme: fc.oneof(fc.constant("custom"), fc.stringMatching(/^[a-z0-9][a-z0-9-]{0,31}$/)),
+			editor_mode: fc.constantFrom(...EDITOR_MODES),
+			plugins: fc.constantFrom(...PLUGINS),
+			notebooks: fc.constantFrom(...NOTEBOOKS),
+			attachments_mb: fc.constantFrom(...ATTACHMENTS_MB),
+			sync_errors: fc.constantFrom(...SYNC_ERRORS),
+			channel: fc.constantFrom(...CHANNELS),
+		},
+		{ requiredKeys: [] },
+	)
+	.map((o) => o as Json);
 const event: fc.Arbitrary<Json> = fc.oneof(
 	fc.record({
 		event: fc.constant("app_active"),
 		day,
 		props: fc
-			.tuple(platformForm, version, osVersion, fc.constantFrom(...SYNCS), fc.boolean(), fc.constantFrom(...NOTES))
-			.map(([pf, app_version, os_version, sync, ai, notes]) => ({ ...pf, app_version, os_version, sync, ai, notes })),
+			.tuple(common, osVersion, fc.constantFrom(...SYNCS), fc.boolean(), fc.constantFrom(...NOTES), optionalProps)
+			.map(([c, os_version, sync, ai, notes, extra]) => ({ ...c, os_version, sync, ai, notes, ...extra })),
 	}),
+	fc.record({ event: fc.constant("app_opened"), day, props: common }),
+	fc.record({ event: fc.constant("session"), day, props: fc.tuple(common, fc.constantFrom(...DURATIONS)).map(([c, duration]) => ({ ...c, duration })) }),
 	fc.record({
 		event: fc.constant("feature_used"),
 		day,
 		props: fc
-			.tuple(platformForm, version, fc.constantFrom(...FEATURES), fc.constantFrom(...SOURCES))
-			.map(([pf, app_version, feature, source]) => ({ ...pf, app_version, feature, ...(feature === "import" ? { source } : {}) })),
+			.tuple(common, fc.constantFrom(...FEATURES), fc.constantFrom(...SOURCES), fc.option(fc.constantFrom(...COUNTS), { nil: undefined }))
+			.map(([c, feature, source, count]) => ({ ...c, feature, ...(feature === "import" ? { source } : {}), ...(count ? { count } : {}) })),
 	}),
 );
 const batch: fc.Arbitrary<Json> = fc.record({
@@ -468,7 +591,8 @@ describe("properties", () => {
 					const { country, $process_person_profile, $geoip_disable, $lib, ...props } = forwarded[i].properties;
 					expect(props).toEqual(e.props);
 					expect({ country, $process_person_profile, $geoip_disable, $lib }).toEqual({ country: "DE", $process_person_profile: false, $geoip_disable: true, $lib: "kanso-worker" });
-					expect(forwarded[i]).toMatchObject({ event: e.event, distinct_id: b.id, timestamp: `${e.day}T12:00:00Z` });
+					expect(forwarded[i]).toMatchObject({ event: e.event, distinct_id: b.id, timestamp: eventTimestamp(e.day, START) });
+					expect(Date.parse(forwarded[i].timestamp)).toBeLessThanOrEqual(START);
 				}
 			}),
 			runs(100),

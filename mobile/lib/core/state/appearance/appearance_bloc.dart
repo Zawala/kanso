@@ -10,6 +10,8 @@ import 'package:flutter/material.dart' show ThemeMode;
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../metrics/models/repos/abs/usage_metrics_repository.dart';
+import '../../../metrics/utils/count_usage.dart';
 import '../../bridge/api/types.dart' show DiagramRenderer;
 import '../../configs/kanso_palette.dart';
 import '../../models/data/appearance_status.dart';
@@ -204,6 +206,7 @@ class AppearanceBloc extends Bloc<AppearanceEvent, AppearanceState> {
     Emitter<AppearanceState> emit,
   ) async {
     final selection = state.selection.picked(id, dark: dark);
+    countUsage(UsageFeature.themeChanged);
     await _select(selection, emit);
   }
 

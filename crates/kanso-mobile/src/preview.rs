@@ -374,7 +374,11 @@ impl Library {
             let Some(item) = items.get(index as usize) else {
                 return Ok(Ticked::Missing);
             };
-            self.set_task(note_id, item.line, &item.text, !item.checked)
+            let ticked = self.set_task(note_id, item.line, &item.text, !item.checked)?;
+            self.inner
+                .metrics()
+                .count(crate::metrics::Feature::TaskToggled);
+            Ok(ticked)
         })
     }
 

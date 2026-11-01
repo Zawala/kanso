@@ -651,7 +651,18 @@ fn finish_sync(session: Arc<Session>, result: Option<Result<SyncReport, SyncErro
             services.sync = SyncState::Off;
         }
     } else if let Some(state) = finished.state {
+        let failed = matches!(
+            state,
+            SyncState::Failed(_)
+                | SyncState::Synced {
+                    problem: Some(_),
+                    ..
+                }
+        );
         services.sync = state;
+        if failed {
+            crate::metrics::record_sync_error(cx);
+        }
     }
     if finished.remerged {
         notify_windows(

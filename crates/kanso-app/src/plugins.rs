@@ -1136,6 +1136,7 @@ pub fn run_command(
     };
     let id = plugin_id.clone();
     let task = cx.background_spawn(async move { shared.run(&id, run, context) });
+    crate::metrics::record(cx, crate::metrics::Feature::PluginCommand);
     cx.spawn(async move |cx| {
         let report = task.await;
         cx.update(|cx| {
@@ -1532,6 +1533,7 @@ pub fn add_developer_folder(path: PathBuf, window: &mut Window, cx: &mut App) {
 pub fn confirm_install(plan: InstallPlan, grant: Grant, cx: &mut App) -> Result<(), String> {
     let shared = cx.global::<Plugins>().shared.clone();
     shared.install(&plan, grant)?;
+    crate::metrics::record(cx, crate::metrics::Feature::PluginInstalled);
     let name = plan.bundle.manifest.name.clone();
     let id = plan.id().to_owned();
     let plugins = cx.global_mut::<Plugins>();

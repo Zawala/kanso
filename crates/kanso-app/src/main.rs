@@ -82,6 +82,7 @@ mod markdown_source;
 mod mcp_cli;
 mod mcp_setup;
 mod metrics;
+mod metrics_hooks;
 mod model_fetch;
 mod models;
 mod nav_history;
@@ -752,6 +753,8 @@ fn watch_for_quit(cx: &mut App) {
         // A staged update goes in now, and Kanso opens again if Restart
         // asked for it.
         updates::install_on_quit(cx);
+        // The session's length and the last batch, before the config is saved.
+        metrics::on_quit(cx);
         AppState::save_pending_config(cx);
         clipboard::clear_secret_on_quit();
         async {}

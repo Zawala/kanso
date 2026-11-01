@@ -264,6 +264,7 @@ export async function resetServer(settings: Record<string, string> = { signup: "
 		env.DB.prepare("DELETE FROM sessions"),
 		env.DB.prepare("DELETE FROM accounts"),
 		env.DB.prepare("DELETE FROM limits"),
+		env.DB.prepare("DELETE FROM request_counts"),
 		env.DB.prepare("DELETE FROM purges"),
 		env.DB.prepare("UPDATE daily SET day = 0, count = 0"),
 		...Object.entries(values).map(([name, value]) => env.DB.prepare("UPDATE settings SET value = ?2 WHERE name = ?1").bind(name, value)),

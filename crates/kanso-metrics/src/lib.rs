@@ -11,11 +11,15 @@
 //! it.
 
 pub mod batch;
+pub mod buffer;
 pub mod ledger;
+mod ledger_model;
+pub mod ranges;
 pub mod send;
 pub mod values;
 
 pub use batch::{Batch, Event, EventKind};
+pub use buffer::{CountBuffer, FLUSH_EVERY_MS};
 pub use ledger::Ledger;
 pub use send::{ENDPOINT, Outcome, send};
 pub use values::{
