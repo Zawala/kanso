@@ -587,12 +587,12 @@ impl Device {
 
 /// What `app_active` adds. The first four always; the rest only where the
 /// platform has them cleanly (docs/METRICS.md › `app_active`).
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Active {
     os_version: String,
-    sync: Option<SyncMode>,
+    sync: SyncMode,
     ai: bool,
-    notes: Option<NotesRange>,
+    notes: NotesRange,
     pub(crate) extras: ActiveExtras,
     /// Sync errors since the last `app_active`, set by the ledger.
     pub(crate) sync_errors: u32,
@@ -617,9 +617,9 @@ impl Active {
     pub fn new(os_version: &str, sync: SyncMode, ai: bool, notes: u64) -> Active {
         Active {
             os_version: self::os_version(os_version),
-            sync: Some(sync),
+            sync,
             ai,
-            notes: Some(NotesRange::from_count(notes)),
+            notes: NotesRange::from_count(notes),
             extras: ActiveExtras::default(),
             sync_errors: 0,
         }
@@ -636,7 +636,7 @@ impl Active {
     }
 
     pub fn sync(&self) -> SyncMode {
-        self.sync.unwrap_or(SyncMode::Off)
+        self.sync
     }
 
     pub fn ai(&self) -> bool {
@@ -644,7 +644,7 @@ impl Active {
     }
 
     pub fn notes(&self) -> NotesRange {
-        self.notes.unwrap_or(NotesRange::None)
+        self.notes
     }
 
     pub fn extras(&self) -> &ActiveExtras {

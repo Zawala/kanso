@@ -113,8 +113,17 @@ impl Ledger {
     /// Notes one use of `feature` on `today`. It is reported with the next
     /// batch, as a count. Always changes the ledger.
     pub fn record(&mut self, today: Day, feature: Feature) -> bool {
+        self.record_n(today, feature, 1)
+    }
+
+    /// Notes `n` uses of `feature` on `today` at once (a batch of notes
+    /// changed together). Says whether the ledger changed: not for none.
+    pub fn record_n(&mut self, today: Day, feature: Feature, n: u32) -> bool {
+        if n == 0 {
+            return false;
+        }
         self.prune(today);
-        self.add_count(today, &feature.key(), 1);
+        self.add_count(today, &feature.key(), n);
         true
     }
 

@@ -77,6 +77,11 @@ struct Metrics {
     /// Notes edited in this batch window, so a note counts once however
     /// much it is typed in. Emptied each tick. IDs only, never kept.
     edited: std::collections::HashSet<String>,
+    /// Uses counted in memory, written to the ledger on a debounce, before
+    /// a send and on quit (so a batch of notes is one write, not hundreds).
+    buffer: kanso_metrics::CountBuffer,
+    /// A flush is scheduled.
+    flush_scheduled: bool,
     /// When this launch began, for the session's length.
     started: std::time::Instant,
     /// This launch's `app_opened` was noted.
@@ -86,17 +91,54 @@ struct Metrics {
 
 impl Global for Metrics {}
 
-/// Notes that `feature` was used, once a day; it goes with the next send.
-// no-prop-test: glue; `Ledger::record` holds the rule and is tested.
+/// Notes that `feature` was used; it goes with the next send as a count.
 pub fn record(cx: &mut App, feature: Feature) {
-    if !counting(cx) {
+    record_n(cx, feature, 1);
+}
+
+/// Notes `n` uses of `feature` at once (a change to many notes). Counted in
+/// memory and written to the settings on a debounce, so many notes are one
+/// write at most every [`kanso_metrics::FLUSH_EVERY_MS`].
+// no-prop-test: glue; `CountBuffer` and `Ledger::record_n` hold the rules and are tested.
+pub fn record_n(cx: &mut App, feature: Feature, n: u32) {
+    if !counting(cx) || !cx.has_global::<Metrics>() {
         return;
     }
-    let today = Day::from_unix_ms(Clock::now_ms(cx));
+    let metrics = cx.global_mut::<Metrics>();
+    metrics.buffer.add(feature, n);
+    if metrics.flush_scheduled {
+        return;
+    }
+    metrics.flush_scheduled = true;
+    cx.spawn(async move |cx| {
+        cx.background_executor()
+            .timer(Duration::from_millis(
+                u64::try_from(kanso_metrics::FLUSH_EVERY_MS).unwrap_or(30_000),
+            ))
+            .await;
+        cx.update(|cx| {
+            if cx.has_global::<Metrics>() {
+                cx.global_mut::<Metrics>().flush_scheduled = false;
+                flush(cx);
+            }
+        });
+    })
+    .detach();
+}
+
+/// Writes the counted uses to the ledger in the settings, once.
+fn flush(cx: &mut App) {
+    if !cx.has_global::<Metrics>() || cx.global::<Metrics>().buffer.is_empty() {
+        return;
+    }
+    let now = Clock::now_ms(cx);
+    let today = Day::from_unix_ms(now);
+    let mut buffer = std::mem::take(&mut cx.global_mut::<Metrics>().buffer);
     let mut ledger = cx.global::<AppState>().config.metrics.clone();
-    if ledger.record(today, feature) {
+    if buffer.flush(&mut ledger, today, now) {
         AppState::update_config(cx, |config| config.metrics = ledger);
     }
+    cx.global_mut::<Metrics>().buffer = buffer;
 }
 
 /// Notes that the note `note_id` was edited: once per note per batch window,
@@ -129,10 +171,14 @@ pub fn init(cx: &mut App) {
     cx.set_global(Metrics {
         sending: false,
         edited: std::collections::HashSet::new(),
+        buffer: kanso_metrics::CountBuffer::default(),
+        flush_scheduled: false,
         started: std::time::Instant::now(),
         launched: false,
         _schedule: Some(task),
     });
+    // This launch counts now, not at the first send, so a short one does too.
+    note_launch(cx);
 }
 
 /// Notes this launch (once), so the next send carries its `app_opened`.
@@ -253,6 +299,7 @@ fn tick(cx: &mut App) {
         return;
     }
     note_launch(cx);
+    flush(cx);
     // A note edited again after this send counts again in the next window.
     cx.global_mut::<Metrics>().edited.clear();
     let Some(batch) = due_batch(cx) else {
@@ -295,11 +342,18 @@ pub fn on_quit(cx: &mut App) {
     if !counting(cx) || !cx.has_global::<Metrics>() {
         return;
     }
+    flush(cx);
     let secs = cx.global::<Metrics>().started.elapsed().as_secs();
     let today = Day::from_unix_ms(Clock::now_ms(cx));
     let mut ledger = cx.global::<AppState>().config.metrics.clone();
     if ledger.end_session(today, secs) {
         AppState::update_config(cx, |config| config.metrics = ledger);
+    }
+    // A batch already on its way is not sent twice: what it carries and the
+    // session wait in the ledger for the next launch (a quit is no time to
+    // wait on a slow answer).
+    if cx.global::<Metrics>().sending {
+        return;
     }
     let Some(batch) = due_batch(cx) else {
         return;

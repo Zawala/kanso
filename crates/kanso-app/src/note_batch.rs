@@ -89,8 +89,16 @@ pub fn apply(
         );
         return;
     }
+    // One count per note changed, recorded together.
+    let mut tally: Vec<(crate::metrics::Feature, u32)> = Vec::new();
     for feature in crate::metrics_hooks::batch_features(&change, &from, on) {
-        crate::metrics::record(cx, feature);
+        match tally.iter_mut().find(|(f, _)| *f == feature) {
+            Some((_, n)) => *n += 1,
+            None => tally.push((feature, 1)),
+        }
+    }
+    for (feature, n) in tally {
+        crate::metrics::record_n(cx, feature, n);
     }
     let notification =
         // Each batch's notice takes the place of the one before, so its
