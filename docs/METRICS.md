@@ -149,7 +149,14 @@ counted by the `limits` table (`metrics-ip`, a keyed hash of its IP group, 60 ba
 Configuration: `POSTHOG_HOST` is a plain var (`https://eu.i.posthog.com`); the project's API key
 is a secret, `wrangler secret put POSTHOG_KEY`. In the PostHog project, turn on **Discard client
 IP data** and leave autocapture, session replay, surveys and heatmaps off (they need a browser SDK,
-which Kanso doesn't load).
+which Kanso doesn't load). The key must be the project's API key (`phc_…`) from the same region
+as `POSTHOG_HOST`.
+
+`/batch/` answers `200` even for a key it doesn't know, and drops the events. So once per isolate
+the Worker also asks `POST ${POSTHOG_HOST}/flags/?v=2` with the key, which does refuse an unknown
+one, and logs `{"route":"posthog","outcome":"key_rejected"}` when it does. Each batch PostHog takes
+logs `{"route":"posthog","outcome":"ok","events":n}`, and each failure its status or error name.
+None of these lines carries an ID, a prop or the key.
 
 ## The notice
 
