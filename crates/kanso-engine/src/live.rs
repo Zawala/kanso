@@ -261,10 +261,24 @@ fn ordinal_text(start: Option<u32>, index: usize, depth: usize) -> String {
 /// one parse of the text.
 pub fn live_layout(text: &str, reveal: &[Range<usize>]) -> LiveLayout {
     let lines = Lines::new(text, reveal);
-    let parsed = std::panic::catch_unwind(|| markdown::to_mdast(text, &parse_options()));
-    let Ok(Ok(root)) = parsed else {
-        // A panic or a parse failure draws the note as written.
-        return LiveLayout::default();
+    let Ok(root) = kanso_render::markdown_safe::to_mdast(text, &parse_options()) else {
+        // A panic or a parse failure draws the note as written: every line
+        // in a block of its own, as the layout promises.
+        return LiveLayout {
+            blocks: (0..lines.starts.len())
+                .map(|line| LiveBlock {
+                    lines: line..line + 1,
+                    source: lines.starts[line]..lines.content(line).end,
+                    kind: BlockKind::Blank,
+                    list_depth: 0,
+                    quote_depth: 0,
+                    item_start: false,
+                    top: None,
+                    revealed: lines.revealed[line],
+                })
+                .collect(),
+            ..LiveLayout::default()
+        };
     };
     let count = lines.starts.len();
     let mut walk = Walk {

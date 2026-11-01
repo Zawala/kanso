@@ -569,13 +569,13 @@ mod tests {
     /// preview shows it as plain text instead of going down with it.
     #[test]
     fn text_markdown_rs_panics_on_shows_as_plain_paragraphs() {
-        let text = "Para\n---\n---\na\n===";
+        let text = "Para\n===\n===\na\n===";
         assert!(!kanso_render::markdown_safe::parses(text, &parse_options()));
         let prepared = prepare(text);
         assert_eq!(prepared.len(), 1);
         assert_eq!(
             prepared[0].text,
-            "Para\\\n\\-\\-\\-\\\n\\-\\-\\-\\\na\\\n\\=\\=\\="
+            "Para\\\n\\=\\=\\=\\\n\\=\\=\\=\\\na\\\n\\=\\=\\="
         );
         assert_eq!(split(text).len(), 1);
         assert_eq!(showable(text), prepared[0].text);

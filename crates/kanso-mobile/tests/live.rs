@@ -53,6 +53,21 @@ fn marks_styles_and_headings_are_in_utf16_units() {
     assert_eq!(batch.lines[0].scale, 1.6);
 }
 
+/// markdown-rs panics ("Cannot push to non-parent") on a setext heading
+/// followed by `---` lines and a paragraph; the layout must still come back
+/// with the text untouched.
+#[test]
+fn a_setext_heading_then_dashes_does_not_crash_the_layout() {
+    let phone = lone_phone();
+    let body = "Setext\n===\n---\npara **b** _i_ ~~s~~ `c` 🙂\n---\n";
+    let id = note(&phone.library, "Title", body);
+    let session = phone.library.edit(&id).unwrap();
+    let text = session.snapshot().unwrap().text;
+    assert!(text.contains(body));
+    session.live_document(Vec::new()).unwrap();
+    session.live_layout(0, units(&text) as u32).unwrap();
+}
+
 #[test]
 fn a_window_counts_from_its_start() {
     let phone = lone_phone();
