@@ -103,6 +103,7 @@ import * as passkeys from "./passkeys";
 import * as proofs from "./proofs";
 import * as pushes from "./push";
 import { runCron } from "./purge";
+import { observe } from "./server_stats";
 import * as shares from "./shares";
 import * as signIn from "./sign_in";
 import * as sync from "./sync";
@@ -317,9 +318,22 @@ export async function handle(request: Request, env: Env, now: number): Promise<R
 	}
 }
 
+/** The router's name for a request's path, for counting only: never the path itself. */
+export function routeName(request: Request): string {
+	try {
+		return match(new URL(request.url).pathname)?.name ?? "unknown";
+	} catch {
+		return "unknown";
+	}
+}
+
 export default {
-	fetch(request, env): Promise<Response> {
-		return handle(request, env, Date.now());
+	async fetch(request, env, ctx): Promise<Response> {
+		const started = Date.now();
+		const response = await handle(request, env, started);
+		// Counted in memory, written in batches after the response (src/server_stats.ts).
+		observe(env, ctx, routeName(request), response.status, Date.now() - started, started);
+		return response;
 	},
 	scheduled(_controller, env, ctx): void {
 		ctx.waitUntil(

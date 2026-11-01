@@ -24,7 +24,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("the default export", () => {
 	it("fetch answers with the real clock", async () => {
-		const response = await worker.fetch(new Request(`${ORIGIN}/v2/health`), testEnv());
+		const response = await worker.fetch(new Request(`${ORIGIN}/v2/health`), testEnv(), { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext);
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({
 			ok: true,
