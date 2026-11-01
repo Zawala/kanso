@@ -701,3 +701,56 @@ proptest! {
         }
     }
 }
+
+/// The note from a bug report: markdown-rs 1.0.0 panics on a setext heading
+/// whose underline is followed by a `---` line and a later setext heading.
+/// Live mode draws it.
+#[test]
+fn a_setext_heading_then_a_rule_is_drawn() {
+    let text = "Setext\n===\n---\npara **b** _i_ ~~s~~ `c` \u{1F642}\n---\n";
+    let layout = live_layout(text, &[]);
+    assert!(!layout.conceal.is_empty());
+    assert_eq!(
+        layout.blocks.iter().map(|b| b.lines.len()).sum::<usize>(),
+        6
+    );
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 64,
+        failure_persistence: None,
+        rng_seed: proptest::test_runner::RngSeed::Fixed(0x006b_616e_736f),
+        ..ProptestConfig::default()
+    })]
+
+    /// Random mixes of setext headings, thematic breaks, `---` lines, front
+    /// matter and inline marks never panic the layout, and every line is in
+    /// exactly one block, in order.
+    #[test]
+    fn prop_structural_mixes_never_break_the_layout(
+        pieces in prop::collection::vec(
+            prop::sample::select(vec![
+                "Setext\n===\n",
+                "Title\n---\n",
+                "---\n",
+                "***\n",
+                "===\n",
+                "\n",
+                "---\ntitle: x\n---\n",
+                "para **b** _i_ ~~s~~ `c` \u{1F642}\n",
+                "# h\n",
+            ]),
+            0..10,
+        ),
+    ) {
+        let text: String = pieces.concat();
+        let layout = live_layout(&text, &[]);
+        let mut next = 0;
+        for block in &layout.blocks {
+            prop_assert_eq!(block.lines.start, next);
+            next = block.lines.end;
+        }
+        prop_assert_eq!(next, text.matches('\n').count() + 1);
+    }
+}

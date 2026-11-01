@@ -821,7 +821,7 @@ fn risky_markup(text: &str) -> Vec<(std::ops::Range<usize>, Risky)> {
     with_math.constructs.math_flow = true;
     let mut found = Vec::new();
     for options in [with_math, markdown::ParseOptions::gfm()] {
-        match markdown::to_mdast(text, &options) {
+        match kanso_render::markdown_safe::to_mdast(text, &options) {
             Ok(root) => walk(&root, &mut found),
             // Unparseable: treat the whole text as risky.
             Err(_) => found.push((0..text.len(), Risky::Html)),
