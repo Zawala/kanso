@@ -10,6 +10,10 @@
 //! installs it too. With automatic updates off, the sidebar says "Update
 //! available · Download" instead.
 //!
+//! A copy apt installed (`/usr/bin`) is apt's to update: Kanso still says a
+//! release is out, but its button copies `sudo apt upgrade` instead of
+//! downloading anything or opening the release page.
+//!
 //! The work runs on threads with `kanso-update`; this module keeps the
 //! state, words and views. Without a transport (tests and snapshots),
 //! nothing reaches the network.
@@ -647,17 +651,62 @@ pub fn percent(done: u64, total: u64) -> u8 {
     (done.min(total).saturating_mul(100) / total) as u8
 }
 
+/// Whether apt installed this copy, so apt updates it.
+pub fn package_managed(install: &Result<Install, NotInstallable>) -> bool {
+    matches!(install, Err(NotInstallable::PackageManaged))
+}
+
+/// What the button for an available update says: Download, or for a copy
+/// apt installed, the command to copy.
+pub fn download_label(install: &Result<Install, NotInstallable>) -> &'static str {
+    if package_managed(install) {
+        "Copy Command"
+    } else {
+        "Download"
+    }
+}
+
+/// The pill's words for this install: an apt copy's pill names apt.
+pub fn pill_label(label: String, install: &Result<Install, NotInstallable>) -> String {
+    match label.strip_suffix(" · Download") {
+        Some(what) if package_managed(install) => format!("{what} · apt upgrade"),
+        _ => label,
+    }
+}
+
 /// "Download": stages the available update when this copy can replace
-/// itself, and otherwise opens its release page.
-pub fn download(cx: &mut App) {
+/// itself, copies `sudo apt upgrade` for a copy apt installed (never
+/// downloading or opening anything), and otherwise opens its release page.
+/// Returns whether it copied the command.
+pub fn download(cx: &mut App) -> bool {
     let updates = cx.global::<Updates>();
     let Phase::Available(update) = updates.phase.clone() else {
-        return;
+        return false;
     };
+    if package_managed(&updates.install) {
+        cx.write_to_clipboard(ClipboardItem::new_string(
+            kanso_update::install::APT_UPGRADE.to_owned(),
+        ));
+        return true;
+    }
     if updates.install.is_ok() && updates.transport.is_some() {
         start_download(update, cx);
     } else {
         open_release_page(&update.release_url, cx);
+    }
+    false
+}
+
+/// Says the command was copied, when [`download`] copied it.
+fn say_copied(copied: bool, window: &mut Window, cx: &mut App) {
+    if copied {
+        window.push_notification(
+            Notification::info(format!(
+                "Copied “{}”. Run it in a terminal to update Kanso.",
+                kanso_update::install::APT_UPGRADE
+            )),
+            cx,
+        );
     }
 }
 
@@ -862,6 +911,7 @@ pub fn release_date(pub_date: &str) -> Option<String> {
 pub fn render_pill(cx: &App) -> Option<AnyElement> {
     let updates = cx.try_global::<Updates>()?;
     let (kind, label) = pill(&updates.phase, updates.manual)?;
+    let label = pill_label(label, &updates.install);
     let colors = Colors::get(cx);
     let (bg, fg, icon) = match kind {
         PillKind::Ready => (colors.button, colors.button_text, Lucide::CircleArrowDown),
@@ -924,6 +974,7 @@ pub fn render_pill(cx: &App) -> Option<AnyElement> {
 pub fn render_rail_button(cx: &App) -> Option<AnyElement> {
     let updates = cx.try_global::<Updates>()?;
     let (kind, label) = pill(&updates.phase, updates.manual)?;
+    let label = pill_label(label, &updates.install);
     let colors = Colors::get(cx);
     let (color, icon) = match kind {
         PillKind::Ready => (colors.accent, Lucide::CircleArrowDown),
@@ -1081,9 +1132,10 @@ pub fn open_notes(notes: ReleaseNotes, kind: SheetKind, window: &mut Window, cx:
             SheetKind::Available => alert
                 .show_cancel(true)
                 .cancel_text("Later")
-                .ok_text("Download")
-                .on_ok(|_, _, cx| {
-                    download(cx);
+                .ok_text(download_label(&cx.global::<Updates>().install))
+                .on_ok(|_, window, cx| {
+                    let copied = download(cx);
+                    say_copied(copied, window, cx);
                     true
                 }),
             SheetKind::Installed => alert.show_cancel(false).ok_text("Done"),
@@ -1148,8 +1200,11 @@ pub fn page(cx: &mut Context<crate::settings::SettingsView>) -> Vec<AnyElement> 
         Phase::Available(_) => Button::new("download-update")
             .primary()
             .small()
-            .label("Download")
-            .on_click(|_, _, cx| download(cx))
+            .label(download_label(&updates.install))
+            .on_click(|_, window, cx| {
+                let copied = download(cx);
+                say_copied(copied, window, cx);
+            })
             .into_any_element(),
         phase => Button::new("check-updates")
             .outline()
@@ -1305,6 +1360,7 @@ mod tests {
         Platform, Problem, ReleaseNotes, StageError, Tone, Update, check_due, check_problem,
         flavour, just_updated, off_reason, percent, pill, release_date, stage_problem, status,
     };
+    use super::{download_label, pill_label};
     use kanso_update::Asset;
     use proptest::prelude::*;
 
@@ -1486,6 +1542,36 @@ mod tests {
         );
         assert!(off_reason(&flavour::RELEASE, false, Some(Platform::MacosArm64)).is_some());
         assert!(off_reason(&flavour::RELEASE, true, None).is_some());
+    }
+
+    /// A copy apt installed is told a release is out, and its button and
+    /// pill point at apt, not a download.
+    #[test]
+    fn an_apt_copy_points_at_apt_upgrade() {
+        let apt = Err(NotInstallable::PackageManaged);
+        let line = status(
+            &Phase::Available(update("0.2.0")),
+            None,
+            &apt,
+            "0.1.0",
+            true,
+        );
+        assert_eq!(line.label, "Kanso 0.2.0 is available");
+        assert!(line.detail.contains("sudo apt upgrade"), "{}", line.detail);
+        assert_eq!(download_label(&apt), "Copy Command");
+        assert_eq!(download_label(&installable()), "Download");
+        assert_eq!(
+            download_label(&Err(NotInstallable::NotWritable("/opt".into()))),
+            "Download"
+        );
+        let (_, label) = pill(&Phase::Available(update("0.2.0")), false).unwrap();
+        assert_eq!(
+            pill_label(label.clone(), &apt),
+            "Update available · apt upgrade"
+        );
+        assert_eq!(pill_label(label.clone(), &installable()), label);
+        let ready = "Update ready · Restart".to_owned();
+        assert_eq!(pill_label(ready.clone(), &apt), ready);
     }
 
     #[test]
