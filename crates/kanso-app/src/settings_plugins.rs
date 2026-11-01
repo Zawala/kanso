@@ -697,7 +697,20 @@ impl PluginsPage {
                 let query = self.search.read(cx).value().to_string();
                 let entries = directory.search(&query);
                 let mut rows = vec![Row::new(Lucide::Search, "Search").trailing(
-                    div().w(px(260.)).child(Input::new(&self.search)),
+                    h_flex()
+                        .gap_2()
+                        .child(div().w(px(260.)).child(Input::new(&self.search)))
+                        .child(
+                            Button::new("plugin-directory-refresh")
+                                .outline()
+                                .small()
+                                .icon(Lucide::RefreshCw)
+                                .tooltip("Check the directory for new plugins")
+                                .on_click(cx.listener(|_, _, _, cx| {
+                                    crate::plugins::refresh_directory(cx);
+                                    cx.notify();
+                                })),
+                        ),
                 )];
                 if entries.is_empty() {
                     rows.push(Row::new(Lucide::Puzzle, "No plugins match").detail(
