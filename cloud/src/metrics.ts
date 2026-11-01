@@ -174,6 +174,48 @@ export function posthogBody(key: string, batch: Batch, country: string | null): 
 	};
 }
 
+/**
+ * PostHog's `/batch/` answers 200 even for a key it doesn't know, and drops the events, so a key
+ * from another project or region fails without a sound. `/flags` does refuse an unknown key: ask it
+ * once per isolate and host, and log when it refuses. Nothing but the outcome is logged.
+ */
+const keyChecks = new Map<string, Promise<void>>();
+
+/** For tests: forget which keys were checked. */
+export function resetKeyChecks(): void {
+	keyChecks.clear();
+}
+
+function checkKey(host: string, key: string): Promise<void> {
+	const base = host.trim().replace(/\/+$/, "");
+	const memo = `${base}\n${key}`;
+	let check = keyChecks.get(memo);
+	if (!check) {
+		check = (async () => {
+			let outcome: string | number;
+			try {
+				const response = await fetch(`${base}/flags/?v=2`, {
+					method: "POST",
+					headers: { "content-type": "application/json", "user-agent": "kanso-sync" },
+					body: JSON.stringify({ api_key: key, distinct_id: "kanso-worker-key-check" }),
+					redirect: "manual",
+					signal: AbortSignal.timeout(POSTHOG_TIMEOUT_MS),
+				});
+				await response.body?.cancel();
+				if (response.ok) return;
+				outcome = response.status === 401 || response.status === 403 ? "key_rejected" : `key_check_${response.status}`;
+			} catch (err) {
+				// Unknown: check again next time.
+				keyChecks.delete(memo);
+				outcome = `key_check_${(err as Error)?.name ?? "error"}`;
+			}
+			console.error(JSON.stringify({ route: "posthog", outcome }));
+		})();
+		keyChecks.set(memo, check);
+	}
+	return check;
+}
+
 /** Sends the batch to PostHog; any failure is logged by status or error name only, and dropped. */
 async function forward(host: string, body: unknown): Promise<void> {
 	let outcome: string | number;
@@ -186,7 +228,12 @@ async function forward(host: string, body: unknown): Promise<void> {
 			signal: AbortSignal.timeout(POSTHOG_TIMEOUT_MS),
 		});
 		await response.body?.cancel();
-		if (response.ok) return;
+		if (response.ok) {
+			// Counts only, so a quiet PostHog can be told from a quiet Kanso.
+			const events = (body as { batch?: unknown[] }).batch?.length ?? 0;
+			console.log(JSON.stringify({ route: "posthog", outcome: "ok", events }));
+			return;
+		}
 		outcome = response.status;
 	} catch (err) {
 		outcome = (err as Error)?.name ?? "error";
@@ -207,6 +254,8 @@ export async function submit(request: Request, env: Env, now: number, keys: Pepp
 	const batch = validateBatch(body.value, now);
 	if (!batch.ok) return error(400, "bad_request", `Invalid batch: ${batch.field}.`, { field: batch.field });
 	const key = env.POSTHOG_KEY?.trim();
-	if (key && env.POSTHOG_HOST) await forward(env.POSTHOG_HOST, posthogBody(key, batch.value, country(request)));
+	if (key && env.POSTHOG_HOST) {
+		await Promise.all([checkKey(env.POSTHOG_HOST, key), forward(env.POSTHOG_HOST, posthogBody(key, batch.value, country(request)))]);
+	}
 	return new Response(null, { status: 204 });
 }

@@ -7,7 +7,7 @@ import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { utcDay } from "../src/crash_reports";
 import { type Env, handle } from "../src/index";
-import { FEATURES, FORMS, MAX_BATCH_BYTES, NOTES, PLATFORMS, SOURCES, SYNCS } from "../src/metrics";
+import { FEATURES, FORMS, MAX_BATCH_BYTES, NOTES, PLATFORMS, SOURCES, SYNCS, resetKeyChecks } from "../src/metrics";
 import { ORIGIN, START, call, resetServer, testEnv } from "./helpers";
 
 const runs = (n: number) => ({ numRuns: Math.min(n, Number(env.FAST_CHECK_RUNS)) });
@@ -46,13 +46,22 @@ interface Sent {
 }
 let sent: Sent[];
 let answer: () => Promise<Response>;
+let checks: Sent[];
+let flags: () => Promise<Response>;
 
 beforeEach(async () => {
 	await resetServer();
 	await clear();
 	sent = [];
 	answer = async () => Response.json({ status: "Ok" });
+	checks = [];
+	flags = async () => Response.json({ flags: {} });
+	resetKeyChecks();
 	vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+		if (String(input).includes("/flags/")) {
+			checks.push({ url: String(input), init, body: JSON.parse(String(init?.body)) });
+			return flags();
+		}
 		sent.push({ url: String(input), init, body: JSON.parse(String(init?.body)) });
 		return answer();
 	});
@@ -214,6 +223,43 @@ describe("accepting", () => {
 		const lines = log.mock.calls.map((c) => String(c[0]));
 		expect(lines).toEqual([JSON.stringify({ route: "posthog", outcome: 503 }), JSON.stringify({ route: "posthog", outcome: "TimeoutError" })]);
 		for (const line of lines) expect(line).not.toContain(ID);
+	});
+});
+
+describe("the PostHog key", () => {
+	it("is checked once against /flags, which refuses an unknown key that /batch/ would swallow", async () => {
+		const log = vi.spyOn(console, "error").mockImplementation(() => {});
+		flags = async () => Response.json({ type: "authentication_error" }, { status: 401 });
+		expect((await post(BATCH)).status).toBe(204);
+		expect((await post(BATCH)).status).toBe(204);
+		expect(checks).toHaveLength(1);
+		expect(checks[0].url).toBe(`${HOST}/flags/?v=2`);
+		expect(checks[0].body).toEqual({ api_key: KEY, distinct_id: "kanso-worker-key-check" });
+		expect(sent).toHaveLength(2);
+		const lines = log.mock.calls.map((c) => String(c[0]));
+		expect(lines).toEqual([JSON.stringify({ route: "posthog", outcome: "key_rejected" })]);
+		for (const line of lines) expect(line).not.toContain(KEY);
+	});
+
+	it("logs nothing for a key /flags accepts, and a count for each batch PostHog takes", async () => {
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		const info = vi.spyOn(console, "log").mockImplementation(() => {});
+		expect((await post(BATCH)).status).toBe(204);
+		expect(error).not.toHaveBeenCalled();
+		const lines = info.mock.calls.map((c) => String(c[0]));
+		expect(lines).toEqual([JSON.stringify({ route: "posthog", outcome: "ok", events: (BATCH.events as unknown[]).length })]);
+		for (const line of lines) expect(line).not.toContain(ID);
+	});
+
+	it("checks again after a check that couldn't reach PostHog", async () => {
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		flags = async () => {
+			throw new DOMException("timed out", "TimeoutError");
+		};
+		await post(BATCH);
+		flags = async () => Response.json({ flags: {} });
+		await post(BATCH);
+		expect(checks).toHaveLength(2);
 	});
 });
 
