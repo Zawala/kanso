@@ -99,6 +99,22 @@ before. The release page and the feed's `notes` are the same section of
 `CHANGELOG.md`; the app leaves out Under the hood, which the release page
 keeps. Merges and commits that aren't conventional stay out.
 
+**That last rule loses work silently when a contributor's subject isn't
+conventional** — it bit v0.9.0, where a contributor's sticky notes feature
+(+1,600 lines, PR #168) was dropped from the release notes and the changelog
+because its subject read "add sticky notes functionality". Before publishing,
+read the release's commits beside the generated section:
+
+```sh
+git log --no-merges --format='%h %an  %s' v0.8.4..v0.9.0
+```
+
+Every line should either appear in the section or be deliberately left out
+(formatting-only subjects, release chores). Anything else is a real change
+missing from the notes: add it by hand in the section it belongs to, with the
+commit link and "by @login" credit. Rewording the commit is the alternative,
+but that rewrites published history.
+
 An entry whose commit someone else wrote ends "by @login" (from their GitHub
 no-reply address; otherwise "by" and their name), so each feature is credited
 to the person who made it. Keep contributors' commits as they wrote them
