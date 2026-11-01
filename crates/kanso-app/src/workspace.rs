@@ -906,6 +906,7 @@ impl Workspace {
             self.new_note_titled(&title, window, cx);
             return;
         }
+        crate::metrics::record(cx, crate::metrics::Feature::WikilinkFollowed);
         self.library
             .update(cx, |library, cx| library.select(Some(link), cx));
     }
@@ -1111,6 +1112,7 @@ impl Workspace {
                 };
                 if !self.with_open_note(id, cx, |editor, cx| editor.set_book(book.clone(), cx)) {
                     self.merge(DocType::Note, id, json!({"bookId": book}), window, cx);
+                    crate::metrics::record(cx, crate::metrics::Feature::NoteRestored);
                 }
             }
             NoteListEvent::DeleteForever(id) => {
@@ -1205,6 +1207,9 @@ impl Workspace {
                         .iter()
                         .any(|n| n.id == id && n.pinned);
                     self.merge(DocType::Note, id, json!({"pinned": !pinned}), window, cx);
+                    if !pinned {
+                        crate::metrics::record(cx, crate::metrics::Feature::NotePinned);
+                    }
                 }
             }
             NoteCommand::Trash => {
@@ -1216,6 +1221,7 @@ impl Workspace {
                         window,
                         cx,
                     );
+                    crate::metrics::record(cx, crate::metrics::Feature::NoteDeleted);
                 }
             }
             NoteCommand::Duplicate => {
@@ -1435,9 +1441,15 @@ impl Workspace {
                             Origin::Ui,
                         );
                         match result {
-                            Ok(created) => library.update(cx, |library, cx| {
-                                library.set_filter(Filter::Book(created.id), cx)
-                            }),
+                            Ok(created) => {
+                                crate::metrics::record(
+                                    cx,
+                                    crate::metrics::Feature::NotebookCreated,
+                                );
+                                library.update(cx, |library, cx| {
+                                    library.set_filter(Filter::Book(created.id), cx)
+                                })
+                            }
                             Err(err) => report(Err(err), window, cx),
                         }
                     },
@@ -2388,6 +2400,9 @@ impl Render for Workspace {
                     this.set_focus_mode(true, window, cx);
                 } else {
                     this.set_focus_mode(!this.focus_mode, window, cx);
+                }
+                if this.focus_mode {
+                    crate::metrics::record(cx, crate::metrics::Feature::FocusMode);
                 }
             }))
             .on_action(cx.listener(|this, _: &ExitFocusMode, window, cx| {

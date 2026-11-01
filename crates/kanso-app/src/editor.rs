@@ -1640,7 +1640,7 @@ impl NoteEditor {
             let caret = typing.then(|| self.body.read(cx).cursor());
             (self.store.clone(), caret)
         });
-        self.write(
+        let saved = self.write(
             move |note, _| {
                 if let Some((store, caret)) = inline {
                     crate::tag_complete::apply_inline_tags(&store, note, caret);
@@ -1649,6 +1649,9 @@ impl NoteEditor {
             Origin::Ui,
             cx,
         );
+        if saved && let Some(id) = self.note.as_ref().map(|n| n.id.clone()) {
+            crate::metrics::record_note_edited(cx, &id);
+        }
     }
 
     /// Saves what waited while writes were held. When the Replace took the
@@ -1877,7 +1880,9 @@ impl NoteEditor {
             }
         };
         // An API-origin write always snapshots the version it replaces.
-        if !self.write_over(base, rehome, Origin::Api, cx) && self.incoming.is_none() {
+        if self.write_over(base, rehome, Origin::Api, cx) {
+            crate::metrics::record(cx, crate::metrics::Feature::SyncConflictResolved);
+        } else if self.incoming.is_none() {
             // Not a conflict: leave the question open rather than drop it.
             self.incoming = Some(incoming);
         }
@@ -1890,6 +1895,7 @@ impl NoteEditor {
             return;
         };
         self.stash_draft(cx);
+        crate::metrics::record(cx, crate::metrics::Feature::SyncConflictResolved);
         match incoming {
             Incoming::Changed(theirs) => self.show(Some(*theirs), true, window, cx),
             Incoming::Deleted => {
@@ -1903,7 +1909,14 @@ impl NoteEditor {
     }
 
     pub fn set_book(&mut self, book_id: String, cx: &mut Context<Self>) {
-        self.write(move |note, _| note.book_id = book_id, Origin::Ui, cx);
+        let from = self.note.as_ref().map(|n| n.book_id.clone());
+        let to = book_id.clone();
+        if self.write(move |note, _| note.book_id = book_id, Origin::Ui, cx)
+            && let Some(from) = from
+            && let Some(feature) = crate::metrics_hooks::move_feature(&from, &to)
+        {
+            crate::metrics::record(cx, feature);
+        }
     }
 
     pub fn set_status(&mut self, status: NoteStatus, cx: &mut Context<Self>) {
@@ -1911,7 +1924,8 @@ impl NoteEditor {
     }
 
     pub fn toggle_tag(&mut self, tag_id: String, cx: &mut Context<Self>) {
-        self.write(
+        let had = self.note.as_ref().is_some_and(|n| n.tags.contains(&tag_id));
+        let saved = self.write(
             move |note, _| match note.tags.iter().position(|t| *t == tag_id) {
                 Some(ix) => {
                     note.tags.remove(ix);
@@ -1921,10 +1935,16 @@ impl NoteEditor {
             Origin::Ui,
             cx,
         );
+        if saved && !had {
+            crate::metrics::record(cx, crate::metrics::Feature::TagAdded);
+        }
     }
 
     pub fn toggle_pinned(&mut self, cx: &mut Context<Self>) {
-        self.write(|note, _| note.pinned = !note.pinned, Origin::Ui, cx);
+        let was = self.note.as_ref().is_some_and(|n| n.pinned);
+        if self.write(|note, _| note.pinned = !note.pinned, Origin::Ui, cx) && !was {
+            crate::metrics::record(cx, crate::metrics::Feature::NotePinned);
+        }
     }
 
     /// Moves the open note to the trash.
@@ -2162,6 +2182,9 @@ impl NoteEditor {
     pub fn apply_format(&mut self, format: Format, window: &mut Window, cx: &mut Context<Self>) {
         if self.note.is_none() || self.text_read_only {
             return;
+        }
+        if format == Format::Table {
+            crate::metrics::record(cx, crate::metrics::Feature::TableInserted);
         }
         self.body.update(cx, |state, cx| {
             let text = state.value();
@@ -2708,6 +2731,7 @@ impl NoteEditor {
                 if blocks.is_empty() || this.note.is_none() {
                     return;
                 }
+                crate::metrics::record(cx, crate::metrics::Feature::AttachmentAdded);
                 let block = blocks.join("\n\n");
                 this.smart_edit(window, cx, |_, text, selection| {
                     // Where it was dropped, unless the text changed since.
@@ -2749,9 +2773,15 @@ impl NoteEditor {
         if !self.takes_preview_edits(cx) {
             return;
         }
+        let mut ticked = false;
         self.smart_edit(window, cx, |_, text, selection| {
-            body_edit(text, &preview_tasks::toggled(text, tick)?, selection)
+            let toggled = preview_tasks::toggled(text, tick)?;
+            ticked = true;
+            body_edit(text, &toggled, selection)
         });
+        if ticked {
+            crate::metrics::record(cx, crate::metrics::Feature::TaskToggled);
+        }
     }
 
     /// Whether the preview may rewrite the note's text: it is open for
@@ -2831,6 +2861,7 @@ impl NoteEditor {
                 crate::image_size::EMPTY_DRAWING,
             ))
         });
+        crate::metrics::record(cx, crate::metrics::Feature::Diagram);
         self.focus_body(window, cx);
         let scene = crate::image_size::EMPTY_DRAWING
             .trim_start_matches("```excalidraw\n")

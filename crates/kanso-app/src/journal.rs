@@ -103,15 +103,18 @@ pub(crate) fn new_from_template(
         (library.store.clone(), library.default_book())
     };
     match daily::from_template(&store, id, book, now(cx)) {
-        Ok(made) => open_made(
-            library,
-            editor,
-            made.id,
-            made.cursor,
-            made.title_first,
-            window,
-            cx,
-        ),
+        Ok(made) => {
+            crate::metrics::record(cx, crate::metrics::Feature::TemplateUsed);
+            open_made(
+                library,
+                editor,
+                made.id,
+                made.cursor,
+                made.title_first,
+                window,
+                cx,
+            )
+        }
         Err(err) => report("Couldn't make the note", err, window, cx),
     }
 }
@@ -140,15 +143,18 @@ impl Workspace {
         self.editor.update(cx, |editor, cx| editor.flush(cx));
         let store = self.library.read(cx).store.clone();
         match daily::today(&store, now(cx)) {
-            Ok(made) => open_made(
-                &self.library,
-                &self.editor,
-                made.id,
-                made.cursor,
-                made.title_first,
-                window,
-                cx,
-            ),
+            Ok(made) => {
+                crate::metrics::record(cx, crate::metrics::Feature::DailyNote);
+                open_made(
+                    &self.library,
+                    &self.editor,
+                    made.id,
+                    made.cursor,
+                    made.title_first,
+                    window,
+                    cx,
+                )
+            }
             Err(err) => report("Couldn't open today's note", err, window, cx),
         }
     }

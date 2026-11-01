@@ -73,6 +73,11 @@ pub fn apply(
         return;
     }
     let on = turned_on(&change, &edits);
+    let from: Vec<String> = edits
+        .iter()
+        .filter_map(|edit| notes.iter().find(|n| n.id == edit.id))
+        .map(|n| n.book_id.clone())
+        .collect();
     crate::editor::peers::flush_everywhere(cx);
     let store = library.read(cx).store.clone();
     let changes: Vec<Value> = edits.iter().map(|edit| edit.change.clone()).collect();
@@ -83,6 +88,9 @@ pub fn apply(
             cx,
         );
         return;
+    }
+    for feature in crate::metrics_hooks::batch_features(&change, &from, on) {
+        crate::metrics::record(cx, feature);
     }
     let notification =
         // Each batch's notice takes the place of the one before, so its

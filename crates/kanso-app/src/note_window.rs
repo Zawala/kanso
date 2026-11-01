@@ -200,6 +200,14 @@ pub fn open_note_window(id: &str, from: Option<Frame>, sticky: bool, cx: &mut Ap
     if !matches!(store.note(id), Ok(Some(_))) {
         return;
     }
+    crate::metrics::record(
+        cx,
+        if sticky {
+            crate::metrics::Feature::StickyOpened
+        } else {
+            crate::metrics::Feature::NewWindow
+        },
+    );
     let saved = cx
         .global::<AppState>()
         .config
@@ -227,6 +235,7 @@ pub fn serve_stickies(stickies: async_channel::Receiver<(String, StickyColor)>, 
         while let Ok((id, color)) = stickies.recv().await {
             cx.update(|cx| {
                 let store = cx.global::<AppState>().store.clone();
+                crate::metrics::record(cx, crate::metrics::Feature::StickyOpened);
                 open_window(id, None, Some(color), store, cx);
             });
         }
