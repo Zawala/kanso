@@ -1051,7 +1051,46 @@ impl SettingsView {
                 colors,
             )
         });
+        let clipboard = {
+            let history = state.config.clipboard;
+            section(
+                "Clipboard History",
+                vec![
+                    Row::new(Lucide::ClipboardList, "Keep clipboard history")
+                        .detail(
+                            "Keeps the last 15 texts you copy, in memory only, while Kanso runs; Show Clipboard History in the palette lists them. Passwords and text that looks like a key are skipped. Turning it off forgets them all.",
+                        )
+                        .trailing(
+                            Switch::new("clipboard-history")
+                                .checked(history.enabled)
+                                .on_click(|on, _, cx| crate::clipboard_history::set_enabled(*on, cx)),
+                        ),
+                    Row::new(Lucide::AlarmClock, "Forget copies after")
+                        .detail("A copy older than this leaves the history.")
+                        .trailing(segmented(
+                            "clipboard-expiry",
+                            crate::config::ClipboardSettings::EXPIRY_CHOICES.map(|minutes| {
+                                let label = match minutes {
+                                    15 => "15 min",
+                                    60 => "1 hour",
+                                    _ => "8 hours",
+                                };
+                                (label, minutes)
+                            }),
+                            history.expire_minutes,
+                            |minutes, _, cx| {
+                                AppState::update_config(cx, |config| {
+                                    config.clipboard.expire_minutes = minutes
+                                })
+                            },
+                            colors,
+                        )),
+                ],
+                colors,
+            )
+        };
         [zoom].into_iter().chain(startup).chain(stickies).chain([
+            clipboard,
             crate::settings_capture::capture_section(&self.shortcut, cx),
             crate::settings_capture::journal_section(cx),
             crate::reminders::reminders_section(cx),

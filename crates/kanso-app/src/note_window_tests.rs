@@ -581,3 +581,74 @@ fn stickies_open_again_as_stickies(cx: &mut TestAppContext) {
 fn kept_frames(cx: &mut TestAppContext) -> Vec<NoteWindowFrame> {
     cx.read(|cx| cx.global::<AppState>().config.layout.note_windows.clone())
 }
+
+/// Clipboard history: off, nothing is kept; on, copies are kept but not
+/// secret ones; its sticky copies one again with a click and remembers
+/// only where it was; turned off, every copy is forgotten.
+#[gpui_kit::test]
+fn the_clipboard_sticky_lists_copies_and_forgets_them(cx: &mut TestAppContext) {
+    use crate::clipboard_history::{self, ClipboardHistory};
+    use crate::clipboard_watch::Copied;
+
+    let _f = setup(cx);
+    let copy = |text: &str, sensitive: bool| Copied {
+        text: text.to_owned(),
+        sensitive,
+    };
+    let kept = |cx: &mut TestAppContext| -> Vec<String> {
+        cx.read(|cx| {
+            let history = cx.global::<ClipboardHistory>().history.clone();
+            history
+                .read(cx)
+                .items
+                .iter()
+                .map(|c| c.text.clone())
+                .collect()
+        })
+    };
+    cx.update(|cx| {
+        clipboard_history::init(cx);
+        clipboard_history::keep(copy("before", false), cx);
+    });
+    assert!(kept(cx).is_empty(), "off: nothing kept");
+    cx.update(|cx| {
+        clipboard_history::set_enabled(true, cx);
+        clipboard_history::keep(copy("docker ps -a", false), cx);
+        clipboard_history::keep(copy("hunter2", true), cx);
+        clipboard_history::keep(copy("ghp_abcdefghijklmnopqrstuvwxyz0123456789", false), cx);
+        clipboard_history::keep(copy("git status", false), cx);
+    });
+    assert_eq!(kept(cx), ["git status", "docker ps -a"]);
+
+    cx.update(crate::clipboard_sticky::open);
+    cx.run_until_parked();
+    let (handle, view) = cx
+        .update(crate::clipboard_sticky::find)
+        .expect("the clipboard sticky is open");
+    // The second row, copied again.
+    handle
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| view.copy(1, window, cx))
+        })
+        .unwrap();
+    let copied = cx.update(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
+    assert_eq!(copied.as_deref(), Some("docker ps -a"));
+    cx.run_until_parked();
+    let frame = cx.read(|cx| cx.global::<AppState>().config.layout.clipboard_sticky);
+    assert!(frame.is_some_and(|f| !f.closed), "{frame:?}");
+    // Nothing but the frame reaches the config.
+    let config = cx.read(|cx| serde_json::to_string(&cx.global::<AppState>().config).unwrap());
+    assert!(!config.contains("docker"), "{config}");
+
+    cx.update(|cx| clipboard_history::set_enabled(false, cx));
+    assert!(kept(cx).is_empty(), "off: all forgotten");
+    handle
+        .update(cx, |_, window, cx| {
+            window.dispatch_action(Box::new(crate::clipboard_sticky::CloseClipboardSticky), cx)
+        })
+        .unwrap();
+    cx.run_until_parked();
+    assert!(cx.update(crate::clipboard_sticky::find).is_none());
+    let frame = cx.read(|cx| cx.global::<AppState>().config.layout.clipboard_sticky);
+    assert!(frame.is_some_and(|f| f.closed), "{frame:?}");
+}
