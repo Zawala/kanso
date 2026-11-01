@@ -542,6 +542,10 @@ impl Run {
                 // Inside JSON text the quotes are escaped.
                 let s = s.replace("\\\"", "\"");
                 let s = lone_surrogate.replace_all(&s, "\"");
+                // Known, deliberate difference: Kanso's bookId also takes
+                // `template` (its own template notebook, a Kanso tool), which
+                // the pinned Node server's validation message doesn't list.
+                let s = s.replace("trash$|template$)", "trash$)");
                 stamp
                     .replace_all(&s, |caps: &regex_lite::Captures| {
                         format!("\"{}\": <ts>", &caps[1])
