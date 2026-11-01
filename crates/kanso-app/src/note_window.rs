@@ -115,7 +115,7 @@ pub fn cascade(from: Frame) -> Frame {
     )
 }
 
-fn frame_of(bounds: Bounds<Pixels>) -> Frame {
+pub(crate) fn frame_of(bounds: Bounds<Pixels>) -> Frame {
     (
         f32::from(bounds.origin.x),
         f32::from(bounds.origin.y),
@@ -124,7 +124,7 @@ fn frame_of(bounds: Bounds<Pixels>) -> Frame {
     )
 }
 
-fn bounds_of(frame: Frame) -> Bounds<Pixels> {
+pub(crate) fn bounds_of(frame: Frame) -> Bounds<Pixels> {
     Bounds::new(
         point(px(frame.0), px(frame.1)),
         size(px(frame.2), px(frame.3)),
@@ -141,12 +141,12 @@ fn displays(cx: &App) -> Vec<std::rc::Rc<dyn gpui_kit::PlatformDisplay>> {
 }
 
 /// The displays' frames, the main display first.
-fn display_frames(cx: &App) -> Vec<Frame> {
+pub(crate) fn display_frames(cx: &App) -> Vec<Frame> {
     displays(cx).iter().map(|d| frame_of(d.bounds())).collect()
 }
 
 /// The displays' IDs, in the order of [`display_frames`].
-fn display_ids(cx: &App) -> Vec<gpui_kit::DisplayId> {
+pub(crate) fn display_ids(cx: &App) -> Vec<gpui_kit::DisplayId> {
     displays(cx).iter().map(|d| d.id()).collect()
 }
 
@@ -345,93 +345,20 @@ fn open_sticky_window(
     store: Arc<Store>,
     cx: &mut App,
 ) {
-    let displays = display_frames(cx);
-    let frame = match frame {
-        Some(frame) => clamp_frame(frame, &displays, crate::sticky::MIN_SIZE),
-        None => {
-            let open = note_windows(cx)
-                .iter()
-                .filter(|(_, view)| view.read(cx).is_sticky())
-                .count();
-            let display = displays.first().copied().unwrap_or((0., 0., 1280., 800.));
-            crate::sticky::corner_frame(display, open)
-        }
-    };
-    let bounds = bounds_of(frame);
-    #[cfg(target_os = "linux")]
-    let layer_shell = crate::sticky::tries_layer_shell(cx);
-    #[cfg(not(target_os = "linux"))]
-    let layer_shell = false;
-    // A layer surface is placed on one display, from its top left.
-    let home = crate::sticky::home_display(frame, &displays);
-    let display = display_ids(cx).get(home).copied();
-    let origin = displays.get(home).map_or((0., 0.), |d| (d.0, d.1));
-    let on_display = (frame.0 - origin.0, frame.1 - origin.1);
-    let options = |layer_shell: bool| WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(bounds)),
-        titlebar: None,
-        kind: crate::sticky::window_kind(bounds, on_display, layer_shell),
-        display_id: display.filter(|_| layer_shell),
-        is_minimizable: false,
-        window_min_size: Some(size(
-            px(crate::sticky::MIN_SIZE.0),
-            px(crate::sticky::MIN_SIZE.1),
-        )),
-        window_decorations: Some(WindowDecorations::Client),
-        #[cfg(target_os = "linux")]
-        app_id: Some(crate::flavour::CURRENT.xdg_name.into()),
-        ..Default::default()
-    };
     let library = shared_library(store, cx);
-    let build = |layer_shell: bool, cx: &mut App| {
+    let opened = crate::sticky::open(frame, cx, move |layer_shell, frame, window, cx| {
         let (id, library) = (id.clone(), library.clone());
-        gpui_kit::open_window(options(layer_shell), cx, move |window, cx| {
-            crate::themes::apply(Some(window), cx);
-            cx.new(|cx| {
-                let mut view = NoteWindow::new(id, library, Some(color), window, cx);
-                // The compositor places a layer surface: it stays where it
-                // was opened.
-                view.fixed_frame = layer_shell.then_some(frame);
-                view
-            })
+        cx.new(|cx| {
+            let mut view = NoteWindow::new(id, library, Some(color), window, cx);
+            // The compositor places a layer surface: it stays where it was
+            // opened.
+            view.fixed_frame = layer_shell.then_some(frame);
+            view
         })
-    };
-    let mut opened = build(layer_shell, cx).map(|opened| (opened, layer_shell));
-    if layer_shell && opened.is_err() {
-        // No layer-shell after all: an ordinary window.
-        opened = build(false, cx).map(|opened| (opened, false));
+    });
+    if let Some((handle, view)) = opened {
+        after_open(handle, view, cx);
     }
-    let ((handle, view), layer_shell) = match opened {
-        Ok(opened) => opened,
-        Err(err) => {
-            eprintln!("kanso: couldn't open a sticky note: {err:#}");
-            return;
-        }
-    };
-    after_open(handle, view.clone(), cx);
-    let hint = !crate::sticky::keeps_on_top(layer_shell, cx)
-        && !cx.global::<AppState>().config.nudges.sticky_hint_seen;
-    handle
-        .update(cx, |_, window, cx| {
-            // Mapped by the next frame, when the window manager listens.
-            window.on_next_frame(move |window, cx| crate::sticky::stay_on_top(window, frame, cx));
-            // Again once the window manager has drawn its frame and shadow
-            // around it, which can move and grow it.
-            window
-                .spawn(cx, async move |cx| {
-                    cx.background_executor()
-                        .timer(std::time::Duration::from_millis(400))
-                        .await;
-                    cx.update(|window, cx| crate::sticky::stay_on_top(window, frame, cx))
-                        .ok();
-                })
-                .detach();
-            if hint {
-                window.push_notification(Notification::info(crate::sticky::ON_TOP_HINT), cx);
-                AppState::update_config(cx, |config| config.nudges.sticky_hint_seen = true);
-            }
-        })
-        .ok();
 }
 
 /// Does `f` in the main window, brought forward; opens one when there is
@@ -981,7 +908,7 @@ impl Render for NoteWindow {
                             ),
                     )
                     .when(self.fixed_frame.is_none(), |el| {
-                        el.children(resize_handles())
+                        el.children(crate::sticky::resize_handles())
                     })
             })
             .children(self.render_placeholder_traffic_lights())
@@ -999,7 +926,7 @@ impl NoteWindow {
     ) -> impl IntoElement {
         use gpui_kit::assets::IconName as Lucide;
         use gpui_kit::component::button::{Button, ButtonVariants as _};
-        use gpui_kit::component::{Icon, Sizable as _, h_flex};
+        use gpui_kit::component::{Icon, Sizable as _};
 
         let colors = Colors::get(cx);
         let editing = self.editor.read(cx).view_mode != ViewMode::Preview;
@@ -1011,40 +938,7 @@ impl NoteWindow {
                 .icon(Icon::new(icon).text_color(colors.text_secondary))
                 .tooltip(tooltip)
         };
-        h_flex()
-            .id("sticky-header")
-            .flex_none()
-            .h(px(crate::sticky::HEADER_HEIGHT))
-            .w_full()
-            .pl_3()
-            .pr_1()
-            .gap_0p5()
-            .items_center()
-            .bg(crate::sticky::paper(color, dark))
-            .child(
-                div()
-                    .id("sticky-title")
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .text_sm()
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(colors.text)
-                    .when(movable, |el| el.cursor_move())
-                    .on_mouse_down(MouseButton::Left, move |event, window, _| {
-                        if !movable {
-                            return;
-                        }
-                        if event.click_count == 2 {
-                            window.titlebar_double_click();
-                        } else {
-                            window.start_window_move();
-                        }
-                    })
-                    .child(self.title.clone()),
-            )
+        crate::sticky::header(self.title.clone().into(), color, dark, movable, cx)
             .child(
                 button(
                     "sticky-mode",
@@ -1092,99 +986,6 @@ impl NoteWindow {
                 }),
             )
     }
-}
-
-/// How thick the edges are that resize a window without a frame.
-const RESIZE_EDGE: f32 = 5.;
-
-/// Edges and corners that resize a sticky, which has no frame of its own
-/// to drag.
-fn resize_handles() -> Vec<AnyElement> {
-    let edge = px(RESIZE_EDGE);
-    let corner = px(RESIZE_EDGE * 2.);
-    let handle = |id: &'static str, resize: ResizeEdge, cursor: CursorStyle| {
-        div().id(id).absolute().cursor(cursor).on_mouse_down(
-            MouseButton::Left,
-            move |_, window, cx| {
-                cx.stop_propagation();
-                window.start_window_resize(resize);
-            },
-        )
-    };
-    vec![
-        handle("resize-top", ResizeEdge::Top, CursorStyle::ResizeUpDown)
-            .top_0()
-            .left(corner)
-            .right(corner)
-            .h(edge)
-            .into_any_element(),
-        handle(
-            "resize-bottom",
-            ResizeEdge::Bottom,
-            CursorStyle::ResizeUpDown,
-        )
-        .bottom_0()
-        .left(corner)
-        .right(corner)
-        .h(edge)
-        .into_any_element(),
-        handle(
-            "resize-left",
-            ResizeEdge::Left,
-            CursorStyle::ResizeLeftRight,
-        )
-        .left_0()
-        .top(corner)
-        .bottom(corner)
-        .w(edge)
-        .into_any_element(),
-        handle(
-            "resize-right",
-            ResizeEdge::Right,
-            CursorStyle::ResizeLeftRight,
-        )
-        .right_0()
-        .top(corner)
-        .bottom(corner)
-        .w(edge)
-        .into_any_element(),
-        handle(
-            "resize-top-left",
-            ResizeEdge::TopLeft,
-            CursorStyle::ResizeUpLeftDownRight,
-        )
-        .top_0()
-        .left_0()
-        .size(corner)
-        .into_any_element(),
-        handle(
-            "resize-top-right",
-            ResizeEdge::TopRight,
-            CursorStyle::ResizeUpRightDownLeft,
-        )
-        .top_0()
-        .right_0()
-        .size(corner)
-        .into_any_element(),
-        handle(
-            "resize-bottom-left",
-            ResizeEdge::BottomLeft,
-            CursorStyle::ResizeUpRightDownLeft,
-        )
-        .bottom_0()
-        .left_0()
-        .size(corner)
-        .into_any_element(),
-        handle(
-            "resize-bottom-right",
-            ResizeEdge::BottomRight,
-            CursorStyle::ResizeUpLeftDownRight,
-        )
-        .bottom_0()
-        .right_0()
-        .size(corner)
-        .into_any_element(),
-    ]
 }
 
 /// Dispatches `action` in the main window, brought forward.

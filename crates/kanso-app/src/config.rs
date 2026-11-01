@@ -306,6 +306,24 @@ pub struct WindowLayout {
     /// they show, and the one showing.
     pub open_tabs: Vec<String>,
     pub active_tab: usize,
+    /// Where the clipboard sticky (`clipboard_sticky.rs`) was, and its
+    /// colour. Never what it showed: clipboard history isn't kept.
+    pub clipboard_sticky: Option<StickyFrame>,
+}
+
+/// A sticky's place on screen and paper, for a sticky that isn't a note.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StickyFrame {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    #[serde(default)]
+    pub color: StickyColor,
+    /// Closed: not opened at launch, but opened here again.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub closed: bool,
 }
 
 /// A note's own window: which note, and where the window was on screen, in
@@ -394,6 +412,29 @@ pub enum LinuxBackend {
     X11,
 }
 
+/// Clipboard history (`clipboard_history.rs`): off until turned on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ClipboardSettings {
+    pub enabled: bool,
+    /// How long a copy is kept, in minutes.
+    pub expire_minutes: u32,
+}
+
+impl ClipboardSettings {
+    /// The choices Settings offers for how long copies are kept.
+    pub const EXPIRY_CHOICES: [u32; 3] = [15, 60, 480];
+}
+
+impl Default for ClipboardSettings {
+    fn default() -> Self {
+        ClipboardSettings {
+            enabled: false,
+            expire_minutes: 60,
+        }
+    }
+}
+
 /// Settings only Linux reads.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -414,6 +455,7 @@ impl Default for WindowLayout {
             note_windows: Vec::new(),
             open_tabs: Vec::new(),
             active_tab: 0,
+            clipboard_sticky: None,
         }
     }
 }
@@ -672,6 +714,7 @@ pub struct AppConfig {
     pub ai: AiSettings,
     pub nudges: Nudges,
     pub linux: LinuxSettings,
+    pub clipboard: ClipboardSettings,
     /// The anonymous daily count's bookkeeping (docs/METRICS.md): this
     /// install's ID and what was counted today. A damaged entry reads as
     /// empty, never as an unreadable file.
@@ -714,6 +757,7 @@ impl Default for AppConfig {
             ai: AiSettings::default(),
             nudges: Nudges::default(),
             linux: LinuxSettings::default(),
+            clipboard: ClipboardSettings::default(),
             metrics: kanso_metrics::Ledger::default(),
         }
     }
@@ -833,6 +877,24 @@ mod tests {
     }
 
     #[test]
+    fn clipboard_history_starts_off_and_keeps_no_copies() {
+        let old: AppConfig = serde_json::from_str("{}").unwrap();
+        assert!(!old.clipboard.enabled);
+        assert_eq!(old.clipboard.expire_minutes, 60);
+        assert_eq!(old.layout.clipboard_sticky, None);
+        let config = AppConfig {
+            clipboard: ClipboardSettings {
+                enabled: true,
+                expire_minutes: 15,
+            },
+            ..AppConfig::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains(r#""clipboard":{"enabled":true,"expireMinutes":15}"#));
+        assert_eq!(serde_json::from_str::<AppConfig>(&json).unwrap(), config);
+    }
+
+    #[test]
     fn sticky_colours_cycle_and_parse() {
         let mut color = StickyColor::Yellow;
         for _ in StickyColor::ALL {
@@ -855,7 +917,12 @@ mod tests {
             gen_layout(),
             any::<bool>(),
             gen_editor(),
-            (any::<bool>(), "(ctrl-|alt-|shift-|cmd-){1,3}[a-z0-9]"),
+            (
+                any::<bool>(),
+                "(ctrl-|alt-|shift-|cmd-){1,3}[a-z0-9]",
+                any::<bool>(),
+                prop::sample::select(ClipboardSettings::EXPIRY_CHOICES.to_vec()),
+            ),
             (any::<bool>(), any::<bool>(), 1u8..=2),
             (
                 prop::sample::select(vec![
@@ -873,7 +940,7 @@ mod tests {
                     layout,
                     auto_install,
                     editor,
-                    (enabled, shortcut),
+                    (enabled, shortcut, clipboard, expire_minutes),
                     (related_notes, image_text, graph_hops),
                     (engine, spoken_commands),
                     ai,
@@ -888,6 +955,10 @@ mod tests {
                     gallery: GallerySettings::default(),
                     editor,
                     capture: CaptureSettings { enabled, shortcut },
+                    clipboard: ClipboardSettings {
+                        enabled: clipboard,
+                        expire_minutes,
+                    },
                     discovery: DiscoverySettings {
                         related_notes,
                         image_text,
@@ -971,6 +1042,14 @@ mod tests {
             ),
             prop::collection::vec("note:[a-z0-9]{1,8}", 0..4),
             0..6usize,
+            prop::option::of((
+                -4000.0f32..4000.,
+                -4000.0f32..4000.,
+                0.0f32..4000.,
+                0.0f32..4000.,
+                prop::sample::select(StickyColor::ALL.to_vec()),
+                any::<bool>(),
+            )),
         )
             .prop_map(
                 |(
@@ -983,6 +1062,7 @@ mod tests {
                     note_windows,
                     open_tabs,
                     active_tab,
+                    clipboard_sticky,
                 )| {
                     WindowLayout {
                         focus_mode,
@@ -1009,6 +1089,16 @@ mod tests {
                             .collect(),
                         open_tabs,
                         active_tab,
+                        clipboard_sticky: clipboard_sticky.map(
+                            |(x, y, width, height, color, closed)| StickyFrame {
+                                x,
+                                y,
+                                width,
+                                height,
+                                color,
+                                closed,
+                            },
+                        ),
                     }
                 },
             )
@@ -1160,6 +1250,10 @@ mod tests {
                         } else {
                             super::LinuxBackend::Auto
                         },
+                    },
+                    clipboard: ClipboardSettings {
+                        enabled: sidebar,
+                        expire_minutes: 60,
                     },
                     metrics: {
                         let mut ledger = kanso_metrics::Ledger::default();

@@ -1241,6 +1241,17 @@ static COMMANDS: &[Command] = &[
         needs: Needs::Nothing,
     },
     Command {
+        id: "clipboard-history",
+        label: "Show clipboard history",
+        label_when_pinned: None,
+        description: "Opens a sticky note listing the last 15 texts you copied while Kanso ran; a click copies one again. Turn clipboard history on in Settings › General or from the sticky. Kept in memory only.",
+        icon: IconName::ClipboardList,
+        keywords: &["clipboard", "copied", "copy", "paste", "history", "sticky"],
+        group: Group::App,
+        run: action!(crate::clipboard_sticky::ShowClipboardHistory),
+        needs: Needs::Nothing,
+    },
+    Command {
         id: "check-updates",
         label: "Check for updates…",
         label_when_pinned: None,

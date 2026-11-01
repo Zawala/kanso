@@ -31,6 +31,9 @@ mod calendar_view;
 mod capture;
 mod capture_cli;
 mod clipboard;
+mod clipboard_history;
+mod clipboard_sticky;
+mod clipboard_watch;
 mod clock;
 mod code_lang;
 mod collab;
@@ -606,6 +609,7 @@ fn run_app(
         workspace::bind_keys(cx);
         note_list::bind_keys(cx);
         note_window::bind_keys(cx);
+        clipboard_sticky::bind_keys(cx);
         capture::bind_keys(cx);
         graph_view::bind_keys(cx);
         board_view::bind_keys(cx);
@@ -647,6 +651,9 @@ fn run_app(
         ocr::init(cx);
         open_main_window(cx);
         note_window::restore(cx);
+        // Clipboard history, watching if turned on, and its sticky.
+        clipboard_history::init(cx);
+        clipboard_sticky::restore(cx);
         open_documents::serve(opened, open_main_window, cx);
         note_window::serve_stickies(stickies, cx);
         cx.activate(true);

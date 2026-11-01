@@ -3303,11 +3303,12 @@ mod tests {
     #[gpui_kit::test]
     fn every_command_reaches_a_handler(cx: &mut TestAppContext) {
         let f = setup(cx);
-        // Quick capture opens its own window, from anywhere in the app.
-        // Zoom changes every window at once.
+        // Quick capture and the clipboard sticky open their own windows,
+        // from anywhere in the app. Zoom changes every window at once.
         let app_wide = [
             "kanso::Quit",
             "kanso::QuickCapture",
+            "kanso::ShowClipboardHistory",
             "kanso::ZoomIn",
             "kanso::ZoomOut",
             "kanso::ActualSize",

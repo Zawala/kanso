@@ -178,6 +178,248 @@ pub fn stay_on_top(window: &Window, frame: Frame, cx: &App) {
     let _ = (window, frame, cx);
 }
 
+/// Opens a sticky window at `frame`, or in a corner of the main display
+/// after the stickies already open, with the view `build` makes (told
+/// whether the window is a layer surface, and its frame). Kept on top where
+/// the window system allows; where it doesn't, says once how to pin it.
+pub fn open<V: Render>(
+    frame: Option<Frame>,
+    cx: &mut App,
+    build: impl Fn(bool, Frame, &mut Window, &mut App) -> Entity<V> + 'static,
+) -> Option<(AnyWindowHandle, Entity<V>)> {
+    use gpui_kit::component::WindowExt as _;
+    use gpui_kit::component::notification::Notification;
+
+    use crate::note_window::{bounds_of, clamp_frame, display_frames, display_ids};
+    use crate::workspace::AppState;
+
+    let displays = display_frames(cx);
+    let frame = match frame {
+        Some(frame) => clamp_frame(frame, &displays, MIN_SIZE),
+        None => {
+            let open = open_count(cx);
+            let display = displays.first().copied().unwrap_or((0., 0., 1280., 800.));
+            corner_frame(display, open)
+        }
+    };
+    let bounds = bounds_of(frame);
+    #[cfg(target_os = "linux")]
+    let layer_shell = tries_layer_shell(cx);
+    #[cfg(not(target_os = "linux"))]
+    let layer_shell = false;
+    // A layer surface is placed on one display, from its top left.
+    let home = home_display(frame, &displays);
+    let display = display_ids(cx).get(home).copied();
+    let origin = displays.get(home).map_or((0., 0.), |d| (d.0, d.1));
+    let on_display = (frame.0 - origin.0, frame.1 - origin.1);
+    let options = |layer_shell: bool| WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        titlebar: None,
+        kind: window_kind(bounds, on_display, layer_shell),
+        display_id: display.filter(|_| layer_shell),
+        is_minimizable: false,
+        window_min_size: Some(size(px(MIN_SIZE.0), px(MIN_SIZE.1))),
+        window_decorations: Some(WindowDecorations::Client),
+        #[cfg(target_os = "linux")]
+        app_id: Some(crate::flavour::CURRENT.xdg_name.into()),
+        ..Default::default()
+    };
+    let build = std::rc::Rc::new(build);
+    let try_open = |layer_shell: bool, cx: &mut App| {
+        let build = build.clone();
+        gpui_kit::open_window(options(layer_shell), cx, move |window, cx| {
+            crate::themes::apply(Some(window), cx);
+            build(layer_shell, frame, window, cx)
+        })
+    };
+    let mut opened = try_open(layer_shell, cx).map(|opened| (opened, layer_shell));
+    if layer_shell && opened.is_err() {
+        // No layer-shell after all: an ordinary window.
+        opened = try_open(false, cx).map(|opened| (opened, false));
+    }
+    let ((handle, view), layer_shell) = match opened {
+        Ok(opened) => opened,
+        Err(err) => {
+            eprintln!("kanso: couldn't open a sticky note: {err:#}");
+            return None;
+        }
+    };
+    let hint =
+        !keeps_on_top(layer_shell, cx) && !cx.global::<AppState>().config.nudges.sticky_hint_seen;
+    handle
+        .update(cx, |_, window, cx| {
+            // Mapped by the next frame, when the window manager listens.
+            window.on_next_frame(move |window, cx| stay_on_top(window, frame, cx));
+            // Again once the window manager has drawn its frame and shadow
+            // around it, which can move and grow it.
+            window
+                .spawn(cx, async move |cx| {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(400))
+                        .await;
+                    cx.update(|window, cx| stay_on_top(window, frame, cx)).ok();
+                })
+                .detach();
+            if hint {
+                window.push_notification(Notification::info(ON_TOP_HINT), cx);
+                AppState::update_config(cx, |config| config.nudges.sticky_hint_seen = true);
+            }
+        })
+        .ok();
+    Some((handle, view))
+}
+
+/// How many stickies are open: notes' and the clipboard's.
+fn open_count(cx: &mut App) -> usize {
+    let notes = crate::note_window::note_windows(cx)
+        .iter()
+        .filter(|(_, view)| view.read(cx).is_sticky())
+        .count();
+    notes + usize::from(crate::clipboard_sticky::is_open(cx))
+}
+
+/// A sticky's header in `color`: its title, pressed to drag the window
+/// when it's `movable`, before the buttons the caller adds.
+pub fn header(
+    title: SharedString,
+    color: StickyColor,
+    dark: bool,
+    movable: bool,
+    cx: &App,
+) -> Stateful<Div> {
+    use gpui_kit::component::h_flex;
+    use gpui_kit::prelude::FluentBuilder as _;
+
+    let colors = crate::theme::Colors::get(cx);
+    h_flex()
+        .id("sticky-header")
+        .flex_none()
+        .h(px(HEADER_HEIGHT))
+        .w_full()
+        .pl_3()
+        .pr_1()
+        .gap_0p5()
+        .items_center()
+        .bg(paper(color, dark))
+        .child(
+            div()
+                .id("sticky-title")
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .text_sm()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(colors.text)
+                .when(movable, |el| el.cursor_move())
+                .on_mouse_down(MouseButton::Left, move |event, window, _| {
+                    if !movable {
+                        return;
+                    }
+                    if event.click_count == 2 {
+                        window.titlebar_double_click();
+                    } else {
+                        window.start_window_move();
+                    }
+                })
+                .child(title),
+        )
+}
+
+/// How thick the edges are that resize a window without a frame.
+const RESIZE_EDGE: f32 = 5.;
+
+/// Edges and corners that resize a sticky, which has no frame of its own
+/// to drag.
+pub fn resize_handles() -> Vec<AnyElement> {
+    let edge = px(RESIZE_EDGE);
+    let corner = px(RESIZE_EDGE * 2.);
+    let handle = |id: &'static str, resize: ResizeEdge, cursor: CursorStyle| {
+        div().id(id).absolute().cursor(cursor).on_mouse_down(
+            MouseButton::Left,
+            move |_, window, cx| {
+                cx.stop_propagation();
+                window.start_window_resize(resize);
+            },
+        )
+    };
+    vec![
+        handle("resize-top", ResizeEdge::Top, CursorStyle::ResizeUpDown)
+            .top_0()
+            .left(corner)
+            .right(corner)
+            .h(edge)
+            .into_any_element(),
+        handle(
+            "resize-bottom",
+            ResizeEdge::Bottom,
+            CursorStyle::ResizeUpDown,
+        )
+        .bottom_0()
+        .left(corner)
+        .right(corner)
+        .h(edge)
+        .into_any_element(),
+        handle(
+            "resize-left",
+            ResizeEdge::Left,
+            CursorStyle::ResizeLeftRight,
+        )
+        .left_0()
+        .top(corner)
+        .bottom(corner)
+        .w(edge)
+        .into_any_element(),
+        handle(
+            "resize-right",
+            ResizeEdge::Right,
+            CursorStyle::ResizeLeftRight,
+        )
+        .right_0()
+        .top(corner)
+        .bottom(corner)
+        .w(edge)
+        .into_any_element(),
+        handle(
+            "resize-top-left",
+            ResizeEdge::TopLeft,
+            CursorStyle::ResizeUpLeftDownRight,
+        )
+        .top_0()
+        .left_0()
+        .size(corner)
+        .into_any_element(),
+        handle(
+            "resize-top-right",
+            ResizeEdge::TopRight,
+            CursorStyle::ResizeUpRightDownLeft,
+        )
+        .top_0()
+        .right_0()
+        .size(corner)
+        .into_any_element(),
+        handle(
+            "resize-bottom-left",
+            ResizeEdge::BottomLeft,
+            CursorStyle::ResizeUpRightDownLeft,
+        )
+        .bottom_0()
+        .left_0()
+        .size(corner)
+        .into_any_element(),
+        handle(
+            "resize-bottom-right",
+            ResizeEdge::BottomRight,
+            CursorStyle::ResizeUpLeftDownRight,
+        )
+        .bottom_0()
+        .right_0()
+        .size(corner)
+        .into_any_element(),
+    ]
+}
+
 #[cfg(target_os = "linux")]
 mod x11 {
     use anyhow::{Context as _, Result, bail};
