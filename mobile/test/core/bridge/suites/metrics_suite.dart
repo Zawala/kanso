@@ -20,9 +20,19 @@ void metricsSuite(OpenLibrary open) {
       // No notice, no send: this stays false without touching the network,
       // even when the native library was built in release mode for a test.
       expect(
-        await metrics.sendDue(tablet: false, osVersion: 'unknown', ai: false),
+        await metrics.sendDue(
+          tablet: false,
+          osVersion: 'unknown',
+          ai: false,
+          locale: 'en',
+          themeMode: 'system',
+          theme: 'kanso-dark',
+        ),
         isFalse,
       );
+      // Nor is a launch or a session kept before the notice.
+      await metrics.launched();
+      await metrics.endSession(secs: 90);
       await metrics.record(feature: 'lock');
       await expectLater(
         metrics.record(feature: 'not_a_feature'),
@@ -31,6 +41,12 @@ void metricsSuite(OpenLibrary open) {
 
       await metrics.markNoticeSeen();
       expect(await metrics.noticeSeen(), isTrue);
+      // Closed names only, new ones included.
+      await metrics.record(feature: 'graph_opened');
+      await expectLater(
+        metrics.record(feature: 'plugin_command'),
+        throwsA(isA<KansoError_Invalid>()),
+      );
     });
   });
 }

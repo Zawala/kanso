@@ -11,6 +11,12 @@ import 'types.dart';
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<KansoMetrics>>
 abstract class KansoMetrics implements RustOpaqueInterface {
+  /// Notes that a foreground stretch of `secs` seconds ended.
+  Future<void> endSession({required int secs});
+
+  /// Notes that the app was launched (once per process).
+  Future<void> launched();
+
   Future<void> markNoticeSeen();
 
   Future<bool> noticeSeen();
@@ -19,11 +25,17 @@ abstract class KansoMetrics implements RustOpaqueInterface {
   /// names; Dart never gets an open-ended event API.
   Future<void> record({required String feature});
 
-  /// Sends today's count and any waiting feature events, if this is a
-  /// release build and the notice was acknowledged.
+  /// Sends what is due (the daily count, a launch, ended sessions and
+  /// feature counts), if this is a release build and the notice was
+  /// acknowledged. `locale` is the UI language code, `theme_mode` is
+  /// `light`, `dark` or `system`, `theme` the theme ID in use; the last
+  /// two may be empty to leave them out.
   Future<bool> sendDue({
     required bool tablet,
     required String osVersion,
     required bool ai,
+    required String locale,
+    required String themeMode,
+    required String theme,
   });
 }

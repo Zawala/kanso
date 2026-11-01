@@ -30,6 +30,8 @@ import '../../../editor_extras/models/data/editor_extras.dart';
 import '../../../editor_extras/models/data/markdown_editor_text_target.dart';
 import '../../../editor_extras/views/widgets/editor_extras_scope.dart';
 import '../../../injection.dart';
+import '../../../metrics/models/repos/abs/usage_metrics_repository.dart';
+import '../../../metrics/utils/count_usage.dart';
 import '../../../note/models/data/note_mode.dart';
 import '../../../note/state/note/note_bloc.dart';
 import '../../../note/state/note_assist_intent/note_assist_intent_bloc.dart';
@@ -890,8 +892,10 @@ class _NoteEditorContentState extends State<NoteEditorContent> {
                         (found) =>
                             found.fold<LinkTarget?>((_) => null, (hit) => hit),
                       ),
-                  onOpenLink: (target) =>
-                      editor.add(EditorEvent.linkOpenRequested(target)),
+                  onOpenLink: (target) {
+                    countUsage(UsageFeature.wikilinkFollowed);
+                    editor.add(EditorEvent.linkOpenRequested(target));
+                  },
                   onComment: comments?.state.mayComment ?? false
                       ? commentOnSelection
                       : null,

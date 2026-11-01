@@ -17,6 +17,7 @@ void main() {
     WidgetTester tester,
     FakeUsageMetrics metrics, {
     Duration firstSendDelay = const Duration(seconds: 20),
+    DateTime Function()? clock,
   }) async {
     final ai = AiStatusBloc(FixtureAiRepository());
     addTearDown(ai.close);
@@ -27,6 +28,7 @@ void main() {
           child: MetricsHost(
             metrics: metrics,
             firstSendDelay: firstSendDelay,
+            clock: clock ?? DateTime.now,
             child: const Scaffold(body: Text('the app')),
           ),
         ),
@@ -51,7 +53,9 @@ void main() {
 
     expect(metrics.markSeenCalls, 1);
     expect(metrics.sendDueCalls, 1);
+    expect(metrics.launchedCalls, 1);
     expect(metrics.sends.single.osVersion, isNotEmpty);
+    expect(metrics.sends.single.locale, 'en');
 
     // Let the host dispose its hourly timer.
     await tester.pumpWidget(const SizedBox.shrink());
@@ -86,6 +90,61 @@ void main() {
     await pumpHost(tester, metrics);
 
     expect(find.text('Kanso counts, it doesn’t watch'), findsNothing);
+    expect(metrics.sendDueCalls, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('going to the background notes the session, then sends', (
+    tester,
+  ) async {
+    var now = DateTime.utc(2026, 11, 1, 9);
+    final metrics = FakeUsageMetrics(seen: true);
+    await pumpHost(
+      tester,
+      metrics,
+      firstSendDelay: const Duration(hours: 5),
+      clock: () => now,
+    );
+    expect(metrics.launchedCalls, 1);
+
+    now = now.add(const Duration(minutes: 7, seconds: 3));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    await tester.pump();
+
+    expect(metrics.sessions, <int>[423]);
+    // The session is noted first, so the send carries it.
+    expect(metrics.calls, <String>['launched', 'endSession', 'sendDue']);
+
+    // The app going back and forth without being in front again notes
+    // nothing twice.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    await tester.pump();
+    expect(metrics.sessions, hasLength(1));
+
+    // The next stretch in front is a session of its own.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    now = now.add(const Duration(seconds: 30));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    await tester.pump();
+    expect(metrics.sessions, <int>[423, 30]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('nothing is noted before the notice was acknowledged', (
+    tester,
+  ) async {
+    final metrics = FakeUsageMetrics();
+    await pumpHost(tester, metrics);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+
+    expect(metrics.launchedCalls, 0);
+    expect(metrics.sessions, isEmpty);
     expect(metrics.sendDueCalls, 0);
 
     await tester.pumpWidget(const SizedBox.shrink());

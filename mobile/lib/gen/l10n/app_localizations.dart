@@ -2149,7 +2149,7 @@ abstract class AppLocalizations {
   /// Says exactly what the anonymous usage count sends and what it never sends.
   ///
   /// In en, this message translates to:
-  /// **'To know how many people use Kanso and on which devices, Kanso sends a small anonymous count once a day: the kind of device, Kanso’s version and which features were used. Never your notes, titles, tags, files, name or anything you type. Devices signed in to the same account count as one person, with an ID that can’t be traced back to the account.'**
+  /// **'To know how many people use Kanso and on which devices, Kanso sends a small anonymous count every hour while it is open, when you open it and when you close it: the kind of device, Kanso’s version, your language, theme and editor mode as a plain label, how many notes, notebooks and plugins you have and how much room attachments take as ranges, how long it was open, and how often features were used, as ranges. Never your notes, titles, tags, files, name or anything you type, and never the name of a theme or plugin. Devices signed in to the same account count as one person, with an ID that can’t be traced back to the account.'**
   String get metricsNoticeMessage;
 
   /// Opens the page that lists exactly what the usage count sends.

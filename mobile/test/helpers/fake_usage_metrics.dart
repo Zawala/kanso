@@ -22,6 +22,9 @@ class FakeUsageMetrics implements UsageMetricsRepository {
   int noticeSeenCalls = 0;
   int markSeenCalls = 0;
   int sendDueCalls = 0;
+  int launchedCalls = 0;
+  final List<int> sessions = <int>[];
+  final List<String> calls = <String>[];
   final List<UsageFeature> recorded = <UsageFeature>[];
   final List<UsageSend> sends = <UsageSend>[];
 
@@ -49,13 +52,38 @@ class FakeUsageMetrics implements UsageMetricsRepository {
   }
 
   @override
+  Future<void> launched() async {
+    launchedCalls += 1;
+    calls.add('launched');
+  }
+
+  @override
+  Future<void> endSession(int seconds) async {
+    sessions.add(seconds);
+    calls.add('endSession');
+  }
+
+  @override
   Future<bool> sendDue({
     required bool tablet,
     required String osVersion,
     required bool ai,
+    String locale = '',
+    String themeMode = '',
+    String theme = '',
   }) async {
     sendDueCalls += 1;
-    sends.add(UsageSend(tablet: tablet, osVersion: osVersion, ai: ai));
+    calls.add('sendDue');
+    sends.add(
+      UsageSend(
+        tablet: tablet,
+        osVersion: osVersion,
+        ai: ai,
+        locale: locale,
+        themeMode: themeMode,
+        theme: theme,
+      ),
+    );
     return sendResult;
   }
 }
@@ -66,9 +94,15 @@ class UsageSend {
     required this.tablet,
     required this.osVersion,
     required this.ai,
+    this.locale = '',
+    this.themeMode = '',
+    this.theme = '',
   });
 
   final bool tablet;
   final String osVersion;
   final bool ai;
+  final String locale;
+  final String themeMode;
+  final String theme;
 }

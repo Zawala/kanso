@@ -3,8 +3,8 @@
 // Licensed under AGPL-3.0-or-later (see LICENSE).
 
 /// A feature the app's product code may count. The names are the closed
-/// list `kanso-metrics` accepts; Rust owns the rule that only one of each is
-/// counted per day.
+/// list `kanso-metrics` accepts; Rust keeps the counts and reports each as a
+/// range with the next hourly batch.
 enum UsageFeature {
   noteCreated('note_created'),
   voiceInput('voice_input'),
@@ -13,7 +13,11 @@ enum UsageFeature {
   ai('ai'),
   quickCapture('quick_capture'),
   sharedNote('shared_note'),
-  export('export');
+  export('export'),
+  graphOpened('graph_opened'),
+  themeChanged('theme_changed'),
+  wikilinkFollowed('wikilink_followed'),
+  focusMode('focus_mode');
 
   const UsageFeature(this.wireName);
 
@@ -31,13 +35,26 @@ abstract interface class UsageMetricsRepository {
   /// Keeps the acknowledgement. Returns whether it was saved.
   Future<bool> markNoticeSeen();
 
-  /// Counts [feature] once for today, if the notice was seen.
+  /// Counts one use of [feature], if the notice was seen.
   Future<void> record(UsageFeature feature);
 
+  /// Notes that the app was launched (once per process).
+  Future<void> launched();
+
+  /// Notes that the app was in the foreground for [seconds] and has gone to
+  /// the background.
+  Future<void> endSession(int seconds);
+
   /// Sends what is due. Returns whether the Worker accepted a batch.
+  /// [locale] is the interface language's code; [themeMode] is `light`,
+  /// `dark` or `system` and [theme] the theme's ID, either empty to leave it
+  /// out. The core checks all three against its closed lists.
   Future<bool> sendDue({
     required bool tablet,
     required String osVersion,
     required bool ai,
+    String locale = '',
+    String themeMode = '',
+    String theme = '',
   });
 }

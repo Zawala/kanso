@@ -72,7 +72,11 @@ impl Library {
     pub fn journal_today(&self, now: LocalTime) -> Result<MadeNote, KansoError> {
         guard(|| {
             let now = time_of(now)?;
-            self.made(daily::today(&self.inner.store, now)?)
+            let made = self.made(daily::today(&self.inner.store, now)?)?;
+            self.inner
+                .metrics()
+                .count(crate::metrics::Feature::DailyNote);
+            Ok(made)
         })
     }
 
@@ -100,7 +104,13 @@ impl Library {
     /// yet. `now` is the phone's local time, for today and for the
     /// template's `{{time}}`.
     pub fn journal_open_day(&self, day: DayDate, now: LocalTime) -> Result<MadeNote, KansoError> {
-        guard(|| self.open_day(date_of(day)?, time_of(now)?))
+        guard(|| {
+            let made = self.open_day(date_of(day)?, time_of(now)?)?;
+            self.inner
+                .metrics()
+                .count(crate::metrics::Feature::DailyNote);
+            Ok(made)
+        })
     }
 
     /// The month `year`-`month` in whole weeks starting on `week_start` (0
@@ -184,12 +194,16 @@ impl Library {
     ) -> Result<MadeNote, KansoError> {
         guard(|| {
             let now = time_of(now)?;
-            self.made(daily::from_template(
+            let made = self.made(daily::from_template(
                 &self.inner.store,
                 template_id,
                 notebook_id,
                 now,
-            )?)
+            )?)?;
+            self.inner
+                .metrics()
+                .count(crate::metrics::Feature::TemplateUsed);
+            Ok(made)
         })
     }
 
