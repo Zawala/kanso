@@ -3,7 +3,11 @@
 
 use serde::{Serialize, Serializer};
 
-use crate::values::{Active, Day, Device, Feature, Form, Id, ImportSource, Platform};
+use crate::values::{
+    Active, AttachmentsMb, Channel, CountRange, Day, Device, EditorMode, Feature, Form, Id,
+    ImportSource, LocaleLang, NotebooksRange, NotesRange, Platform, PluginsRange, SessionLength,
+    SyncErrors, SyncMode, Theme, ThemeMode,
+};
 
 /// The most events a batch carries.
 pub const MAX_EVENTS: usize = 32;
@@ -13,8 +17,14 @@ pub const MAX_BYTES: usize = 16 * 1024;
 /// What happened.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventKind {
+    /// Once a day per ID.
     AppActive(Active),
-    FeatureUsed(Feature),
+    /// Once per launch.
+    AppOpened,
+    /// A session ended (quit or background).
+    Session(SessionLength),
+    /// A feature used this many times since the last batch.
+    FeatureUsed(Feature, u32),
 }
 
 /// One event, on the UTC day it happened.
@@ -54,58 +64,113 @@ struct WireEvent<'a> {
     props: WireProps<'a>,
 }
 
+/// Every prop any event may carry, in the page's order; an absent one is
+/// left out.
 #[derive(Serialize)]
-#[serde(untagged)]
-enum WireProps<'a> {
-    Active {
-        platform: Platform,
-        form: Form,
-        app_version: &'a str,
-        os_version: &'a str,
-        sync: crate::values::SyncMode,
-        ai: bool,
-        notes: crate::values::NotesRange,
-    },
-    Feature {
-        platform: Platform,
-        form: Form,
-        app_version: &'a str,
-        feature: &'static str,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        source: Option<ImportSource>,
-    },
+struct WireProps<'a> {
+    platform: Platform,
+    form: Form,
+    app_version: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    os_version: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sync: Option<SyncMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ai: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notes: Option<NotesRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    locale_lang: Option<&'a LocaleLang>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    theme_mode: Option<ThemeMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    theme: Option<&'a Theme>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    editor_mode: Option<EditorMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    plugins: Option<PluginsRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notebooks: Option<NotebooksRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attachments_mb: Option<AttachmentsMb>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sync_errors: Option<SyncErrors>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    channel: Option<Channel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    feature: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<ImportSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    count: Option<CountRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    duration: Option<SessionLength>,
+}
+
+impl<'a> WireProps<'a> {
+    fn base(device: &'a Device) -> WireProps<'a> {
+        WireProps {
+            platform: device.platform(),
+            form: device.form(),
+            app_version: device.app_version(),
+            os_version: None,
+            sync: None,
+            ai: None,
+            notes: None,
+            locale_lang: None,
+            theme_mode: None,
+            theme: None,
+            editor_mode: None,
+            plugins: None,
+            notebooks: None,
+            attachments_mb: None,
+            sync_errors: None,
+            channel: None,
+            feature: None,
+            source: None,
+            count: None,
+            duration: None,
+        }
+    }
 }
 
 impl Serialize for Batch {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let device = &self.device;
         let events = self
             .events
             .iter()
             .map(|event| {
-                let (name, props) = match &event.kind {
-                    EventKind::AppActive(active) => (
-                        "app_active",
-                        WireProps::Active {
-                            platform: device.platform(),
-                            form: device.form(),
-                            app_version: device.app_version(),
-                            os_version: active.os_version(),
-                            sync: active.sync(),
-                            ai: active.ai(),
-                            notes: active.notes(),
-                        },
-                    ),
-                    EventKind::FeatureUsed(feature) => (
-                        "feature_used",
-                        WireProps::Feature {
-                            platform: device.platform(),
-                            form: device.form(),
-                            app_version: device.app_version(),
-                            feature: feature.name(),
-                            source: feature.source(),
-                        },
-                    ),
+                let mut props = WireProps::base(&self.device);
+                let name = match &event.kind {
+                    EventKind::AppActive(active) => {
+                        let x = active.extras();
+                        props.os_version = Some(active.os_version());
+                        props.sync = Some(active.sync());
+                        props.ai = Some(active.ai());
+                        props.notes = Some(active.notes());
+                        props.locale_lang = x.locale_lang.as_ref();
+                        props.theme_mode = x.theme_mode;
+                        props.theme = x.theme.as_ref();
+                        props.editor_mode = x.editor_mode;
+                        props.plugins = x.plugins;
+                        props.notebooks = x.notebooks;
+                        props.attachments_mb = x.attachments_mb;
+                        props.sync_errors =
+                            Some(SyncErrors::from_count(u64::from(active.sync_errors)));
+                        props.channel = x.channel;
+                        "app_active"
+                    }
+                    EventKind::AppOpened => "app_opened",
+                    EventKind::Session(length) => {
+                        props.duration = Some(*length);
+                        "session"
+                    }
+                    EventKind::FeatureUsed(feature, count) => {
+                        props.feature = Some(feature.name());
+                        props.source = feature.source();
+                        props.count = Some(CountRange::from_count(u64::from(*count)));
+                        "feature_used"
+                    }
                 };
                 WireEvent {
                     event: name,
@@ -142,7 +207,7 @@ mod tests {
                 },
                 Event {
                     day,
-                    kind: EventKind::FeatureUsed(Feature::Import(ImportSource::Obsidian)),
+                    kind: EventKind::FeatureUsed(Feature::Import(ImportSource::Obsidian), 1),
                 },
             ],
         };
@@ -160,13 +225,14 @@ mod tests {
                         "os_version": "15.1",
                         "sync": "kanso",
                         "ai": false,
-                        "notes": "100-999"
+                        "notes": "100-999",
+                        "sync_errors": "0"
                     }
                 },
                 {
                     "event": "feature_used",
                     "day": "2026-10-30",
-                    "props": { "platform": "macos", "form": "desktop", "app_version": "0.9.0", "feature": "import", "source": "obsidian" }
+                    "props": { "platform": "macos", "form": "desktop", "app_version": "0.9.0", "feature": "import", "source": "obsidian", "count": "1" }
                 }
             ]
         });
@@ -176,12 +242,12 @@ mod tests {
         );
         // The props keep the page's order.
         let text = String::from_utf8(batch.to_json()).unwrap();
-        assert!(text.contains(r#""props":{"platform":"macos","form":"desktop","app_version":"0.9.0","os_version":"15.1","sync":"kanso","ai":false,"notes":"100-999"}"#));
+        assert!(text.contains(r#""props":{"platform":"macos","form":"desktop","app_version":"0.9.0","os_version":"15.1","sync":"kanso","ai":false,"notes":"100-999","sync_errors":"0"}"#));
         // A feature without a source has no `source` at all.
         let lock = Batch {
             events: vec![Event {
                 day,
-                kind: EventKind::FeatureUsed(Feature::Lock),
+                kind: EventKind::FeatureUsed(Feature::Lock, 3),
             }],
             ..batch
         };

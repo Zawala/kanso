@@ -6,6 +6,11 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::ranges::{
+    AttachmentsMb, Channel, CountRange, EditorMode, LocaleLang, NotebooksRange, PluginsRange,
+    SessionLength, SyncErrors, Theme, ThemeMode,
+};
+
 /// What a free-form value becomes when it doesn't match its pattern.
 pub const UNKNOWN: &str = "unknown";
 
@@ -195,6 +200,44 @@ impl ImportSource {
     }
 }
 
+/// Every `feature` the page lists (docs/METRICS.md), written out by hand so a
+/// test can hold the enum to it.
+pub const DOCUMENTED_FEATURES: &[&str] = &[
+    "note_created",
+    "voice_input",
+    "publish",
+    "import",
+    "lock",
+    "ai",
+    "quick_capture",
+    "shared_note",
+    "export",
+    "note_edited",
+    "note_deleted",
+    "note_restored",
+    "note_pinned",
+    "note_moved",
+    "notebook_created",
+    "tag_added",
+    "template_used",
+    "daily_note",
+    "search",
+    "wikilink_followed",
+    "backlinks_opened",
+    "graph_opened",
+    "task_toggled",
+    "attachment_added",
+    "table_inserted",
+    "diagram",
+    "sticky_opened",
+    "new_window",
+    "focus_mode",
+    "plugin_installed",
+    "plugin_command",
+    "theme_changed",
+    "sync_conflict_resolved",
+];
+
 /// A feature that was used; an import says where from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Feature {
@@ -207,6 +250,30 @@ pub enum Feature {
     QuickCapture,
     SharedNote,
     Export,
+    NoteEdited,
+    NoteDeleted,
+    NoteRestored,
+    NotePinned,
+    NoteMoved,
+    NotebookCreated,
+    TagAdded,
+    TemplateUsed,
+    DailyNote,
+    Search,
+    WikilinkFollowed,
+    BacklinksOpened,
+    GraphOpened,
+    TaskToggled,
+    AttachmentAdded,
+    TableInserted,
+    Diagram,
+    StickyOpened,
+    NewWindow,
+    FocusMode,
+    PluginInstalled,
+    PluginCommand,
+    ThemeChanged,
+    SyncConflictResolved,
 }
 
 impl Feature {
@@ -221,6 +288,30 @@ impl Feature {
             Feature::QuickCapture,
             Feature::SharedNote,
             Feature::Export,
+            Feature::NoteEdited,
+            Feature::NoteDeleted,
+            Feature::NoteRestored,
+            Feature::NotePinned,
+            Feature::NoteMoved,
+            Feature::NotebookCreated,
+            Feature::TagAdded,
+            Feature::TemplateUsed,
+            Feature::DailyNote,
+            Feature::Search,
+            Feature::WikilinkFollowed,
+            Feature::BacklinksOpened,
+            Feature::GraphOpened,
+            Feature::TaskToggled,
+            Feature::AttachmentAdded,
+            Feature::TableInserted,
+            Feature::Diagram,
+            Feature::StickyOpened,
+            Feature::NewWindow,
+            Feature::FocusMode,
+            Feature::PluginInstalled,
+            Feature::PluginCommand,
+            Feature::ThemeChanged,
+            Feature::SyncConflictResolved,
         ]
         .into_iter()
         .chain(ImportSource::ALL.into_iter().map(Feature::Import))
@@ -238,6 +329,30 @@ impl Feature {
             Feature::QuickCapture => "quick_capture",
             Feature::SharedNote => "shared_note",
             Feature::Export => "export",
+            Feature::NoteEdited => "note_edited",
+            Feature::NoteDeleted => "note_deleted",
+            Feature::NoteRestored => "note_restored",
+            Feature::NotePinned => "note_pinned",
+            Feature::NoteMoved => "note_moved",
+            Feature::NotebookCreated => "notebook_created",
+            Feature::TagAdded => "tag_added",
+            Feature::TemplateUsed => "template_used",
+            Feature::DailyNote => "daily_note",
+            Feature::Search => "search",
+            Feature::WikilinkFollowed => "wikilink_followed",
+            Feature::BacklinksOpened => "backlinks_opened",
+            Feature::GraphOpened => "graph_opened",
+            Feature::TaskToggled => "task_toggled",
+            Feature::AttachmentAdded => "attachment_added",
+            Feature::TableInserted => "table_inserted",
+            Feature::Diagram => "diagram",
+            Feature::StickyOpened => "sticky_opened",
+            Feature::NewWindow => "new_window",
+            Feature::FocusMode => "focus_mode",
+            Feature::PluginInstalled => "plugin_installed",
+            Feature::PluginCommand => "plugin_command",
+            Feature::ThemeChanged => "theme_changed",
+            Feature::SyncConflictResolved => "sync_conflict_resolved",
         }
     }
 
@@ -470,13 +585,30 @@ impl Device {
     }
 }
 
-/// What `app_active` adds.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// What `app_active` adds. The first four always; the rest only where the
+/// platform has them cleanly (docs/METRICS.md › `app_active`).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Active {
     os_version: String,
-    sync: SyncMode,
+    sync: Option<SyncMode>,
     ai: bool,
-    notes: NotesRange,
+    notes: Option<NotesRange>,
+    pub(crate) extras: ActiveExtras,
+    /// Sync errors since the last `app_active`, set by the ledger.
+    pub(crate) sync_errors: u32,
+}
+
+/// The optional props of `app_active`.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ActiveExtras {
+    pub locale_lang: Option<LocaleLang>,
+    pub theme_mode: Option<ThemeMode>,
+    pub theme: Option<Theme>,
+    pub editor_mode: Option<EditorMode>,
+    pub plugins: Option<PluginsRange>,
+    pub notebooks: Option<NotebooksRange>,
+    pub attachments_mb: Option<AttachmentsMb>,
+    pub channel: Option<Channel>,
 }
 
 impl Active {
@@ -485,10 +617,18 @@ impl Active {
     pub fn new(os_version: &str, sync: SyncMode, ai: bool, notes: u64) -> Active {
         Active {
             os_version: self::os_version(os_version),
-            sync,
+            sync: Some(sync),
             ai,
-            notes: NotesRange::from_count(notes),
+            notes: Some(NotesRange::from_count(notes)),
+            extras: ActiveExtras::default(),
+            sync_errors: 0,
         }
+    }
+
+    /// Adds the optional props.
+    pub fn with_extras(mut self, extras: ActiveExtras) -> Active {
+        self.extras = extras;
+        self
     }
 
     pub fn os_version(&self) -> &str {
@@ -496,7 +636,7 @@ impl Active {
     }
 
     pub fn sync(&self) -> SyncMode {
-        self.sync
+        self.sync.unwrap_or(SyncMode::Off)
     }
 
     pub fn ai(&self) -> bool {
@@ -504,7 +644,11 @@ impl Active {
     }
 
     pub fn notes(&self) -> NotesRange {
-        self.notes
+        self.notes.unwrap_or(NotesRange::None)
+    }
+
+    pub fn extras(&self) -> &ActiveExtras {
+        &self.extras
     }
 }
 
@@ -572,6 +716,12 @@ mod tests {
             Some(Feature::Import(ImportSource::StandardNotes))
         );
         assert_eq!(Feature::from_key("import"), None);
+        let mut named: Vec<&str> = Feature::all().map(Feature::name).collect();
+        named.sort_unstable();
+        named.dedup();
+        let mut documented = DOCUMENTED_FEATURES.to_vec();
+        documented.sort_unstable();
+        assert_eq!(named, documented);
         assert_eq!(Feature::from_key("telemetry"), None);
     }
 
@@ -606,7 +756,7 @@ mod tests {
 
         /// Every feature survives the ledger's key.
         #[test]
-        fn prop_feature_keys_round_trip(ix in 0usize..21) {
+        fn prop_feature_keys_round_trip(ix in 0usize..Feature::all().count()) {
             let feature = Feature::all().nth(ix).unwrap();
             prop_assert_eq!(Feature::from_key(&feature.key()), Some(feature));
         }
