@@ -36,17 +36,18 @@ const CANNOT_SEE = [
 ] as const;
 
 const COUNTS_SEND = [
-  "The kind of device and its system version",
-  "Kanso's version",
-  "Whether sync is on, and whose server it uses",
-  "Whether AI is turned on",
-  "Roughly how many notes you have, as a range",
-  "Which features were used that day, never what with",
+  "The kind of device and its system version, and Kanso's version and release channel",
+  "Whether sync is on and whose server it uses, how many sync errors there were, and whether AI is turned on",
+  "Your language, your theme and editor mode as a plain label (a theme you made or downloaded is just \"custom\")",
+  "How many notes, notebooks and plugins you have, and how much room attachments take, each as a range",
+  "That Kanso was opened, and how long it was open, as a range",
+  "Which features were used since the last count (creating, editing or deleting a note, search, links, tasks, sync and the like), and roughly how often, as a range, never what with",
 ] as const;
 
 const COUNTS_NEVER = [
   "Notes, titles, notebooks, tags, files or links",
   "Anything you type, search for or ask AI",
+  "The name of a theme or a plugin",
   "Your name, username or email address",
   "Your IP address",
 ] as const;
@@ -135,8 +136,8 @@ export function Privacy() {
             Usage counts
           </h2>
           <p className="mt-4 text-fg-2">
-            So we know how many people use Kanso and on which devices, the apps send a small anonymous count once a day, after
-            showing you a notice the first time. It goes to the sync server, which checks every field against a fixed list,
+            So we know how many people use Kanso and on which devices, the apps send a small anonymous count every hour
+            while they are open, when you open them and when you close them, after showing you a notice the first time. It goes to the sync server, which checks every field against a fixed list,
             refuses anything else, adds the country the connection comes from and passes the rest on to PostHog (EU). It can't
             be turned off; debug and development builds send nothing.
           </p>

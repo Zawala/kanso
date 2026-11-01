@@ -47,16 +47,40 @@ class RustUsageMetricsRepository implements UsageMetricsRepository {
   }
 
   @override
+  Future<void> launched() async {
+    try {
+      await _metrics.launched();
+    } on Object {
+      // Best effort, like every count.
+    }
+  }
+
+  @override
+  Future<void> endSession(int seconds) async {
+    try {
+      await _metrics.endSession(secs: seconds < 0 ? 0 : seconds);
+    } on Object {
+      // Best effort, like every count.
+    }
+  }
+
+  @override
   Future<bool> sendDue({
     required bool tablet,
     required String osVersion,
     required bool ai,
+    String locale = '',
+    String themeMode = '',
+    String theme = '',
   }) async {
     try {
       return await _metrics.sendDue(
         tablet: tablet,
         osVersion: osVersion,
         ai: ai,
+        locale: locale,
+        themeMode: themeMode,
+        theme: theme,
       );
     } on Object {
       return false;

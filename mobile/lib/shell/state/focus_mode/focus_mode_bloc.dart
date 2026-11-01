@@ -8,6 +8,8 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:injectable/injectable.dart';
 
 import '../../../core/models/repos/abs/preferences_repository.dart';
+import '../../../metrics/models/repos/abs/usage_metrics_repository.dart';
+import '../../../metrics/utils/count_usage.dart';
 
 part 'focus_mode_bloc.freezed.dart';
 part 'focus_mode_event.dart';
@@ -85,6 +87,9 @@ class FocusModeBloc extends Bloc<FocusModeEvent, FocusModeState> {
   Future<void> _set(bool active, Emitter<FocusModeState> emit) async {
     if (state.active == active && state.ready) {
       return;
+    }
+    if (active && !state.active) {
+      countUsage(UsageFeature.focusMode);
     }
     emit(state.copyWith(active: active, ready: true));
     await _preferences.update(

@@ -66,6 +66,8 @@ pub(crate) struct Inner {
     /// Keeps the anonymous-count ledger's read, change and write together.
     /// A send releases it while its request is on the wire.
     pub(crate) metrics_gate: Mutex<()>,
+    /// Feature counts not yet written to the ledger (see `metrics_buffer`).
+    pub(crate) metrics_buffer: Mutex<crate::metrics_buffer::Buffer>,
     /// Set to stop the sync that is running.
     pub(crate) sync_cancel: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>,
     /// Related notes' thread and status, and the twins dismissed.
@@ -347,6 +349,7 @@ fn open_inner(
         status_listeners: Listeners::default(),
         sync_gate: Mutex::new(()),
         metrics_gate: Mutex::new(()),
+        metrics_buffer: Mutex::new(crate::metrics_buffer::Buffer::default()),
         sync_cancel: Mutex::new(None),
         discovery: DiscoveryState::default(),
         shared: SharedState::new(collab),

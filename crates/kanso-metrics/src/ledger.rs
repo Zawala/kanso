@@ -1,78 +1,93 @@
-//! The day's bookkeeping (docs/METRICS.md › Events, Sending): which IDs
-//! were counted active today, which features were used and are waiting, and
-//! which were already sent. The caller keeps it (the desktop in its config
-//! as `metrics`) and passes the day in, so every function here is pure.
+//! The ledger's rules (docs/METRICS.md › Events, Sending): what is due, and
+//! what a send's answer settles. The caller keeps the [`Ledger`] (the desktop
+//! in its config as `metrics`, the phones in the library's metadata) and
+//! passes the day in, so every function here is pure. A batch is built by
+//! [`Ledger::due`] and only [`Ledger::settle`] removes what it carried, so a
+//! restart in between sends it again and a restart after never does.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+
+pub use crate::ledger_model::{Counted, Ended, Ledger, Opened};
 
 use crate::batch::{Batch, Event, EventKind, MAX_EVENTS};
+use crate::ranges::SessionLength;
 use crate::send::Outcome;
 use crate::values::{Active, Day, Device, Feature, Id, install_id};
 
-/// What has been counted on the day it holds. A day earlier than today
-/// counts as empty: its waiting features are never sent.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Ledger {
-    /// This install's `i_` ID, made the first time it is needed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    install_id: Option<Id>,
-    /// The UTC day the lists below are for.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    day: Option<Day>,
-    /// The IDs whose `app_active` that day is done.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    active_sent: Vec<Id>,
-    /// The feature names whose `feature_used` that day is done.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    features_sent: Vec<String>,
-    /// Features used that day and not yet sent (`import:<source>` for an
-    /// import).
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pending: Vec<String>,
-}
+/// The most `app_opened` a day counts per ID.
+pub const MAX_OPENED_PER_DAY: u8 = 12;
+/// Sessions kept while they can't be sent.
+const MAX_SESSIONS: usize = 8;
+/// Count entries kept while they can't be sent.
+const MAX_COUNTS: usize = 64;
+/// A count stops growing here.
+const COUNT_CAP: u32 = 1_000_000;
 
 /// Reads whatever is there and keeps only what is valid: a damaged entry
-/// costs a count, never the settings file it sits in.
+/// costs a count, never the settings file it sits in. The first version's
+/// keys (`featuresSent`, `pending`) are ignored.
 impl<'de> Deserialize<'de> for Ledger {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Ledger, D::Error> {
         let value = serde_json::Value::deserialize(deserializer)?;
-        let text = |key: &str| value.get(key).and_then(|v| v.as_str());
-        let list = |key: &str| -> Vec<String> {
+        let text = |v: &serde_json::Value, key: &str| {
+            v.get(key).and_then(|v| v.as_str()).map(str::to_owned)
+        };
+        let items = |key: &str| -> Vec<serde_json::Value> {
             value
                 .get(key)
                 .and_then(|v| v.as_array())
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(|v| v.as_str().map(str::to_owned))
-                        .collect()
-                })
+                .cloned()
                 .unwrap_or_default()
         };
-        let feature_names: Vec<&str> = Feature::all().map(Feature::name).collect();
-        let mut ledger = Ledger {
-            install_id: text("installId")
-                .and_then(Id::parse)
-                .filter(|id| id.as_str().starts_with("i_")),
-            day: text("day").and_then(Day::parse),
-            active_sent: list("activeSent")
-                .iter()
-                .filter_map(|id| Id::parse(id))
-                .collect(),
-            features_sent: list("featuresSent")
-                .into_iter()
-                .filter(|name| feature_names.contains(&name.as_str()))
-                .collect(),
-            pending: Vec::new(),
+        let number = |v: &serde_json::Value, key: &str| {
+            v.get(key)
+                .and_then(serde_json::Value::as_u64)
+                .map(|n| u32::try_from(n).unwrap_or(u32::MAX).min(COUNT_CAP))
         };
-        for key in list("pending") {
-            if let Some(feature) = Feature::from_key(&key) {
-                ledger.queue(feature);
+        let mut ledger = Ledger {
+            install_id: text(&value, "installId")
+                .and_then(|id| Id::parse(&id))
+                .filter(|id| id.as_str().starts_with("i_")),
+            day: text(&value, "day").and_then(|d| Day::parse(&d)),
+            launch_pending: value.get("launchPending").and_then(|v| v.as_bool()) == Some(true),
+            sync_errors: number(&value, "syncErrors").unwrap_or(0),
+            ..Ledger::default()
+        };
+        for id in items("activeSent") {
+            if let Some(id) = id.as_str().and_then(Id::parse)
+                && !ledger.active_sent.contains(&id)
+            {
+                ledger.active_sent.push(id);
             }
         }
-        ledger.active_sent.dedup();
-        ledger.features_sent.dedup();
+        for item in items("openedSent") {
+            let id = text(&item, "id").and_then(|id| Id::parse(&id));
+            let n = number(&item, "n").map(|n| u8::try_from(n).unwrap_or(u8::MAX));
+            if let (Some(id), Some(n)) = (id, n)
+                && !ledger.opened_sent.iter().any(|o| o.id == id)
+            {
+                ledger.opened_sent.push(Opened { id, n });
+            }
+        }
+        for item in items("counts") {
+            let day = text(&item, "day").and_then(|d| Day::parse(&d));
+            let feature = text(&item, "feature").and_then(|k| Feature::from_key(&k));
+            if let (Some(day), Some(feature), Some(n)) = (day, feature, number(&item, "n"))
+                && n > 0
+            {
+                ledger.add_count(day, &feature.key(), n);
+            }
+        }
+        for item in items("sessions") {
+            let day = text(&item, "day").and_then(|d| Day::parse(&d));
+            let length = text(&item, "length")
+                .and_then(|l| SessionLength::ALL.iter().copied().find(|s| s.as_str() == l));
+            if let (Some(day), Some(length)) = (day, length)
+                && ledger.sessions.len() < MAX_SESSIONS
+            {
+                ledger.sessions.push(Ended { day, length });
+            }
+        }
         Ok(ledger)
     }
 }
@@ -89,74 +104,148 @@ impl Ledger {
         self.install_id.as_ref()
     }
 
-    /// Notes that `feature` was used `today`. Says whether the ledger
-    /// changed: not for a feature already waiting or sent today, nor for a
-    /// day before the one it holds (the clock went back).
-    pub fn record(&mut self, today: Day, feature: Feature) -> bool {
-        if !self.roll(today) {
-            return false;
-        }
-        let name = feature.name();
-        if self.features_sent.iter().any(|sent| sent == name) {
-            return false;
-        }
-        self.queue(feature)
+    /// The app was launched: one `app_opened` waits. Says whether the ledger
+    /// changed.
+    pub fn launch(&mut self) -> bool {
+        !std::mem::replace(&mut self.launch_pending, true)
     }
 
-    /// Adds a feature unless one of its name is waiting.
-    fn queue(&mut self, feature: Feature) -> bool {
-        let name = feature.name();
-        if self
-            .pending
-            .iter()
-            .any(|key| Feature::from_key(key).is_some_and(|f| f.name() == name))
-        {
+    /// Notes one use of `feature` on `today`. It is reported with the next
+    /// batch, as a count. Always changes the ledger.
+    pub fn record(&mut self, today: Day, feature: Feature) -> bool {
+        self.record_n(today, feature, 1)
+    }
+
+    /// Notes `n` uses of `feature` on `today` at once (a batch of notes
+    /// changed together). Says whether the ledger changed: not for none.
+    pub fn record_n(&mut self, today: Day, feature: Feature, n: u32) -> bool {
+        if n == 0 {
             return false;
         }
-        self.pending.push(feature.key());
+        self.prune(today);
+        self.add_count(today, &feature.key(), n);
         true
     }
 
-    /// Moves the ledger to `today`, emptying it when the day changed. False
-    /// for a day before the one it holds.
+    /// A session ended on `today` after `secs` seconds. Says whether it was
+    /// kept.
+    pub fn end_session(&mut self, today: Day, secs: u64) -> bool {
+        self.prune(today);
+        if self.sessions.len() >= MAX_SESSIONS {
+            self.sessions.remove(0);
+        }
+        self.sessions.push(Ended {
+            day: today,
+            length: SessionLength::from_secs(secs),
+        });
+        true
+    }
+
+    /// A sync failed.
+    pub fn record_sync_error(&mut self) -> bool {
+        let before = self.sync_errors;
+        self.sync_errors = (self.sync_errors + 1).min(COUNT_CAP);
+        self.sync_errors != before
+    }
+
+    fn add_count(&mut self, day: Day, key: &str, n: u32) {
+        if let Some(entry) = self
+            .counts
+            .iter_mut()
+            .find(|c| c.day == day && c.feature == key)
+        {
+            entry.n = (entry.n + n).min(COUNT_CAP);
+        } else {
+            if self.counts.len() >= MAX_COUNTS {
+                self.counts.remove(0);
+            }
+            self.counts.push(Counted {
+                day,
+                feature: key.to_owned(),
+                n: n.min(COUNT_CAP),
+            });
+        }
+    }
+
+    /// Drops what is more than a day old: it would be refused as stale.
+    fn prune(&mut self, today: Day) {
+        let oldest = today.previous();
+        self.counts.retain(|c| c.day >= oldest);
+        self.sessions.retain(|s| s.day >= oldest);
+    }
+
+    /// Moves the lists that are per day to `today`, emptying them when the
+    /// day changed. False for a day before the one held.
     fn roll(&mut self, today: Day) -> bool {
         match self.day {
             Some(day) if day > today => false,
             Some(day) if day == today => true,
             _ => {
-                *self = Ledger {
-                    install_id: self.install_id.take(),
-                    day: Some(today),
-                    ..Ledger::default()
-                };
+                self.day = Some(today);
+                self.active_sent.clear();
+                self.opened_sent.clear();
                 true
             }
         }
     }
 
-    /// What to send `today` as `id`: `app_active` unless it is done for
-    /// this ID today, and each feature waiting from today. `None` when there
-    /// is nothing. Waiting features from an earlier day are left out.
+    fn opened(&self, id: &Id) -> u8 {
+        self.opened_sent
+            .iter()
+            .find(|o| &o.id == id)
+            .map_or(0, |o| o.n)
+    }
+
+    /// What to send `today` as `id`: `app_active` unless it is done for this
+    /// ID today, `app_opened` for a launch not yet reported (at most
+    /// [`MAX_OPENED_PER_DAY`] a day), the sessions that ended, and each
+    /// feature's count since the last batch. `None` when there is nothing.
     pub fn due(&self, today: Day, id: &Id, device: &Device, active: &Active) -> Option<Batch> {
-        let (sent, pending): (&[Id], &[String]) = match self.day {
-            Some(day) if day == today => (&self.active_sent, &self.pending),
+        let fresh = match self.day {
             Some(day) if day > today => return None,
-            _ => (&[], &[]),
+            Some(day) => day == today,
+            None => false,
         };
+        let (active_done, opened) = if fresh {
+            (self.active_sent.contains(id), self.opened(id))
+        } else {
+            (false, 0)
+        };
+        let oldest = today.previous();
+        let current = |day: Day| day >= oldest && day <= today;
         let mut events = Vec::new();
-        if !sent.contains(id) {
+        if !active_done {
+            let mut active = active.clone();
+            active.sync_errors = self.sync_errors;
             events.push(Event {
                 day: today,
-                kind: EventKind::AppActive(active.clone()),
+                kind: EventKind::AppActive(active),
+            });
+        }
+        if self.launch_pending && opened < MAX_OPENED_PER_DAY {
+            events.push(Event {
+                day: today,
+                kind: EventKind::AppOpened,
             });
         }
         events.extend(
-            pending
+            self.sessions
                 .iter()
-                .filter_map(|key| Feature::from_key(key))
-                .map(|feature| Event {
-                    day: today,
-                    kind: EventKind::FeatureUsed(feature),
+                .filter(|s| current(s.day))
+                .map(|s| Event {
+                    day: s.day,
+                    kind: EventKind::Session(s.length),
+                }),
+        );
+        events.extend(
+            self.counts
+                .iter()
+                .filter(|c| current(c.day))
+                .filter_map(|c| {
+                    Feature::from_key(&c.feature).map(|feature| Event {
+                        day: c.day,
+                        kind: EventKind::FeatureUsed(feature, c.n),
+                    })
                 }),
         );
         events.truncate(MAX_EVENTS);
@@ -168,38 +257,64 @@ impl Ledger {
     }
 
     /// Takes in how sending `batch` went. Accepted, or refused as invalid
-    /// (it would only fail again): its events are done for their day. Kept
-    /// for a later try otherwise. Says whether the ledger changed.
+    /// (it would only fail again): what it carried is done. Kept for a later
+    /// try otherwise. Says whether the ledger changed.
     pub fn settle(&mut self, batch: &Batch, outcome: Outcome) -> bool {
         if !matches!(outcome, Outcome::Accepted | Outcome::Rejected) {
             return false;
         }
-        let mut changed = false;
+        let before = self.clone();
         for event in &batch.events {
-            if !self.roll(event.day) {
-                continue;
-            }
             match &event.kind {
-                EventKind::AppActive(_) => {
-                    if !self.active_sent.contains(&batch.id) {
+                EventKind::AppActive(active) => {
+                    if self.roll(event.day) && !self.active_sent.contains(&batch.id) {
                         self.active_sent.push(batch.id.clone());
-                        changed = true;
+                    }
+                    self.sync_errors = self.sync_errors.saturating_sub(active.sync_errors);
+                }
+                EventKind::AppOpened => {
+                    if self.roll(event.day) {
+                        match self.opened_sent.iter_mut().find(|o| o.id == batch.id) {
+                            Some(o) => o.n = o.n.saturating_add(1),
+                            None => self.opened_sent.push(Opened {
+                                id: batch.id.clone(),
+                                n: 1,
+                            }),
+                        }
+                    }
+                    self.launch_pending = false;
+                }
+                EventKind::Session(length) => {
+                    if let Some(at) = self
+                        .sessions
+                        .iter()
+                        .position(|s| s.day == event.day && s.length == *length)
+                    {
+                        self.sessions.remove(at);
                     }
                 }
-                EventKind::FeatureUsed(feature) => {
-                    let name = feature.name();
-                    let before = self.pending.len();
-                    self.pending
-                        .retain(|key| Feature::from_key(key).is_none_or(|f| f.name() != name));
-                    changed |= self.pending.len() != before;
-                    if !self.features_sent.iter().any(|sent| sent == name) {
-                        self.features_sent.push(name.to_owned());
-                        changed = true;
+                EventKind::FeatureUsed(feature, sent) => {
+                    let key = feature.key();
+                    if let Some(at) = self
+                        .counts
+                        .iter()
+                        .position(|c| c.day == event.day && c.feature == key)
+                    {
+                        let left = self.counts[at].n.saturating_sub(*sent);
+                        if left == 0 {
+                            self.counts.remove(at);
+                        } else {
+                            self.counts[at].n = left;
+                        }
                     }
                 }
             }
         }
-        changed
+        // A launch that can't be counted any more (12 a day) is not kept.
+        if self.launch_pending && self.opened(&batch.id) >= MAX_OPENED_PER_DAY {
+            self.launch_pending = false;
+        }
+        *self != before
     }
 }
 
@@ -207,7 +322,8 @@ impl Ledger {
 mod tests {
     use super::*;
     use crate::batch::MAX_BYTES;
-    use crate::values::{Form, ImportSource, Platform, SyncMode};
+    use crate::ranges::*;
+    use crate::values::{ActiveExtras, Form, ImportSource, Platform, SyncMode};
     use proptest::prelude::*;
     use std::collections::{HashMap, HashSet};
 
@@ -227,13 +343,15 @@ mod tests {
         Id::parse(&format!("a_{}", "1".repeat(32))).unwrap()
     }
 
-    fn names(batch: &Batch) -> Vec<&'static str> {
+    fn names(batch: &Batch) -> Vec<String> {
         batch
             .events
             .iter()
             .map(|e| match &e.kind {
-                EventKind::AppActive(_) => "app_active",
-                EventKind::FeatureUsed(f) => f.name(),
+                EventKind::AppActive(_) => "app_active".into(),
+                EventKind::AppOpened => "app_opened".into(),
+                EventKind::Session(_) => "session".into(),
+                EventKind::FeatureUsed(f, _) => f.name().into(),
             })
             .collect()
     }
@@ -245,9 +363,10 @@ mod tests {
         assert_eq!(ledger.install_id(), id, "made once");
         let today = day("2026-10-30");
 
-        // Launch: app_active only.
+        // Launch: app_active and app_opened.
+        ledger.launch();
         let batch = ledger.due(today, &id, &device(), &active()).unwrap();
-        assert_eq!(names(&batch), ["app_active"]);
+        assert_eq!(names(&batch), ["app_active", "app_opened"]);
         // No answer: kept, and the next try has it again.
         assert!(!ledger.settle(&batch, Outcome::Retry));
         assert_eq!(
@@ -257,44 +376,94 @@ mod tests {
         assert!(ledger.settle(&batch, Outcome::Accepted));
         assert_eq!(ledger.due(today, &id, &device(), &active()), None);
 
-        // Two imports and a lock: one import (the first source) and the lock.
-        assert!(ledger.record(today, Feature::Import(ImportSource::Bear)));
-        assert!(!ledger.record(today, Feature::Import(ImportSource::Notion)));
-        assert!(ledger.record(today, Feature::Lock));
+        // An import twice, three locks: counted per feature, with the source.
+        ledger.record(today, Feature::Import(ImportSource::Bear));
+        ledger.record(today, Feature::Import(ImportSource::Bear));
+        for _ in 0..3 {
+            ledger.record(today, Feature::Lock);
+        }
         let batch = ledger.due(today, &id, &device(), &active()).unwrap();
         assert_eq!(names(&batch), ["import", "lock"]);
         assert_eq!(
-            batch.events[0].kind,
-            EventKind::FeatureUsed(Feature::Import(ImportSource::Bear))
+            batch.events[1].kind,
+            EventKind::FeatureUsed(Feature::Lock, 3)
         );
-        // Used again while it is being sent: still once.
-        assert!(!ledger.record(today, Feature::Lock));
+        // Used again while it is being sent: the later use stays.
+        ledger.record(today, Feature::Lock);
         ledger.settle(&batch, Outcome::Accepted);
-        assert!(!ledger.record(today, Feature::Lock));
+        let batch = ledger.due(today, &id, &device(), &active()).unwrap();
+        assert_eq!(
+            batch.events[0].kind,
+            EventKind::FeatureUsed(Feature::Lock, 1)
+        );
+        ledger.settle(&batch, Outcome::Accepted);
         assert_eq!(ledger.due(today, &id, &device(), &active()), None);
 
-        // Signing in counts the account too that day, without the features
-        // already counted.
+        // Quitting sends the session.
+        ledger.end_session(today, 90);
+        let batch = ledger.due(today, &id, &device(), &active()).unwrap();
+        assert_eq!(
+            batch.events[0].kind,
+            EventKind::Session(SessionLength::OneToFiveMinutes)
+        );
+        ledger.settle(&batch, Outcome::Accepted);
+        assert_eq!(ledger.due(today, &id, &device(), &active()), None);
+
+        // Signing in counts the account's app_active too that day.
         let batch = ledger.due(today, &account(), &device(), &active()).unwrap();
         assert_eq!(names(&batch), ["app_active"]);
 
         // A refused batch is dropped like a sent one.
         ledger.record(today, Feature::Export);
-        let batch = ledger.due(today, &account(), &device(), &active()).unwrap();
+        let batch = ledger.due(today, &id, &device(), &active()).unwrap();
         ledger.settle(&batch, Outcome::Rejected);
-        assert_eq!(ledger.due(today, &account(), &device(), &active()), None);
+        assert_eq!(ledger.due(today, &id, &device(), &active()), None);
 
-        // The next day starts over; what waited from yesterday is dropped.
+        // The next day: app_active again; what is a day old still goes with
+        // its own day, what is older is dropped.
         ledger.record(today, Feature::Ai);
         let tomorrow = today.next();
         let batch = ledger.due(tomorrow, &id, &device(), &active()).unwrap();
+        assert_eq!(names(&batch), ["app_active", "ai"]);
+        assert_eq!(batch.events[1].day, today);
+        let later = tomorrow.next();
+        let batch = ledger.due(later, &id, &device(), &active()).unwrap();
         assert_eq!(names(&batch), ["app_active"]);
-        assert!(batch.events.iter().all(|e| e.day == tomorrow));
         // And the clock going back sends nothing for the earlier day.
-        ledger.record(tomorrow, Feature::Ai);
+        ledger.settle(&batch, Outcome::Accepted);
         assert_eq!(ledger.due(today, &id, &device(), &active()), None);
-        assert!(!ledger.record(today, Feature::Publish));
         assert_eq!(ledger.install_id(), id, "the install ID outlives the days");
+    }
+
+    #[test]
+    fn opens_at_most_twelve_a_day_and_errors_ride_with_app_active() {
+        let mut ledger = Ledger::default();
+        let id = ledger.install_id();
+        let today = day("2026-10-30");
+        for _ in 0..15 {
+            ledger.launch();
+            if let Some(batch) = ledger.due(today, &id, &device(), &active()) {
+                ledger.settle(&batch, Outcome::Accepted);
+            }
+        }
+        assert_eq!(ledger.opened(&id), MAX_OPENED_PER_DAY);
+        ledger.launch();
+        assert_eq!(
+            ledger.due(today, &id, &device(), &active()),
+            None,
+            "a thirteenth launch is not sent"
+        );
+
+        let mut ledger = Ledger::default();
+        for _ in 0..7 {
+            ledger.record_sync_error();
+        }
+        let batch = ledger.due(today, &id, &device(), &active()).unwrap();
+        let json = String::from_utf8(batch.to_json()).unwrap();
+        assert!(json.contains(r#""sync_errors":"6+""#), "{json}");
+        ledger.record_sync_error();
+        ledger.settle(&batch, Outcome::Accepted);
+        assert_eq!(ledger.sync_errors, 1, "the later error stays");
     }
 
     #[test]
@@ -303,14 +472,19 @@ mod tests {
             "installId": "i_00112233445566778899aabbccddeeff",
             "day": "2026-10-30",
             "activeSent": ["a_00112233445566778899aabbccddeeff", "nope", 5],
-            "featuresSent": ["lock", "spying"],
-            "pending": ["ai", "ai", "import:bear", "import:nowhere", {"x": 1}],
+            "openedSent": [{"id": "a_00112233445566778899aabbccddeeff", "n": 3}, {"n": 1}],
+            "counts": [{"day": "2026-10-30", "feature": "ai", "n": 4},
+                       {"day": "2026-10-30", "feature": "spying", "n": 1},
+                       {"day": "x", "feature": "ai", "n": 1}],
+            "sessions": [{"day": "2026-10-30", "length": "1-5m"}, {"day": "2026-10-30", "length": "forever"}],
+            "pending": ["ai"],
             "extra": true
         });
         let ledger: Ledger = serde_json::from_value(json).unwrap();
         assert_eq!(ledger.active_sent.len(), 1);
-        assert_eq!(ledger.features_sent, ["lock"]);
-        assert_eq!(ledger.pending, ["ai", "import:bear"]);
+        assert_eq!(ledger.opened_sent.len(), 1);
+        assert_eq!(ledger.counts.len(), 1);
+        assert_eq!(ledger.sessions.len(), 1);
         let back: Ledger = serde_json::from_slice(&serde_json::to_vec(&ledger).unwrap()).unwrap();
         assert_eq!(back, ledger);
         // An account ID is never kept as the install's.
@@ -330,6 +504,9 @@ mod tests {
         /// Moves the clock this many days (back for a negative number).
         Clock(i8),
         Use(Feature),
+        Launch,
+        EndSession(u64),
+        SyncError,
         /// Builds the batch for one of the IDs and settles it.
         Send(usize, Outcome),
         /// Saves and loads the ledger, as a restart does.
@@ -337,7 +514,7 @@ mod tests {
     }
 
     fn feature() -> impl Strategy<Value = Feature> {
-        (0usize..21).prop_map(|ix| Feature::all().nth(ix).unwrap())
+        (0usize..Feature::all().count()).prop_map(|ix| Feature::all().nth(ix).unwrap())
     }
 
     fn outcome() -> impl Strategy<Value = Outcome> {
@@ -352,8 +529,11 @@ mod tests {
     fn op() -> impl Strategy<Value = Op> {
         prop_oneof![
             1 => (-1i8..=2).prop_map(Op::Clock),
-            3 => feature().prop_map(Op::Use),
-            3 => (0usize..3, outcome()).prop_map(|(id, o)| Op::Send(id, o)),
+            4 => feature().prop_map(Op::Use),
+            2 => Just(Op::Launch),
+            2 => (0u64..20_000).prop_map(Op::EndSession),
+            1 => Just(Op::SyncError),
+            4 => (0usize..3, outcome()).prop_map(|(id, o)| Op::Send(id, o)),
             1 => Just(Op::Restart),
         ]
     }
@@ -373,8 +553,29 @@ mod tests {
             prop::sample::select(vec![SyncMode::Off, SyncMode::Kanso, SyncMode::SelfHosted]),
             any::<bool>(),
             any::<u64>(),
+            (
+                prop::option::of("\\PC{0,8}"),
+                prop::option::of(prop::sample::select(ThemeMode::ALL.to_vec())),
+                prop::option::of(("\\PC{0,50}", any::<bool>())),
+                prop::option::of(prop::sample::select(EditorMode::ALL.to_vec())),
+                prop::option::of(any::<u64>()),
+                prop::option::of(any::<u64>()),
+                prop::option::of(any::<u64>()),
+                prop::option::of(prop::sample::select(Channel::ALL.to_vec())),
+            ),
         )
-            .prop_map(|(os, sync, ai, notes)| Active::new(&os, sync, ai, notes))
+            .prop_map(|(os, sync, ai, notes, x)| {
+                Active::new(&os, sync, ai, notes).with_extras(ActiveExtras {
+                    locale_lang: x.0.map(|l| LocaleLang::new(&l, &["en", "fr", "de"])),
+                    theme_mode: x.1,
+                    theme: x.2.map(|(n, b)| Theme::new(&n, b)),
+                    editor_mode: x.3,
+                    plugins: x.4.map(PluginsRange::from_count),
+                    notebooks: x.5.map(NotebooksRange::from_count),
+                    attachments_mb: x.6.map(AttachmentsMb::from_bytes),
+                    channel: x.7,
+                })
+            })
     }
 
     /// What the Worker checks (docs/METRICS.md › The batch), written from
@@ -385,6 +586,11 @@ mod tests {
         };
         let one_of =
             |v: &serde_json::Value, list: &[&str]| v.as_str().is_some_and(|s| list.contains(&s));
+        let slug = |s: &str| {
+            (1..=32).contains(&s.len())
+                && s.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        };
         if body.len() > MAX_BYTES {
             return Err("over 16 KiB".into());
         }
@@ -394,8 +600,7 @@ mod tests {
         if keys != HashSet::from(["v", "id", "events"]) || batch["v"] != 1 {
             return Err("top level".into());
         }
-        let id = batch["id"].as_str().ok_or("id")?;
-        if Id::parse(id).is_none() {
+        if Id::parse(batch["id"].as_str().ok_or("id")?).is_none() {
             return Err("id".into());
         }
         let events = batch["events"].as_array().ok_or("events")?;
@@ -439,37 +644,81 @@ mod tests {
                 // `unknown` is refused, as the page says.
                 return Err("app_version".into());
             }
+            let must: HashSet<&str> = common.into_iter().collect();
             match event["event"].as_str() {
                 Some("app_active") => {
-                    let want: HashSet<&str> = common
-                        .into_iter()
-                        .chain(["os_version", "sync", "ai", "notes"])
-                        .collect();
-                    let os = props["os_version"].as_str().ok_or("os_version")?;
-                    if keys != want
-                        || !((1..=32).contains(&os.len())
-                            && os
-                                .bytes()
-                                .all(|b| b.is_ascii_alphanumeric() || b".-_".contains(&b)))
-                        || !one_of(&props["sync"], &["off", "kanso", "self_hosted"])
-                        || !props["ai"].is_boolean()
-                        || !one_of(&props["notes"], &["0", "1-9", "10-99", "100-999", "1000+"])
-                    {
+                    let required = ["os_version", "sync", "ai", "notes"];
+                    let optional = [
+                        "locale_lang",
+                        "theme_mode",
+                        "theme",
+                        "editor_mode",
+                        "plugins",
+                        "notebooks",
+                        "attachments_mb",
+                        "sync_errors",
+                        "channel",
+                    ];
+                    let must: HashSet<&str> = must.into_iter().chain(required).collect();
+                    let may: HashSet<&str> = must.iter().copied().chain(optional).collect();
+                    if !must.is_subset(&keys) || !keys.is_subset(&may) {
                         return Err("app_active props".into());
+                    }
+                    let os = props["os_version"].as_str().ok_or("os_version")?;
+                    let ok = (1..=32).contains(&os.len())
+                        && os
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b".-_".contains(&b))
+                        && one_of(&props["sync"], &["off", "kanso", "self_hosted"])
+                        && props["ai"].is_boolean()
+                        && one_of(&props["notes"], &["0", "1-9", "10-99", "100-999", "1000+"]);
+                    let list = |key: &str, values: &[&str]| {
+                        props.get(key).is_none_or(|v| one_of(v, values))
+                    };
+                    let lang = props.get("locale_lang").is_none_or(|v| {
+                        v.as_str().is_some_and(|s| {
+                            s == "other"
+                                || (s.len() == 2 && s.bytes().all(|b| b.is_ascii_lowercase()))
+                        })
+                    });
+                    let theme = props
+                        .get("theme")
+                        .is_none_or(|v| v.as_str().is_some_and(|s| s == "custom" || slug(s)));
+                    if !(ok
+                        && lang
+                        && theme
+                        && list("theme_mode", &["light", "dark", "system"])
+                        && list("editor_mode", &["edit", "live", "preview", "split"])
+                        && list("plugins", &["0", "1-2", "3-5", "6+"])
+                        && list("notebooks", &["0", "1-4", "5-19", "20+"])
+                        && list(
+                            "attachments_mb",
+                            &["0", "<10", "10-100", "100-1000", "1000+"],
+                        )
+                        && list("sync_errors", &["0", "1-5", "6+"])
+                        && list("channel", &["stable", "beta", "dev"]))
+                    {
+                        return Err("app_active values".into());
+                    }
+                }
+                Some("app_opened") => {
+                    if keys != must {
+                        return Err("app_opened props".into());
+                    }
+                }
+                Some("session") => {
+                    let want: HashSet<&str> = must.into_iter().chain(["duration"]).collect();
+                    if keys != want
+                        || !one_of(
+                            &props["duration"],
+                            &["<1m", "1-5m", "5-15m", "15-60m", "1-3h", "3h+"],
+                        )
+                    {
+                        return Err("session props".into());
                     }
                 }
                 Some("feature_used") => {
-                    let features = [
-                        "note_created",
-                        "voice_input",
-                        "publish",
-                        "import",
-                        "lock",
-                        "ai",
-                        "quick_capture",
-                        "shared_note",
-                        "export",
-                    ];
+                    let features = crate::values::DOCUMENTED_FEATURES;
                     let sources = [
                         "markdown",
                         "obsidian",
@@ -485,18 +734,19 @@ mod tests {
                         "pouch",
                         "other",
                     ];
-                    if !one_of(&props["feature"], &features) {
+                    if !one_of(&props["feature"], features) {
                         return Err("feature".into());
                     }
                     let import = props["feature"] == "import";
-                    let mut want: HashSet<&str> = common.into_iter().chain(["feature"]).collect();
+                    let mut want: HashSet<&str> =
+                        must.into_iter().chain(["feature", "count"]).collect();
                     if import {
                         want.insert("source");
                         if !one_of(&props["source"], &sources) {
                             return Err("source".into());
                         }
                     }
-                    if keys != want {
+                    if keys != want || !one_of(&props["count"], &["1", "2-5", "6-20", "21+"]) {
                         return Err("feature_used props".into());
                     }
                 }
@@ -507,17 +757,19 @@ mod tests {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig::with_cases(256))]
+        #![proptest_config(ProptestConfig { rng_seed: proptest::test_runner::RngSeed::Fixed(0x006b_616e_736f), ..ProptestConfig::with_cases(256) })]
 
-        /// Over any run of days, uses, sends, answers and restarts: at most
-        /// one `app_active` per ID per day and one `feature_used` per
-        /// feature per day is ever accepted; every event is for the day it
-        /// was sent on; a waiting feature is never sent on a later day; and
-        /// every batch is one the Worker takes (bar an `unknown` version).
+        /// Over any run of days, uses, launches, sessions, sends, answers and
+        /// restarts: nothing recorded is accepted more than it was recorded
+        /// (no double counting, restarts included); at most one `app_active`
+        /// per ID per day and twelve `app_opened`; every event is for a day
+        /// no later than today and at most a day old; and every batch is one
+        /// the Worker takes (bar an `unknown` version), with every value in
+        /// the documented sets.
         #[test]
-        fn prop_counts_once_a_day_and_never_late(
+        fn prop_never_counts_twice(
             start in 19_000i64..30_000,
-            ops in prop::collection::vec(op(), 1..80),
+            ops in prop::collection::vec(op(), 1..100),
             device in device_strategy(),
             active in active_strategy(),
         ) {
@@ -525,9 +777,11 @@ mod tests {
             let ids = [ledger.install_id(), account(), Id::parse(&format!("a_{}", "2".repeat(32))).unwrap()];
             let mut today = Day::from_unix_ms(start * 86_400_000);
             let mut accepted_active: HashMap<(Id, Day), usize> = HashMap::new();
-            let mut accepted_feature: HashMap<(&'static str, Day), usize> = HashMap::new();
-            // When each waiting feature name was last used.
-            let mut used_on: HashMap<&'static str, Vec<Day>> = HashMap::new();
+            let mut accepted_opened: HashMap<(Id, Day), usize> = HashMap::new();
+            let mut recorded: HashMap<String, u64> = HashMap::new();
+            let mut accepted: HashMap<String, u64> = HashMap::new();
+            let mut sessions = (0usize, 0usize);
+            let mut errors = (0u64, 0u64);
             for op in ops {
                 match op {
                     Op::Clock(days) => {
@@ -539,7 +793,18 @@ mod tests {
                     }
                     Op::Use(feature) => {
                         ledger.record(today, feature);
-                        used_on.entry(feature.name()).or_default().push(today);
+                        *recorded.entry(feature.key()).or_default() += 1;
+                    }
+                    Op::Launch => {
+                        ledger.launch();
+                    }
+                    Op::EndSession(secs) => {
+                        ledger.end_session(today, secs);
+                        sessions.0 += 1;
+                    }
+                    Op::SyncError => {
+                        ledger.record_sync_error();
+                        errors.0 += 1;
                     }
                     Op::Send(which, outcome) => {
                         let id = &ids[which];
@@ -551,18 +816,23 @@ mod tests {
                             prop_assert_eq!(check_like_the_worker(&body), Ok(()));
                         }
                         for event in &batch.events {
-                            prop_assert_eq!(event.day, today);
-                            if let EventKind::FeatureUsed(f) = &event.kind {
-                                // It was used today, not only on an earlier day.
-                                prop_assert!(used_on[f.name()].contains(&today));
-                            }
+                            prop_assert!(event.day <= today && event.day >= today.previous());
                         }
                         ledger.settle(&batch, outcome);
                         if outcome == Outcome::Accepted {
                             for event in &batch.events {
                                 match &event.kind {
-                                    EventKind::AppActive(_) => *accepted_active.entry((id.clone(), today)).or_default() += 1,
-                                    EventKind::FeatureUsed(f) => *accepted_feature.entry((f.name(), today)).or_default() += 1,
+                                    EventKind::AppActive(a) => {
+                                        *accepted_active.entry((id.clone(), today)).or_default() += 1;
+                                        errors.1 += u64::from(a.sync_errors);
+                                    }
+                                    EventKind::AppOpened => {
+                                        *accepted_opened.entry((id.clone(), today)).or_default() += 1;
+                                    }
+                                    EventKind::Session(_) => sessions.1 += 1,
+                                    EventKind::FeatureUsed(f, n) => {
+                                        *accepted.entry(f.key()).or_default() += u64::from(*n);
+                                    }
                                 }
                             }
                         }
@@ -574,8 +844,34 @@ mod tests {
                 }
             }
             prop_assert!(accepted_active.values().all(|&n| n == 1));
-            prop_assert!(accepted_feature.values().all(|&n| n == 1));
+            prop_assert!(accepted_opened.values().all(|&n| n <= usize::from(MAX_OPENED_PER_DAY)));
+            prop_assert!(sessions.1 <= sessions.0);
+            // Three IDs can each report the same errors once.
+            prop_assert!(errors.1 <= errors.0 * 3);
+            for (key, n) in &accepted {
+                prop_assert!(*n <= recorded.get(key).copied().unwrap_or(0), "{key}");
+            }
             prop_assert_eq!(&ledger.install_id(), &ids[0]);
+        }
+
+        /// Restarting after every answer never sends what was accepted again.
+        #[test]
+        fn prop_accepted_is_never_resent_after_a_restart(
+            uses in prop::collection::vec(feature(), 1..20),
+            secs in 0u64..20_000,
+        ) {
+            let today = day("2026-10-30");
+            let mut ledger = Ledger::default();
+            let id = ledger.install_id();
+            ledger.launch();
+            ledger.end_session(today, secs);
+            for f in uses { ledger.record(today, f); }
+            while let Some(batch) = ledger.due(today, &id, &device(), &active()) {
+                ledger.settle(&batch, Outcome::Accepted);
+                let saved = serde_json::to_string(&ledger).unwrap();
+                ledger = serde_json::from_str(&saved).unwrap();
+            }
+            prop_assert_eq!(ledger.due(today, &id, &device(), &active()), None);
         }
 
         /// Any JSON at all reads as a ledger, and a ledger reads back as
@@ -600,14 +896,14 @@ mod tests {
             Just(serde_json::Value::Null),
             any::<bool>().prop_map(serde_json::Value::from),
             any::<i32>().prop_map(serde_json::Value::from),
-            "lock|ai|import:bear|import:x|2026-10-30|i_[0-9a-f]{32}|a_[0-9a-f]{32}|\\PC{0,8}"
+            "lock|ai|import:bear|import:x|1-5m|2026-10-30|i_[0-9a-f]{32}|a_[0-9a-f]{32}|\\PC{0,8}"
                 .prop_map(serde_json::Value::from),
         ];
         leaf.prop_recursive(3, 24, 6, |inner| {
             prop_oneof![
                 prop::collection::vec(inner.clone(), 0..6).prop_map(serde_json::Value::from),
                 prop::collection::hash_map(
-                    "installId|day|activeSent|featuresSent|pending|[a-z]{1,4}",
+                    "installId|day|activeSent|openedSent|launchPending|counts|sessions|syncErrors|id|n|feature|length|[a-z]{1,4}",
                     inner,
                     0..6
                 )

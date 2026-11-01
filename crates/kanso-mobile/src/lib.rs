@@ -122,6 +122,7 @@ mod live_document;
 mod locks;
 mod matching;
 mod metrics;
+mod metrics_buffer;
 mod model;
 mod model_history;
 mod notes;

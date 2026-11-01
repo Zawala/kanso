@@ -14,7 +14,9 @@ import 'package:kanso/core/models/data/search_scope_kind.dart';
 import 'package:kanso/core/views/widgets/kanso_chip.dart';
 import 'package:kanso/core/views/widgets/kanso_search_input.dart';
 import 'package:kanso/core/views/widgets/kanso_skeleton.dart';
+import 'package:kanso/injection.dart';
 import 'package:kanso/library/views/widgets/library_pane.dart';
+import 'package:kanso/metrics/models/repos/abs/usage_metrics_repository.dart';
 import 'package:kanso/note/views/widgets/note_pane.dart';
 import 'package:kanso/search/views/widgets/highlighted_text.dart';
 import 'package:kanso/search/views/widgets/search_pane.dart';
@@ -23,6 +25,7 @@ import 'package:kanso/shell/views/widgets/list_note_layout.dart';
 import 'package:kanso/shell/views/widgets/tablet_layout.dart';
 
 import '../../../helpers/browse_blocs.dart';
+import '../../../helpers/fake_usage_metrics.dart';
 import '../../../helpers/fixture_library_repository.dart';
 import '../../../helpers/golden.dart';
 import '../../../helpers/library_fixtures.dart';
@@ -188,6 +191,9 @@ void main() {
     );
 
     testWidgets('a result opens its note in the search', (tester) async {
+      final metrics = FakeUsageMetrics();
+      getIt.registerSingleton<UsageMetricsRepository>(metrics);
+      addTearDown(() => getIt.unregister<UsageMetricsRepository>());
       final blocs = await BrowseBlocs.start();
       final search = await blocs.searchOf('sync');
       final router = await atMockNow(
@@ -206,6 +212,8 @@ void main() {
       );
       await tester.pump();
       expect(blocs.history.state.history.current, MockIds.weeklyReview);
+      // Typing counted nothing; opening a result counts the search once.
+      expect(metrics.recorded, [UsageFeature.search]);
     });
 
     testWidgets('marks the result whose note is open beside it', (

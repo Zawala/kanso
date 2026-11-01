@@ -774,6 +774,18 @@ impl Store {
         self.read(crate::schema::last_seq)
     }
 
+    /// The bytes the attachments take, as stored.
+    pub fn attachments_bytes(&self) -> Result<u64> {
+        self.read(|conn| {
+            let bytes: i64 = conn.query_row(
+                "SELECT COALESCE(SUM(length(data)), 0) FROM blobs",
+                [],
+                |row| row.get(0),
+            )?;
+            Ok(u64::try_from(bytes).unwrap_or(0))
+        })
+    }
+
     /// Live documents per type.
     pub fn counts(&self) -> Result<HashMap<DocType, usize>> {
         self.read(|conn| {

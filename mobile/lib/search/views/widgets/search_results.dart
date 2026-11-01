@@ -16,6 +16,8 @@ import '../../../core/views/widgets/kanso_button.dart';
 import '../../../core/views/widgets/kanso_divider.dart';
 import '../../../core/views/widgets/kanso_empty_state.dart';
 import '../../../core/views/widgets/kanso_message_card.dart';
+import '../../../metrics/models/repos/abs/usage_metrics_repository.dart';
+import '../../../metrics/utils/count_usage.dart';
 import '../../../note_list/views/widgets/loading_list_pane.dart';
 import '../../models/data/search_status.dart';
 import '../../state/search/search_bloc.dart';
@@ -85,6 +87,8 @@ class SearchResults extends StatelessWidget {
                 notebook: index.notebookPath(hit.row.notebookId) ?? '',
                 open: hit.row.id == openNoteId,
                 onTap: () {
+                  // One search counts once, when a result is opened.
+                  countUsage(UsageFeature.search);
                   context.read<NavigationHistoryBloc>().add(
                     NavigationHistoryEvent.visited(hit.row.id),
                   );

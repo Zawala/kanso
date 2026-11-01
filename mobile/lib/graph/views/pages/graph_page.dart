@@ -17,6 +17,8 @@ import '../../../core/views/widgets/kanso_page.dart';
 import '../../../core/views/widgets/kanso_progress.dart';
 import '../../../core/views/widgets/kanso_top_bar.dart';
 import '../../../injection.dart';
+import '../../../metrics/models/repos/abs/usage_metrics_repository.dart';
+import '../../../metrics/utils/count_usage.dart';
 import '../../state/graph/graph_bloc.dart';
 import '../widgets/graph_canvas.dart';
 import '../widgets/graph_filter_picker.dart';
@@ -34,7 +36,10 @@ class GraphPage extends StatelessWidget {
         ? const GraphRequest.library_(filter: GraphFilter.all())
         : GraphRequest.local(center: centerId!, hops: hops);
     return BlocProvider<GraphBloc>(
-      create: (_) => getIt<GraphBloc>()..add(GraphEvent.started(request)),
+      create: (_) {
+        countUsage(UsageFeature.graphOpened);
+        return getIt<GraphBloc>()..add(GraphEvent.started(request));
+      },
       child: KansoPage(
         backgroundColor: context.colors.app,
         body: Column(
